@@ -67,12 +67,22 @@ For a rollout with sequential 24-hour steps:
 - Browser integration should start as "open full report/timeline in browser"
   before adding Edge/Chrome sidebar extensions.
 
+### Platform support
+
+- Windows remains the first native desktop shell.
+- Web support starts with a browser-hosted dashboard and JSON endpoints backed by
+  the shared task core.
+- macOS and iOS support starts with a shared Apple adapter that converts tasks
+  into native-client-friendly, accessibility-ready snapshots. Native UI projects
+  can bind to this adapter once Apple workloads/runners are available.
+
 ## Phased implementation plan
 
 1. **Foundation**
    - Platform-neutral task/reminder/notes/Pomodoro domain.
    - Agenda and waiting-list ordering rules.
    - Windows sidebar shell with native desktop reservation.
+   - Build pipeline for restore, release build, and tests.
 2. **Persistence and editing**
    - Local storage.
    - Add/edit task, subtask, reminder, deadline, priority, and notes from the
@@ -87,7 +97,8 @@ For a rollout with sequential 24-hour steps:
    - Browser sidebar extension.
 5. **Cross-platform**
    - Web client against the shared task API.
-   - macOS and iOS clients reusing the core workflow semantics.
+   - macOS and iOS clients reusing the Apple task snapshot adapter and core
+     workflow semantics.
 
 ## Validation criteria
 

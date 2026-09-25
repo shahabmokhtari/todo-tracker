@@ -1,4 +1,5 @@
-﻿using TodoTracker.Core;
+﻿using TodoTracker.Apple;
+using TodoTracker.Core;
 
 var tests = new (string Name, Action Test)[]
 {
@@ -9,6 +10,7 @@ var tests = new (string Name, Action Test)[]
     ("Pomodoro remaining time is clamped at zero", PomodoroRemainingIsClamped),
     ("Completed items are not actionable", CompletedItemsAreNotActionable),
     ("Reminder dismissal updates stored reminders", ReminderDismissalUpdatesStoredReminder),
+    ("Apple shell projects agenda snapshots", AppleShellProjectsAgendaSnapshots),
     ("Recent notes handles non-positive counts", RecentNotesHandlesNonPositiveCounts),
     ("Core models validate invalid input", CoreModelsValidateInvalidInput)
 };
@@ -108,6 +110,21 @@ static void ReminderDismissalUpdatesStoredReminder()
     Assert(item.DismissReminder(reminder), "Existing reminder should be dismissed.");
     Assert(item.Reminders[0].IsDismissed, "Dismissed reminder should be stored back on the task.");
     Assert(!item.DismissReminder(reminder), "The original reminder value should no longer match after dismissal.");
+}
+
+static void AppleShellProjectsAgendaSnapshots()
+{
+    var now = new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero);
+    var board = new TaskBoard();
+    var task = board.AddTask("Check iOS glance", TaskPriority.High);
+    task.AddReminder(now.AddMinutes(-1), "Show on Apple shell", now);
+    var shell = new AppleTaskShell(board);
+
+    var agenda = shell.Agenda(now);
+
+    Assert(agenda.Count == 1, "Apple shell should expose agenda snapshots.");
+    Assert(agenda[0].Title == "Check iOS glance", "Apple snapshot should preserve task title.");
+    Assert(agenda[0].AccessibilityLabel.Contains("High priority", StringComparison.Ordinal), "Apple snapshot should include priority in accessibility label.");
 }
 
 static void RecentNotesHandlesNonPositiveCounts()

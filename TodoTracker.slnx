@@ -1,6 +1,8 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TodoTracker.Apple/TodoTracker.Apple.csproj" />
     <Project Path="src/TodoTracker.Core/TodoTracker.Core.csproj" />
+    <Project Path="src/TodoTracker.Web/TodoTracker.Web.csproj" />
     <Project Path="src/TodoTracker.Windows/TodoTracker.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">

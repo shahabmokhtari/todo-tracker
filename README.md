@@ -9,6 +9,9 @@ agent updates, and Pomodoro timing.
 
 - Windows-first desktop sidebar that can reserve the right edge of the desktop
   so maximized windows do not cover it.
+- Web app that reuses the shared core agenda/waiting logic for browser access.
+- macOS/iOS adapter layer that projects shared-core tasks into accessibility-ready
+  snapshots for future native Apple shells.
 - Nested tasks and subtasks with priorities, deadlines, reminders, notes, and
   "wait until next action" scheduling.
 - Agenda logic that keeps deferred rollout steps out of the "Do now" list until
@@ -21,14 +24,18 @@ agent updates, and Pomodoro timing.
 ## Build and test
 
 ```bash
-dotnet restore TodoTracker.slnx
-dotnet build TodoTracker.slnx --no-restore
-dotnet run --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+dotnet restore TodoTracker.sln
+dotnet build TodoTracker.sln --configuration Release --no-restore
+dotnet run --configuration Release --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+dotnet run --project src/TodoTracker.Web/TodoTracker.Web.csproj
 ```
 
 The Windows shell targets `net8.0-windows` and sets
 `EnableWindowsTargeting=true` so it can compile in non-Windows CI. Running the
 desktop UI requires Windows.
+
+GitHub Actions runs the restore, release build, and test commands on pull
+requests and pushes to `main`, `master`, and `copilot/**` branches.
 
 ## Architecture
 
@@ -36,7 +43,10 @@ desktop UI requires Windows.
   agenda, Pomodoro, and agent-update models.
 - `src/TodoTracker.Windows` contains the WPF sidebar shell and native AppBar
   integration for reserving desktop work area.
+- `src/TodoTracker.Web` contains the browser-hosted view and JSON endpoints.
+- `src/TodoTracker.Apple` contains macOS/iOS-ready task projection models that
+  native Apple clients can bind to.
 - `tests/TodoTracker.Core.Tests` is a dependency-free console test runner for
-  the core scheduling and ordering rules.
+  the core scheduling, ordering, and platform projection rules.
 
 See `docs/product-spec.md` for the plan, design, and phased specification.

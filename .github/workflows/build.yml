@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - copilot/**
+
+permissions:
+  contents: read
+
+jobs:
+  dotnet:
+    name: Restore, build, and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore TodoTracker.sln
+
+      - name: Build
+        run: dotnet build TodoTracker.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet run --configuration Release --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj

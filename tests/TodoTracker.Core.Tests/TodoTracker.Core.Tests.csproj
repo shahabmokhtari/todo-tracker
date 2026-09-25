@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TodoTracker.Core\TodoTracker.Core.csproj" />
+    <ProjectReference Include="..\..\src\TodoTracker.Apple\TodoTracker.Apple.csproj" />
   </ItemGroup>
 
 </Project>
