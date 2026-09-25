@@ -64,7 +64,7 @@ public sealed class WorkItem
         _notes.Add(new NoteEntry(createdAt, text.Trim()));
     }
 
-    public void AddReminder(DateTimeOffset dueAt, string message)
+    public void AddReminder(DateTimeOffset dueAt, string message, DateTimeOffset? now = null)
     {
         if (string.IsNullOrWhiteSpace(message))
         {
@@ -77,7 +77,9 @@ public sealed class WorkItem
             NextActionAt = dueAt;
         }
 
-        Status = WorkItemStatus.Waiting;
+        Status = dueAt > (now ?? DateTimeOffset.UtcNow)
+            ? WorkItemStatus.Waiting
+            : WorkItemStatus.Active;
     }
 
     public void ScheduleNextAction(DateTimeOffset dueAt)
@@ -117,14 +119,15 @@ public sealed class WorkItem
             .Select(reminder => (DateTimeOffset?)reminder.DueAt)
             .Min();
 
-        return Min(NextActionAt, reminderDueAt, Deadline);
+        return EarliestNonNull(NextActionAt, reminderDueAt, Deadline);
     }
 
-    private static DateTimeOffset? Min(params DateTimeOffset?[] values)
+    private static DateTimeOffset? EarliestNonNull(params DateTimeOffset?[] values)
     {
-        return values
+        var nonNullValues = values
             .Where(value => value.HasValue)
-            .OrderBy(value => value)
-            .FirstOrDefault();
+            .Select(value => value!.Value);
+
+        return nonNullValues.Any() ? nonNullValues.Min() : null;
     }
 }

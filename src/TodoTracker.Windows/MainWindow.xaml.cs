@@ -17,7 +17,7 @@ public partial class MainWindow : Window
             _sidebarHost = new DesktopSidebarHost(this);
             _sidebarHost.ReserveRightEdge();
         };
-        Closed += (_, _) => _sidebarHost?.Dispose();
+        Closing += (_, _) => _sidebarHost?.Dispose();
     }
 
     private sealed record SidebarViewModel(
