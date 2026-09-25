@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore;
 using TodoTracker.Core;
 
@@ -38,6 +39,7 @@ public static class TodoTrackerHost
             }
         });
 
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         AddServices(builder.Services, options);
         return builder;
     }
@@ -105,4 +107,5 @@ public static class TodoTrackerHost
     /// <summary>Embedded web UI assets, exposed for hosts that want to check they are present.</summary>
     public static IFileProvider WebAssets => new ManifestEmbeddedFileProvider(typeof(TodoTrackerHost).Assembly, "wwwroot");
 }
+
 
