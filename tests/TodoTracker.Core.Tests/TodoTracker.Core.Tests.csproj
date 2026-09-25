@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\TodoTracker.Core\TodoTracker.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\fixtures\**\*.json" LinkBase="fixtures" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,28 @@
+{
+  "name": "Reminders surface deferred work; snoozed containers hide children",
+  "now": "2026-01-05T12:00:00.000Z",
+  "board": {
+    "schemaVersion": 1,
+    "items": [
+      { "id": "00000000-0000-4000-8000-000000000101", "title": "Critical incident follow-up", "priority": "critical", "createdAt": "2026-01-05T08:00:00.000Z" },
+      { "id": "00000000-0000-4000-8000-000000000102", "title": "Check B metrics", "priority": "low", "createdAt": "2026-01-05T08:00:00.000Z", "nextActionAt": "2026-01-06T08:00:00.000Z",
+        "reminders": [ { "id": "00000000-0000-4000-8000-0000000001b1", "dueAt": "2026-01-05T11:55:00.000Z", "message": "Metrics ready", "kind": "manual" } ] },
+      { "id": "00000000-0000-4000-8000-000000000103", "title": "Dismissed ping", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z", "nextActionAt": "2026-01-05T18:00:00.000Z",
+        "reminders": [ { "id": "00000000-0000-4000-8000-0000000001b2", "dueAt": "2026-01-05T11:00:00.000Z", "message": "old", "kind": "manual", "dismissedAt": "2026-01-05T11:01:00.000Z" } ] },
+      { "id": "00000000-0000-4000-8000-000000000104", "title": "Snoozed project", "priority": "high", "createdAt": "2026-01-05T08:00:00.000Z", "nextActionAt": "2026-01-05T15:00:00.000Z",
+        "children": [ { "id": "00000000-0000-4000-8000-000000000105", "title": "Hidden child", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z" } ] }
+    ],
+    "activity": []
+  },
+  "expect": {
+    "focus": "00000000-0000-4000-8000-000000000102",
+    "now": [ "00000000-0000-4000-8000-000000000102", "00000000-0000-4000-8000-000000000101" ],
+    "waiting": [ "00000000-0000-4000-8000-000000000104", "00000000-0000-4000-8000-000000000103" ],
+    "attention": [ "00000000-0000-4000-8000-000000000102" ],
+    "states": {
+      "00000000-0000-4000-8000-000000000102": "waiting",
+      "00000000-0000-4000-8000-000000000105": "waiting",
+      "00000000-0000-4000-8000-000000000104": "waiting"
+    }
+  }
+}

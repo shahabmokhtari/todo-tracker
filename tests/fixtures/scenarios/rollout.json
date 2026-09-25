@@ -1,0 +1,47 @@
+{
+  "name": "Rollout: A and B in parallel, steps gated 24h apart",
+  "now": "2026-01-05T12:00:00.000Z",
+  "board": {
+    "schemaVersion": 1,
+    "items": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001", "title": "Roll out feature X", "priority": "high", "createdAt": "2026-01-05T08:00:00.000Z",
+        "children": [
+          {
+            "id": "00000000-0000-4000-8000-000000000010", "title": "Feature A", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z",
+            "sequential": true, "stepDelayMinutes": 1440,
+            "children": [
+              { "id": "00000000-0000-4000-8000-000000000011", "title": "A: ring 0", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z", "completedAt": "2026-01-05T10:00:00.000Z",
+                "notes": [ { "id": "00000000-0000-4000-8000-0000000000a1", "at": "2026-01-05T10:00:00.000Z", "text": "ring 0 healthy", "author": { "kind": "user" } } ] },
+              { "id": "00000000-0000-4000-8000-000000000012", "title": "A: ring 1", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z", "nextActionAt": "2026-01-06T10:00:00.000Z",
+                "reminders": [ { "id": "00000000-0000-4000-8000-0000000000b1", "dueAt": "2026-01-06T10:00:00.000Z", "message": "Continue A rollout", "kind": "nextAction" } ] },
+              { "id": "00000000-0000-4000-8000-000000000013", "title": "A: ring 2", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z" }
+            ]
+          },
+          {
+            "id": "00000000-0000-4000-8000-000000000020", "title": "Feature B", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z",
+            "sequential": true, "stepDelayMinutes": 1440,
+            "children": [
+              { "id": "00000000-0000-4000-8000-000000000021", "title": "B: ring 0", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z" },
+              { "id": "00000000-0000-4000-8000-000000000022", "title": "B: ring 1", "priority": "normal", "createdAt": "2026-01-05T08:00:00.000Z" }
+            ]
+          }
+        ]
+      }
+    ],
+    "activity": []
+  },
+  "expect": {
+    "focus": "00000000-0000-4000-8000-000000000021",
+    "now": [ "00000000-0000-4000-8000-000000000021" ],
+    "waiting": [ "00000000-0000-4000-8000-000000000012" ],
+    "attention": [],
+    "states": {
+      "00000000-0000-4000-8000-000000000001": "container",
+      "00000000-0000-4000-8000-000000000011": "done",
+      "00000000-0000-4000-8000-000000000012": "waiting",
+      "00000000-0000-4000-8000-000000000013": "locked",
+      "00000000-0000-4000-8000-000000000022": "locked"
+    }
+  }
+}
