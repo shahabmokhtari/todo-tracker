@@ -84,13 +84,18 @@ public sealed class WorkItem
 
     public bool DismissReminder(Reminder reminder)
     {
-        var index = _reminders.IndexOf(reminder);
+        return DismissReminder(reminder.Id);
+    }
+
+    public bool DismissReminder(Guid reminderId)
+    {
+        var index = _reminders.FindIndex(reminder => reminder.Id == reminderId);
         if (index < 0)
         {
             return false;
         }
 
-        _reminders[index] = reminder.Dismiss();
+        _reminders[index] = _reminders[index].Dismiss();
         return true;
     }
 
@@ -121,11 +126,7 @@ public sealed class WorkItem
             return;
         }
 
-        Status = IsActionable(now)
-            ? WorkItemStatus.Active
-            : EffectiveDueAt() > now
-                ? WorkItemStatus.Waiting
-                : WorkItemStatus.Active;
+        Status = IsActionable(now) ? WorkItemStatus.Active : WorkItemStatus.Waiting;
     }
 
     public bool IsActionable(DateTimeOffset now)

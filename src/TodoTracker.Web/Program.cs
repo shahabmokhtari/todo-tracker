@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using TodoTracker.Core;
 
+const int MaximumTaskTitleLength = 200;
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -24,6 +26,11 @@ app.MapPost("/api/tasks", (CreateTaskRequest? request) =>
     if (request is null || string.IsNullOrWhiteSpace(request.Title))
     {
         return Results.BadRequest(new { error = "Task title is required." });
+    }
+
+    if (request.Title.Length > MaximumTaskTitleLength)
+    {
+        return Results.BadRequest(new { error = $"Task title must be {MaximumTaskTitleLength} characters or fewer." });
     }
 
     var created = store.AddTask(request.Title, request.Priority ?? TaskPriority.Normal);

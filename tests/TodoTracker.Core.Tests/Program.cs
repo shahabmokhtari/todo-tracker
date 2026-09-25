@@ -11,6 +11,7 @@ var tests = new (string Name, Action Test)[]
     ("Completed items are not actionable", CompletedItemsAreNotActionable),
     ("Dismissed reminder does not bypass future gate", DismissedReminderDoesNotBypassFutureGate),
     ("Reminder dismissal updates stored reminders", ReminderDismissalUpdatesStoredReminder),
+    ("Duplicate reminders dismiss by id", DuplicateRemindersDismissById),
     ("Apple shell projects agenda snapshots", AppleShellProjectsAgendaSnapshots),
     ("Recent notes handles non-positive counts", RecentNotesHandlesNonPositiveCounts),
     ("Core models validate invalid input", CoreModelsValidateInvalidInput)
@@ -124,7 +125,20 @@ static void ReminderDismissalUpdatesStoredReminder()
     Assert(item.Status == WorkItemStatus.Completed, "Adding a reminder should not resurrect a completed item.");
     Assert(item.DismissReminder(reminder), "Existing reminder should be dismissed.");
     Assert(item.Reminders[0].IsDismissed, "Dismissed reminder should be stored back on the task.");
-    Assert(!item.DismissReminder(reminder), "The original reminder value should no longer match after dismissal.");
+    Assert(!item.DismissReminder(Guid.NewGuid()), "Unknown reminder ids should not dismiss anything.");
+}
+
+static void DuplicateRemindersDismissById()
+{
+    var now = new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero);
+    var item = new WorkItem("Duplicate reminders");
+    item.AddReminder(now.AddHours(1), "Same message", now);
+    item.AddReminder(now.AddHours(1), "Same message", now);
+    var secondReminderId = item.Reminders[1].Id;
+
+    Assert(item.DismissReminder(secondReminderId), "Reminder should be dismissed by stable id.");
+    Assert(!item.Reminders[0].IsDismissed, "Dismissing by id should not dismiss the first duplicate reminder.");
+    Assert(item.Reminders[1].IsDismissed, "Dismissing by id should dismiss the targeted duplicate reminder.");
 }
 
 static void AppleShellProjectsAgendaSnapshots()

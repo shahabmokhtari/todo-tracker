@@ -1,3 +1,4 @@
+using System.Globalization;
 using TodoTracker.Core;
 
 namespace TodoTracker.Apple;
@@ -14,7 +15,7 @@ public sealed record AppleTaskSnapshot(
     {
         var dueAt = item.EffectiveDueAt();
         var dueText = dueAt is { } value
-            ? $" due {value.LocalDateTime:g}"
+            ? $" due {value.LocalDateTime.ToString("g", CultureInfo.InvariantCulture)}"
             : " with no due time";
 
         return new AppleTaskSnapshot(
