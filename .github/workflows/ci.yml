@@ -118,3 +118,39 @@ jobs:
         with:
           name: windows-sidebar
           path: artifacts
+
+  apple:
+    name: macOS & iOS (Swift)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+      - name: Swift core tests (shared scenarios)
+        working-directory: apple/TodoTrackerKit
+        run: swift test
+      - name: Generate Xcode project
+        working-directory: apple
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build iOS app (simulator)
+        working-directory: apple
+        run: >
+          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-iOS
+          -destination 'generic/platform=iOS Simulator' -configuration Debug
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Build macOS app
+        working-directory: apple
+        run: >
+          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-macOS
+          -destination 'platform=macOS' -configuration Release
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Package macOS app
+        working-directory: apple
+        run: ditto -c -k --keepParent DerivedData/Build/Products/Release/TodoTracker.app TodoTracker-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: apple/TodoTracker-macOS.zip
