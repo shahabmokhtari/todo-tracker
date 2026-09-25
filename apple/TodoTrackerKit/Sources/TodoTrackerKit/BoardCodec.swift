@@ -220,7 +220,12 @@ public final class BoardFileStore {
     /// (`board.json.corrupt-<timestamp>`) and the backup restored, mirroring the C# store.
     public func load() throws -> TaskBoard {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: url.path) else { return TaskBoard() }
+        let backup = url.appendingPathExtension("bak")
+        guard fm.fileExists(atPath: url.path) else {
+            // A missing board next to a backup means an interrupted recovery, not a fresh start.
+            if fm.fileExists(atPath: backup.path) { return try restoreBackup() }
+            return TaskBoard()
+        }
         do {
             return try BoardCodec.decode(Data(contentsOf: url))
         } catch let error as BoardError {
@@ -232,13 +237,23 @@ public final class BoardFileStore {
     }
 
     private func recoverFromBackup(original: Error) throws -> TaskBoard {
+        guard FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path) else { throw original }
+        return try restoreBackup()
+    }
+
+    /// Decodes the backup first, stages it next to the board, and only then swaps files, so a failure midway
+    /// never leaves the user without both the corrupt original and the backup.
+    private func restoreBackup() throws -> TaskBoard {
         let fm = FileManager.default
         let backup = url.appendingPathExtension("bak")
-        guard fm.fileExists(atPath: backup.path) else { throw original }
         let board = try BoardCodec.decode(Data(contentsOf: backup))
-        let corrupt = url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
-        try fm.moveItem(at: url, to: corrupt)
-        try fm.copyItem(at: backup, to: url)
+        let staged = url.appendingPathExtension("restoring")
+        try? fm.removeItem(at: staged)
+        try fm.copyItem(at: backup, to: staged)
+        if fm.fileExists(atPath: url.path) {
+            try fm.moveItem(at: url, to: url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))"))
+        }
+        try fm.moveItem(at: staged, to: url)
         return board
     }
 

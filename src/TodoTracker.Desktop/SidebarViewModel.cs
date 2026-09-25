@@ -130,7 +130,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     private Task SelectGroup(GroupTabViewModel? tab)
     {
         _selectedGroupId = tab?.Id;
-        return RefreshAsync();
+        QueueRefresh();
+        return _pending;
     }
 
     [RelayCommand]

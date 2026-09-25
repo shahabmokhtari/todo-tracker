@@ -45,6 +45,7 @@ struct MenuBarGlance: View {
                 HStack {
                     Button("Done") { model.complete(focus.item.id) }
                     Button("Later (1h)") { model.snooze(focus.item.id, minutes: 60) }
+                    Button("Tomorrow") { model.snoozeUntilTomorrow(focus.item.id) }
                 }
             } else {
                 Text("Nothing is due ✨")

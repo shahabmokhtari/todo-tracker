@@ -60,12 +60,13 @@ internal static class ApiEndpoints
 
         app.MapGet("/auth", (string? code, string? @return, HttpResponse response, ApiToken apiToken, LaunchCodes launchCodes) =>
         {
-            if (!launchCodes.TryRedeem(code))
+            // A used or expired code grants nothing but still lands on the page: an existing session keeps working,
+            // otherwise the sign-in screen appears (better than a bare 401 after a double click or slow browser start).
+            if (launchCodes.TryRedeem(code))
             {
-                return Results.Unauthorized();
+                Security.SetSessionCookie(response, apiToken);
             }
 
-            Security.SetSessionCookie(response, apiToken);
             return Results.Redirect(SafeReturnPath(@return));
         });
 

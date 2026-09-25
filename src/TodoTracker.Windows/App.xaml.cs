@@ -21,6 +21,7 @@ public partial class App : Application
     private WebApplication? _server;
     private SidebarViewModel? _viewModel;
     private ToastService? _toasts;
+    private string _dataDirectory = TodoTrackerServerOptions.DefaultDataDirectory();
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -58,11 +59,11 @@ public partial class App : Application
         e.Handled = true;
         try
         {
-            var log = Path.Combine(TodoTrackerServerOptions.DefaultDataDirectory(), "errors.log");
-            File.AppendAllText(log, $"{DateTimeOffset.Now:o} {e.Exception}{Environment.NewLine}");
+            File.AppendAllText(Path.Combine(_dataDirectory, "errors.log"), $"{DateTimeOffset.Now:o} {e.Exception}{Environment.NewLine}");
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Logging is best effort; never let the last-chance handler throw.
         }
 
         if (_viewModel is not null)
@@ -98,6 +99,7 @@ public partial class App : Application
             Port = args.Port ?? TodoTrackerServerOptions.DefaultPort,
             ApiToken = token,
         };
+        _dataDirectory = options.DataDirectory;
         _server = TodoTrackerHost.Build(TodoTrackerHost.CreateBuilder(options));
         string? serverProblem = null;
         try

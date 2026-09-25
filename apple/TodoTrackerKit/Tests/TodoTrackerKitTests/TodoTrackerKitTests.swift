@@ -298,6 +298,19 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(files.contains { $0.contains("corrupt-") }, "\(files)")
         XCTAssertEqual(try store.load().items.map(\.title), ["keep me"], "main file restored from backup")
     }
+
+    func testMissingBoardWithBackupIsRecoveredNotReset() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = BoardFileStore(url: dir.appendingPathComponent("board.json"))
+        let board = try store.load()
+        try board.addTask(NewTask("keep me"), now: t0)
+        try store.save(board)
+        try store.save(board)
+        try FileManager.default.removeItem(at: store.url)
+
+        XCTAssertEqual(try store.load().items.map(\.title), ["keep me"])
+    }
 }
 
 final class CodecTests: XCTestCase {

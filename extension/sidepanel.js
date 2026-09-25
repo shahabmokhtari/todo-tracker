@@ -95,7 +95,7 @@ function tab(id, name, count) {
 
 function card(c, big = false) {
   const meta = [c.breadcrumb?.join(' › '), stepLabel(c), c.deadline ? `due ${relativeTime(c.deadline)}` : null].filter(Boolean).join(' · ');
-  return el('li', { class: `item${big ? ' big' : ''}${c.needsAttention ? ' attention' : ''}${c.id === selectedId ? ' selected' : ''}` },
+  return el('li', { class: `item${big ? ' big' : ''}${c.needsAttention ? ' attention' : ''}${c.id === (pinned?.id ?? selectedId) ? ' selected' : ''}` },
     el('span', { class: 'bar', style: `background:${priorityMeta(c.priority).color}` }),
     el('div', { class: 'grow', onclick: () => { selectedId = c.id; render(); }, title: 'Select for notes' },
       el('div', { class: 'title' }, c.title),

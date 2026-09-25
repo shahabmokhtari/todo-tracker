@@ -74,8 +74,8 @@ public sealed class SecurityTests : IAsyncLifetime
         var client = _server.App.GetTestClientWithoutRedirects();
 
         Assert.DoesNotContain(ServerFixture.Token, launch, StringComparison.Ordinal);
-        Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync(launch)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(launch)).StatusCode);
+        Assert.True((await client.GetAsync(launch)).Headers.Contains("Set-Cookie"));
+        AssertGrantsNoSession(await client.GetAsync(launch));
     }
 
     [Fact]
@@ -84,14 +84,13 @@ public sealed class SecurityTests : IAsyncLifetime
         var launch = await LaunchPath("/");
         _server.Time.Advance(TimeSpan.FromMinutes(3));
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await _server.App.GetTestClientWithoutRedirects().GetAsync(launch)).StatusCode);
+        AssertGrantsNoSession(await _server.App.GetTestClientWithoutRedirects().GetAsync(launch));
     }
 
     [Fact]
     public async Task Auth_no_longer_accepts_the_raw_token()
     {
-        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        AssertGrantsNoSession(await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}"));
     }
 
     [Fact]
@@ -117,10 +116,16 @@ public sealed class SecurityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Launch_link_with_unknown_code_is_rejected()
+    public async Task Launch_link_with_unknown_code_grants_nothing_but_lands_on_the_page()
     {
-        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync("/auth?code=bad");
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        // Review follow-up: a stale link (double click, slow browser start) should show the page, not a bare 401.
+        AssertGrantsNoSession(await _server.App.GetTestClientWithoutRedirects().GetAsync("/auth?code=bad"));
+    }
+
+    private static void AssertGrantsNoSession(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.False(response.Headers.Contains("Set-Cookie"));
     }
 
     [Fact]

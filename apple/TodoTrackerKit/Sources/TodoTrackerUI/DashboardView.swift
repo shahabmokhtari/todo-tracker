@@ -178,6 +178,7 @@ struct TaskRow: View {
                         Button("15 min") { model.snooze(entry.item.id, minutes: 15) }
                         Button("1 hour") { model.snooze(entry.item.id, minutes: 60) }
                         Button("3 hours") { model.snooze(entry.item.id, minutes: 180) }
+                        Button("Tomorrow 9:00") { model.snoozeUntilTomorrow(entry.item.id) }
                         Button("+24 hours") { model.snooze(entry.item.id, minutes: 1440) }
                     } label: { Label("Later", systemImage: "alarm") }
                     Button { model.toggleNote(entry.item.id) } label: { Label("Note", systemImage: "square.and.pencil") }

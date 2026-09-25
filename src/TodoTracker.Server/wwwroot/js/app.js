@@ -30,24 +30,36 @@ async function refresh({ background = false } = {}) {
   }
 }
 
+/** True only when something unsaved would be lost: typed capture text, a non-empty note, or dirty drawer fields. */
 function isEditing() {
-  const active = document.activeElement;
-  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && active.closest('#board, #drawer')) return true;
-  return [...document.querySelectorAll('.inline-note:not([hidden]) input')].some((i) => i.value.trim());
+  if ($('#capture-input').value.trim()) return true;
+  if ([...document.querySelectorAll('.inline-note:not([hidden]) input')].some((i) => i.value.trim())) return true;
+  return !$('#drawer').hidden && collectDrawerEdits().size > 0;
 }
 
 function collectNoteDrafts() {
   const drafts = new Map();
-  document.querySelectorAll('.inline-note:not([hidden])').forEach((form) => drafts.set(form.dataset.id, form.querySelector('input').value));
+  const active = document.activeElement;
+  document.querySelectorAll('.inline-note:not([hidden])').forEach((form) => {
+    const input = form.querySelector('input');
+    drafts.set(form.dataset.id, { value: input.value, focused: input === active, start: input.selectionStart, end: input.selectionEnd });
+  });
   return drafts;
 }
 
 function restoreNoteDrafts(drafts) {
-  drafts.forEach((value, id) => {
+  drafts.forEach((draft, id) => {
     const form = document.querySelector(`.inline-note[data-id="${CSS.escape(id)}"]`);
     if (!form) return;
+    const { value, focused = false, start = value.length, end = value.length } = typeof draft === 'string' ? { value: draft } : draft;
+    const input = form.querySelector('input');
     form.hidden = false;
-    form.querySelector('input').value = value;
+    input.value = value;
+    if (focused) {
+      // Keep the caret where it was, so the next keystroke doesn't trigger page shortcuts.
+      input.focus();
+      input.setSelectionRange(start, end);
+    }
   });
 }
 
