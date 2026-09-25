@@ -258,6 +258,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
+    private void CopyApiToken()
+    {
+        _shell.CopyToClipboard(_options.ApiToken);
+        StatusMessage = "API token copied. Paste it into the browser extension.";
+    }
+
+    [RelayCommand]
     private void ToggleCompact() => IsCompact = !IsCompact;
 
     [RelayCommand]
@@ -487,6 +494,7 @@ internal static class TaskSchedulerExtensions
     public static TaskScheduler FromCurrentSynchronizationContextOrDefault() =>
         SynchronizationContext.Current is null ? TaskScheduler.Default : TaskScheduler.FromCurrentSynchronizationContext();
 }
+
 
 
 

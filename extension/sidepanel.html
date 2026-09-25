@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Todo Tracker</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <section id="setup" hidden>
+    <h1>Connect Todo Tracker</h1>
+    <p class="muted">Start the Windows sidebar (or <code>TodoTracker.Web</code>), then in the sidebar menu choose <em>Copy API token</em>.</p>
+    <form id="setup-form">
+      <label>Server <input id="server" value="http://127.0.0.1:5317" required></label>
+      <label>API token <input id="token" type="password" autocomplete="off" required></label>
+      <button class="primary" type="submit">Connect</button>
+      <p id="setup-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <section id="main" hidden>
+    <header>
+      <nav id="tabs" class="tabs" aria-label="Task groups"></nav>
+      <button id="open" title="Open dashboard">↗</button>
+      <button id="settings" title="Connection settings">⚙</button>
+    </header>
+
+    <form id="capture" autocomplete="off">
+      <input id="capture-input" placeholder="Add a task… !! @2h" maxlength="300" aria-label="Quick add task">
+    </form>
+
+    <div id="focus" class="focus"></div>
+
+    <form id="note" class="note">
+      <textarea id="note-text" rows="3" placeholder="Note for the focus task…" maxlength="10000" aria-label="Note"></textarea>
+      <label class="check"><input id="attach" type="checkbox" checked> Attach this page</label>
+      <div id="page" class="muted"></div>
+      <button class="primary" type="submit">Save note</button>
+    </form>
+
+    <details open>
+      <summary>Do now <span id="now-count" class="muted"></span></summary>
+      <ul id="now" class="list"></ul>
+    </details>
+    <details>
+      <summary>Waiting <span id="waiting-count" class="muted"></span></summary>
+      <ul id="waiting" class="list"></ul>
+    </details>
+    <p id="status" class="muted" role="status"></p>
+  </section>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

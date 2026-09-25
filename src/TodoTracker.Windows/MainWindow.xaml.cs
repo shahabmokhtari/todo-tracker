@@ -156,6 +156,7 @@ public partial class MainWindow : Window
         menu.Items.Add(new MenuItem { Header = "Full timeline", Command = _vm.OpenReportCommand });
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
+        menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
         if (_settings is not null)
         {
             var teams = new MenuItem { Header = _settings.Current.TeamsWebhookUrl is null ? "Connect Teams reminders…" : "Teams reminders: connected (change…)" };
@@ -210,4 +211,5 @@ public partial class MainWindow : Window
         }
     }
 }
+
 

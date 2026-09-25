@@ -34,7 +34,7 @@ public sealed class SidebarViewModelTests : IDisposable
 
     public SidebarViewModelTests()
     {
-        _vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://127.0.0.1:5317", "http://127.0.0.1:5317/auth?token=t", "{\"mcpServers\":{}}", TimeZoneInfo.Utc));
+        _vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://127.0.0.1:5317", "http://127.0.0.1:5317/auth?token=t", "{\"mcpServers\":{}}", TimeZoneInfo.Utc, "secret-token"));
     }
 
     public void Dispose()
@@ -275,7 +275,9 @@ public sealed class SidebarViewModelTests : IDisposable
         Assert.Equal(
             ["http://127.0.0.1:5317/auth?token=t", $"http://127.0.0.1:5317/auth?token=t&return=%2Freport.html%3Fid%3D{item.Id}", $"http://127.0.0.1:5317/auth?token=t&return=%2F%3Fitem%3D{item.Id}"],
             _shell.OpenedUrls);
-        Assert.Equal("{\"mcpServers\":{}}", Assert.Single(_shell.Clipboard));
+        _vm.CopyApiTokenCommand.Execute(null);
+
+        Assert.Equal(["{\"mcpServers\":{}}", "secret-token"], _shell.Clipboard);
     }
 
     [Fact]
@@ -323,4 +325,5 @@ public sealed class SidebarViewModelTests : IDisposable
         Assert.Equal("2", _vm.CompactSummary);
     }
 }
+
 

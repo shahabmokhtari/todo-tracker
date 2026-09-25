@@ -18,7 +18,7 @@ public interface IDesktopShell
     bool Confirm(string message);
 }
 
-public sealed record SidebarOptions(string BaseUrl, string LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone);
+public sealed record SidebarOptions(string BaseUrl, string LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "");
 
 public enum ToastAction
 {
@@ -254,4 +254,5 @@ internal static class CollectionSync
         }
     }
 }
+
 

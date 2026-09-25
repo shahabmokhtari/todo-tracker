@@ -96,7 +96,7 @@ public partial class App : Application
             services.GetRequiredService<IBoardStore>(),
             TimeProvider.System,
             new WpfShell(),
-            new SidebarOptions(connection.BaseUrl, connection.LaunchUrl, mcpConfig, TimeZoneInfo.Local));
+            new SidebarOptions(connection.BaseUrl, connection.LaunchUrl, mcpConfig, TimeZoneInfo.Local, connection.Token));
 
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), dockOnStart: dock && !args.NoDock);
         MainWindow = window;
@@ -280,6 +280,7 @@ internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? Dat
         return result;
     }
 }
+
 
 
 
