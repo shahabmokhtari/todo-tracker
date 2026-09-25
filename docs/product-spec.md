@@ -82,6 +82,9 @@ Current foundation:
 - Buildable Apple adapter project.
 - Shared-core agenda/waiting projection into accessibility-ready snapshots.
 - Test coverage for Apple snapshot projection.
+- This is not yet a native MAUI/iOS/Mac Catalyst shell; it is the validated
+  adapter layer that a native Apple shell should bind to when Apple build
+  workloads and runners are introduced.
 
 Required next capabilities:
 
@@ -343,15 +346,18 @@ Pipeline steps:
 1. Check out repository.
 2. Install .NET 8 SDK.
 3. Restore `TodoTracker.sln`.
-4. Build `TodoTracker.sln` in Release mode.
+4. Build `TodoTracker.sln` in Release mode with warnings treated as errors.
 5. Run the console test runner in Release mode.
+6. Smoke-test the web app via `/health` and `/api/agenda`.
+7. Build the desktop solution on a Windows runner to catch Windows/WPF issues
+   that Linux cross-targeting can miss.
 
 Local equivalent:
 
 ```bash
 dotnet restore TodoTracker.sln
-dotnet build TodoTracker.sln --configuration Release --no-restore
-dotnet run --configuration Release --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+dotnet build TodoTracker.sln --configuration Release --no-restore --warnaserror
+dotnet run --configuration Release --no-build --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
 ```
 
 ## 12. Validation criteria

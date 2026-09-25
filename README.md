@@ -25,8 +25,8 @@ agent updates, and Pomodoro timing.
 
 ```bash
 dotnet restore TodoTracker.sln
-dotnet build TodoTracker.sln --configuration Release --no-restore
-dotnet run --configuration Release --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+dotnet build TodoTracker.sln --configuration Release --no-restore --warnaserror
+dotnet run --configuration Release --no-build --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
 dotnet run --project src/TodoTracker.Web/TodoTracker.Web.csproj
 ```
 
@@ -34,8 +34,9 @@ The Windows shell targets `net8.0-windows` and sets
 `EnableWindowsTargeting=true` so it can compile in non-Windows CI. Running the
 desktop UI requires Windows.
 
-GitHub Actions runs the restore, release build, and test commands on pull
-requests and pushes to `main`, `master`, and `copilot/**` branches.
+GitHub Actions runs restore, warning-as-error release builds, tests, and a web
+smoke test on pull requests and pushes to `main`, `master`, and `copilot/**`
+branches. A Windows job also builds the desktop project on `windows-latest`.
 
 ## Architecture
 
@@ -44,8 +45,9 @@ requests and pushes to `main`, `master`, and `copilot/**` branches.
 - `src/TodoTracker.Windows` contains the WPF sidebar shell and native AppBar
   integration for reserving desktop work area.
 - `src/TodoTracker.Web` contains the browser-hosted view and JSON endpoints.
-- `src/TodoTracker.Apple` contains macOS/iOS-ready task projection models that
-  native Apple clients can bind to.
+- `src/TodoTracker.Apple` contains a macOS/iOS adapter foundation: task
+  projection models that future native Apple clients can bind to once Apple
+  workloads and runners are introduced.
 - `tests/TodoTracker.Core.Tests` is a dependency-free console test runner for
   the core scheduling, ordering, and platform projection rules.
 

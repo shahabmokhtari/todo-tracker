@@ -2,11 +2,17 @@ using TodoTracker.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
-var board = SampleBoard.Create();
+var store = new TaskBoardStore(SampleBoard.Create());
 
-app.MapGet("/", () => Results.Content(HomePage.Render(board, DateTimeOffset.Now), "text/html"));
-app.MapGet("/api/agenda", () => board.Agenda(DateTimeOffset.Now).Select(TaskDto.From));
-app.MapGet("/api/waiting", () => board.Waiting(DateTimeOffset.Now).Select(TaskDto.From));
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/", () => Results.Content(HomePage.Render(store.Snapshot(DateTimeOffset.Now), DateTimeOffset.Now), "text/html"));
+app.MapGet("/api/agenda", () => store.Agenda(DateTimeOffset.Now));
+app.MapGet("/api/waiting", () => store.Waiting(DateTimeOffset.Now));
+app.MapPost("/api/tasks", (CreateTaskRequest request) =>
+{
+    var created = store.AddTask(request.Title, request.Priority ?? TaskPriority.Normal);
+    return Results.Created($"/api/tasks/{created.Id}", created);
+});
 
 app.Run();
 
@@ -35,10 +41,10 @@ internal static class SampleBoard
 
 internal static class HomePage
 {
-    public static string Render(TaskBoard board, DateTimeOffset now)
+    public static string Render(BoardSnapshot board, DateTimeOffset now)
     {
-        var agenda = string.Join("", board.Agenda(now).Select(RenderTask));
-        var waiting = string.Join("", board.Waiting(now).Select(RenderTask));
+        var agenda = string.Join("", board.Agenda.Select(RenderTask));
+        var waiting = string.Join("", board.Waiting.Select(RenderTask));
 
         return $$"""
             <!doctype html>
@@ -71,14 +77,14 @@ internal static class HomePage
             """;
     }
 
-    private static string RenderTask(WorkItem item)
+    private static string RenderTask(TaskDto item)
     {
-        var dueLabel = item.EffectiveDueAt() is { } dueAt ? dueAt.LocalDateTime.ToString("g") : "No due time";
+        var dueLabel = item.DueAt is { } dueAt ? dueAt.LocalDateTime.ToString("g") : "No due time";
         return $$"""
             <article class="{{item.Priority}}">
                 <h3>{{Escape(item.Title)}}</h3>
                 <p>{{Escape(item.Detail ?? dueLabel)}}</p>
-                <small>Priority: {{item.Priority}} · Next: {{dueLabel}}</small>
+                <small>Priority: {{item.Priority}} · Status: {{item.Status}} · Next: {{dueLabel}}</small>
             </article>
             """;
     }
@@ -98,6 +104,7 @@ internal sealed record TaskDto(
     string Title,
     string Priority,
     string Status,
+    string? Detail,
     DateTimeOffset? NextActionAt,
     DateTimeOffset? DueAt)
 {
@@ -108,7 +115,57 @@ internal sealed record TaskDto(
             item.Title,
             item.Priority.ToString(),
             item.Status.ToString(),
+            item.Detail,
             item.NextActionAt,
             item.EffectiveDueAt());
+    }
+}
+
+internal sealed record CreateTaskRequest(string Title, TaskPriority? Priority);
+
+internal sealed record BoardSnapshot(IReadOnlyList<TaskDto> Agenda, IReadOnlyList<TaskDto> Waiting);
+
+internal sealed class TaskBoardStore
+{
+    private readonly object _lock = new();
+    private readonly TaskBoard _board;
+
+    public TaskBoardStore(TaskBoard board)
+    {
+        _board = board;
+    }
+
+    public IReadOnlyList<TaskDto> Agenda(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            return _board.Agenda(now).Select(TaskDto.From).ToList();
+        }
+    }
+
+    public IReadOnlyList<TaskDto> Waiting(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            return _board.Waiting(now).Select(TaskDto.From).ToList();
+        }
+    }
+
+    public BoardSnapshot Snapshot(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            return new BoardSnapshot(
+                _board.Agenda(now).Select(TaskDto.From).ToList(),
+                _board.Waiting(now).Select(TaskDto.From).ToList());
+        }
+    }
+
+    public TaskDto AddTask(string title, TaskPriority priority)
+    {
+        lock (_lock)
+        {
+            return TaskDto.From(_board.AddTask(title, priority));
+        }
     }
 }

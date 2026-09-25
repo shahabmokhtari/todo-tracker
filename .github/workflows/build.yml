@@ -29,7 +29,41 @@ jobs:
         run: dotnet restore TodoTracker.sln
 
       - name: Build
-        run: dotnet build TodoTracker.sln --configuration Release --no-restore
+        run: dotnet build TodoTracker.sln --configuration Release --no-restore --warnaserror
 
       - name: Test
-        run: dotnet run --configuration Release --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+        run: dotnet run --configuration Release --no-build --project tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj
+
+      - name: Web smoke test
+        shell: bash
+        run: |
+          dotnet run --configuration Release --no-build --project src/TodoTracker.Web/TodoTracker.Web.csproj --urls http://127.0.0.1:5080 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5080/health; then
+              curl --fail --silent http://127.0.0.1:5080/api/agenda
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+
+  windows:
+    name: Windows desktop build
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore TodoTracker.sln
+
+      - name: Build
+        run: dotnet build TodoTracker.sln --configuration Release --no-restore --warnaserror
