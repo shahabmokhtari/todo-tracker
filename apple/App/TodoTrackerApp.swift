@@ -7,14 +7,10 @@ struct TodoTrackerApp: App {
     @StateObject private var model = BoardModel.live()
 
     var body: some Scene {
-        WindowGroup("Todo Tracker") {
-            DashboardView(model: model)
-                .onAppear { BoardModel.requestNotificationPermission() }
-                #if os(macOS)
-                .frame(minWidth: 320, idealWidth: 380, minHeight: 480)
-                #endif
-        }
         #if os(macOS)
+        WindowGroup("Todo Tracker") {
+            dashboard.frame(minWidth: 320, idealWidth: 380, minHeight: 480)
+        }
         .defaultSize(width: 380, height: 820)
         .windowResizability(.contentMinSize)
 
@@ -25,10 +21,18 @@ struct TodoTrackerApp: App {
             Label("\(model.dashboard.now.count)", systemImage: model.dashboard.now.contains(where: \.needsAttention) ? "bell.badge" : "checklist")
         }
         .menuBarExtraStyle(.window)
+        #else
+        WindowGroup("Todo Tracker") {
+            dashboard
+        }
         #endif
     }
-}
 
+    private var dashboard: some View {
+        DashboardView(model: model)
+            .onAppear { BoardModel.requestNotificationPermission() }
+    }
+}
 #if os(macOS)
 struct MenuBarGlance: View {
     @ObservedObject var model: BoardModel
