@@ -1,0 +1,81 @@
+﻿<Window x:Class="TodoTracker.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Todo Tracker"
+        Height="900"
+        Width="380"
+        MinWidth="340"
+        WindowStartupLocation="Manual"
+        Topmost="True">
+    <DockPanel Background="#101827">
+        <Border DockPanel.Dock="Top" Padding="16" Background="#17213A">
+            <StackPanel>
+                <TextBlock Text="Now" Foreground="#F8FAFC" FontSize="28" FontWeight="SemiBold" />
+                <TextBlock Text="Actionable tasks only. Waiting work returns when it is time."
+                           Margin="0,4,0,0"
+                           Foreground="#CBD5E1"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12">
+                <Expander Header="Do now" IsExpanded="True" Foreground="#F8FAFC" FontWeight="SemiBold">
+                    <ItemsControl ItemsSource="{Binding AgendaItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,8,0,0" Padding="12" CornerRadius="10" Background="{Binding PriorityBrush}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" Foreground="#FFFFFF" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding Detail}" Foreground="#E2E8F0" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding DueLabel}" Foreground="#FEF3C7" Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+
+                <Expander Header="Waiting for reminder" Margin="0,14,0,0" Foreground="#F8FAFC">
+                    <ItemsControl ItemsSource="{Binding WaitingItems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,8,0,0" Padding="10" CornerRadius="8" Background="#1E293B">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" Foreground="#E2E8F0" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding DueLabel}" Foreground="#94A3B8" FontSize="12" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+
+                <Expander Header="Recent notes" Margin="0,14,0,0" Foreground="#F8FAFC">
+                    <ItemsControl ItemsSource="{Binding RecentNotes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,8,0,0" Padding="10" CornerRadius="8" Background="#263449">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" Foreground="#F8FAFC" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding LatestNote}" Foreground="#CBD5E1" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+
+                <Border Margin="0,14,0,0" Padding="12" CornerRadius="10" Background="#064E3B">
+                    <StackPanel>
+                        <TextBlock Text="Pomodoro" Foreground="#ECFDF5" FontSize="18" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding PomodoroLabel}" Foreground="#A7F3D0" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
