@@ -51,4 +51,5 @@ branches. A Windows job also builds the desktop project on `windows-latest`.
 - `tests/TodoTracker.Core.Tests` is a dependency-free console test runner for
   the core scheduling, ordering, and platform projection rules.
 
-See `docs/product-spec.md` for the plan, design, and phased specification.
+See `docs/product-spec.md` for the plan, design, and phased specification, and
+`docs/request.md` for the original request.

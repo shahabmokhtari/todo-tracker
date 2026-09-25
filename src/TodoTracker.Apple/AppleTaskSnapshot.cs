@@ -12,8 +12,9 @@ public sealed record AppleTaskSnapshot(
 {
     public static AppleTaskSnapshot From(WorkItem item)
     {
-        var dueText = item.EffectiveDueAt() is { } dueAt
-            ? $" due {dueAt.LocalDateTime:g}"
+        var dueAt = item.EffectiveDueAt();
+        var dueText = dueAt is { } value
+            ? $" due {value.LocalDateTime:g}"
             : " with no due time";
 
         return new AppleTaskSnapshot(
@@ -22,6 +23,6 @@ public sealed record AppleTaskSnapshot(
             item.Priority.ToString(),
             item.Status.ToString(),
             $"{item.Priority} priority task {item.Title}{dueText}",
-            item.EffectiveDueAt());
+            dueAt);
     }
 }

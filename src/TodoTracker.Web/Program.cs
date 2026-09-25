@@ -1,15 +1,30 @@
+using System.Text.Json.Serialization;
 using TodoTracker.Core;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 var app = builder.Build();
 var store = new TaskBoardStore(SampleBoard.Create());
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-app.MapGet("/", () => Results.Content(HomePage.Render(store.Snapshot(DateTimeOffset.Now), DateTimeOffset.Now), "text/html"));
+app.MapGet("/", () => Results.Content(HomePage.Render(store.Snapshot(DateTimeOffset.Now)), "text/html"));
 app.MapGet("/api/agenda", () => store.Agenda(DateTimeOffset.Now));
 app.MapGet("/api/waiting", () => store.Waiting(DateTimeOffset.Now));
-app.MapPost("/api/tasks", (CreateTaskRequest request) =>
+app.MapGet("/api/tasks/{id:guid}", (Guid id) =>
 {
+    var task = store.Find(id);
+    return task is null ? Results.NotFound() : Results.Ok(task);
+});
+app.MapPost("/api/tasks", (CreateTaskRequest? request) =>
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Title))
+    {
+        return Results.BadRequest(new { error = "Task title is required." });
+    }
+
     var created = store.AddTask(request.Title, request.Priority ?? TaskPriority.Normal);
     return Results.Created($"/api/tasks/{created.Id}", created);
 });
@@ -41,7 +56,7 @@ internal static class SampleBoard
 
 internal static class HomePage
 {
-    public static string Render(BoardSnapshot board, DateTimeOffset now)
+    public static string Render(BoardSnapshot board)
     {
         var agenda = string.Join("", board.Agenda.Select(RenderTask));
         var waiting = string.Join("", board.Waiting.Select(RenderTask));
@@ -151,6 +166,17 @@ internal sealed class TaskBoardStore
         }
     }
 
+    public TaskDto? Find(Guid id)
+    {
+        lock (_lock)
+        {
+            return Flatten(_board.Tasks)
+                .Where(item => item.Id == id)
+                .Select(TaskDto.From)
+                .FirstOrDefault();
+        }
+    }
+
     public BoardSnapshot Snapshot(DateTimeOffset now)
     {
         lock (_lock)
@@ -166,6 +192,19 @@ internal sealed class TaskBoardStore
         lock (_lock)
         {
             return TaskDto.From(_board.AddTask(title, priority));
+        }
+    }
+
+    private static IEnumerable<WorkItem> Flatten(IEnumerable<WorkItem> items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+
+            foreach (var subtask in Flatten(item.Subtasks))
+            {
+                yield return subtask;
+            }
         }
     }
 }
