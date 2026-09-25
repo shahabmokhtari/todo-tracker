@@ -12,6 +12,9 @@ struct TaskDetailView: View {
     @State private var steps = ""
     @State private var hoursBetween = 24.0
     @State private var confirmDelete = false
+    @State private var confirmComplete = false
+    @State private var editTitle = ""
+    @State private var editPriority = Priority.normal
 
     var body: some View {
         NavigationStack {
@@ -25,6 +28,15 @@ struct TaskDetailView: View {
                         LabeledContent("State", value: Agenda.state(of: item, now: model.now).rawValue)
                         if let next = item.nextActionAt { LabeledContent("Next action", value: RelativeTime.format(next, now: model.now)) }
                         if let deadline = item.deadline { LabeledContent("Deadline", value: RelativeTime.format(deadline, now: model.now)) }
+                    }
+
+                    Section("Edit") {
+                        TextField("Title", text: $editTitle)
+                        Picker("Priority", selection: $editPriority) {
+                            ForEach(Priority.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        Button("Save changes") { model.update(itemId, title: editTitle, priority: editPriority) }
+                            .disabled(editTitle == item.title && editPriority == item.priority)
                     }
 
                     Section(item.sequential ? "Steps (in order)" : "Subtasks") {
@@ -80,8 +92,12 @@ struct TaskDetailView: View {
                             Button("Reopen") { model.reopen(itemId) }
                         } else if Agenda.state(of: item, now: model.now) != .locked {
                             Button("Mark done") {
-                                model.complete(itemId)
-                                dismiss()
+                                if item.hasOpenChildren {
+                                    confirmComplete = true
+                                } else {
+                                    model.complete(itemId)
+                                    dismiss()
+                                }
                             }
                         }
                         Button("Delete", role: .destructive) { confirmDelete = true }
@@ -90,6 +106,16 @@ struct TaskDetailView: View {
                 .navigationTitle(item.title)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                }
+                .confirmationDialog("Also mark the open subtasks as done?", isPresented: $confirmComplete) {
+                    Button("Mark all done") {
+                        model.complete(itemId)
+                        dismiss()
+                    }
+                }
+                .onAppear {
+                    editTitle = item.title
+                    editPriority = item.priority
                 }
                 .confirmationDialog("Delete \"\(item.title)\" and its subtasks?", isPresented: $confirmDelete) {
                     Button("Delete", role: .destructive) {

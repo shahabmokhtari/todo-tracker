@@ -13,6 +13,7 @@ public static partial class QuickCaptureParser
 {
     private const int MorningHour = 9;
     private const int EndOfDayHour = 17;
+    private const int LateNightCutoffHour = 4;
 
     public static QuickCapture Parse(string input, DateTimeOffset now, TimeZoneInfo zone)
     {
@@ -69,10 +70,18 @@ public static partial class QuickCaptureParser
         var value = token[1..].ToLowerInvariant();
         if (value == "tomorrow")
         {
-            return LocalTimeOn(now, zone, 1, MorningHour);
+            return TomorrowMorning(now, zone);
         }
 
         return ParseSpan(value) is { } span ? now + span : null;
+    }
+
+    /// <summary>Next 9:00. Before 4:00 people still mean "when I wake up", i.e. this morning.</summary>
+    public static DateTimeOffset TomorrowMorning(DateTimeOffset now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        var localHour = TimeZoneInfo.ConvertTime(now, zone).Hour;
+        return LocalTimeOn(now, zone, localHour < LateNightCutoffHour ? 0 : 1, MorningHour);
     }
 
     private static DateTimeOffset? ParseDue(string token, DateTimeOffset now, TimeZoneInfo zone)
@@ -86,7 +95,8 @@ public static partial class QuickCaptureParser
         switch (value)
         {
             case "today":
-                return LocalTimeOn(now, zone, 0, EndOfDayHour);
+                var endOfDay = LocalTimeOn(now, zone, 0, EndOfDayHour);
+                return endOfDay > now ? endOfDay : LocalTimeOn(now, zone, 0, 23).AddMinutes(59);
             case "tomorrow":
                 return LocalTimeOn(now, zone, 1, EndOfDayHour);
         }

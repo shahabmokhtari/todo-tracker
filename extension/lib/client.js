@@ -57,6 +57,7 @@ export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
       body: { text, sourceUrl: source?.url ?? null, sourceTitle: source?.title ?? null },
     }),
     snooze: (id, minutes) => call(`/api/items/${id}/schedule`, { method: 'POST', body: { inMinutes: minutes, notify: true } }),
-    launchUrl: (path = '/') => `${base}/auth?token=${encodeURIComponent(token)}&return=${encodeURIComponent(path)}`,
+    // Single-use sign-in link for opening the dashboard in a tab; the API token never goes into a URL.
+    launchUrl: async (path = '/') => (await call('/api/launch', { method: 'POST', body: { return: path } })).url,
   };
 }

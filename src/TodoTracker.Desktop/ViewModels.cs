@@ -18,7 +18,8 @@ public interface IDesktopShell
     bool Confirm(string message);
 }
 
-public sealed record SidebarOptions(string BaseUrl, string LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "");
+/// <param name="LaunchUrl">Creates a single-use sign-in link to a local path (keeps the API token out of URLs).</param>
+public sealed record SidebarOptions(string BaseUrl, Func<string, string> LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "");
 
 public enum ToastAction
 {
@@ -38,13 +39,8 @@ public sealed record SnoozeOption(string Label, Func<DateTimeOffset, TimeZoneInf
         new("+24 hours", (_, _) => 1440),
     ];
 
-    private static int MinutesUntilTomorrowMorning(DateTimeOffset now, TimeZoneInfo zone)
-    {
-        var local = TimeZoneInfo.ConvertTime(now, zone);
-        var wall = local.Date.AddDays(1).AddHours(9);
-        var target = new DateTimeOffset(wall, zone.GetUtcOffset(wall));
-        return Math.Max(1, (int)Math.Round((target - now).TotalMinutes));
-    }
+    private static int MinutesUntilTomorrowMorning(DateTimeOffset now, TimeZoneInfo zone) =>
+        Math.Max(1, (int)Math.Round((QuickCaptureParser.TomorrowMorning(now, zone) - now).TotalMinutes));
 }
 
 public sealed record SnoozeRequest(CardViewModel Card, SnoozeOption Option);
@@ -136,7 +132,7 @@ public sealed partial class GroupTabViewModel : ObservableObject
 
 public sealed record WorkstreamViewModel(Guid Id, string Title, string PriorityColor, int ProgressPercent, string Summary);
 
-public sealed record NoteViewModel(Guid ItemId, string Text, string ItemTitle, string Meta, string? SourceUrl);
+public sealed record NoteViewModel(Guid NoteId, Guid ItemId, string Text, string ItemTitle, string Meta, string? SourceUrl);
 
 public static class PriorityPalette
 {
@@ -178,11 +174,11 @@ public sealed partial class PomodoroViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsPaused { get; set; }
 
-    internal void Update(PomodoroTimer timer, string? itemTitle, DateTimeOffset now)
+    internal void Update(PomodoroState timer, string? itemTitle, DateTimeOffset now)
     {
         _phase = timer.Phase;
         _endsAt = timer.EndsAt;
-        _remaining = timer.Remaining(now);
+        _remaining = timer.Remaining;
         IsRunning = timer.IsRunning;
         IsIdle = timer.Phase == PomodoroPhase.Idle;
         IsBreak = timer.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
@@ -210,27 +206,23 @@ public sealed partial class PomodoroViewModel : ObservableObject
     }
 }
 
+/// <summary>Immutable copy of the timer taken inside the store lock (the live timer must not leave the lock).</summary>
+public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning)
+{
+    public static PomodoroState Of(PomodoroTimer timer, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(timer);
+        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning);
+    }
+}
+
 internal static class CollectionSync
 {
     /// <summary>Updates <paramref name="target"/> in place so bound UI keeps focus and drafts across refreshes.</summary>
-    public static void SyncCards(ObservableCollection<CardViewModel> target, IReadOnlyList<CardViewModel> source)
+    public static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<T> source)
     {
-        var existing = target.ToDictionary(c => c.Id);
-        var ordered = source.Select(s =>
-        {
-            if (existing.TryGetValue(s.Id, out var keep))
-            {
-                keep.CopyFrom(s);
-                return keep;
-            }
-
-            return s;
-        }).ToList();
-        Sync(target, ordered);
-    }
-
-    public static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<T> ordered)
-    {
+        // Duplicates would make Move() fail; keep the first occurrence.
+        var ordered = source.Distinct().ToList();
         for (var i = target.Count - 1; i >= 0; i--)
         {
             if (!ordered.Contains(target[i]))

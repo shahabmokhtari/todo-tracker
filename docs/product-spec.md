@@ -93,18 +93,19 @@ container items in *Do now*.
 ordered by wake time, then priority.
 
 **Sequences.** Completing step *n* sets step *n+1*'s gate to `completedAt + stepDelay`, or keeps an existing later
-gate. Completing a locked step is rejected with "Finish X first". Completing the last step completes the sequence.
-Completing a parent completes all of its descendants. Reopening a child reopens its ancestors.
+gate. Completing a locked step, or anything under one, is rejected with "Finish X first". Completing the last step
+completes the sequence. Completing a parent completes all of its open descendants, and the UIs ask first. Reopening
+that parent reopens exactly the children that action closed. Reopening a child reopens its ancestors.
 
 **Snooze / schedule.** Sets `nextActionAt` and (default) adds a `nextAction` reminder at that time. Rescheduling
-dismisses the previous undelivered schedule reminder, so reminders never stack.
+dismisses the previous undelivered schedule reminder and any reminder that is already due (even if delivered), so "Later" on a ringing reminder really moves the task to *Waiting* and reminders never stack.
 
 **Delivery.** Every 15s the server marks due, undelivered reminders as delivered, at most once and before sending,
 so a crash never double-notifies. It then fans them out to desktop toasts and Teams. A failing integration never
 blocks the others.
 
-**Quick capture:** `!`/`!high`, `!!`/`!critical`/`!urgent`, `!low`, `@15m`/`@2h`/`@3d`/`@tomorrow` (9:00 local),
-`due:today`/`due:tomorrow`/`due:3d`/`due:YYYY-MM-DD` (17:00 local). Unknown tokens stay in the title.
+**Quick capture:** `!`/`!high`, `!!`/`!critical`/`!urgent`, `!low`, `@15m`/`@2h`/`@3d`/`@tomorrow` (next 9:00 local; before 4:00 that means this morning),
+`due:today`/`due:tomorrow`/`due:3d`/`due:YYYY-MM-DD` (17:00 local; `due:today` after 17:00 means 23:59). Malformed tokens (`due:2026-13-01`, `@+5m`) stay in the title on every platform. Unknown tokens stay in the title.
 
 ## 6. UX specification
 
@@ -168,14 +169,18 @@ received"). Reminders are posted as Adaptive Cards with the title, path, message
 *Open report* link. The URL must be https, is stored only in `settings.json`, and is never returned by the API.
 
 ### Browser
-The extension uses the REST API with the API token. A deep link `/?item=<id>` opens a task drawer. The launch link
-`/auth?token=…&return=/path` sets the session cookie and accepts local paths only.
+The extension uses the REST API with the API token. A deep link `/?item=<id>` opens a task drawer. Browsers sign in
+with **single-use launch codes**: `POST /api/launch` returns `/auth?code=…&return=/path`, which is valid for
+2 minutes and accepts local paths only. The long-lived API token therefore never appears in URLs, browser history,
+or history sync.
 
 ## 8. Security (local server)
 
 * Kestrel binds to loopback only. Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.
 * `/api` and `/mcp` require the bearer token (256-bit random, per user; file mode 600 on Unix) or the session cookie
   (`HttpOnly`, `SameSite=Strict`). Tokens are compared in constant time.
+* The API token is never put in a URL. Browsers get the cookie through single-use launch codes, and `return` paths
+  must be local and free of control characters.
 * Mutations authenticated by cookie also need the `X-TodoTracker-Client` header. This forces a CORS preflight, so
   other localhost origins cannot forge writes. No CORS policy is enabled.
 * Strict CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), `nosniff`, `no-referrer`, and
@@ -197,6 +202,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 ## 10. Roadmap
 
 * **Next:**
+  * Rotate the API token, and compact the activity log.
   * Sync the Apple apps with the desktop server (optional remote mode, then cloud sync with conflict-free merges).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Recurring tasks.

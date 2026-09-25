@@ -146,6 +146,84 @@ public class TaskBoardTests
     }
 
     [Fact]
+    public void Snoozing_after_a_reminder_fired_moves_the_item_to_waiting()
+    {
+        // Review finding: a delivered-but-undismissed reminder kept the item in Now after "Later".
+        var item = _board.AddTask(new NewTask("Feature B"), Actor.User, T0);
+        _board.ScheduleNextAction(item.Id, T0.AddMinutes(10), Actor.User, T0, notify: true);
+        var fired = item.Reminders[0];
+        _board.MarkReminderNotified(item, fired, T0.AddMinutes(10));
+
+        _board.ScheduleNextAction(item.Id, T0.AddHours(2), Actor.User, T0.AddMinutes(11), notify: true);
+
+        Assert.NotNull(fired.DismissedAt);
+        var dashboard = Agenda.Build(_board, T0.AddMinutes(12));
+        Assert.Empty(dashboard.Now);
+        Assert.Equal(item.Id, Assert.Single(dashboard.Waiting).Item.Id);
+        Assert.Single(item.Reminders, r => r.DismissedAt is null);
+    }
+
+    [Fact]
+    public void Snoozing_dismisses_due_manual_reminders_but_keeps_future_ones()
+    {
+        var item = _board.AddTask(new NewTask("Feature B"), Actor.User, T0);
+        var due = _board.AddReminder(item.Id, T0, "now", Actor.User, T0);
+        var future = _board.AddReminder(item.Id, T0.AddDays(3), "later", Actor.User, T0);
+
+        _board.ScheduleNextAction(item.Id, T0.AddHours(1), Actor.User, T0.AddMinutes(1));
+
+        Assert.NotNull(due.DismissedAt);
+        Assert.Null(future.DismissedAt);
+    }
+
+    [Fact]
+    public void Steps_of_a_locked_step_cannot_be_completed()
+    {
+        // Review finding: gating only checked the immediate parent.
+        var rollout = _board.AddTask(new NewTask("Rollout") { Sequential = true }, Actor.User, T0);
+        _board.AddTask(new NewTask("Step 1") { ParentId = rollout.Id }, Actor.User, T0);
+        var step2 = _board.AddTask(new NewTask("Step 2") { ParentId = rollout.Id }, Actor.User, T0);
+        var sub = _board.AddTask(new NewTask("Step 2a") { ParentId = step2.Id }, Actor.User, T0);
+
+        var error = Assert.Throws<InvalidOperationException>(() => _board.Complete(sub.Id, Actor.User, T0));
+        Assert.Contains("Step 1", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reopening_a_parent_reopens_children_completed_by_the_same_action()
+    {
+        // Review finding: completing a parent cascaded, but reopen did not undo it.
+        var parent = _board.AddTask(new NewTask("Feature X"), Actor.User, T0);
+        var earlier = _board.AddTask(new NewTask("Already done") { ParentId = parent.Id }, Actor.User, T0);
+        var open = _board.AddTask(new NewTask("Open") { ParentId = parent.Id }, Actor.User, T0);
+        _board.Complete(earlier.Id, Actor.User, T0);
+        _board.Complete(parent.Id, Actor.User, T0.AddHours(1));
+
+        _board.Reopen(parent.Id, Actor.User, T0.AddHours(2));
+
+        Assert.False(open.IsDone);
+        Assert.True(earlier.IsDone);
+        Assert.Equal(ItemState.Container, Agenda.StateOf(parent, T0.AddHours(2)));
+    }
+
+    [Fact]
+    public void Step_delay_must_be_at_least_a_minute()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            _board.AddTask(new NewTask("Rollout") { StepDelay = TimeSpan.FromSeconds(20) }, Actor.User, T0));
+    }
+
+    [Fact]
+    public void Update_can_clear_the_step_delay()
+    {
+        var item = _board.AddTask(new NewTask("Rollout") { Sequential = true, StepDelay = TimeSpan.FromHours(1) }, Actor.User, T0);
+
+        _board.Update(item.Id, new TaskChanges { ClearStepDelay = true }, Actor.User, T0);
+
+        Assert.Null(item.StepDelay);
+    }
+
+    [Fact]
     public void Completing_the_last_child_of_a_plain_parent_leaves_parent_open()
     {
         var parent = _board.AddTask(new NewTask("Feature X"), Actor.User, T0);

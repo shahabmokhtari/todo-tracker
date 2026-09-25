@@ -95,17 +95,28 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
 
         CollectionSync.Sync(Groups, snapshot.Groups.Select(ReuseTab).ToList());
-        if (Focus is not null && snapshot.Focus is not null && Focus.Id == snapshot.Focus.Id)
+
+        // One pool of card instances across Focus/Now/Waiting, so a card that changes list keeps its note draft.
+        var existing = new Dictionary<Guid, CardViewModel>();
+        foreach (var card in Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>())
         {
-            Focus.CopyFrom(snapshot.Focus);
-        }
-        else
-        {
-            Focus = snapshot.Focus;
+            existing.TryAdd(card.Id, card);
         }
 
-        CollectionSync.SyncCards(Now, snapshot.Now);
-        CollectionSync.SyncCards(Waiting, snapshot.Waiting);
+        CardViewModel Reuse(CardViewModel fresh)
+        {
+            if (!existing.Remove(fresh.Id, out var keep))
+            {
+                return fresh;
+            }
+
+            keep.CopyFrom(fresh);
+            return keep;
+        }
+
+        Focus = snapshot.Focus is null ? null : Reuse(snapshot.Focus);
+        CollectionSync.Sync(Now, snapshot.Now.Select(Reuse).ToList());
+        CollectionSync.Sync(Waiting, snapshot.Waiting.Select(Reuse).ToList());
         CollectionSync.Sync(Workstreams, snapshot.Workstreams);
         CollectionSync.Sync(RecentNotes, snapshot.Notes);
         NowCount = snapshot.NowCount;
@@ -232,7 +243,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     private Task ResetPomodoro() => Pomo(t => t.Reset());
 
     [RelayCommand]
-    private void OpenDashboard() => _shell.OpenUrl(_options.LaunchUrl);
+    private void OpenDashboard() => _shell.OpenUrl(Launch("/"));
 
     [RelayCommand]
     private void OpenReport(CardViewModel? card) => _shell.OpenUrl(Launch(card is null ? "/report.html" : $"/report.html?id={card.Id}"));
@@ -330,11 +341,26 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Opens a page through the launch link so the browser gets a session cookie first.</summary>
-    private string Launch(string path) => $"{_options.LaunchUrl}&return={Uri.EscapeDataString(path)}";
+    private string Launch(string path) => _options.LaunchUrl(path);
 
     private void OnStoreChanged(object? sender, EventArgs e) => _shell.RunOnUi(QueueRefresh);
 
-    private void QueueRefresh() => _pending = _pending.IsCompleted ? RefreshAsync() : _pending.ContinueWith(_ => RefreshAsync(), TaskSchedulerExtensions.FromCurrentSynchronizationContextOrDefault()).Unwrap();
+    /// <summary>All refreshes run one after another on the UI context, so an older snapshot never overwrites a newer one.</summary>
+    private void QueueRefresh() => _pending = _pending.IsCompleted ? SafeRefreshAsync() : _pending.ContinueWith(_ => SafeRefreshAsync(), TaskSchedulerExtensions.FromCurrentSynchronizationContextOrDefault()).Unwrap();
+
+    private async Task SafeRefreshAsync()
+    {
+        try
+        {
+            await RefreshAsync().ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // A failed refresh must never take down the always-on sidebar; the next tick retries.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            StatusMessage = "Couldn't refresh: " + ErrorText.Friendly(ex);
+        }
+    }
 
     private Task Pomo(Action<PomodoroTimer> action) => Run(async () =>
     {
@@ -352,8 +378,14 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         {
             StatusMessage = ErrorText.Friendly(ex);
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The store already rolled back; typically antivirus, indexing, or a sync client briefly holds the file.
+            StatusMessage = "Couldn't save (the board file is busy). Nothing was lost; please try again.";
+        }
 
-        await RefreshAsync().ConfigureAwait(true);
+        QueueRefresh();
+        await _pending.ConfigureAwait(true);
     }
 
     private sealed record Snapshot(
@@ -366,7 +398,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         int NowCount,
         bool HasAttention,
         string? NextUp,
-        PomodoroTimer Pomodoro,
+        PomodoroState Pomodoro,
         string? PomodoroItem,
         bool GroupMissing);
 
@@ -374,7 +406,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     {
         if (groupId is { } g && !board.Groups.Any(x => x.Id == g))
         {
-            return new Snapshot([], null, [], [], [], [], 0, false, null, board.Pomodoro, null, GroupMissing: true);
+            return new Snapshot([], null, [], [], [], [], 0, false, null, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true);
         }
 
         var d = Agenda.Build(board, now, recentNoteCount: 6, groupId: groupId);
@@ -411,11 +443,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                 PriorityPalette.ColorOf(o.TopPriority),
                 o.TotalLeaves == 0 ? 0 : (int)Math.Round(100.0 * o.DoneLeaves / o.TotalLeaves),
                 WorkstreamSummary(o, now))).ToList(),
-            d.RecentNotes.Select(n => new NoteViewModel(n.Item.Id, n.Note.Text, n.Item.Title, $"{n.Note.Author.DisplayName} · {RelativeTime.Format(n.Note.At, now)}", n.Note.SourceUrl)).ToList(),
+            d.RecentNotes.Select(n => new NoteViewModel(n.Note.Id, n.Item.Id, n.Note.Text, n.Item.Title, $"{n.Note.Author.DisplayName} · {RelativeTime.Format(n.Note.At, now)}", n.Note.SourceUrl)).ToList(),
             d.Now.Count,
             d.Now.Any(e => e.NeedsAttention),
             nextUp,
-            board.Pomodoro,
+            PomodoroState.Of(board.Pomodoro, now),
             board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
             GroupMissing: false);
     }

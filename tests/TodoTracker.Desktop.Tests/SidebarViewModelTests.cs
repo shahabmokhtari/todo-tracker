@@ -34,7 +34,7 @@ public sealed class SidebarViewModelTests : IDisposable
 
     public SidebarViewModelTests()
     {
-        _vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://127.0.0.1:5317", "http://127.0.0.1:5317/auth?token=t", "{\"mcpServers\":{}}", TimeZoneInfo.Utc, "secret-token"));
+        _vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://127.0.0.1:5317", path => $"launch:{path}", "{\"mcpServers\":{}}", TimeZoneInfo.Utc, "secret-token"));
     }
 
     public void Dispose()
@@ -273,7 +273,7 @@ public sealed class SidebarViewModelTests : IDisposable
         _vm.CopyMcpConfigCommand.Execute(null);
 
         Assert.Equal(
-            ["http://127.0.0.1:5317/auth?token=t", $"http://127.0.0.1:5317/auth?token=t&return=%2Freport.html%3Fid%3D{item.Id}", $"http://127.0.0.1:5317/auth?token=t&return=%2F%3Fitem%3D{item.Id}"],
+            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
 
@@ -309,7 +309,74 @@ public sealed class SidebarViewModelTests : IDisposable
         Assert.True(await _store.ReadAsync(b => b.Get(item.Id).IsDone));
 
         await _vm.HandleToastActionAsync(ToastAction.Open, item.Id, null);
-        Assert.Equal($"http://127.0.0.1:5317/auth?token=t&return=%2F%3Fitem%3D{item.Id}", _shell.OpenedUrls[^1]);
+        Assert.Equal($"launch:/?item={item.Id}", _shell.OpenedUrls[^1]);
+    }
+
+    [Fact]
+    public async Task Identical_recent_notes_do_not_break_refresh()
+    {
+        // Review finding: value-equal NoteViewModels made CollectionSync.Move throw, freezing the sidebar.
+        var item = await Seed("Build");
+        await _store.UpdateAsync(b => b.AddNote(item.Id, "still failing", Actor.Agent("ci"), T0));
+        await _store.UpdateAsync(b => b.AddNote(item.Id, "still failing", Actor.Agent("ci"), T0));
+
+        await _vm.RefreshAsync();
+        await _vm.RefreshAsync();
+
+        Assert.Equal(2, _vm.RecentNotes.Count);
+    }
+
+    [Fact]
+    public async Task Draft_survives_when_a_card_moves_from_now_to_focus()
+    {
+        var first = await Seed("First", Priority.Critical);
+        await Seed("Second");
+        await _vm.RefreshAsync();
+        var second = _vm.Now.Single();
+        second.IsNoteOpen = true;
+        second.NoteDraft = "half-typed thought";
+
+        await _store.UpdateAsync(b => b.Complete(first.Id, Actor.User, T0));
+        await _vm.WhenIdleAsync();
+
+        Assert.Same(second, _vm.Focus);
+        Assert.Equal("half-typed thought", _vm.Focus!.NoteDraft);
+        Assert.True(_vm.Focus.IsNoteOpen);
+    }
+
+    [Fact]
+    public async Task Save_failures_are_reported_instead_of_crashing()
+    {
+        // Review finding: IOException from a locked board file escaped the command and killed the app.
+        using var failing = new FailingStore(_store);
+        using var vm = new SidebarViewModel(failing, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc));
+        vm.QuickText = "Anything";
+        failing.Fail = true;
+
+        await vm.CaptureCommand.ExecuteAsync(null);
+
+        Assert.Contains("couldn't save", vm.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Anything", vm.QuickText);
+    }
+
+    private sealed class FailingStore(IBoardStore inner) : IBoardStore, IDisposable
+    {
+        public bool Fail { get; set; }
+
+        public event EventHandler? Changed
+        {
+            add => inner.Changed += value;
+            remove => inner.Changed -= value;
+        }
+
+        public Task<T> ReadAsync<T>(Func<TaskBoard, T> read, CancellationToken cancellationToken = default) => inner.ReadAsync(read, cancellationToken);
+
+        public Task<T> UpdateAsync<T>(Func<TaskBoard, T> mutate, CancellationToken cancellationToken = default) =>
+            Fail ? throw new IOException("The process cannot access the file because it is being used by another process.") : inner.UpdateAsync(mutate, cancellationToken);
+
+        public void Dispose()
+        {
+        }
     }
 
     [Fact]

@@ -71,10 +71,12 @@ public enum BoardError: Error, LocalizedError, Equatable {
     case notFound(String)
     case invalid(String)
     case conflict(String)
+    /// The file was written by a newer app version; never fall back or overwrite it.
+    case unsupportedSchema(String)
 
     public var errorDescription: String? {
         switch self {
-        case .notFound(let m), .invalid(let m), .conflict(let m): return m
+        case .notFound(let m), .invalid(let m), .conflict(let m), .unsupportedSchema(let m): return m
         }
     }
 }

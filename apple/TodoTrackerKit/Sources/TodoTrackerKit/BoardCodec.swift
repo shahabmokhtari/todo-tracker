@@ -10,7 +10,7 @@ public enum BoardCodec {
             throw BoardError.invalid("Board file is not valid: \(error.localizedDescription)")
         }
         if doc.schemaVersion > TaskBoard.currentSchemaVersion {
-            throw BoardError.invalid("Board schema v\(doc.schemaVersion) is newer than this app supports (v\(TaskBoard.currentSchemaVersion)). Please update the app.")
+            throw BoardError.unsupportedSchema("Board schema v\(doc.schemaVersion) is newer than this app supports (v\(TaskBoard.currentSchemaVersion)). Please update the app.")
         }
         return try doc.toBoard()
     }
@@ -216,24 +216,41 @@ public final class BoardFileStore {
         return base.appendingPathComponent("TodoTracker", isDirectory: true).appendingPathComponent("board.json")
     }
 
+    /// Loads the board. A newer-schema file is never replaced by a backup; a corrupt file is set aside
+    /// (`board.json.corrupt-<timestamp>`) and the backup restored, mirroring the C# store.
     public func load() throws -> TaskBoard {
-        guard FileManager.default.fileExists(atPath: url.path) else { return TaskBoard() }
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return TaskBoard() }
         do {
             return try BoardCodec.decode(Data(contentsOf: url))
+        } catch let error as BoardError {
+            if case .unsupportedSchema(_) = error { throw error }
+            return try recoverFromBackup(original: error)
         } catch {
-            let backup = url.appendingPathExtension("bak")
-            guard FileManager.default.fileExists(atPath: backup.path) else { throw error }
-            return try BoardCodec.decode(Data(contentsOf: backup))
+            return try recoverFromBackup(original: error)
         }
+    }
+
+    private func recoverFromBackup(original: Error) throws -> TaskBoard {
+        let fm = FileManager.default
+        let backup = url.appendingPathExtension("bak")
+        guard fm.fileExists(atPath: backup.path) else { throw original }
+        let board = try BoardCodec.decode(Data(contentsOf: backup))
+        let corrupt = url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))")
+        try fm.moveItem(at: url, to: corrupt)
+        try fm.copyItem(at: backup, to: url)
+        return board
     }
 
     public func save(_ board: TaskBoard) throws {
         let data = try BoardCodec.encode(board)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fm = FileManager.default
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let backup = url.appendingPathExtension("bak")
-        if FileManager.default.fileExists(atPath: url.path) {
-            try? FileManager.default.removeItem(at: backup)
-            try? FileManager.default.copyItem(at: url, to: backup)
+        // Only a readable board may become the backup, so a bad file can never overwrite the last good copy.
+        if let current = try? Data(contentsOf: url), (try? BoardCodec.decode(current)) != nil {
+            try? fm.removeItem(at: backup)
+            try? fm.copyItem(at: url, to: backup)
         }
         try data.write(to: url, options: [.atomic])
     }

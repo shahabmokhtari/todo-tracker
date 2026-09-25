@@ -53,11 +53,11 @@ public sealed class SecurityTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Launch_link_sets_strict_http_only_cookie_and_redirects()
+    public async Task Launch_code_sets_strict_http_only_cookie_and_redirects()
     {
-        var client = _server.App.GetTestClientWithoutRedirects();
+        var launch = await LaunchPath("/");
 
-        var response = await client.GetAsync($"/auth?token={ServerFixture.Token}");
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync(launch);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/", response.Headers.Location?.OriginalString);
@@ -66,23 +66,60 @@ public sealed class SecurityTests : IAsyncLifetime
         Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Launch_codes_are_single_use_and_never_contain_the_api_token()
+    {
+        // Review finding: the long-lived API token was put in URLs and therefore in (synced) browser history.
+        var launch = await LaunchPath("/");
+        var client = _server.App.GetTestClientWithoutRedirects();
+
+        Assert.DoesNotContain(ServerFixture.Token, launch, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.Redirect, (await client.GetAsync(launch)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(launch)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Launch_codes_expire()
+    {
+        var launch = await LaunchPath("/");
+        _server.Time.Advance(TimeSpan.FromMinutes(3));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _server.App.GetTestClientWithoutRedirects().GetAsync(launch)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Auth_no_longer_accepts_the_raw_token()
+    {
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Launch_endpoint_requires_authentication()
+    {
+        var response = await _server.Client(authenticated: false).PostAsJsonAsync("/api/launch", new { @return = "/" });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("/?item=abc", "/?item=abc")]
     [InlineData("/report.html?id=1", "/report.html?id=1")]
     [InlineData("//evil.example", "/")]
     [InlineData("https://evil.example", "/")]
     [InlineData("/\\evil.example", "/")]
+    [InlineData("/\t/evil.example", "/")]
+    [InlineData("/\n/evil.example", "/")]
     public async Task Launch_link_only_returns_to_local_paths(string returnTo, string expected)
     {
-        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}&return={Uri.EscapeDataString(returnTo)}");
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync(await LaunchPath(returnTo));
 
         Assert.Equal(expected, response.Headers.Location?.OriginalString);
     }
 
     [Fact]
-    public async Task Launch_link_with_wrong_token_is_rejected()
+    public async Task Launch_link_with_unknown_code_is_rejected()
     {
-        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync("/auth?token=bad");
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync("/auth?code=bad");
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -140,9 +177,16 @@ public sealed class SecurityTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/dashboard")).StatusCode);
     }
 
+    private async Task<string> LaunchPath(string returnTo)
+    {
+        var body = await _server.Client().PostJson("/api/launch", new { @return = returnTo });
+        var url = new Uri(body["url"]!.GetValue<string>());
+        return url.PathAndQuery;
+    }
+
     private async Task<string> LoginCookie()
     {
-        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}");
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync(await LaunchPath("/"));
         return response.Headers.GetValues("Set-Cookie").Single().Split(';')[0];
     }
 }

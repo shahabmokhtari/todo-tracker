@@ -4,7 +4,7 @@ const token = 'e2e-token-0123456789abcdefghijklmnop';
 
 test.describe.configure({ mode: 'serial' });
 
-test('dashboard: capture, rollout steps, gating, groups, and report', async ({ page }) => {
+test('dashboard: capture, rollout steps, gating, groups, and report', async ({ page, request }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -13,8 +13,10 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await page.goto('/');
   await expect(page.locator('#login')).toBeVisible();
 
-  // The desktop "Open dashboard" link authenticates via a one-time redirect.
-  await page.goto(`/auth?token=${token}`);
+  // The desktop "Open dashboard" link is a single-use launch code (the API token never appears in URLs).
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  expect(launch.url).not.toContain(token);
+  await page.goto(launch.url);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#board')).toBeVisible();
   await expect(page.locator('#tabs .tab')).toHaveText([/All/, /Work/, /Personal/, '+']);

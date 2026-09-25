@@ -153,7 +153,7 @@ public sealed partial class TaskBoard
             return;
         }
 
-        if (BlockingStep(item) is { } blocker)
+        if (FindBlockingStep(item) is { } blocker)
         {
             throw new InvalidOperationException($"Finish \"{blocker.Title}\" before \"{item.Title}\".");
         }
@@ -175,7 +175,15 @@ public sealed partial class TaskBoard
             return;
         }
 
+        var completedAt = item.CompletedAt;
         item.CompletedAt = null;
+
+        // Undo the cascade from completing a parent: children finished by that same action reopen too.
+        foreach (var descendant in item.SelfAndDescendants().Skip(1).Where(d => d.CompletedAt == completedAt))
+        {
+            descendant.CompletedAt = null;
+        }
+
         foreach (var ancestor in item.Ancestors().Where(a => a.IsDone))
         {
             ancestor.CompletedAt = null;
@@ -355,6 +363,20 @@ public sealed partial class TaskBoard
         GroupList.Add(new TaskGroup(Guid.NewGuid(), "Personal", "#22c55e"));
     }
 
+    /// <summary>The first unfinished earlier step that blocks this item or any of its ancestors.</summary>
+    internal static WorkItem? FindBlockingStep(WorkItem item)
+    {
+        for (WorkItem? current = item; current is not null; current = current.Parent)
+        {
+            if (BlockingStep(current) is { } blocker)
+            {
+                return blocker;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>The earlier open sibling that must be finished first, when the parent is sequential.</summary>
     internal static WorkItem? BlockingStep(WorkItem item)
     {
@@ -394,9 +416,13 @@ public sealed partial class TaskBoard
         }
     }
 
+    /// <summary>
+    /// Rescheduling replaces earlier schedule reminders and silences reminders that are already due (even if
+    /// delivered), so "Later" on a ringing reminder really moves the item to Waiting. Future manual reminders stay.
+    /// </summary>
     private static void DismissPendingScheduleReminders(WorkItem item, DateTimeOffset now)
     {
-        foreach (var reminder in item.ReminderList.Where(r => r.Kind == ReminderKind.NextAction && r.DismissedAt is null && r.NotifiedAt is null))
+        foreach (var reminder in item.ReminderList.Where(r => r.DismissedAt is null && ((r.Kind == ReminderKind.NextAction && r.NotifiedAt is null) || r.DueAt <= now)))
         {
             reminder.DismissedAt = now;
         }
@@ -425,9 +451,9 @@ public sealed partial class TaskBoard
 
     private static void ValidateStepDelay(TimeSpan? delay)
     {
-        if (delay is { } d && d <= TimeSpan.Zero)
+        if (delay is { } d && d < TimeSpan.FromMinutes(1))
         {
-            throw new ArgumentOutOfRangeException(nameof(delay), "Step delay must be positive.");
+            throw new ArgumentOutOfRangeException(nameof(delay), "Step delay must be at least one minute.");
         }
     }
 

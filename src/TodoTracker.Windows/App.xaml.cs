@@ -25,6 +25,8 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        DispatcherUnhandledException += OnUnhandledUiException;
+        TaskScheduler.UnobservedTaskException += (_, unobserved) => unobserved.SetObserved();
         var args = StartupArgs.Parse(e.Args);
         try
         {
@@ -47,6 +49,25 @@ public partial class App : Application
         {
             MessageBox.Show($"Todo Tracker could not start:\n\n{ex.Message}", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    /// <summary>Last-chance handler: the always-on sidebar logs and keeps running instead of vanishing.</summary>
+    private void OnUnhandledUiException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        e.Handled = true;
+        try
+        {
+            var log = Path.Combine(TodoTrackerServerOptions.DefaultDataDirectory(), "errors.log");
+            File.AppendAllText(log, $"{DateTimeOffset.Now:o} {e.Exception}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+
+        if (_viewModel is not null)
+        {
+            _viewModel.StatusMessage = "Something went wrong (details in errors.log). The sidebar is still running.";
         }
     }
 
@@ -96,7 +117,7 @@ public partial class App : Application
             services.GetRequiredService<IBoardStore>(),
             TimeProvider.System,
             new WpfShell(),
-            new SidebarOptions(connection.BaseUrl, connection.LaunchUrl, mcpConfig, TimeZoneInfo.Local, connection.Token));
+            new SidebarOptions(connection.BaseUrl, path => TodoTrackerHost.CreateLaunchUrl(services, path), mcpConfig, TimeZoneInfo.Local, connection.Token));
 
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), dockOnStart: dock && !args.NoDock);
         MainWindow = window;

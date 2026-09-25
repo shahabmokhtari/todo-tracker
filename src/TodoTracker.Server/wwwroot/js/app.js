@@ -10,12 +10,16 @@ const state = {
 
 // ---------- boot & refresh ----------
 
-async function refresh() {
+async function refresh({ background = false } = {}) {
+  // Background refreshes never interrupt typing: an open note box or a focused field keeps its content.
+  if (background && isEditing()) return;
   try {
     const query = state.group ? `?group=${encodeURIComponent(state.group)}` : '';
     state.dashboard = await api(`/api/dashboard${query}`);
     showBoard(true);
+    const drafts = collectNoteDrafts();
     render();
+    restoreNoteDrafts(drafts);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) return showBoard(false);
     if (err instanceof ApiError && err.status === 404 && state.group) {
@@ -26,20 +30,45 @@ async function refresh() {
   }
 }
 
+function isEditing() {
+  const active = document.activeElement;
+  if (active && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName) && active.closest('#board, #drawer')) return true;
+  return [...document.querySelectorAll('.inline-note:not([hidden]) input')].some((i) => i.value.trim());
+}
+
+function collectNoteDrafts() {
+  const drafts = new Map();
+  document.querySelectorAll('.inline-note:not([hidden])').forEach((form) => drafts.set(form.dataset.id, form.querySelector('input').value));
+  return drafts;
+}
+
+function restoreNoteDrafts(drafts) {
+  drafts.forEach((value, id) => {
+    const form = document.querySelector(`.inline-note[data-id="${CSS.escape(id)}"]`);
+    if (!form) return;
+    form.hidden = false;
+    form.querySelector('input').value = value;
+  });
+}
+
 function showBoard(authenticated) {
   $('#login').hidden = authenticated;
   $('#board').hidden = !authenticated;
 }
 
+/** Runs an action, then refreshes. Returns true on success so callers only clear inputs when nothing was lost. */
 async function act(promise, message) {
+  let ok = true;
   try {
     await promise;
     if (message) toast(message);
   } catch (err) {
+    ok = false;
     toast(err.message);
   }
   await refresh();
-  if (state.drawerId) openDrawer(state.drawerId);
+  if (state.drawerId) await openDrawer(state.drawerId, { keepEdits: true });
+  return ok;
 }
 
 function toast(message) {
@@ -149,10 +178,14 @@ function card(c, { waiting = false } = {}) {
 
 function actions(c, { waiting = false, big = false } = {}) {
   const bar = h('div', { class: `actions${big ? ' big' : ''}` });
-  const noteBox = h('form', { class: 'inline-note', hidden: true, onsubmit: (e) => {
+  const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: async (e) => {
     e.preventDefault();
     const input = noteBox.querySelector('input');
-    if (input.value.trim()) act(post(`/api/items/${c.id}/notes`, { text: input.value }), 'Note saved');
+    const text = input.value;
+    if (!text.trim()) return;
+    input.value = '';
+    noteBox.hidden = true;
+    if (!(await act(post(`/api/items/${c.id}/notes`, { text }), 'Note saved'))) restoreNoteDrafts(new Map([[c.id, text]]));
   } }, h('input', { placeholder: 'What did you do? What is next?', maxlength: 10000, 'aria-label': 'Note' }), h('button', { type: 'submit' }, 'Save'));
 
   if (!waiting && !c.hasChildren) bar.append(h('button', { class: 'ok', title: 'Done', onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }, big ? '✓ Done' : '✓'));
@@ -262,7 +295,8 @@ async function editGroup(g) {
 
 // ---------- drawer (task details) ----------
 
-async function openDrawer(id) {
+async function openDrawer(id, { keepEdits = false } = {}) {
+  const edits = keepEdits && $('#drawer').dataset.itemId === id ? collectDrawerEdits() : new Map();
   state.drawerId = id;
   let item;
   try {
@@ -276,13 +310,13 @@ async function openDrawer(id) {
   const close = () => { state.drawerId = null; drawer.hidden = true; };
   const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
 
-  const title = h('input', { value: item.title, maxlength: 300 });
-  const priority = h('select', null, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
-  const deadline = h('input', { type: 'datetime-local', value: toLocalInput(item.deadline) });
-  const details = h('textarea', { rows: 3, maxlength: 10000, placeholder: 'Details, links, context…' }, item.details ?? '');
-  const sequential = h('input', { type: 'checkbox', checked: item.sequential });
-  const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours' });
-  const group = h('select', { disabled: !!item.parentId }, ...state.dashboard.groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
+  const title = h('input', { value: item.title, maxlength: 300, dataset: { field: 'title' } });
+  const priority = h('select', { dataset: { field: 'priority' } }, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
+  const deadline = h('input', { type: 'datetime-local', value: toLocalInput(item.deadline), dataset: { field: 'deadline' } });
+  const details = h('textarea', { rows: 3, maxlength: 10000, placeholder: 'Details, links, context…', dataset: { field: 'details' } }, item.details ?? '');
+  const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
+  const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours (empty = none)', dataset: { field: 'delay' } });
+  const group = h('select', { disabled: !!item.parentId, dataset: { field: 'group' } }, ...state.dashboard.groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
 
   const save = () => act((async () => {
     await patch(`/api/items/${id}`, {
@@ -292,15 +326,16 @@ async function openDrawer(id) {
       deadline: deadline.value ? new Date(deadline.value).toISOString() : null,
       clearDeadline: !deadline.value,
       sequential: sequential.checked,
-      stepDelayMinutes: delay.value ? Math.round(Number(delay.value) * 60) : null,
+      stepDelayMinutes: Number(delay.value) > 0 ? Math.round(Number(delay.value) * 60) : null,
+      clearStepDelay: !(Number(delay.value) > 0),
     });
     if (!item.parentId && group.value !== item.groupId) await post(`/api/items/${id}/move`, { groupId: group.value });
   })(), 'Saved');
 
-  const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300 });
+  const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300, dataset: { field: 'subtask' } });
   const stepsInput = h('textarea', { rows: 3, placeholder: 'Rollout steps, one per line' });
   const stepDelay = h('input', { type: 'number', min: 0, value: 24, 'aria-label': 'Hours between steps' });
-  const noteInput = h('textarea', { rows: 2, placeholder: 'Note: what happened, what is next…', maxlength: 10000 });
+  const noteInput = h('textarea', { rows: 2, placeholder: 'Note: what happened, what is next…', maxlength: 10000, dataset: { field: 'note' } });
   const remindIn = h('select', null, ...snoozeOptions().map((o) => h('option', { value: o.minutes }, o.label)));
   const remindMsg = h('input', { placeholder: 'Reminder message (optional)', maxlength: 300 });
 
@@ -317,7 +352,11 @@ async function openDrawer(id) {
       h('button', { class: 'primary', onclick: save }, 'Save'),
       item.completedAt
         ? h('button', { onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, 'Reopen')
-        : h('button', { class: 'ok', onclick: () => act(post(`/api/items/${id}/complete`), 'Done') }, '✓ Done'),
+        : h('button', { class: 'ok', onclick: () => {
+          const open = item.children.filter((c) => !c.completedAt).length;
+          if (open && !confirm(`Also mark ${open} open subtask${open > 1 ? 's' : ''} as done?`)) return;
+          act(post(`/api/items/${id}/complete`), 'Done');
+        } }, '✓ Done'),
       h('a', { class: 'button', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, 'Full report'),
       h('button', { class: 'danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks?`)) { close(); act(del(`/api/items/${id}`), 'Deleted'); } } }, 'Delete')),
 
@@ -326,7 +365,7 @@ async function openDrawer(id) {
       h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? '☑' : '☐'),
       h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
       h('span', { class: 'state' }, stateLabel(c))))),
-    h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); if (subtaskInput.value.trim()) act(post('/api/items', { title: subtaskInput.value, parentId: id })); } }, subtaskInput, h('button', { type: 'submit' }, 'Add')),
+    h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (title) => post('/api/items', { title, parentId: id })); } }, subtaskInput, h('button', { type: 'submit' }, 'Add')),
     h('details', null, h('summary', null, 'Add rollout steps'),
       stepsInput,
       h('div', { class: 'row' }, field('Hours between steps', stepDelay),
@@ -342,10 +381,40 @@ async function openDrawer(id) {
     h('div', { class: 'row' }, remindIn, remindMsg, h('button', { onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me')),
 
     h('h3', null, 'Notes'),
-    h('form', { class: 'note-form', onsubmit: (e) => { e.preventDefault(); if (noteInput.value.trim()) act(post(`/api/items/${id}/notes`, { text: noteInput.value }), 'Note saved'); } }, noteInput, h('button', { type: 'submit' }, 'Add note')),
+    h('form', { class: 'note-form', onsubmit: (e) => { e.preventDefault(); submitAndClear(noteInput, (text) => post(`/api/items/${id}/notes`, { text }), 'Note saved'); } }, noteInput, h('button', { type: 'submit' }, 'Add note')),
     h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', null, n.text), h('div', { class: 'meta' }, `${n.author} · ${relativeTime(n.at)}`,
       isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, ` · ${n.sourceTitle || 'source'}`) : null)))));
+  drawer.dataset.itemId = id;
+  drawer.querySelectorAll('[data-field]').forEach((el) => { el.dataset.original = fieldValue(el); });
+  edits.forEach((value, name) => {
+    const el = drawer.querySelector(`[data-field="${name}"]`);
+    if (el) setFieldValue(el, value);
+  });
   drawer.hidden = false;
+}
+
+const fieldValue = (el) => (el.type === 'checkbox' ? String(el.checked) : el.value);
+const setFieldValue = (el, v) => { if (el.type === 'checkbox') el.checked = v === 'true'; else el.value = v; };
+
+/** Unsaved drawer edits (fields that differ from what the server sent), so a rebuild never discards typing. */
+function collectDrawerEdits() {
+  const edits = new Map();
+  $('#drawer').querySelectorAll('[data-field]').forEach((el) => {
+    if (fieldValue(el) !== el.dataset.original) edits.set(el.dataset.field, fieldValue(el));
+  });
+  return edits;
+}
+
+/** Clears an input optimistically and puts the text back if the request fails. */
+async function submitAndClear(input, request, message) {
+  const value = input.value;
+  if (!value.trim()) return;
+  input.value = '';
+  input.dataset.original = '';
+  if (!(await act(request(value), message))) {
+    const el = $('#drawer').querySelector(`[data-field="${input.dataset.field}"]`);
+    if (el) el.value = value;
+  }
 }
 
 function stateLabel(item) {
@@ -368,7 +437,7 @@ $('#capture').addEventListener('submit', (e) => {
   const text = input.value.trim();
   if (!text) return;
   input.value = '';
-  act(post('/api/capture', { text, groupId: state.group }), 'Added');
+  act(post('/api/capture', { text, groupId: state.group }), 'Added').then((ok) => { if (!ok && !input.value) input.value = text; });
 });
 
 $('#login-form').addEventListener('submit', async (e) => {
@@ -387,8 +456,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); $('#capture-input').focus(); }
 });
 
-document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh());
-setInterval(() => document.visibilityState === 'visible' && refresh(), 15000);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh({ background: true }));
+setInterval(() => document.visibilityState === 'visible' && refresh({ background: true }), 15000);
 refresh().then(() => {
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   const item = new URLSearchParams(location.search).get('item');

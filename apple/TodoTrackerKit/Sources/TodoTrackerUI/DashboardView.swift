@@ -152,8 +152,6 @@ struct TaskRow: View {
     let now: Date
     var big = false
     let open: () -> Void
-    @State private var noteText = ""
-    @State private var noting = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -182,15 +180,15 @@ struct TaskRow: View {
                         Button("3 hours") { model.snooze(entry.item.id, minutes: 180) }
                         Button("+24 hours") { model.snooze(entry.item.id, minutes: 1440) }
                     } label: { Label("Later", systemImage: "alarm") }
-                    Button { noting.toggle() } label: { Label("Note", systemImage: "square.and.pencil") }
+                    Button { model.toggleNote(entry.item.id) } label: { Label("Note", systemImage: "square.and.pencil") }
                     Button { model.startFocus(entry.item.id) } label: { Label("Focus", systemImage: "timer") }
                 }
                 .labelStyle(big ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
                 .buttonStyle(.borderless)
                 .font(.callout)
-                if noting {
+                if model.openNotes.contains(entry.item.id) {
                     HStack {
-                        TextField("What did you do? What is next?", text: $noteText).textFieldStyle(.roundedBorder).onSubmit(save)
+                        TextField("What did you do? What is next?", text: model.draftBinding(for: entry.item.id)).textFieldStyle(.roundedBorder).onSubmit(save)
                         Button("Save", action: save)
                     }
                 }
@@ -212,10 +210,9 @@ struct TaskRow: View {
     }
 
     private func save() {
-        guard !noteText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        model.addNote(entry.item.id, text: noteText)
-        noteText = ""
-        noting = false
+        let text = model.noteDrafts[entry.item.id] ?? ""
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        model.addNote(entry.item.id, text: text)
     }
 }
 

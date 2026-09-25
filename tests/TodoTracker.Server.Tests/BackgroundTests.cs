@@ -83,6 +83,20 @@ public sealed class BackgroundTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Catch_up_after_sleep_raises_only_the_latest_focus_event()
+    {
+        var events = _server.App.Services.GetRequiredService<ServerEvents>();
+        var received = new List<PomodoroEvent>();
+        events.Pomodoro += (_, e) => received.Add(e);
+        await _server.Client().PostJson("/api/pomodoro/start");
+
+        _server.Time.Advance(TimeSpan.FromMinutes(45));
+        await Loop.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(PomodoroEventKind.BreakCompleted, Assert.Single(received).Kind);
+    }
+
+    [Fact]
     public async Task Reminder_events_are_published_in_process_for_desktop_toasts()
     {
         var events = _server.App.Services.GetRequiredService<ServerEvents>();

@@ -136,6 +136,18 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Patch_can_clear_step_delay_and_rejects_zero()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Rollout", sequential = true, stepDelayMinutes = 60 });
+
+        var zero = await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { stepDelayMinutes = 0 });
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { clearStepDelay = true })).Json();
+
+        Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
+        Assert.Null(cleared["stepDelayMinutes"]);
+    }
+
+    [Fact]
     public async Task Patch_updates_fields_and_delete_removes()
     {
         var item = await _client.PostJson("/api/items", new { title = "Draft", deadline = ServerFixture.T0.AddDays(1) });

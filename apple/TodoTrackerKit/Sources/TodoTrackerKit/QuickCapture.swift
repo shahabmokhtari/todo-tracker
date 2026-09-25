@@ -46,35 +46,60 @@ public enum QuickCaptureParser {
     static func parseDefer(_ token: String, now: Date, timeZone: TimeZone) -> Date? {
         guard token.hasPrefix("@") else { return nil }
         let value = token.dropFirst().lowercased()
-        if value == "tomorrow" { return localTime(now: now, timeZone: timeZone, addDays: 1, hour: morningHour) }
+        if value == "tomorrow" { return tomorrowMorning(now: now, timeZone: timeZone) }
         return parseSpan(value).map { now.addingTimeInterval($0) }
+    }
+
+    /// Next 9:00. Before 4:00 people still mean "when I wake up", i.e. this morning (same as C#).
+    public static func tomorrowMorning(now: Date, timeZone: TimeZone) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let hour = calendar.component(.hour, from: now)
+        return localTime(now: now, timeZone: timeZone, addDays: hour < 4 ? 0 : 1, hour: morningHour)
     }
 
     static func parseDue(_ token: String, now: Date, timeZone: TimeZone) -> Date? {
         guard token.lowercased().hasPrefix("due:") else { return nil }
         let value = String(token.dropFirst(4)).lowercased()
         switch value {
-        case "today": return localTime(now: now, timeZone: timeZone, addDays: 0, hour: endOfDayHour)
+        case "today":
+            let endOfDay = localTime(now: now, timeZone: timeZone, addDays: 0, hour: endOfDayHour)
+            return endOfDay > now ? endOfDay : localTime(now: now, timeZone: timeZone, addDays: 0, hour: 23).addingTimeInterval(59 * 60)
         case "tomorrow": return localTime(now: now, timeZone: timeZone, addDays: 1, hour: endOfDayHour)
         default: break
         }
-        if value.hasSuffix("d"), let days = Int(value.dropLast()), days > 0, days < 1000, !value.hasPrefix("0") {
+        if value.hasSuffix("d"), let days = strictInt(value.dropLast()), days > 0, days < 1000 {
             return localTime(now: now, timeZone: timeZone, addDays: days, hour: endOfDayHour)
         }
         let parts = value.split(separator: "-")
         if parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,
-           let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]) {
+           let y = digitsInt(parts[0]), let m = digitsInt(parts[1]), let d = digitsInt(parts[2]) {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
             let components = DateComponents(year: y, month: m, day: d, hour: endOfDayHour)
-            guard let date = calendar.date(from: components), calendar.component(.day, from: date) == d else { return nil }
+            // Reject dates that Calendar would roll over (e.g. month 13 or Feb 30), matching C#.
+            guard let date = calendar.date(from: components),
+                  calendar.component(.year, from: date) == y, calendar.component(.month, from: date) == m, calendar.component(.day, from: date) == d
+            else { return nil }
             return date
         }
         return nil
     }
 
+    /// Digits only: no sign, no leading zero (C# uses the same pattern).
+    static func strictInt<S: StringProtocol>(_ text: S) -> Int? {
+        guard let first = text.first, first != "0" else { return nil }
+        return digitsInt(text)
+    }
+
+    /// ASCII digits only (leading zeros allowed, e.g. "02" in dates); rejects "+5" and "-1".
+    static func digitsInt<S: StringProtocol>(_ text: S) -> Int? {
+        guard !text.isEmpty, text.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+        return Int(text)
+    }
+
     static func parseSpan(_ value: String) -> TimeInterval? {
-        guard let unit = value.last, "mhd".contains(unit), let amount = Int(value.dropLast()), amount > 0, amount < 10_000, !value.hasPrefix("0") else { return nil }
+        guard let unit = value.last, "mhd".contains(unit), let amount = strictInt(value.dropLast()), amount < 10_000 else { return nil }
         switch unit {
         case "m": return TimeInterval(amount * 60)
         case "h": return TimeInterval(amount * 3600)

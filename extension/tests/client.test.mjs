@@ -65,9 +65,15 @@ test('errors surface the server problem detail and auth failures are flagged', a
   await assert.rejects(client.dashboard(), (err) => err.unauthorized === true);
 });
 
-test('launch url authenticates the browser and returns to a local path', () => {
-  const client = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 'a b', fetch: fakeFetch() });
-  assert.equal(client.launchUrl('/report.html?id=1'), 'http://127.0.0.1:5317/auth?token=a%20b&return=%2Freport.html%3Fid%3D1');
+test('launch url comes from a single-use code, never the token', async () => {
+  const fetch = fakeFetch({ 'POST /api/launch': { status: 200, body: { url: 'http://127.0.0.1:5317/auth?code=xyz&return=%2F' } } });
+  const client = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 'secret', fetch });
+
+  const url = await client.launchUrl('/report.html?id=1');
+
+  assert.equal(url, 'http://127.0.0.1:5317/auth?code=xyz&return=%2F');
+  assert.deepEqual(fetch.calls[0].body, { return: '/report.html?id=1' });
+  assert.ok(!url.includes('secret'));
 });
 
 test('server url must be a loopback http url', () => {

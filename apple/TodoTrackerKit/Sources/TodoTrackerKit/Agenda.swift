@@ -134,14 +134,7 @@ public enum Agenda {
             breadcrumb: item.ancestors.reversed().map(\.title))
     }
 
-    private static func isLocked(_ item: WorkItem) -> Bool {
-        var current: WorkItem? = item
-        while let c = current {
-            if TaskBoard.blockingStep(c) != nil { return true }
-            current = c.parent
-        }
-        return false
-    }
+    private static func isLocked(_ item: WorkItem) -> Bool { TaskBoard.findBlockingStep(item) != nil }
 
     private static func summarize(_ root: WorkItem, now: [AgendaEntry], waiting: [AgendaEntry]) -> OverviewEntry {
         let subtree = root.selfAndDescendants

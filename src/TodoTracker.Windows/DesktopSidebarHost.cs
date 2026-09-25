@@ -17,6 +17,13 @@ internal sealed partial class DesktopSidebarHost : IDisposable
     private const int AbmRemove = 1;
     private const int AbmQueryPos = 2;
     private const int AbmSetPos = 3;
+    private const int AbmActivate = 6;
+    private const int AbmWindowPosChanged = 9;
+    private const int WmActivate = 0x0006;
+    private const int WmWindowPosChanged = 0x0047;
+    private const int WmDisplayChange = 0x007E;
+    private const int WmSettingChange = 0x001A;
+    private const int WmDpiChanged = 0x02E0;
     private const int AbnPosChanged = 1;
     private const int AbnFullscreenApp = 2;
     private const uint MonitorDefaultToNearest = 2;
@@ -118,7 +125,26 @@ internal sealed partial class DesktopSidebarHost : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (_callbackMessage == 0 || msg != _callbackMessage || !_registered)
+        if (!_registered)
+        {
+            return IntPtr.Zero;
+        }
+
+        switch (msg)
+        {
+            case WmActivate:
+                NotifyShell(AbmActivate);
+                return IntPtr.Zero;
+            case WmWindowPosChanged:
+                NotifyShell(AbmWindowPosChanged);
+                return IntPtr.Zero;
+            case WmDisplayChange or WmDpiChanged or WmSettingChange when !_positioning:
+                // Resolution, monitor layout, or scale changed: recompute the reserved pixels.
+                _window.Dispatcher.BeginInvoke(Dock);
+                return IntPtr.Zero;
+        }
+
+        if (_callbackMessage == 0 || msg != _callbackMessage)
         {
             return IntPtr.Zero;
         }
@@ -135,6 +161,12 @@ internal sealed partial class DesktopSidebarHost : IDisposable
         }
 
         return IntPtr.Zero;
+    }
+
+    private void NotifyShell(int message)
+    {
+        var data = new AppBarData { cbSize = Marshal.SizeOf<AppBarData>(), hWnd = _handle };
+        SHAppBarMessage(message, ref data);
     }
 
     [LibraryImport("shell32.dll")]

@@ -53,6 +53,7 @@ public static class TodoTrackerHost
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IBoardStore>(_ => FileBoardStore.Open(Path.Combine(options.DataDirectory, "board.json")));
         services.AddSingleton<SettingsStore>();
+        services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();
         services.AddSingleton<IReminderNotifier, TeamsWebhookNotifier>();
@@ -102,6 +103,13 @@ public static class TodoTrackerHost
     {
         ArgumentNullException.ThrowIfNull(services);
         return ApiEndpoints.Connection(services.GetRequiredService<ApiToken>(), services.GetRequiredService<TodoTrackerServerOptions>());
+    }
+
+    /// <summary>A single-use browser link that signs in and opens <paramref name="returnPath"/> (default: dashboard).</summary>
+    public static string CreateLaunchUrl(IServiceProvider services, string returnPath = "/", TimeSpan? lifetime = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        return ApiEndpoints.LaunchUrl(services.GetRequiredService<LaunchCodes>(), services.GetRequiredService<TodoTrackerServerOptions>(), returnPath, lifetime);
     }
 
     /// <summary>Embedded web UI assets, exposed for hosts that want to check they are present.</summary>

@@ -30,7 +30,8 @@ export function priorityMeta(priority) {
 }
 
 export function snoozeOptions(now = new Date()) {
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0, 0);
+  // Before 4:00 "tomorrow" still means "when I wake up" (same rule as QuickCaptureParser.TomorrowMorning).
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (now.getHours() < 4 ? 0 : 1), 9, 0, 0, 0);
   const minutesUntilTomorrow = Math.max(1, Math.round((tomorrow.getTime() - now.getTime()) / 60000));
   return [
     { label: '15 min', minutes: 15 },

@@ -100,7 +100,7 @@ public final class TaskBoard {
     public func complete(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         if item.isDone { return }
-        if let blocker = Self.blockingStep(item) {
+        if let blocker = Self.findBlockingStep(item) {
             throw BoardError.conflict("Finish \"\(blocker.title)\" before \"\(item.title)\".")
         }
         for d in item.selfAndDescendants where !d.isDone { d.completedAt = now }
@@ -110,8 +110,10 @@ public final class TaskBoard {
 
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        guard item.isDone else { return }
+        guard let completedAt = item.completedAt else { return }
         item.completedAt = nil
+        // Undo the cascade from completing a parent: children finished by that same action reopen too.
+        for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil }
         for a in item.ancestors where a.isDone { a.completedAt = nil }
         log(now, id, "reopened", "Reopened \"\(item.title)\"", actor)
     }
@@ -167,6 +169,17 @@ public final class TaskBoard {
             entries = entries.filter { scope.contains($0.1.itemId) }
         }
         return entries.sorted { $0.1.at != $1.1.at ? $0.1.at > $1.1.at : $0.0 > $1.0 }.map(\.1)
+    }
+
+    /// Edits fields; `deadline: .some(nil)` clears the deadline, `nil` leaves it unchanged.
+    public func update(_ id: UUID, title: String? = nil, details: String? = nil, priority: Priority? = nil, deadline: Date?? = nil, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        let newTitle = try title.map { try Self.requireText($0, "A task title is required.") } ?? item.title
+        item.title = newTitle
+        if let details { item.details = Self.optionalText(details) }
+        if let priority { item.priority = priority }
+        if let deadline { item.deadline = deadline }
+        log(now, id, "updated", "Updated \"\(newTitle)\"", actor)
     }
 
     // MARK: Groups
@@ -234,6 +247,16 @@ public final class TaskBoard {
 
     func appendLoaded(activity entry: ActivityEntry) { activity.append(entry) }
 
+    /// The first unfinished earlier step blocking this item or any of its ancestors.
+    static func findBlockingStep(_ item: WorkItem) -> WorkItem? {
+        var current: WorkItem? = item
+        while let c = current {
+            if let blocker = blockingStep(c) { return blocker }
+            current = c.parent
+        }
+        return nil
+    }
+
     /// The earlier open sibling that must be finished first when the parent is sequential.
     static func blockingStep(_ item: WorkItem) -> WorkItem? {
         guard let parent = item.parent, parent.sequential, let firstOpen = parent.children.first(where: { !$0.isDone }) else { return nil }
@@ -258,7 +281,8 @@ public final class TaskBoard {
     }
 
     private func dismissPendingScheduleReminders(_ item: WorkItem, now: Date) {
-        for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil && r.notifiedAt == nil {
+        // Replace earlier schedule reminders and silence ones already due (even if delivered), so "Later" really defers.
+        for r in item.reminders where r.dismissedAt == nil && ((r.kind == .nextAction && r.notifiedAt == nil) || r.dueAt <= now) {
             r.dismissedAt = now
         }
     }
@@ -284,13 +308,14 @@ public final class TaskBoard {
     private static func defaultReminderMessage(_ item: WorkItem) -> String { "Time to act on: \(item.title)" }
 
     private static func validate(stepDelay: TimeInterval?) throws {
-        if let d = stepDelay, d <= 0 { throw BoardError.invalid("Step delay must be positive.") }
+        if let d = stepDelay, d < 60 { throw BoardError.invalid("Step delay must be at least one minute.") }
     }
 
     static func requireText(_ value: String?, _ message: String, maxLength: Int = maxTitleLength) throws -> String {
         let trimmed = (value ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw BoardError.invalid(message) }
-        guard trimmed.count <= maxLength else { throw BoardError.invalid("Must be at most \(maxLength) characters.") }
+        // Count UTF-16 units like .NET so both platforms accept exactly the same titles.
+        guard trimmed.utf16.count <= maxLength else { throw BoardError.invalid("Must be at most \(maxLength) characters.") }
         return trimmed
     }
 

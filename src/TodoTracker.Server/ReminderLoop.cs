@@ -41,9 +41,10 @@ public sealed partial class ReminderLoop(
         var now = time.GetUtcNow();
         await _dispatcher.DispatchDueAsync(now, cancellationToken).ConfigureAwait(false);
         var focusEvents = await store.UpdateAsync(b => b.TickPomodoro(now), cancellationToken).ConfigureAwait(false);
-        foreach (var evt in focusEvents)
+        // After sleep several transitions can happen at once; only the latest is worth a notification.
+        if (focusEvents.Count > 0)
         {
-            events.RaisePomodoro(evt);
+            events.RaisePomodoro(focusEvents[^1]);
         }
     }
 

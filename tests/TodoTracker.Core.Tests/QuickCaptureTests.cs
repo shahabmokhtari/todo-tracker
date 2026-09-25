@@ -74,6 +74,35 @@ public class QuickCaptureTests
         Assert.Equal(input, capture.Title);
     }
 
+    [Fact]
+    public void At_tomorrow_just_after_midnight_means_this_morning()
+    {
+        // Review finding: at 00:30, "tomorrow" meant ~32 hours later.
+        var lateNight = new DateTimeOffset(2026, 1, 6, 0, 30, 0, TimeSpan.Zero);
+
+        var capture = QuickCaptureParser.Parse("Call Bob @tomorrow", lateNight, TimeZoneInfo.Utc);
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 6, 9, 0, 0, TimeSpan.Zero), capture.NextActionAt);
+    }
+
+    [Fact]
+    public void Due_today_after_end_of_day_means_end_of_today()
+    {
+        var evening = new DateTimeOffset(2026, 1, 5, 19, 0, 0, TimeSpan.Zero);
+
+        var capture = QuickCaptureParser.Parse("Ship it due:today", evening, TimeZoneInfo.Utc);
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 5, 23, 59, 0, TimeSpan.Zero), capture.Deadline);
+    }
+
+    [Theory]
+    [InlineData("due:2026-13-01")]
+    [InlineData("@+5m")]
+    public void Malformed_time_tokens_stay_in_the_title(string token)
+    {
+        Assert.Equal($"Ship {token}", QuickCaptureParser.Parse($"Ship {token}", Now, TimeZoneInfo.Utc).Title);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("!! @2h")]

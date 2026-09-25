@@ -38,6 +38,14 @@ test('snoozeOptions offer short, hour, tomorrow-morning and +24h choices', () =>
   assert.equal(tomorrow.getMinutes(), 0);
 });
 
+test('snoozeOptions: "tomorrow" just after midnight means this morning', () => {
+  const lateNight = new Date(2026, 0, 6, 0, 30);
+  const option = snoozeOptions(lateNight).find((o) => o.label === 'Tomorrow 9:00');
+  const at = new Date(lateNight.getTime() + option.minutes * 60000);
+  assert.equal(at.getDate(), 6);
+  assert.equal(at.getHours(), 9);
+});
+
 test('groupByDay buckets timeline entries newest day first', () => {
   const entries = [
     { at: '2026-01-06T10:00:00Z', summary: 'b' },

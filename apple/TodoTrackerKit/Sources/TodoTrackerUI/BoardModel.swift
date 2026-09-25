@@ -15,16 +15,33 @@ public final class BoardModel: ObservableObject {
     @Published public var selectedGroupId: UUID?
     @Published public var quickText = ""
     @Published public var status: String?
+    /// Note drafts and open note boxes live here (not in row views) so they survive a card moving between lists.
+    @Published public var noteDrafts: [UUID: String] = [:]
+    @Published public var openNotes: Set<UUID> = []
+    /// True when the saved board could not be read; nothing is written so the user's data is never overwritten.
+    @Published public private(set) var isReadOnly = false
 
     public let board: TaskBoard
     private let store: BoardFileStore?
     private var timer: Timer?
+    private var lastRefresh = Date.distantPast
 
     public init(store: BoardFileStore?) {
         self.store = store
-        let loaded = (try? store?.load()) ?? TaskBoard()
+        var loadError: String?
+        let loaded: TaskBoard
+        do {
+            loaded = try store?.load() ?? TaskBoard()
+        } catch {
+            loaded = TaskBoard()
+            loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
         board = loaded
         dashboard = Agenda.build(loaded, now: Date())
+        if let loadError {
+            isReadOnly = true
+            status = "Couldn't open your saved board (\(loadError)). Changes are disabled so nothing gets overwritten."
+        }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -47,6 +64,7 @@ public final class BoardModel: ObservableObject {
     public func refresh() {
         if let g = selectedGroupId, !board.groups.contains(where: { $0.id == g }) { selectedGroupId = nil }
         now = Date()
+        lastRefresh = now
         dashboard = Agenda.build(board, now: now, recentNoteCount: 6, groupId: selectedGroupId)
     }
 
@@ -79,7 +97,28 @@ public final class BoardModel: ObservableObject {
 
     public func dismissReminder(_ id: UUID, reminderId: UUID) { mutate(nil) { try board.dismissReminder(id, reminderId: reminderId, now: $0) } }
 
-    public func addNote(_ id: UUID, text: String) { mutate("Note saved") { _ = try board.addNote(id, text: text, now: $0) } }
+    public func addNote(_ id: UUID, text: String) {
+        if mutate("Note saved", { _ = try board.addNote(id, text: text, now: $0) }) {
+            noteDrafts[id] = nil
+            openNotes.remove(id)
+        }
+    }
+
+    public func toggleNote(_ id: UUID) {
+        if openNotes.contains(id) { openNotes.remove(id) } else { openNotes.insert(id) }
+    }
+
+    public func draftBinding(for id: UUID) -> Binding<String> {
+        Binding(get: { self.noteDrafts[id] ?? "" }, set: { self.noteDrafts[id] = $0 })
+    }
+
+    public func update(_ id: UUID, title: String, priority: Priority) {
+        mutate("Saved") { try board.update(id, title: title, priority: priority, now: $0) }
+    }
+
+    public func snoozeUntilTomorrow(_ id: UUID) {
+        mutate("See you tomorrow") { try board.scheduleNextAction(id, at: QuickCaptureParser.tomorrowMorning(now: $0, timeZone: .current), notify: true, now: $0) }
+    }
 
     public func addSubtask(_ parentId: UUID, title: String) { mutate("Subtask added") { _ = try board.addTask(NewTask(title, parentId: parentId), now: $0) } }
 
@@ -110,18 +149,27 @@ public final class BoardModel: ObservableObject {
 
     // MARK: Plumbing
 
-    private func mutate(_ message: String?, _ change: (Date) throws -> Void) {
+    @discardableResult
+    private func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
+        guard !isReadOnly else {
+            status = "Your saved board couldn't be opened, so changes are disabled to protect it."
+            return false
+        }
+        var ok = true
         do {
             try change(Date())
             status = message
             persist()
         } catch {
+            ok = false
             status = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
         refresh()
+        return ok
     }
 
     private func persist() {
+        guard !isReadOnly else { return }
         do {
             try store?.save(board)
         } catch {
@@ -139,7 +187,7 @@ public final class BoardModel: ObservableObject {
         for (itemId, reminderId) in dueUnnotified { board.markNotified(itemId, reminderId: reminderId, now: current) }
         if !events.isEmpty || !dueUnnotified.isEmpty { persist() }
         // Refresh the lists every 30 s (waiting items wake up); the timer text updates every second.
-        if !events.isEmpty || !dueUnnotified.isEmpty || Int(current.timeIntervalSince1970) % 30 == 0 {
+        if !events.isEmpty || !dueUnnotified.isEmpty || current.timeIntervalSince(lastRefresh) >= 30 {
             refresh()
         } else {
             now = current
@@ -151,7 +199,9 @@ public final class BoardModel: ObservableObject {
 enum NotificationScheduler {
     static func requestAuthorization() {
         #if canImport(UserNotifications)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = ForegroundPresenter.shared
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
         #endif
     }
 
@@ -178,6 +228,18 @@ enum NotificationScheduler {
         #endif
     }
 }
+
+#if canImport(UserNotifications)
+/// Shows reminder banners even while the app is in the foreground (iOS/macOS hide them by default).
+final class ForegroundPresenter: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = ForegroundPresenter()
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
+    }
+}
+#endif
 
 extension WorkItem {
     var root: WorkItem { ancestors.last ?? self }

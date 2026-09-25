@@ -128,18 +128,8 @@ public static class Agenda
             item.Ancestors().Reverse().Select(a => a.Title).ToList());
     }
 
-    private static bool IsLocked(WorkItem item)
-    {
-        for (WorkItem? current = item; current is not null; current = current.Parent)
-        {
-            if (TaskBoard.BlockingStep(current) is not null)
-            {
-                return true;
-            }
-        }
+    private static bool IsLocked(WorkItem item) => TaskBoard.FindBlockingStep(item) is not null;
 
-        return false;
-    }
 
     private static OverviewEntry Summarize(WorkItem root, IReadOnlyList<AgendaEntry> now, IReadOnlyList<AgendaEntry> waiting)
     {

@@ -22,6 +22,7 @@ for (var i = 0; i < args.Length; i++)
 
 var app = TodoTrackerHost.Build(TodoTrackerHost.CreateBuilder(options));
 var connection = TodoTrackerHost.GetConnection(app.Services);
-Console.WriteLine($"Todo Tracker is running. Open: {connection.LaunchUrl}");
+Console.WriteLine($"Todo Tracker is running. Open within 15 minutes: {TodoTrackerHost.CreateLaunchUrl(app.Services, "/", TimeSpan.FromMinutes(15))}");
+Console.WriteLine("Later visits: paste the API token on the sign-in page.");
 Console.WriteLine($"MCP endpoint: {connection.McpUrl} (Bearer token stored in {Path.Combine(options.DataDirectory, "api-token")})");
 await app.RunAsync();

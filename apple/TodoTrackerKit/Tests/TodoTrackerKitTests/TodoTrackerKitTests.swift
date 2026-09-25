@@ -220,6 +220,86 @@ final class PomodoroAndFormattingTests: XCTestCase {
     }
 }
 
+final class ReviewRegressionTests: XCTestCase {
+    let t0 = BoardCodec.parseDate("2026-01-05T09:00:00.000Z")!
+
+    func testSnoozingAfterReminderFiredMovesItemToWaiting() throws {
+        let board = TaskBoard()
+        let item = try board.addTask(NewTask("Feature B"), now: t0)
+        try board.scheduleNextAction(item.id, at: t0.addingTimeInterval(600), notify: true, now: t0)
+        board.markNotified(item.id, reminderId: item.reminders[0].id, now: t0.addingTimeInterval(600))
+
+        try board.scheduleNextAction(item.id, at: t0.addingTimeInterval(7200), notify: true, now: t0.addingTimeInterval(660))
+
+        let d = Agenda.build(board, now: t0.addingTimeInterval(720))
+        XCTAssertTrue(d.now.isEmpty)
+        XCTAssertEqual(d.waiting.map(\.item.id), [item.id])
+    }
+
+    func testStepsOfALockedStepCannotBeCompleted() throws {
+        let board = TaskBoard()
+        let rollout = try board.addTask(NewTask("Rollout", sequential: true), now: t0)
+        try board.addTask(NewTask("Step 1", parentId: rollout.id), now: t0)
+        let step2 = try board.addTask(NewTask("Step 2", parentId: rollout.id), now: t0)
+        let sub = try board.addTask(NewTask("Step 2a", parentId: step2.id), now: t0)
+        XCTAssertThrowsError(try board.complete(sub.id, now: t0))
+    }
+
+    func testReopenUndoesCascade() throws {
+        let board = TaskBoard()
+        let parent = try board.addTask(NewTask("X"), now: t0)
+        let earlier = try board.addTask(NewTask("Done before", parentId: parent.id), now: t0)
+        let open = try board.addTask(NewTask("Open", parentId: parent.id), now: t0)
+        try board.complete(earlier.id, now: t0)
+        try board.complete(parent.id, now: t0.addingTimeInterval(3600))
+        try board.reopen(parent.id, now: t0.addingTimeInterval(7200))
+        XCTAssertFalse(open.isDone)
+        XCTAssertTrue(earlier.isDone)
+    }
+
+    func testQuickCaptureEdgeCasesMatchCSharp() throws {
+        let utc = TimeZone(identifier: "UTC")!
+        let lateNight = BoardCodec.parseDate("2026-01-06T00:30:00.000Z")!
+        XCTAssertEqual(try QuickCaptureParser.parse("Call @tomorrow", now: lateNight, timeZone: utc).nextActionAt, BoardCodec.parseDate("2026-01-06T09:00:00.000Z"))
+        let evening = BoardCodec.parseDate("2026-01-05T19:00:00.000Z")!
+        XCTAssertEqual(try QuickCaptureParser.parse("Ship due:today", now: evening, timeZone: utc).deadline, BoardCodec.parseDate("2026-01-05T23:59:00.000Z"))
+        XCTAssertEqual(try QuickCaptureParser.parse("Ship due:2026-13-01", now: t0, timeZone: utc).title, "Ship due:2026-13-01")
+        XCTAssertEqual(try QuickCaptureParser.parse("Ship @+5m", now: t0, timeZone: utc).title, "Ship @+5m")
+        XCTAssertEqual(try QuickCaptureParser.parse("Ship due:2026-02-01", now: t0, timeZone: utc).deadline, BoardCodec.parseDate("2026-02-01T17:00:00.000Z"))
+    }
+
+    func testNewerSchemaIsNeverReplacedByBackup() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = BoardFileStore(url: dir.appendingPathComponent("board.json"))
+        let board = try store.load()
+        try store.save(board)
+        try store.save(board)
+        try Data(#"{"schemaVersion": 99, "items": []}"#.utf8).write(to: store.url)
+
+        XCTAssertThrowsError(try store.load()) { error in
+            guard case .unsupportedSchema(_)? = error as? BoardError else { return XCTFail("expected unsupportedSchema, got \(error)") }
+        }
+        XCTAssertTrue(String(data: try Data(contentsOf: store.url), encoding: .utf8)!.contains("99"))
+    }
+
+    func testCorruptBoardIsSetAsideAndBackupRestored() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = BoardFileStore(url: dir.appendingPathComponent("board.json"))
+        let board = try store.load()
+        try board.addTask(NewTask("keep me"), now: t0)
+        try store.save(board)
+        try store.save(board)
+        try Data("{ broken".utf8).write(to: store.url)
+
+        XCTAssertEqual(try store.load().items.map(\.title), ["keep me"])
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertTrue(files.contains { $0.contains("corrupt-") }, "\(files)")
+        XCTAssertEqual(try store.load().items.map(\.title), ["keep me"], "main file restored from backup")
+    }
+}
+
 final class CodecTests: XCTestCase {
     let t0 = BoardCodec.parseDate("2026-01-05T09:00:00.000Z")!
 

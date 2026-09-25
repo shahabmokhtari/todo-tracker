@@ -6,6 +6,8 @@ let client = null;
 let group = null;
 let dashboard = null;
 let selectedId = null;
+// Once the user starts typing, the note stays bound to that task even if the lists reshuffle.
+let pinned = null;
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -72,8 +74,9 @@ function render() {
     ? card(f, true)
     : el('div', { class: 'empty' }, 'Nothing is due ✨', d.waiting[0] ? el('div', { class: 'muted' }, `Next: ${d.waiting[0].title} ${relativeTime(d.waiting[0].wakeAt)}`) : null));
   const selected = d.now.find((c) => c.id === selectedId);
-  $('note').hidden = !selected;
-  $('note-text').placeholder = selected ? `Note for “${selected.title}”…` : '';
+  const target = pinned ?? (selected ? { id: selected.id, title: selected.title } : null);
+  $('note').hidden = !target;
+  $('note-target').textContent = target ? `Note for: ${target.title}` : '';
 
   $('now-count').textContent = d.now.length || '';
   $('now').replaceChildren(...d.now.filter((c) => c.id !== f?.id).map((c) => card(c)));
@@ -135,16 +138,33 @@ $('capture').addEventListener('submit', (e) => {
   run(() => client.capture(text, group), 'Added');
 });
 
+$('note-text').addEventListener('input', () => {
+  if (!pinned && selectedId) {
+    const card = dashboard?.now.find((c) => c.id === selectedId);
+    if (card) pinned = { id: card.id, title: card.title };
+  }
+  if (!$('note-text').value.trim()) pinned = null;
+});
+
 $('note').addEventListener('submit', async (e) => {
   e.preventDefault();
   const text = $('note-text').value.trim();
-  if (!text || !selectedId) return;
+  const targetId = pinned?.id ?? selectedId;
+  if (!text || !targetId) return;
   const source = $('attach').checked ? pageSource(await currentTab()) : null;
-  await run(() => client.addNote(selectedId, text, source), 'Note saved');
-  $('note-text').value = '';
+  try {
+    await client.addNote(targetId, text, source);
+    $('note-text').value = '';
+    pinned = null;
+    $('status').textContent = 'Note saved';
+  } catch (err) {
+    // Keep the text so nothing typed is lost.
+    $('status').textContent = err.message;
+  }
+  await refresh();
 });
 
-$('open').addEventListener('click', () => chrome.tabs.create({ url: client.launchUrl('/') }));
+$('open').addEventListener('click', () => run(async () => chrome.tabs.create({ url: await client.launchUrl('/') })));
 $('settings').addEventListener('click', async () => {
   const { serverUrl } = await chrome.storage.local.get('serverUrl');
   $('server').value = serverUrl || 'http://127.0.0.1:5317';
