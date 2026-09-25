@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Todo Tracker</title>
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" href="data:,">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Todo Tracker home">✓ Todo Tracker</a>
+    <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups"></nav>
+    <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
+  </header>
+
+  <main class="layout">
+    <section id="login" class="card login" hidden>
+      <h1>Connect to your Todo Tracker</h1>
+      <p>Open this page from the sidebar (<em>Open dashboard</em>) or paste the token from <code>api-token</code> in your data folder.</p>
+      <form id="login-form" class="row">
+        <input id="login-token" type="password" autocomplete="off" placeholder="API token" aria-label="API token" required>
+        <button class="primary" type="submit">Connect</button>
+      </form>
+      <p id="login-error" class="error" role="alert"></p>
+    </section>
+
+    <div id="board" hidden>
+      <form id="capture" class="capture" autocomplete="off">
+        <input id="capture-input" maxlength="300" aria-label="Quick add task"
+               placeholder="Add a task…  try: Deploy ring 2 !! @2h due:tomorrow">
+        <button class="primary" type="submit">Add</button>
+      </form>
+
+      <section id="focus" class="focus" aria-label="Do this now"></section>
+
+      <details id="sec-now" class="section" open>
+        <summary><span>Do now</span><span class="count"></span></summary>
+        <ul class="list"></ul>
+      </details>
+      <details id="sec-waiting" class="section">
+        <summary><span>Waiting</span><span class="count"></span></summary>
+        <ul class="list"></ul>
+      </details>
+      <details id="sec-overview" class="section" open>
+        <summary><span>Workstreams</span><span class="count"></span></summary>
+        <ul class="list"></ul>
+      </details>
+      <details id="sec-notes" class="section">
+        <summary><span>Recent notes</span><span class="count"></span></summary>
+        <ul class="list"></ul>
+        <p class="more"><a href="report.html">Full timeline →</a></p>
+      </details>
+    </div>
+  </main>
+
+  <aside id="drawer" class="drawer" hidden aria-label="Task details"></aside>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

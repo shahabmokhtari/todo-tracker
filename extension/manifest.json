@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Todo Tracker",
+  "short_name": "Todo Tracker",
+  "version": "1.0.0",
+  "description": "ADHD-friendly glance at what to do now, quick capture, and one-click notes from the current page.",
+  "minimum_chrome_version": "116",
+  "action": { "default_title": "Open Todo Tracker side panel" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["sidePanel", "storage", "activeTab", "tabs"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "icons": { "128": "icons/icon128.png" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; base-uri 'none'" }
+}

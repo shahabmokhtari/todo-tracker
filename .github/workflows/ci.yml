@@ -1,0 +1,156 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  core:
+    name: Core, server & view models (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build
+        run: |
+          for p in Core Server Desktop; do
+            dotnet build tests/TodoTracker.$p.Tests --configuration Release -warnaserror
+          done
+      - name: Test with coverage
+        run: |
+          for p in Core Server Desktop; do
+            dotnet test --project tests/TodoTracker.$p.Tests --configuration Release --no-build \
+              --coverage --coverage-output-format cobertura --coverage-output $p.cobertura.xml \
+              --results-directory TestResults/$p
+          done
+      - name: Coverage gate
+        run: |
+          python3 build/coverage-gate.py "$(find TestResults/Core -name Core.cobertura.xml)" TodoTracker.Core=90
+          python3 build/coverage-gate.py "$(find TestResults/Server -name Server.cobertura.xml)" TodoTracker.Server=85
+          python3 build/coverage-gate.py "$(find TestResults/Desktop -name Desktop.cobertura.xml)" TodoTracker.Desktop=85
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: TestResults/**/*.cobertura.xml
+
+  web:
+    name: Web UI, extension & browser e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript unit tests
+        run: node --test tests/web/*.test.mjs extension/tests/*.test.mjs
+      - name: Build web host
+        run: dotnet build src/TodoTracker.Web --configuration Release -warnaserror
+      - name: Install Playwright
+        working-directory: tests/e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Browser end-to-end tests
+        working-directory: tests/e2e
+        env:
+          CI: "1"
+          E2E_CONFIGURATION: Release
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
+      - name: Package browser extension
+        run: cd extension && zip -r ../todo-tracker-extension.zip . -x 'tests/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension
+          path: todo-tracker-extension.zip
+
+  windows:
+    name: Windows desktop (WPF)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build solution
+        run: dotnet build TodoTracker.slnx --configuration Release -warnaserror
+      - name: Test
+        run: dotnet test --solution TodoTracker.slnx --configuration Release --no-build
+      - name: Publish sidebar
+        run: dotnet publish src/TodoTracker.Windows --configuration Release --runtime win-x64 --self-contained false --output artifacts/windows
+      - name: Smoke test the real app
+        shell: pwsh
+        run: |
+          $log = "$env:RUNNER_TEMP\smoke.log"
+          $shot = "$env:GITHUB_WORKSPACE\artifacts\sidebar.png"
+          $p = Start-Process artifacts\windows\TodoTracker.exe -ArgumentList '--smoke-test','--smoke-log',$log,'--screenshot',$shot -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'Smoke test timed out' }
+          Get-Content $log
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-sidebar
+          path: artifacts
+
+  apple:
+    name: macOS & iOS (Swift)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+      - name: Swift core tests (shared scenarios)
+        working-directory: apple/TodoTrackerKit
+        run: swift test
+      - name: Generate Xcode project
+        working-directory: apple
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build iOS app (simulator)
+        working-directory: apple
+        run: >
+          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-iOS
+          -destination 'generic/platform=iOS Simulator' -configuration Debug
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Build macOS app
+        working-directory: apple
+        run: >
+          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-macOS
+          -destination 'platform=macOS' -configuration Release
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: Package macOS app
+        working-directory: apple
+        run: ditto -c -k --keepParent DerivedData/Build/Products/Release/TodoTracker.app TodoTracker-macOS.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: apple/TodoTracker-macOS.zip

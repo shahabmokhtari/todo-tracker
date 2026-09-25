@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+.vscode/
+TestResults/
+coverage/
+*.user
+node_modules/
+.build/
+.swiftpm/
+DerivedData/
+apple/*.xcodeproj/
+artifacts/
+extension/dist/
+tests/e2e/package-lock.json
+tests/e2e/test-results/
+tests/e2e/playwright-report/

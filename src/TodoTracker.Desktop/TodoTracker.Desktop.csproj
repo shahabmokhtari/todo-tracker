@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>TodoTracker.Desktop</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <ProjectReference Include="..\TodoTracker.Core\TodoTracker.Core.csproj" />
+    <InternalsVisibleTo Include="TodoTracker.Desktop.Tests" />
+  </ItemGroup>
+</Project>
