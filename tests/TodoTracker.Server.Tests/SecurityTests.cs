@@ -66,6 +66,19 @@ public sealed class SecurityTests : IAsyncLifetime
         Assert.Contains("samesite=strict", cookie, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("/?item=abc", "/?item=abc")]
+    [InlineData("/report.html?id=1", "/report.html?id=1")]
+    [InlineData("//evil.example", "/")]
+    [InlineData("https://evil.example", "/")]
+    [InlineData("/\\evil.example", "/")]
+    public async Task Launch_link_only_returns_to_local_paths(string returnTo, string expected)
+    {
+        var response = await _server.App.GetTestClientWithoutRedirects().GetAsync($"/auth?token={ServerFixture.Token}&return={Uri.EscapeDataString(returnTo)}");
+
+        Assert.Equal(expected, response.Headers.Location?.OriginalString);
+    }
+
     [Fact]
     public async Task Launch_link_with_wrong_token_is_rejected()
     {

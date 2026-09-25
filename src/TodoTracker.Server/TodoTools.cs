@@ -167,7 +167,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
         }
         catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or NotSupportedException)
         {
-            throw new McpException(ex.Message, ex);
+            throw new McpException(ErrorText.Friendly(ex), ex);
         }
     }
 }
+

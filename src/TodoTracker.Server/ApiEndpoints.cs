@@ -53,7 +53,7 @@ internal static class ApiEndpoints
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-        app.MapGet("/auth", (string? token, HttpResponse response, ApiToken apiToken) =>
+        app.MapGet("/auth", (string? token, string? @return, HttpResponse response, ApiToken apiToken) =>
         {
             if (!apiToken.Matches(token))
             {
@@ -61,7 +61,10 @@ internal static class ApiEndpoints
             }
 
             Security.SetSessionCookie(response, apiToken);
-            return Results.Redirect("/");
+
+            // Only same-site relative paths, so the launch link cannot become an open redirect.
+            var target = @return is { Length: > 0 } r && r[0] == '/' && !r.StartsWith("//", StringComparison.Ordinal) && !r.Contains('\\', StringComparison.Ordinal) ? r : "/";
+            return Results.Redirect(target);
         });
 
         var api = app.MapGroup("/api").AddEndpointFilter(MapDomainErrors);
@@ -354,7 +357,8 @@ internal static class ApiEndpoints
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
         {
-            return Results.Problem(ex.Message, statusCode: StatusCodes.Status400BadRequest);
+            return Results.Problem(ErrorText.Friendly(ex), statusCode: StatusCodes.Status400BadRequest);
         }
     }
 }
+

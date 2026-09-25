@@ -1,11 +1,14 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/TodoTracker.Core/TodoTracker.Core.csproj" />
+    <Project Path="src/TodoTracker.Desktop/TodoTracker.Desktop.csproj" />
     <Project Path="src/TodoTracker.Server/TodoTracker.Server.csproj" />
     <Project Path="src/TodoTracker.Web/TodoTracker.Web.csproj" />
+    <Project Path="src/TodoTracker.Windows/TodoTracker.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/TodoTracker.Core.Tests/TodoTracker.Core.Tests.csproj" />
+    <Project Path="tests/TodoTracker.Desktop.Tests/TodoTracker.Desktop.Tests.csproj" />
     <Project Path="tests/TodoTracker.Server.Tests/TodoTracker.Server.Tests.csproj" />
   </Folder>
 </Solution>

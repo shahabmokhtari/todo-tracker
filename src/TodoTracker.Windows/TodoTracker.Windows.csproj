@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>TodoTracker</AssemblyName>
+    <RootNamespace>TodoTracker.Windows</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF0001: Fluent ThemeMode is marked experimental but is the supported way to get Windows 11 styling + dark mode. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+    <ProjectReference Include="..\TodoTracker.Server\TodoTracker.Server.csproj" />
+    <ProjectReference Include="..\TodoTracker.Desktop\TodoTracker.Desktop.csproj" />
+  </ItemGroup>
+</Project>
+

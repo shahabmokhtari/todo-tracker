@@ -389,5 +389,9 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh());
 setInterval(() => document.visibilityState === 'visible' && refresh(), 15000);
-refresh();
+refresh().then(() => {
+  // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
+  const item = new URLSearchParams(location.search).get('item');
+  if (item && state.dashboard) openDrawer(item);
+});
 
