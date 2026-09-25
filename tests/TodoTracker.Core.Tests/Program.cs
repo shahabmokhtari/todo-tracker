@@ -8,6 +8,7 @@ var tests = new (string Name, Action Test)[]
     ("Recent notes returns newest task notes first", RecentNotesReturnsNewestFirst),
     ("Pomodoro remaining time is clamped at zero", PomodoroRemainingIsClamped),
     ("Completed items are not actionable", CompletedItemsAreNotActionable),
+    ("Reminder dismissal updates stored reminders", ReminderDismissalUpdatesStoredReminder),
     ("Recent notes handles non-positive counts", RecentNotesHandlesNonPositiveCounts),
     ("Core models validate invalid input", CoreModelsValidateInvalidInput)
 };
@@ -92,6 +93,21 @@ static void CompletedItemsAreNotActionable()
     item.Complete();
 
     Assert(!item.IsActionable(now), "Completed items should not be actionable even when reminders are due.");
+}
+
+static void ReminderDismissalUpdatesStoredReminder()
+{
+    var now = new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero);
+    var item = new WorkItem("Reminder task");
+    item.Complete();
+
+    item.AddReminder(now.AddMinutes(5), "Do not resurrect completed task", now);
+    var reminder = item.Reminders[0];
+
+    Assert(item.Status == WorkItemStatus.Completed, "Adding a reminder should not resurrect a completed item.");
+    Assert(item.DismissReminder(reminder), "Existing reminder should be dismissed.");
+    Assert(item.Reminders[0].IsDismissed, "Dismissed reminder should be stored back on the task.");
+    Assert(!item.DismissReminder(reminder), "The original reminder value should no longer match after dismissal.");
 }
 
 static void RecentNotesHandlesNonPositiveCounts()

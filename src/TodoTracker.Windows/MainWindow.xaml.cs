@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Width = DesktopSidebarHost.DefaultWidthInDips;
         DataContext = SidebarViewModel.CreateSample();
         SourceInitialized += (_, _) =>
         {

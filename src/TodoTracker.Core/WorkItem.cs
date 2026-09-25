@@ -77,9 +77,24 @@ public sealed class WorkItem
             NextActionAt = dueAt;
         }
 
-        Status = dueAt > (now ?? DateTimeOffset.UtcNow)
-            ? WorkItemStatus.Waiting
-            : WorkItemStatus.Active;
+        if (Status != WorkItemStatus.Completed)
+        {
+            Status = dueAt > (now ?? DateTimeOffset.UtcNow)
+                ? WorkItemStatus.Waiting
+                : WorkItemStatus.Active;
+        }
+    }
+
+    public bool DismissReminder(Reminder reminder)
+    {
+        var index = _reminders.IndexOf(reminder);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        _reminders[index] = reminder.Dismiss();
+        return true;
     }
 
     public void ScheduleNextAction(DateTimeOffset dueAt)

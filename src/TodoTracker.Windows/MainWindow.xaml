@@ -6,7 +6,6 @@
         mc:Ignorable="d"
         Title="Todo Tracker"
         Height="900"
-        Width="380"
         MinWidth="340"
         WindowStartupLocation="Manual"
         Topmost="True">
