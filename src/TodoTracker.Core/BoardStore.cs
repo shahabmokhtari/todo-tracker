@@ -62,6 +62,7 @@ public abstract class BoardStoreBase : IBoardStore, IDisposable
         ArgumentNullException.ThrowIfNull(mutate);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         T result;
+        var changed = false;
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -73,6 +74,7 @@ public abstract class BoardStoreBase : IBoardStore, IDisposable
                 {
                     Persist(json);
                     _lastSaved = json;
+                    changed = true;
                 }
             }
             catch
@@ -86,7 +88,11 @@ public abstract class BoardStoreBase : IBoardStore, IDisposable
             _gate.Release();
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
         return result;
     }
 
