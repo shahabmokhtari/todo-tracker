@@ -72,16 +72,13 @@ public sealed class WorkItem
         }
 
         _reminders.Add(new Reminder(dueAt, message.Trim()));
-        if (NextActionAt is null || dueAt < NextActionAt)
-        {
-            NextActionAt = dueAt;
-        }
 
+        var currentTime = now ?? DateTimeOffset.UtcNow;
         if (Status != WorkItemStatus.Completed)
         {
-            Status = dueAt > (now ?? DateTimeOffset.UtcNow)
-                ? WorkItemStatus.Waiting
-                : WorkItemStatus.Active;
+            Status = _reminders.Any(reminder => reminder.IsDue(currentTime))
+                ? WorkItemStatus.Active
+                : WorkItemStatus.Waiting;
         }
     }
 
@@ -117,6 +114,20 @@ public sealed class WorkItem
 
     public void Complete() => Status = WorkItemStatus.Completed;
 
+    public void RefreshStatus(DateTimeOffset now)
+    {
+        if (Status == WorkItemStatus.Completed)
+        {
+            return;
+        }
+
+        Status = IsActionable(now)
+            ? WorkItemStatus.Active
+            : EffectiveDueAt() > now
+                ? WorkItemStatus.Waiting
+                : WorkItemStatus.Active;
+    }
+
     public bool IsActionable(DateTimeOffset now)
     {
         if (Status == WorkItemStatus.Completed)
@@ -124,7 +135,17 @@ public sealed class WorkItem
             return false;
         }
 
-        return NextActionAt is null || NextActionAt <= now || _reminders.Any(reminder => reminder.IsDue(now));
+        if (_reminders.Any(reminder => reminder.IsDue(now)))
+        {
+            return true;
+        }
+
+        if (NextActionAt is not null)
+        {
+            return NextActionAt <= now;
+        }
+
+        return _reminders.All(reminder => reminder.IsDismissed);
     }
 
     public DateTimeOffset? EffectiveDueAt()

@@ -102,15 +102,15 @@ internal sealed class DesktopSidebarHost : IDisposable
 
     public void Dispose()
     {
-        if (!_registered)
-        {
-            return;
-        }
-
         if (_hooked && _source is not null)
         {
             _source.RemoveHook(WndProc);
             _hooked = false;
+        }
+
+        if (!_registered)
+        {
+            return;
         }
 
         var handle = _handle != IntPtr.Zero

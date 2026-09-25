@@ -9,6 +9,7 @@ var tests = new (string Name, Action Test)[]
     ("Recent notes returns newest task notes first", RecentNotesReturnsNewestFirst),
     ("Pomodoro remaining time is clamped at zero", PomodoroRemainingIsClamped),
     ("Completed items are not actionable", CompletedItemsAreNotActionable),
+    ("Dismissed reminder does not bypass future gate", DismissedReminderDoesNotBypassFutureGate),
     ("Reminder dismissal updates stored reminders", ReminderDismissalUpdatesStoredReminder),
     ("Apple shell projects agenda snapshots", AppleShellProjectsAgendaSnapshots),
     ("Recent notes handles non-positive counts", RecentNotesHandlesNonPositiveCounts),
@@ -95,6 +96,20 @@ static void CompletedItemsAreNotActionable()
     item.Complete();
 
     Assert(!item.IsActionable(now), "Completed items should not be actionable even when reminders are due.");
+}
+
+static void DismissedReminderDoesNotBypassFutureGate()
+{
+    var now = new DateTimeOffset(2026, 9, 25, 9, 0, 0, TimeSpan.Zero);
+    var item = new WorkItem("Wait for next gate", TaskPriority.High);
+    item.ScheduleNextActionAfter(TimeSpan.FromHours(24), now);
+    item.AddReminder(now.AddMinutes(-1), "Already handled", now);
+    item.DismissReminder(item.Reminders[0]);
+
+    item.RefreshStatus(now);
+
+    Assert(!item.IsActionable(now), "Dismissed due reminder should not bypass a future next-action gate.");
+    Assert(item.Status == WorkItemStatus.Waiting, "Item should remain waiting when only a future next-action gate remains.");
 }
 
 static void ReminderDismissalUpdatesStoredReminder()

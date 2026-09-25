@@ -6,6 +6,11 @@ public sealed class TaskBoard
 
     public IReadOnlyList<WorkItem> Tasks => _tasks;
 
+    public IReadOnlyList<WorkItem> AllTasks()
+    {
+        return Flatten(_tasks).ToList();
+    }
+
     public WorkItem AddTask(string title, TaskPriority priority = TaskPriority.Normal)
     {
         var task = new WorkItem(title, priority);
@@ -15,7 +20,7 @@ public sealed class TaskBoard
 
     public IReadOnlyList<WorkItem> Agenda(DateTimeOffset now)
     {
-        return Flatten(_tasks)
+        return AllTasks()
             .Where(item => item.IsActionable(now))
             .OrderByDescending(item => item.Priority)
             .ThenBy(item => item.EffectiveDueAt() ?? DateTimeOffset.MaxValue)
@@ -25,7 +30,7 @@ public sealed class TaskBoard
 
     public IReadOnlyList<WorkItem> Waiting(DateTimeOffset now)
     {
-        return Flatten(_tasks)
+        return AllTasks()
             .Where(item => item.Status == WorkItemStatus.Waiting && !item.IsActionable(now))
             .OrderBy(item => item.EffectiveDueAt() ?? DateTimeOffset.MaxValue)
             .ThenByDescending(item => item.Priority)
@@ -39,7 +44,7 @@ public sealed class TaskBoard
             return [];
         }
 
-        return Flatten(_tasks)
+        return AllTasks()
             .Where(item => item.Notes.Count > 0)
             .OrderByDescending(item => item.Notes[^1].CreatedAt)
             .Take(maximumCount)

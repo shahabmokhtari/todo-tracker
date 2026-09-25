@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using TodoTracker.Core;
 
@@ -94,7 +95,9 @@ internal static class HomePage
 
     private static string RenderTask(TaskDto item)
     {
-        var dueLabel = item.DueAt is { } dueAt ? dueAt.LocalDateTime.ToString("g") : "No due time";
+        var dueLabel = item.DueAt is { } dueAt
+            ? dueAt.LocalDateTime.ToString("g", CultureInfo.InvariantCulture)
+            : "No due time";
         return $$"""
             <article class="{{item.Priority}}">
                 <h3>{{Escape(item.Title)}}</h3>
@@ -170,7 +173,7 @@ internal sealed class TaskBoardStore
     {
         lock (_lock)
         {
-            return Flatten(_board.Tasks)
+            return _board.AllTasks()
                 .Where(item => item.Id == id)
                 .Select(TaskDto.From)
                 .FirstOrDefault();
@@ -195,16 +198,4 @@ internal sealed class TaskBoardStore
         }
     }
 
-    private static IEnumerable<WorkItem> Flatten(IEnumerable<WorkItem> items)
-    {
-        foreach (var item in items)
-        {
-            yield return item;
-
-            foreach (var subtask in Flatten(item.Subtasks))
-            {
-                yield return subtask;
-            }
-        }
-    }
 }
