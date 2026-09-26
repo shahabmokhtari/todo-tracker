@@ -1,5 +1,5 @@
 import XCTest
-import TodoTrackerKit
+@testable import TodoTrackerKit
 @testable import TodoTrackerUI
 
 final class PresentationTests: XCTestCase {
