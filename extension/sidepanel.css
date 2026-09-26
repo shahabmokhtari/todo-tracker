@@ -2,7 +2,7 @@
   color-scheme: light dark;
   font: 13.5px/1.45 "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --bg: #f6f7fb; --surface: #fff; --surface-2: #f1f3f9; --border: rgb(15 23 42 / .08); --border-strong: rgb(15 23 42 / .14);
-  --text: #0f172a; --text-2: #475569; --text-3: #94a3b8;
+  --text: #0f172a; --text-2: #475569; --text-3: #64748b;
   --accent: #6366f1; --accent-soft: rgb(99 102 241 / .12);
   --gradient: linear-gradient(135deg, #6366f1, #8b5cf6 55%, #ec4899);
   --warn: #f59e0b; --warn-soft: rgb(245 158 11 / .16); --danger: #ef4444; --danger-soft: rgb(239 68 68 / .12);
@@ -14,7 +14,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0a0d1a; --surface: #141a2e; --surface-2: #1b2240; --border: rgb(148 163 184 / .12); --border-strong: rgb(148 163 184 / .22);
-    --text: #e8ecf8; --text-2: #a7b0c8; --text-3: #6b7592; --accent-soft: rgb(129 140 248 / .16); --shadow: 0 10px 28px -12px rgb(0 0 0 / .6); }
+    --text: #e8ecf8; --text-2: #a7b0c8; --text-3: #8a93ad; --accent-soft: rgb(129 140 248 / .16); --shadow: 0 10px 28px -12px rgb(0 0 0 / .6); }
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -23,7 +23,8 @@ body { margin: 0; padding: 12px; display: grid; gap: 10px; }
 h1 { font-size: 17px; margin: 4px 0; letter-spacing: -.01em; }
 button, input, textarea { font: inherit; color: inherit; }
 input, textarea { width: 100%; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface); }
-input:focus, textarea:focus, button:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(99 102 241 / .3); }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgb(99 102 241 / .3); }
+button:focus-visible, .grow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .muted { color: var(--text-2); font-size: 12.5px; }
 .error { color: var(--danger); }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }

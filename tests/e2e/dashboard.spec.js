@@ -73,6 +73,11 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   // Snooze from the focus card via the menu.
   await page.locator('#tabs .tab', { hasText: 'Personal' }).click();
   await page.locator('.focus-card').getByRole('button', { name: 'Later', exact: true }).click();
+  // Regression (UI review): every menu item must be on top at its center, not clipped by the card or covered by panels.
+  const covered = await page.locator('.focus-card .menu [role="menuitem"]').evaluateAll((items) => items
+    .filter((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !el.contains(hit); })
+    .map((el) => el.textContent));
+  expect(covered).toEqual([]);
   await page.locator('.focus-card .menu').getByRole('menuitem', { name: '1 hour' }).click();
   await expect(page.locator('.focus-card')).toContainText('Nothing is due');
 

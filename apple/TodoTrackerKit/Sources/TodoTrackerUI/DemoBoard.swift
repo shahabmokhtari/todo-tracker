@@ -1,4 +1,5 @@
-#if canImport(SwiftUI)
+#if canImport(SwiftUI) && DEBUG
+// Debug-only: sample data and offscreen rendering for tests and previews; never shipped in release builds.
 import SwiftUI
 import TodoTrackerKit
 #if canImport(AppKit)

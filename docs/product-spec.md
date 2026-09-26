@@ -140,6 +140,23 @@ blocks the others.
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.
 
+### Visual design (all platforms)
+One design language, adapted to each platform's native controls (Fluent on Windows, SwiftUI on Apple):
+* **Calm canvas:** neutral surfaces with a soft indigo/pink ambient glow. Light and dark themes are both first-class.
+* **One hero:** the "Do this now" card has a gradient hairline border (indigo → violet → pink). The border turns
+  amber → rose when a reminder is ringing and green → cyan when all is clear. The card shows a priority pill,
+  toned chips, and labeled primary and secondary actions.
+* **Quiet lists:**
+  * Rows show a haloed priority dot, the title, the breadcrumb, and toned chips (step, back in, due, overdue, notes).
+  * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible.
+* **Segmented tabs:** group tabs sit in a pill track, and the selected tab is raised. Each tab has a count badge
+  and an amber dot when a reminder is waiting there.
+* **Glanceable timer:** a progress ring shows the Pomodoro phase: rose for focus, green for breaks.
+* **Workstreams** lists only tasks with subtasks, with a gradient progress bar. Single tasks already live in Do now and Waiting.
+* **Motion:** motion is subtle (under 250ms) and disabled under `prefers-reduced-motion`.
+* **Web security:** the web UI keeps a strict CSP. Icons are built with DOM APIs, and there is no inline script or
+  style.
+
 ### Color and accessibility
 * Priority colors: critical `#e11d48`, high `#f97316`, normal `#3b82f6`, low `#94a3b8`. Amber marks attention.
 * Every icon button has an accessible name. Text never relies on color alone: priority is also shown in the tooltip or label.

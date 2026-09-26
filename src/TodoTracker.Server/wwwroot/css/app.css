@@ -17,7 +17,7 @@
   --border-strong: rgb(15 23 42 / .14);
   --text: #0f172a;
   --text-2: #475569;
-  --text-3: #94a3b8;
+  --text-3: #64748b; /* ≥4.5:1 on white: used for real (small) text */
 
   --accent: #6366f1;
   --accent-2: #8b5cf6;
@@ -68,7 +68,7 @@
     --border-strong: rgb(148 163 184 / .22);
     --text: #e8ecf8;
     --text-2: #a7b0c8;
-    --text-3: #6b7592;
+    --text-3: #8a93ad;
     --accent-soft: rgb(129 140 248 / .16);
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 32px -12px rgb(0 0 0 / .6);
     --shadow-lg: 0 24px 64px -12px rgb(0 0 0 / .7);
@@ -113,7 +113,9 @@ input, select, textarea {
 }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
 textarea { width: 100%; resize: vertical; }
-:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Outline (not box-shadow) so button/tab shadows can never hide the keyboard focus ring. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
 
 .btn, button.link-like {
   display: inline-flex;
@@ -139,7 +141,7 @@ textarea { width: 100%; resize: vertical; }
   box-shadow: 0 6px 18px -6px rgb(99 102 241 / .6);
 }
 .btn.primary:hover { filter: brightness(1.06); }
-.btn.success { background: var(--ok); border-color: transparent; color: #fff; box-shadow: 0 6px 18px -6px rgb(16 185 129 / .6); }
+.btn.success { background: #047857; border-color: transparent; color: #fff; box-shadow: 0 6px 18px -6px rgb(16 185 129 / .6); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
 .btn.ghost:hover { background: var(--surface-hover); color: var(--text); }
 .btn.danger { color: var(--danger); }
@@ -282,8 +284,6 @@ button.link:hover { color: var(--accent); }
 
 .panel {
   background: var(--surface);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
@@ -339,7 +339,6 @@ button.link:hover { color: var(--accent); }
   background: var(--surface-solid);
   box-shadow: var(--shadow-lg);
   isolation: isolate;
-  overflow: hidden;
 }
 /* Gradient hairline border + a soft priority glow. */
 .focus-card::before {
@@ -358,11 +357,10 @@ button.link:hover { color: var(--accent); }
   content: "";
   position: absolute;
   z-index: -1;
-  width: 420px;
-  height: 420px;
-  right: -140px;
-  top: -220px;
-  background: radial-gradient(circle, color-mix(in srgb, var(--prio) 26%, transparent), transparent 65%);
+  inset: 0;
+  border-radius: inherit;
+  /* Glow drawn inside the card box, so the card needs no overflow clipping (which would clip menus). */
+  background: radial-gradient(420px circle at 100% 0%, color-mix(in srgb, var(--prio) 26%, transparent), transparent 65%);
   pointer-events: none;
 }
 .focus-card.attention::before { background: linear-gradient(135deg, var(--warn), #fb7185); }
@@ -497,6 +495,8 @@ button.focus-title:hover { color: var(--accent); }
   animation: pop .14s var(--ease);
 }
 .focus-card .menu { left: 0; right: auto; }
+/* Keep an open menu above neighbouring cards and panels. */
+.focus-card:has(.menu:not([hidden])), .panel:has(.menu:not([hidden])) { position: relative; z-index: 21; }
 .menu button {
   display: flex;
   align-items: center;

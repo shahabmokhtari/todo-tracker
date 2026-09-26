@@ -15,6 +15,18 @@ notes and tasks through MCP.
 
 The full plan, design, rules, and requirement traceability are in [`docs/product-spec.md`](docs/product-spec.md). The original request is in [`docs/request.md`](docs/request.md).
 
+## Screenshots
+
+| Web dashboard | Dark mode |
+|---|---|
+| ![Web dashboard](docs/images/web-dashboard-light.png) | ![Web dashboard, dark](docs/images/web-dashboard-dark.png) |
+
+| Windows sidebar | macOS / iOS | Browser side panel |
+|---|---|---|
+| ![Windows sidebar](docs/images/windows-sidebar.png) | ![SwiftUI app](docs/images/macos-ios-light.png) | ![Browser extension](docs/images/browser-extension.png) |
+
+The report page shows the full task tree and a timeline: ![Report](docs/images/web-report.png)
+
 ## Quick start (Windows)
 
 ```powershell
