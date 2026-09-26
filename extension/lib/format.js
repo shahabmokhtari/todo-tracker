@@ -75,3 +75,47 @@ export function isSafeHttpUrl(value) {
     return false;
   }
 }
+
+export function greeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 4) return 'Still up?';
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/** Card facts as short chips with a tone (path, step, info, warn, danger, muted) for consistent styling. */
+export function metaChips(card, { waiting = false, now = new Date() } = {}) {
+  const chips = [];
+  if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
+  const step = stepLabel(card);
+  if (step) chips.push({ text: step, tone: 'step' });
+  if (waiting && card.wakeAt) chips.push({ text: `back ${relativeTime(card.wakeAt, now)}`, tone: 'info' });
+  if (card.deadline) {
+    chips.push(card.isOverdue
+      ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }
+      : { text: `due ${relativeTime(card.deadline, now)}`, tone: 'warn' });
+  }
+  if (card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
+  return chips;
+}
+
+export function summaryLine(dashboard) {
+  const now = dashboard.now.length;
+  const reminders = dashboard.now.filter((c) => c.needsAttention).length;
+  const waiting = dashboard.waiting.length;
+  if (!now && !waiting) return 'All clear. Nothing needs you right now.';
+  const parts = [now ? `${now} thing${now > 1 ? 's' : ''} to do now` : 'Nothing to do right now'];
+  if (reminders) parts.push(`${reminders} reminder${reminders > 1 ? 's' : ''}`);
+  if (waiting) parts.push(`${waiting} waiting`);
+  return `${parts.join(' · ')}.`;
+}
+
+/** Share of the current timer phase that has elapsed (0 when idle). */
+export function pomodoroFraction(p, now = new Date()) {
+  if (!p || p.phase === 'idle') return 0;
+  const minutes = { focus: p.focusMinutes, shortBreak: p.shortBreakMinutes, longBreak: p.longBreakMinutes }[p.phase] ?? p.focusMinutes;
+  const total = minutes * 60;
+  const remaining = p.running && p.endsAt ? Math.max(0, (new Date(p.endsAt) - now) / 1000) : p.remainingSeconds;
+  return total > 0 ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
+}

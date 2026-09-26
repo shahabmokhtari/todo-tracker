@@ -38,7 +38,8 @@ public sealed record OverviewDto(
     int WaitingCount,
     DateTimeOffset? NextWakeAt,
     string? NextWakeIn,
-    Guid GroupId);
+    Guid GroupId,
+    bool HasChildren);
 
 public sealed record NoteDto(Guid Id, Guid ItemId, string ItemTitle, DateTimeOffset At, string Text, string Author, string AuthorKind, string? SourceUrl, string? SourceTitle);
 
@@ -140,7 +141,8 @@ public static class Wire
                 o.WaitingCount,
                 o.NextWakeAt,
                 o.NextWakeAt is { } w ? RelativeTime.Format(w, now) : null,
-                o.Item.GroupId)).ToList(),
+                o.Item.GroupId,
+                o.Item.Children.Count > 0)).ToList(),
             snapshot.RecentNotes.Select(n => Note(n.Item, n.Note)).ToList(),
             Pomodoro(board, now));
     }

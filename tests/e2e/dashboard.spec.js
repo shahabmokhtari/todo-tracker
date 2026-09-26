@@ -19,7 +19,7 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await page.goto(launch.url);
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#board')).toBeVisible();
-  await expect(page.locator('#tabs .tab')).toHaveText([/All/, /Work/, /Personal/, '+']);
+  await expect(page.locator('#tabs .tab')).toHaveText([/All/, /Work/, /Personal/, '']);
   errors.length = 0; // the 401 from the unauthenticated visit above is expected
 
   // Quick capture with priority syntax becomes the focus card.
@@ -38,20 +38,20 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await page.keyboard.press('Escape');
 
   await expect(page.locator('.focus-title')).toHaveText('Ring 0');
-  await expect(page.locator('.focus-card .meta')).toContainText('Step 1 of 2');
+  await expect(page.locator('.focus-card .focus-sub')).toContainText('Step 1 of 2');
   // Hidden panels must not block clicks or render (regression: CSS display overrode [hidden]).
   await expect(page.locator('#drawer')).toBeHidden();
   await expect(page.locator('.menu').first()).toBeHidden();
   await expect(page.locator('.inline-note').first()).toBeHidden();
 
   // Log a note, then finish the step: the next step is gated for 24h and waits.
-  await page.locator('.focus-card').getByRole('button', { name: '✎ Note' }).click();
+  await page.locator('.focus-card').getByRole('button', { name: 'Note', exact: true }).click();
   await page.locator('.focus-card .inline-note input').fill('Ring 0 healthy');
   await page.locator('.focus-card .inline-note button').click();
   await page.locator('#sec-notes > summary').click();
   await expect(page.locator('#sec-notes .note').first()).toContainText('Ring 0 healthy');
 
-  await page.locator('.focus-card').getByRole('button', { name: '✓ Done' }).click();
+  await page.locator('.focus-card').getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.locator('.focus-card')).toContainText('Nothing is due');
   await page.locator('#sec-waiting > summary').click();
   await expect(page.locator('#sec-waiting .item')).toContainText('Ring 1');
@@ -72,7 +72,7 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
 
   // Snooze from the focus card via the menu.
   await page.locator('#tabs .tab', { hasText: 'Personal' }).click();
-  await page.locator('.focus-card').getByRole('button', { name: '⏰ Later' }).click();
+  await page.locator('.focus-card').getByRole('button', { name: 'Later', exact: true }).click();
   await page.locator('.focus-card .menu').getByRole('menuitem', { name: '1 hour' }).click();
   await expect(page.locator('.focus-card')).toContainText('Nothing is due');
 

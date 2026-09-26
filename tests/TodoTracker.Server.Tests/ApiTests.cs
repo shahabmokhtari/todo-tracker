@@ -185,6 +185,8 @@ public sealed class ApiTests : IAsyncLifetime
         var tree = await _client.GetJson("/api/items");
 
         Assert.Equal("container", detail["state"]!.GetValue<string>());
+        var overview = (await _client.GetJson("/api/dashboard"))["overview"]!.AsArray();
+        Assert.True(overview.Single(o => o!["title"]!.GetValue<string>() == "Feature X")!["hasChildren"]!.GetValue<bool>());
         Assert.Equal(["Feature A"], detail["children"].Titles());
         Assert.Equal("started", detail["children"]![0]!["notes"]![0]!["text"]!.GetValue<string>());
         Assert.Equal(["Feature X", "Feature A"], detail["children"]![0]!["path"]!.AsArray().Select(p => p!.GetValue<string>()));
