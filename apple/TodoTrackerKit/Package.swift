@@ -14,5 +14,6 @@ let package = Package(
         // SwiftUI views and view model shared by the iOS and macOS apps.
         .target(name: "TodoTrackerUI", dependencies: ["TodoTrackerKit"]),
         .testTarget(name: "TodoTrackerKitTests", dependencies: ["TodoTrackerKit"]),
+        .testTarget(name: "TodoTrackerUITests", dependencies: ["TodoTrackerUI", "TodoTrackerKit"]),
     ]
 )

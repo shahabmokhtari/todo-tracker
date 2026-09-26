@@ -276,7 +276,7 @@ public partial class App : Application
         using (var ctx = visual.RenderOpen())
         {
             ctx.DrawRectangle(window.TryFindResource("ApplicationBackgroundBrush") as System.Windows.Media.Brush ?? window.Background ?? System.Windows.Media.Brushes.White, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
-            ctx.DrawRectangle(new System.Windows.Media.VisualBrush(root), null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+            ctx.DrawRectangle(new System.Windows.Media.VisualBrush(root) { Stretch = System.Windows.Media.Stretch.None, AlignmentX = System.Windows.Media.AlignmentX.Left, AlignmentY = System.Windows.Media.AlignmentY.Top, ViewboxUnits = System.Windows.Media.BrushMappingMode.Absolute, Viewbox = new Rect(root.RenderSize) }, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
         }
 
         bitmap.Render(visual);
