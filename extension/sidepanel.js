@@ -1,5 +1,6 @@
 import { createClient, normalizeServerUrl, pageSource } from './lib/client.js';
-import { relativeTime, priorityMeta, stepLabel } from './lib/format.js';
+import { relativeTime, priorityMeta, metaChips, summaryLine } from './lib/format.js';
+import { icon } from './lib/icons.js';
 
 const $ = (id) => document.getElementById(id);
 let client = null;
@@ -66,46 +67,60 @@ function render() {
   const d = dashboard;
   $('tabs').replaceChildren(
     tab(null, 'All', d.groups.reduce((n, g) => n + g.now, 0)),
-    ...d.groups.map((g) => tab(g.id, g.name, g.now)));
+    ...d.groups.map((g) => tab(g.id, g.name, g.now, g.color)));
 
   if (!d.now.some((c) => c.id === selectedId)) selectedId = d.focus?.id ?? null;
   const f = d.focus;
+  $('summary').textContent = summaryLine(d);
   $('focus').replaceChildren(f
     ? card(f, true)
-    : el('div', { class: 'empty' }, 'Nothing is due ✨', d.waiting[0] ? el('div', { class: 'muted' }, `Next: ${d.waiting[0].title} ${relativeTime(d.waiting[0].wakeAt)}`) : null));
+    : el('div', { class: 'hero empty' },
+      el('span', { class: 'eyebrow' }, icon('sparkles', { size: 13 }), 'All clear'),
+      el('div', { class: 'hero-title' }, 'Nothing is due.'),
+      d.waiting[0] ? el('div', { class: 'muted' }, `Next: ${d.waiting[0].title} ${relativeTime(d.waiting[0].wakeAt)}`) : null));
   const selected = d.now.find((c) => c.id === selectedId);
   const target = pinned ?? (selected ? { id: selected.id, title: selected.title } : null);
   $('note').hidden = !target;
-  $('note-target').textContent = target ? `Note for: ${target.title}` : '';
+  $('note-target').textContent = target ? `Note for “${target.title}”` : '';
 
   $('now-count').textContent = d.now.length || '';
-  $('now').replaceChildren(...d.now.filter((c) => c.id !== f?.id).map((c) => card(c)));
+  const rest = d.now.filter((c) => c.id !== f?.id);
+  $('now').replaceChildren(...(rest.length ? rest.map((c) => card(c)) : [el('li', { class: 'empty-row' }, 'Nothing else right now.')]));
   $('waiting-count').textContent = d.waiting.length || '';
-  $('waiting').replaceChildren(...d.waiting.map((c) => el('li', { class: 'item' },
-    el('span', { class: 'bar', style: `background:${priorityMeta(c.priority).color}` }),
-    el('div', null, el('div', { class: 'title' }, c.title), el('div', { class: 'muted' }, `back ${relativeTime(c.wakeAt)}`)))));
+  $('waiting').replaceChildren(...d.waiting.map((c) => {
+    const li = el('li', { class: 'item' },
+      el('span', { class: 'dot' }),
+      el('div', { class: 'grow' }, el('div', { class: 'title' }, c.title), el('div', { class: 'chips' }, ...metaChips(c, { waiting: true }).map(chip))));
+    li.style.setProperty('--prio', priorityMeta(c.priority).color);
+    return li;
+  }));
 }
 
-function tab(id, name, count) {
-  return el('button', {
+const chip = (c) => el('span', { class: `chip ${c.tone}` }, c.text);
+
+function tab(id, name, count, color) {
+  const button = el('button', {
     class: 'tab', 'aria-pressed': String(group === id),
     onclick: async () => { group = id; await chrome.storage.local.set({ groupId: id }); refresh(); },
-  }, name, count ? el('span', { class: 'badge' }, count) : null);
+  }, id ? el('span', { class: 'tab-dot' }) : null, name, count ? el('span', { class: 'badge' }, count) : null);
+  if (color) button.style.setProperty('--group', color);
+  return button;
 }
 
 function card(c, big = false) {
-  const meta = [c.breadcrumb?.join(' › '), stepLabel(c), c.deadline ? `due ${relativeTime(c.deadline)}` : null].filter(Boolean).join(' · ');
-  return el('li', { class: `item${big ? ' big' : ''}${c.needsAttention ? ' attention' : ''}${c.id === (pinned?.id ?? selectedId) ? ' selected' : ''}` },
-    el('span', { class: 'bar', style: `background:${priorityMeta(c.priority).color}` }),
+  const li = el('li', { class: `item${big ? ' hero' : ''}${c.needsAttention ? ' attention' : ''}${c.id === (pinned?.id ?? selectedId) ? ' selected' : ''}` },
+    big ? null : el('span', { class: 'dot' }),
     el('div', { class: 'grow', onclick: () => { selectedId = c.id; render(); }, title: 'Select for notes' },
-      el('div', { class: 'title' }, c.title),
-      meta ? el('div', { class: 'muted' }, meta) : null,
-      c.needsAttention && c.reminderMessage ? el('div', { class: 'reminder' }, `⏰ ${c.reminderMessage}`) : null),
+      big ? el('span', { class: 'eyebrow' }, icon(c.needsAttention ? 'clock' : 'target', { size: 13 }), c.needsAttention ? 'Reminder' : 'Do this now') : null,
+      el('div', { class: big ? 'hero-title' : 'title' }, c.title),
+      el('div', { class: 'chips' }, ...metaChips(c).map(chip)),
+      c.needsAttention && c.reminderMessage ? el('div', { class: 'reminder' }, icon('clock', { size: 13 }), c.reminderMessage) : null),
     el('div', { class: 'actions' },
-      c.hasChildren ? null : el('button', { title: 'Done', onclick: () => run(() => client.complete(c.id), `Done: ${c.title}`) }, '✓'),
-      el('button', { title: 'Snooze 1 hour', onclick: () => run(() => client.snooze(c.id, 60), 'Snoozed 1 hour') }, '⏰')));
+      c.hasChildren ? null : el('button', { class: big ? 'btn primary' : 'icon-btn', title: 'Done', 'aria-label': 'Done', onclick: () => run(() => client.complete(c.id), `Done: ${c.title}`) }, icon('check', { size: 16 }), big ? 'Done' : null),
+      el('button', { class: big ? 'btn' : 'icon-btn', title: 'Snooze 1 hour', 'aria-label': 'Snooze 1 hour', onclick: () => run(() => client.snooze(c.id, 60), 'Snoozed 1 hour') }, icon('clock', { size: 16 }), big ? '1h' : null)));
+  li.style.setProperty('--prio', priorityMeta(c.priority).color);
+  return li;
 }
-
 async function currentTab() {
   const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return active;
@@ -171,6 +186,8 @@ $('settings').addEventListener('click', async () => {
   showSetup();
 });
 
+$('open').append(icon('external', { size: 17 }));
+$('settings').append(icon('settings', { size: 17 }));
 chrome.tabs.onActivated.addListener(showPage);
 chrome.tabs.onUpdated.addListener((_, info) => info.title && showPage());
 setInterval(() => client && refresh(), 30000);

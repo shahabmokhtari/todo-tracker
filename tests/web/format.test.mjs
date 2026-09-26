@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -74,4 +74,45 @@ test('isSafeHttpUrl only allows http(s) links', () => {
   assert.equal(isSafeHttpUrl('javascript:alert(1)'), false);
   assert.equal(isSafeHttpUrl('not a url'), false);
   assert.equal(isSafeHttpUrl(null), false);
+});
+
+test('greeting follows the local time of day', () => {
+  assert.equal(greeting(new Date(2026, 0, 5, 6, 0)), 'Good morning');
+  assert.equal(greeting(new Date(2026, 0, 5, 13, 0)), 'Good afternoon');
+  assert.equal(greeting(new Date(2026, 0, 5, 19, 0)), 'Good evening');
+  assert.equal(greeting(new Date(2026, 0, 5, 1, 0)), 'Still up?');
+});
+
+test('metaChips turn card facts into short, toned chips', () => {
+  const chips = metaChips({
+    breadcrumb: ['Feature X', 'Feature A'], stepNumber: 2, stepCount: 3,
+    deadline: '2026-01-05T08:00:00Z', isOverdue: true, noteCount: 2,
+  }, { waiting: false, now });
+  assert.deepEqual(chips, [
+    { text: 'Feature X › Feature A', tone: 'path' },
+    { text: 'Step 2 of 3', tone: 'step' },
+    { text: 'overdue 1h ago', tone: 'danger' },
+    { text: '2 notes', tone: 'muted' },
+  ]);
+
+  const waiting = metaChips({ wakeAt: '2026-01-06T09:00:00Z', deadline: '2026-01-07T09:00:00Z', noteCount: 1 }, { waiting: true, now });
+  assert.deepEqual(waiting, [
+    { text: 'back in 1d', tone: 'info' },
+    { text: 'due in 2d', tone: 'warn' },
+    { text: '1 note', tone: 'muted' },
+  ]);
+});
+
+test('summaryLine describes the board in a calm sentence', () => {
+  assert.equal(summaryLine({ now: [], waiting: [] }), 'All clear. Nothing needs you right now.');
+  assert.equal(summaryLine({ now: [{}], waiting: [] }), '1 thing to do now.');
+  assert.equal(summaryLine({ now: [{}, { needsAttention: true }], waiting: [{}, {}, {}] }), '2 things to do now · 1 reminder · 3 waiting.');
+});
+
+test('pomodoroFraction shows elapsed share of the current phase', () => {
+  const base = { focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15 };
+  assert.equal(pomodoroFraction({ ...base, phase: 'idle', remainingSeconds: 1500 }, now), 0);
+  assert.equal(pomodoroFraction({ ...base, phase: 'focus', running: false, remainingSeconds: 750 }, now), 0.5);
+  const endsAt = new Date(now.getTime() + 60_000).toISOString();
+  assert.equal(pomodoroFraction({ ...base, phase: 'shortBreak', running: true, endsAt }, now), 0.8);
 });

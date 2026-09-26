@@ -64,10 +64,54 @@ public sealed class SidebarViewModelTests : IDisposable
         var waiting = Assert.Single(_vm.Waiting);
         Assert.Equal("Later thing", waiting.Title);
         Assert.Contains("back in 2h", waiting.Meta, StringComparison.Ordinal);
-        Assert.Equal(2, _vm.Workstreams.Count);
+        // Changed by the UI refresh (intentional): Workstreams now lists only tasks with subtasks, like the web
+        // dashboard. "Later thing" is a single task, so only the rollout remains.
+        Assert.Equal("Roll out feature X", Assert.Single(_vm.Workstreams).Title);
         Assert.Equal(["All", "Work", "Personal"], _vm.Groups.Select(g => g.Name));
         Assert.Equal(1, _vm.NowCount);
         Assert.Equal(1, _vm.WaitingCount);
+    }
+
+    [Fact]
+    public async Task Cards_expose_toned_chips_matching_the_web_dashboard()
+    {
+        var x = await Seed("Roll out feature X", Priority.High);
+        await _store.UpdateAsync(b => b.AddSteps(x.Id, ["Ring 0", "Ring 1"], TimeSpan.FromHours(24), Actor.User, T0));
+        var overdue = await _store.UpdateAsync(b => b.AddTask(new NewTask("Overdue doc") { Deadline = T0.AddHours(-1) }, Actor.User, T0));
+        await _store.UpdateAsync(b => b.AddNote(overdue.Id, "started", Actor.User, T0));
+        await _vm.RefreshAsync();
+
+        Assert.Equal([new ChipViewModel("Step 1 of 2", "step")], _vm.Focus!.Chips);
+        Assert.Equal([new ChipViewModel("overdue 1h ago", "danger"), new ChipViewModel("1 note", "muted")], _vm.Now.Single().Chips);
+    }
+
+    [Fact]
+    public async Task Summary_line_reads_like_the_web_dashboard()
+    {
+        await _vm.RefreshAsync();
+        Assert.Equal("All clear. Nothing needs you right now.", _vm.Summary);
+
+        var item = await Seed("A");
+        await Seed("B");
+        await _store.UpdateAsync(b => b.AddReminder(item.Id, T0, "go", Actor.User, T0));
+        var later = await Seed("C");
+        await _store.UpdateAsync(b => b.ScheduleNextAction(later.Id, T0.AddHours(1), Actor.User, T0));
+        await _vm.WhenIdleAsync();
+
+        Assert.Equal("2 things to do now · 1 reminder · 1 waiting.", _vm.Summary);
+    }
+
+    [Fact]
+    public async Task Pomodoro_exposes_elapsed_fraction_for_the_progress_ring()
+    {
+        await Seed("Deep work");
+        await _vm.RefreshAsync();
+        Assert.Equal(0, _vm.Pomodoro.Fraction);
+
+        await _vm.StartFocusCommand.ExecuteAsync(_vm.Focus);
+        _time.Advance(TimeSpan.FromMinutes(5));
+
+        Assert.Equal(0.2, _vm.Pomodoro.Fraction, 3);
     }
 
     [Fact]

@@ -4,57 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#6366f1">
   <title>Todo Tracker</title>
   <link rel="stylesheet" href="css/app.css">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true"></div>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Todo Tracker home">✓ Todo Tracker</a>
+    <a class="brand" href="/" aria-label="Todo Tracker home">
+      <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
+      <span class="brand-name">Todo Tracker</span>
+    </a>
     <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups"></nav>
     <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
   </header>
 
   <main class="layout">
-    <section id="login" class="card login" hidden>
-      <h1>Connect to your Todo Tracker</h1>
-      <p>Open this page from the sidebar (<em>Open dashboard</em>) or paste the token from <code>api-token</code> in your data folder.</p>
+    <section id="login" class="panel login" hidden>
+      <img class="login-logo" src="img/logo.svg" alt="" width="56" height="56">
+      <h1>Connect to Todo Tracker</h1>
+      <p class="muted">Open this page from the sidebar (<em>Open dashboard</em>) or paste the token from <code>api-token</code> in your data folder.</p>
       <form id="login-form" class="row">
         <input id="login-token" type="password" autocomplete="off" placeholder="API token" aria-label="API token" required>
-        <button class="primary" type="submit">Connect</button>
+        <button class="btn primary" type="submit">Connect</button>
       </form>
       <p id="login-error" class="error" role="alert"></p>
     </section>
 
     <div id="board" hidden>
+      <div class="hello">
+        <h1 id="greeting">Hello</h1>
+        <p id="summary" class="muted"></p>
+      </div>
+
       <form id="capture" class="capture" autocomplete="off">
-        <input id="capture-input" maxlength="300" aria-label="Quick add task"
-               placeholder="Add a task…  try: Deploy ring 2 !! @2h due:tomorrow">
-        <button class="primary" type="submit">Add</button>
+        <span class="capture-icon" id="capture-icon"></span>
+        <input id="capture-input" maxlength="300" aria-label="Quick add task" placeholder="What's on your mind?">
+        <kbd class="capture-kbd" title="Press N anywhere to add">N</kbd>
+        <button class="btn primary" type="submit">Add</button>
       </form>
+      <div class="hints" id="hints" aria-hidden="true">
+        <span class="hint"><code>!!</code> critical</span>
+        <span class="hint"><code>!</code> high</span>
+        <span class="hint"><code>@2h</code> later</span>
+        <span class="hint"><code>@tomorrow</code> 9:00</span>
+        <span class="hint"><code>due:3d</code> deadline</span>
+      </div>
 
       <section id="focus" class="focus" aria-label="Do this now"></section>
 
-      <details id="sec-now" class="section" open>
-        <summary><span>Do now</span><span class="count"></span></summary>
-        <ul class="list"></ul>
-      </details>
-      <details id="sec-waiting" class="section">
-        <summary><span>Waiting</span><span class="count"></span></summary>
-        <ul class="list"></ul>
-      </details>
-      <details id="sec-overview" class="section" open>
-        <summary><span>Workstreams</span><span class="count"></span></summary>
-        <ul class="list"></ul>
-      </details>
-      <details id="sec-notes" class="section">
-        <summary><span>Recent notes</span><span class="count"></span></summary>
-        <ul class="list"></ul>
-        <p class="more"><a href="report.html">Full timeline →</a></p>
-      </details>
+      <div class="columns">
+        <div class="column">
+          <details id="sec-now" class="panel section" open>
+            <summary><span class="section-title">Do now</span><span class="count"></span></summary>
+            <ul class="list"></ul>
+          </details>
+          <details id="sec-waiting" class="panel section">
+            <summary><span class="section-title">Waiting</span><span class="count"></span></summary>
+            <ul class="list"></ul>
+          </details>
+        </div>
+        <div class="column">
+          <details id="sec-overview" class="panel section" open>
+            <summary><span class="section-title">Workstreams</span><span class="count"></span></summary>
+            <ul class="list"></ul>
+          </details>
+          <details id="sec-notes" class="panel section">
+            <summary><span class="section-title">Recent notes</span><span class="count"></span></summary>
+            <ul class="list"></ul>
+            <p class="more"><a href="report.html">Full timeline →</a></p>
+          </details>
+        </div>
+      </div>
     </div>
   </main>
 
+  <div id="scrim" class="scrim" hidden></div>
   <aside id="drawer" class="drawer" hidden aria-label="Task details"></aside>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="js/app.js"></script>

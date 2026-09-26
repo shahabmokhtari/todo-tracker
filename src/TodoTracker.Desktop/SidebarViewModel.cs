@@ -71,6 +71,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     public partial string? NextUpText { get; set; }
 
     [ObservableProperty]
+    public partial string Summary { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial bool IsCompact { get; set; }
 
     public string CompactSummary => NowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -123,6 +126,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         WaitingCount = snapshot.Waiting.Count;
         HasAttention = snapshot.HasAttention;
         NextUpText = snapshot.NextUp;
+        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
     }
 
@@ -399,6 +403,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         int NowCount,
         bool HasAttention,
         string? NextUp,
+        int Reminders,
         PomodoroState Pomodoro,
         string? PomodoroItem,
         bool GroupMissing);
@@ -407,7 +412,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     {
         if (groupId is { } g && !board.Groups.Any(x => x.Id == g))
         {
-            return new Snapshot([], null, [], [], [], [], 0, false, null, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true);
+            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true);
         }
 
         var d = Agenda.Build(board, now, recentNoteCount: 6, groupId: groupId);
@@ -438,7 +443,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             cards.FirstOrDefault(),
             cards.Skip(1).ToList(),
             d.Waiting.Select(e => ToCard(e, now)).ToList(),
-            d.Overview.Select(o => new WorkstreamViewModel(
+            // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
+            d.Overview.Where(o => o.Item.Children.Count > 0).Select(o => new WorkstreamViewModel(
                 o.Item.Id,
                 o.Item.Title,
                 PriorityPalette.ColorOf(o.TopPriority),
@@ -448,6 +454,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             d.Now.Count,
             d.Now.Any(e => e.NeedsAttention),
             nextUp,
+            d.Now.Count(e => e.NeedsAttention),
             PomodoroState.Of(board.Pomodoro, now),
             board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
             GroupMissing: false);
@@ -497,7 +504,58 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             IsWaiting = e.State == ItemState.Waiting && !e.NeedsAttention,
             CanComplete = e.State == ItemState.Actionable,
             LastNote = item.Notes.Count > 0 ? item.Notes[^1].Text : null,
+            Chips = ChipsFor(e, now),
         };
+    }
+
+    /// <summary>Same wording as the web dashboard's summaryLine().</summary>
+    internal static string SummaryLine(int now, int reminders, int waiting)
+    {
+        if (now == 0 && waiting == 0)
+        {
+            return "All clear. Nothing needs you right now.";
+        }
+
+        var parts = new List<string> { now > 0 ? $"{now} thing{(now > 1 ? "s" : string.Empty)} to do now" : "Nothing to do right now" };
+        if (reminders > 0)
+        {
+            parts.Add($"{reminders} reminder{(reminders > 1 ? "s" : string.Empty)}");
+        }
+
+        if (waiting > 0)
+        {
+            parts.Add($"{waiting} waiting");
+        }
+
+        return string.Join(" · ", parts) + ".";
+    }
+
+    /// <summary>Mirrors metaChips() in format.js (the breadcrumb is shown separately in the sidebar).</summary>
+    private static List<ChipViewModel> ChipsFor(AgendaEntry e, DateTimeOffset now)
+    {
+        var item = e.Item;
+        var chips = new List<ChipViewModel>();
+        if (item.Parent is { Sequential: true } parent)
+        {
+            chips.Add(new($"Step {parent.Children.ToList().IndexOf(item) + 1} of {parent.Children.Count}", "step"));
+        }
+
+        if (e.State == ItemState.Waiting && e.WakeAt is { } wake)
+        {
+            chips.Add(new($"back {RelativeTime.Format(wake, now)}", "info"));
+        }
+
+        if (item.Deadline is { } deadline)
+        {
+            chips.Add(e.IsOverdue ? new($"overdue {RelativeTime.Format(deadline, now)}", "danger") : new($"due {RelativeTime.Format(deadline, now)}", "warn"));
+        }
+
+        if (item.Notes.Count > 0)
+        {
+            chips.Add(new(item.Notes.Count == 1 ? "1 note" : $"{item.Notes.Count} notes", "muted"));
+        }
+
+        return chips;
     }
 
     private static string WorkstreamSummary(OverviewEntry o, DateTimeOffset now)

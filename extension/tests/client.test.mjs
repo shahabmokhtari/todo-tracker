@@ -89,10 +89,12 @@ test('pageSource only attaches http(s) pages', () => {
   assert.equal(pageSource(undefined), null);
 });
 
-test('extension format.js is an exact copy of the web one (no drift)', () => {
-  const web = readFileSync(new URL('../../src/TodoTracker.Server/wwwroot/js/format.js', import.meta.url), 'utf8');
-  const ext = readFileSync(new URL('../lib/format.js', import.meta.url), 'utf8');
-  assert.equal(ext.replace(/\r\n/g, '\n'), web.replace(/\r\n/g, '\n'));
+test('extension format.js and icons.js are exact copies of the web ones (no drift)', () => {
+  for (const file of ['format.js', 'icons.js']) {
+    const web = readFileSync(new URL(`../../src/TodoTracker.Server/wwwroot/js/${file}`, import.meta.url), 'utf8');
+    const ext = readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8');
+    assert.equal(ext.replace(/\r\n/g, '\n'), web.replace(/\r\n/g, '\n'), file);
+  }
 });
 
 test('manifest only requests loopback host access', () => {

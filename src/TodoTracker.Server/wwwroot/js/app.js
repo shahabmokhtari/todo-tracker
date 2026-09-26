@@ -1,5 +1,6 @@
 import { api, post, patch, put, del, h, ApiError } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction } from './format.js';
+import { icon, ring } from './icons.js';
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
@@ -26,7 +27,7 @@ async function refresh({ background = false } = {}) {
       setGroup(null);
       return refresh();
     }
-    toast(err.message);
+    toast(err.message, 'error');
   }
 }
 
@@ -76,19 +77,20 @@ async function act(promise, message) {
     if (message) toast(message);
   } catch (err) {
     ok = false;
-    toast(err.message);
+    toast(err.message, 'error');
   }
   await refresh();
   if (state.drawerId) await openDrawer(state.drawerId, { keepEdits: true });
   return ok;
 }
 
-function toast(message) {
+function toast(message, tone = 'ok') {
   const el = $('#toast');
-  el.textContent = message;
+  el.className = `toast ${tone}`;
+  el.replaceChildren(icon(tone === 'error' ? 'x' : 'check', { size: 16 }), h('span', null, message));
   el.hidden = false;
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => (el.hidden = true), 3500);
+  toast.timer = setTimeout(() => (el.hidden = true), 3200);
 }
 
 function setGroup(id) {
@@ -101,12 +103,16 @@ function setGroup(id) {
 
 function render() {
   const d = state.dashboard;
+  $('#greeting').textContent = greeting();
+  $('#summary').textContent = summaryLine(d);
   renderTabs(d);
   renderFocus(d);
-  renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c)), d.now.length);
-  renderSection('#sec-waiting', d.waiting.map((c) => card(c, { waiting: true })), d.waiting.length);
-  renderSection('#sec-overview', d.overview.map(workstream), d.overview.length);
-  renderSection('#sec-notes', d.recentNotes.map(noteRow), d.recentNotes.length);
+  renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c)), d.now.length, 'Nothing else right now. Nice.');
+  renderSection('#sec-waiting', d.waiting.map((c) => card(c, { waiting: true })), d.waiting.length, 'Nothing is parked.');
+  // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
+  const streams = d.overview.filter((o) => o.hasChildren);
+  renderSection('#sec-overview', streams.map(workstream), streams.length, 'Tasks with subtasks or rollout steps show up here with progress.');
+  renderSection('#sec-notes', d.recentNotes.map(noteRow), d.recentNotes.length, 'Notes you and your agents log appear here.');
   renderPomodoro(d.pomodoro);
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
 }
@@ -114,20 +120,23 @@ function render() {
 function renderTabs(d) {
   const total = d.groups.reduce((n, g) => n + g.now, 0);
   const attention = d.groups.some((g) => g.attention > 0);
-  const tab = (id, name, count, color, alert) =>
-    h('button', {
+  const tab = (id, name, count, color, alert) => {
+    const el = h('button', {
       role: 'tab',
       class: 'tab',
       'aria-selected': String((state.group || null) === id),
       onclick: () => { setGroup(id); refresh(); },
       ondblclick: id ? () => editGroup(d.groups.find((g) => g.id === id)) : undefined,
       title: id ? 'Double-click to rename or delete' : 'All groups',
-      dataset: color ? { color } : undefined,
-    }, name, count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
+    }, id ? h('span', { class: 'dot' }) : null, name, count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
+    if (color) el.style.setProperty('--group', color);
+    return el;
+  };
 
-  const tabs = [tab(null, 'All', total, null, attention), ...d.groups.map((g) => tab(g.id, g.name, g.now, g.color, g.attention > 0))];
-  tabs.forEach((t) => t.dataset.color && t.style.setProperty('--group', t.dataset.color));
-  $('#tabs').replaceChildren(...tabs, h('button', { class: 'tab add', title: 'Add group', 'aria-label': 'Add group', onclick: addGroup }, '+'));
+  $('#tabs').replaceChildren(
+    tab(null, 'All', total, null, attention),
+    ...d.groups.map((g) => tab(g.id, g.name, g.now, g.color, g.attention > 0)),
+    h('button', { class: 'tab add', title: 'Add group', 'aria-label': 'Add group', onclick: addGroup }, icon('plus', { size: 16 })));
 }
 
 function renderFocus(d) {
@@ -135,27 +144,40 @@ function renderFocus(d) {
   if (!f) {
     const next = d.waiting[0];
     $('#focus').replaceChildren(h('div', { class: 'focus-card empty' },
-      h('div', { class: 'eyebrow' }, 'Do this now'),
-      h('div', { class: 'focus-title' }, 'Nothing is due. Enjoy the calm ✨'),
-      next ? h('div', { class: 'meta' }, `Next: ${next.title} ${relativeTime(next.wakeAt)}`) : null));
+      h('div', { class: 'focus-top' }, h('span', { class: 'eyebrow' }, icon('sparkles', { size: 14 }), 'All clear')),
+      h('div', { class: 'empty-row' },
+        h('div', { class: 'empty-illustration' }, icon('check', { size: 28 })),
+        h('div', null,
+          h('div', { class: 'focus-title' }, 'Nothing is due. Enjoy the calm.'),
+          next ? h('div', { class: 'muted' }, `Next up: ${next.title} ${relativeTime(next.wakeAt)}`) : h('div', { class: 'muted' }, 'Capture the next thing whenever it comes to mind.')))));
     return;
   }
 
+  const meta = priorityMeta(f.priority);
+  const chips = metaChips(f).filter((c) => c.tone !== 'step');
+  const sub = [];
+  if (f.stepNumber) {
+    sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
+  }
+  if (chips.length) sub.push(h('div', { class: 'meta' }, ...chips.map(chip)));
+
   const el = h('div', { class: `focus-card${f.needsAttention ? ' attention' : ''}` },
-    h('div', { class: 'eyebrow' }, f.needsAttention ? '⏰ Reminder' : 'Do this now'),
-    h('button', { class: 'focus-title link', onclick: () => openDrawer(f.id) }, f.title),
-    metaLine(f),
-    f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder' }, f.reminderMessage) : null,
-    f.lastNote ? h('div', { class: 'last-note' }, `Last note: ${f.lastNote}`) : null,
+    h('div', { class: 'focus-top' },
+      h('span', { class: 'eyebrow' }, icon(f.needsAttention ? 'clock' : 'target', { size: 14 }), f.needsAttention ? 'Reminder' : 'Do this now'),
+      h('span', { class: 'prio-pill' }, meta.label)),
+    h('button', { class: 'focus-title', onclick: () => openDrawer(f.id) }, f.title),
+    sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
+    f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
+    f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
     actions(f, { big: true }));
-  el.style.setProperty('--prio', priorityMeta(f.priority).color);
+  el.style.setProperty('--prio', meta.color);
   $('#focus').replaceChildren(el);
 }
 
-function renderSection(selector, rows, count) {
+function renderSection(selector, rows, count, emptyText) {
   const section = $(selector);
   section.querySelector('.count').textContent = count ? String(count) : '';
-  section.querySelector('.list').replaceChildren(...(rows.length ? rows : [h('li', { class: 'empty' }, 'Nothing here')]));
+  section.querySelector('.list').replaceChildren(...(rows.length ? rows : [h('li', { class: 'empty' }, emptyText)]));
   const key = `tt.open.${section.id}`;
   if (!section.dataset.bound) {
     section.dataset.bound = '1';
@@ -165,27 +187,25 @@ function renderSection(selector, rows, count) {
   }
 }
 
-function metaLine(c, { waiting = false } = {}) {
-  const bits = [];
-  if (c.breadcrumb?.length) bits.push(c.breadcrumb.join(' › '));
-  const step = stepLabel(c);
-  if (step) bits.push(step);
-  if (waiting && c.wakeAt) bits.push(`back ${relativeTime(c.wakeAt)}`);
-  if (c.deadline) bits.push(c.isOverdue ? `overdue ${relativeTime(c.deadline)}` : `due ${relativeTime(c.deadline)}`);
-  if (c.noteCount) bits.push(`${c.noteCount} note${c.noteCount > 1 ? 's' : ''}`);
-  return h('div', { class: `meta${c.isOverdue ? ' overdue' : ''}` }, bits.join(' · '));
-}
+const chip = (c) => h('span', { class: `chip ${c.tone}` }, c.text);
 
 function card(c, { waiting = false } = {}) {
   const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
-    h('span', { class: 'prio', title: priorityMeta(c.priority).label }),
+    h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', onclick: () => openDrawer(c.id) }, c.title),
-      metaLine(c, { waiting }),
-      c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, `⏰ ${c.reminderMessage}`) : null),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(chip)),
+      c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
   return li;
+}
+
+/** Icon button for rows; labeled button for the focus card. Both expose the same accessible name. */
+function actionButton({ name, iconName, big, tone = '', primary = false, onclick, title = name }) {
+  return big
+    ? h('button', { class: `btn ${primary ? 'primary' : ''}`.trim(), title, onclick }, icon(iconName, { size: 16 }), name)
+    : h('button', { class: `icon-btn ${tone}`.trim(), title, 'aria-label': name, onclick }, icon(iconName));
 }
 
 function actions(c, { waiting = false, big = false } = {}) {
@@ -198,14 +218,14 @@ function actions(c, { waiting = false, big = false } = {}) {
     input.value = '';
     noteBox.hidden = true;
     if (!(await act(post(`/api/items/${c.id}/notes`, { text }), 'Note saved'))) restoreNoteDrafts(new Map([[c.id, text]]));
-  } }, h('input', { placeholder: 'What did you do? What is next?', maxlength: 10000, 'aria-label': 'Note' }), h('button', { type: 'submit' }, 'Save'));
+  } }, h('input', { placeholder: 'What did you do? What is next?', maxlength: 10000, 'aria-label': 'Note' }), h('button', { class: 'btn primary', type: 'submit' }, 'Save'));
 
-  if (!waiting && !c.hasChildren) bar.append(h('button', { class: 'ok', title: 'Done', onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }, big ? '✓ Done' : '✓'));
-  if (c.needsAttention && c.reminderId) bar.append(h('button', { title: 'Dismiss reminder', onclick: () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`)) }, big ? 'Dismiss' : '🔕'));
-  if (waiting) bar.append(h('button', { title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }, big ? 'Do now' : '↩'));
+  if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Done', iconName: 'check', big, tone: 'ok', primary: true, onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
+  if (c.needsAttention && c.reminderId) bar.append(actionButton({ name: 'Dismiss', iconName: 'bellOff', big, title: 'Dismiss reminder', onclick: () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`)) }));
+  if (waiting) bar.append(actionButton({ name: 'Do now', iconName: 'undo', big, title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }));
   bar.append(snoozeButton(c, big));
-  bar.append(h('button', { title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }, big ? '✎ Note' : '✎'));
-  if (!waiting) bar.append(h('button', { title: 'Start focus timer', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }, big ? '▶ Focus' : '▶'));
+  bar.append(actionButton({ name: 'Note', iconName: 'pencil', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
+  if (!waiting) bar.append(actionButton({ name: 'Focus', iconName: 'play', big, tone: 'warn', title: 'Start focus timer', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
   return h('div', { class: 'action-wrap' }, bar, noteBox);
 }
 
@@ -214,8 +234,9 @@ function snoozeButton(c, big) {
     ...snoozeOptions().map((o) => h('button', {
       role: 'menuitem',
       onclick: () => act(post(`/api/items/${c.id}/schedule`, { inMinutes: o.minutes, notify: true }), `Snoozed until ${o.label.toLowerCase()}`),
-    }, o.label)));
-  const button = h('button', { title: 'Snooze (remind me later)', 'aria-haspopup': 'menu', onclick: (e) => { e.stopPropagation(); closeMenus(); menu.hidden = !menu.hidden; } }, big ? '⏰ Later' : '⏰');
+    }, icon('clock', { size: 15 }), o.label)));
+  const button = actionButton({ name: 'Later', iconName: 'clock', big, title: 'Snooze (remind me later)', onclick: (e) => { e.stopPropagation(); closeMenus(); menu.hidden = !menu.hidden; } });
+  button.setAttribute('aria-haspopup', 'menu');
   return h('span', { class: 'menu-wrap' }, button, menu);
 }
 
@@ -226,48 +247,62 @@ document.addEventListener('click', closeMenus);
 
 function workstream(o) {
   const pct = progressPercent(o.doneLeaves, o.totalLeaves);
-  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('span'));
+  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': `${pct}% done` }, h('span'));
   bar.firstChild.style.width = `${pct}%`;
-  const bits = [`${o.doneLeaves}/${o.totalLeaves} done`];
-  if (o.actionableCount) bits.push(`${o.actionableCount} now`);
-  if (o.waitingCount) bits.push(`${o.waitingCount} waiting`);
-  if (o.nextWakeAt) bits.push(`next ${relativeTime(o.nextWakeAt)}`);
+  const chips = [{ text: `${o.doneLeaves}/${o.totalLeaves} done`, tone: 'muted' }];
+  if (o.actionableCount) chips.push({ text: `${o.actionableCount} now`, tone: 'step' });
+  if (o.waitingCount) chips.push({ text: `${o.waitingCount} waiting`, tone: 'info' });
+  if (o.nextWakeAt) chips.push({ text: `next ${relativeTime(o.nextWakeAt)}`, tone: 'muted' });
   const li = h('li', { class: 'item' },
     h('span', { class: 'prio' }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', onclick: () => openDrawer(o.id) }, o.title),
       bar,
-      h('div', { class: 'meta' }, bits.join(' · '))),
-    h('a', { class: 'report-link', href: `report.html?id=${o.id}`, title: 'Full report' }, '📄'));
+      h('div', { class: 'meta' }, ...chips.map(chip))),
+    h('a', { class: 'report-link', href: `report.html?id=${o.id}`, title: 'Full report', 'aria-label': `Full report for ${o.title}` }, icon('report')));
   li.style.setProperty('--prio', priorityMeta(o.priority).color);
   return li;
 }
 
+function avatar(kind, author) {
+  const letter = kind === 'user' ? 'Y' : (author.split(':').pop().trim()[0] || '?').toUpperCase();
+  return h('span', { class: `avatar ${kind}`, 'aria-hidden': 'true' }, letter);
+}
+
 function noteRow(n) {
   return h('li', { class: 'note' },
-    h('div', null, n.text),
+    h('div', { class: 'note-text' }, n.text),
     h('div', { class: 'meta' },
+      h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
+      h('span', null, '·'),
       h('button', { class: 'link', onclick: () => openDrawer(n.itemId) }, n.itemTitle),
-      ` · ${n.author} · ${relativeTime(n.at)}`,
-      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, ` · ${n.sourceTitle || 'source'}`) : null));
+      h('span', null, '·'),
+      h('span', null, relativeTime(n.at)),
+      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null));
 }
 
 // ---------- pomodoro ----------
 
 function renderPomodoro(p) {
-  const label = { idle: 'Focus', focus: 'Focus', shortBreak: 'Break', longBreak: 'Long break' }[p.phase] ?? p.phase;
-  const time = h('span', { class: 'time', id: 'pomo-time' }, clock(p));
+  const label = { idle: 'Focus timer', focus: 'Focus', shortBreak: 'Break', longBreak: 'Long break' }[p.phase] ?? p.phase;
   const buttons = [];
-  if (p.phase === 'idle') buttons.push(h('button', { onclick: () => act(post('/api/pomodoro/start', { itemId: state.dashboard.focus?.id })) }, '▶'));
-  else {
+  if (p.phase === 'idle') {
+    buttons.push(h('button', { class: 'icon-btn', title: 'Start focus', 'aria-label': 'Start focus', onclick: () => act(post('/api/pomodoro/start', { itemId: state.dashboard.focus?.id })) }, icon('play', { size: 16 })));
+  } else {
     buttons.push(p.running
-      ? h('button', { title: 'Pause', onclick: () => act(post('/api/pomodoro/pause')) }, '⏸')
-      : h('button', { title: 'Resume', onclick: () => act(post('/api/pomodoro/resume')) }, '▶'));
-    buttons.push(h('button', { title: 'Skip', onclick: () => act(post('/api/pomodoro/skip')) }, '⏭'));
-    buttons.push(h('button', { title: 'Reset', onclick: () => act(post('/api/pomodoro/reset')) }, '⟲'));
+      ? h('button', { class: 'icon-btn', title: 'Pause', 'aria-label': 'Pause', onclick: () => act(post('/api/pomodoro/pause')) }, icon('pause', { size: 16 }))
+      : h('button', { class: 'icon-btn', title: 'Resume', 'aria-label': 'Resume', onclick: () => act(post('/api/pomodoro/resume')) }, icon('play', { size: 16 })));
+    buttons.push(h('button', { class: 'icon-btn', title: 'Skip', 'aria-label': 'Skip', onclick: () => act(post('/api/pomodoro/skip')) }, icon('skip', { size: 16 })));
+    buttons.push(h('button', { class: 'icon-btn', title: 'Reset', 'aria-label': 'Reset', onclick: () => act(post('/api/pomodoro/reset')) }, icon('reset', { size: 16 })));
   }
-  const item = p.itemTitle && p.phase !== 'idle' ? [h('span', { class: 'pomo-item' }, p.itemTitle)] : [];
-  $('#pomodoro').replaceChildren(h('span', { class: `phase ${p.phase}` }, `🍅 ${label}`), time, ...buttons, ...item);
+  const dial = h('span', { class: 'pomo-dial', id: 'pomo-dial' }, ring(pomodoroFraction(p), { size: 34, stroke: 3 }));
+  const el = $('#pomodoro');
+  el.className = `pomodoro ${p.phase === 'focus' ? 'focus' : p.phase === 'idle' ? '' : 'break'}`.trim();
+  el.replaceChildren(dial,
+    h('span', { class: 'pomo-text' },
+      h('span', { class: 'pomo-time', id: 'pomo-time' }, clock(p)),
+      h('span', { class: 'pomo-label' }, p.itemTitle && p.phase !== 'idle' ? `${label} · ${p.itemTitle}` : label)),
+    ...buttons);
 }
 
 function clock(p, now = Date.now()) {
@@ -280,6 +315,7 @@ setInterval(() => {
   const el = document.getElementById('pomo-time');
   if (p && el) {
     el.textContent = clock(p);
+    document.getElementById('pomo-dial')?.replaceChildren(ring(pomodoroFraction(p), { size: 34, stroke: 3 }));
     if (p.running && p.endsAt && new Date(p.endsAt) <= Date.now() && !clock.pending) {
       clock.pending = true;
       setTimeout(() => { clock.pending = false; refresh(); }, 2000);
@@ -307,6 +343,14 @@ async function editGroup(g) {
 
 // ---------- drawer (task details) ----------
 
+function closeDrawer() {
+  state.drawerId = null;
+  $('#drawer').hidden = true;
+  $('#scrim').hidden = true;
+}
+
+$('#scrim').addEventListener('click', closeDrawer);
+
 async function openDrawer(id, { keepEdits = false } = {}) {
   const edits = keepEdits && $('#drawer').dataset.itemId === id ? collectDrawerEdits() : new Map();
   state.drawerId = id;
@@ -314,12 +358,11 @@ async function openDrawer(id, { keepEdits = false } = {}) {
   try {
     item = await api(`/api/items/${id}`);
   } catch (err) {
-    state.drawerId = null;
-    $('#drawer').hidden = true;
-    return toast(err.message);
+    closeDrawer();
+    return toast(err.message, 'error');
   }
   const drawer = $('#drawer');
-  const close = () => { state.drawerId = null; drawer.hidden = true; };
+  const close = closeDrawer;
   const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
 
   const title = h('input', { value: item.title, maxlength: 300, dataset: { field: 'title' } });
@@ -351,51 +394,60 @@ async function openDrawer(id, { keepEdits = false } = {}) {
   const remindIn = h('select', null, ...snoozeOptions().map((o) => h('option', { value: o.minutes }, o.label)));
   const remindMsg = h('input', { placeholder: 'Reminder message (optional)', maxlength: 300 });
 
+  const section = (title, ...children) => h('section', { class: 'drawer-section' }, h('h3', null, title), ...children);
+  title.classList.add('title-input');
+  title.setAttribute('aria-label', 'Title');
+  const meta = priorityMeta(item.priority);
+  drawer.style.setProperty('--prio', meta.color);
+
   drawer.replaceChildren(
     h('div', { class: 'drawer-head' },
-      h('div', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
-      h('button', { class: 'close', 'aria-label': 'Close', onclick: close }, '✕')),
-    field('Title', title),
+      h('span', { class: 'prio-pill' }, meta.label),
+      h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: close }, icon('x'))),
+    title,
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
-    h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, ' Steps in order'), field('Hours between steps', delay)),
+    h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
     field('Group', group),
     h('div', { class: 'row buttons' },
-      h('button', { class: 'primary', onclick: save }, 'Save'),
+      h('button', { class: 'btn primary', onclick: save }, 'Save'),
       item.completedAt
-        ? h('button', { onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, 'Reopen')
-        : h('button', { class: 'ok', onclick: () => {
+        ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, icon('undo', { size: 16 }), 'Reopen')
+        : h('button', { class: 'btn success', onclick: () => {
           const open = item.children.filter((c) => !c.completedAt).length;
           if (open && !confirm(`Also mark ${open} open subtask${open > 1 ? 's' : ''} as done?`)) return;
           act(post(`/api/items/${id}/complete`), 'Done');
-        } }, '✓ Done'),
-      h('a', { class: 'button', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, 'Full report'),
-      h('button', { class: 'danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks?`)) { close(); act(del(`/api/items/${id}`), 'Deleted'); } } }, 'Delete')),
+        } }, icon('check', { size: 16 }), 'Done'),
+      h('a', { class: 'btn ghost', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, icon('report', { size: 16 }), 'Full report'),
+      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks?`)) { close(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
 
-    h('h3', null, `Subtasks${item.sequential ? ' (in order)' : ''}`),
-    h('ul', { class: 'subtasks' }, ...item.children.map((c) => h('li', { class: `sub ${c.state}` },
-      h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? '☑' : '☐'),
-      h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
-      h('span', { class: 'state' }, stateLabel(c))))),
-    h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (title) => post('/api/items', { title, parentId: id })); } }, subtaskInput, h('button', { type: 'submit' }, 'Add')),
-    h('details', null, h('summary', null, 'Add rollout steps'),
-      stepsInput,
-      h('div', { class: 'row' }, field('Hours between steps', stepDelay),
-        h('button', { onclick: () => {
-          const titles = stepsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
-          if (titles.length) act(post(`/api/items/${id}/steps`, { titles, stepDelayMinutes: Math.round(Number(stepDelay.value || 0) * 60) || null }), `Added ${titles.length} steps`);
-        } }, 'Add steps'))),
+    section(`Subtasks${item.sequential ? ' · in order' : ''}`,
+      h('ul', { class: 'subtasks' }, ...item.children.map((c) => h('li', { class: `sub ${c.state}` },
+        h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
+        h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
+        h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c))))),
+      h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (t) => post('/api/items', { title: t, parentId: id })); } }, subtaskInput, h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add')),
+      h('details', null, h('summary', null, 'Add rollout steps'),
+        stepsInput,
+        h('div', { class: 'row' }, field('Hours between steps', stepDelay),
+          h('button', { class: 'btn', onclick: () => {
+            const titles = stepsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
+            if (titles.length) act(post(`/api/items/${id}/steps`, { titles, stepDelayMinutes: Math.round(Number(stepDelay.value || 0) * 60) || null }), `Added ${titles.length} steps`);
+          } }, icon('layers', { size: 16 }), 'Add steps')))),
 
-    h('h3', null, 'Reminders'),
-    h('ul', { class: 'reminders' }, ...item.reminders.filter((r) => !r.dismissedAt).map((r) => h('li', null,
-      `${r.message} · ${relativeTime(r.dueAt)}`,
-      h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'dismiss')))),
-    h('div', { class: 'row' }, remindIn, remindMsg, h('button', { onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me')),
+    section('Reminders',
+      h('ul', { class: 'reminders' }, ...item.reminders.filter((r) => !r.dismissedAt).map((r) => h('li', null,
+        h('span', { class: 'author' }, icon('clock', { size: 14 }), `${r.message} · ${relativeTime(r.dueAt)}`),
+        h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'Dismiss')))),
+      h('div', { class: 'row' }, remindIn, remindMsg, h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me'))),
 
-    h('h3', null, 'Notes'),
-    h('form', { class: 'note-form', onsubmit: (e) => { e.preventDefault(); submitAndClear(noteInput, (text) => post(`/api/items/${id}/notes`, { text }), 'Note saved'); } }, noteInput, h('button', { type: 'submit' }, 'Add note')),
-    h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', null, n.text), h('div', { class: 'meta' }, `${n.author} · ${relativeTime(n.at)}`,
-      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer' }, ` · ${n.sourceTitle || 'source'}`) : null)))));
+    section('Notes',
+      h('form', { class: 'note-form', onsubmit: (e) => { e.preventDefault(); submitAndClear(noteInput, (text) => post(`/api/items/${id}/notes`, { text }), 'Note saved'); } }, noteInput, h('button', { class: 'btn primary', type: 'submit' }, 'Add note')),
+      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, n.text), h('div', { class: 'meta' },
+        h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
+        isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))));
+  $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
   drawer.querySelectorAll('[data-field]').forEach((el) => { el.dataset.original = fieldValue(el); });
   edits.forEach((value, name) => {
@@ -443,6 +495,8 @@ function toLocalInput(iso) {
 
 // ---------- forms & keyboard ----------
 
+$('#capture-icon').append(icon('plus', { size: 20 }));
+
 $('#capture').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('#capture-input');
@@ -464,7 +518,7 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeMenus(); $('#drawer').hidden = true; state.drawerId = null; }
+  if (e.key === 'Escape') { closeMenus(); closeDrawer(); }
   if (e.key === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); $('#capture-input').focus(); }
 });
 

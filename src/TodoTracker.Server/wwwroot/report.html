@@ -6,18 +6,23 @@
   <meta name="color-scheme" content="light dark">
   <title>Report · Todo Tracker</title>
   <link rel="stylesheet" href="css/app.css">
-  <link rel="icon" href="data:,">
+  <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
+  <div class="backdrop" aria-hidden="true"></div>
   <header class="topbar">
-    <a class="brand" href="/">✓ Todo Tracker</a>
-    <span class="count">Full report &amp; timeline</span>
-    <button id="print" type="button">Print / PDF</button>
+    <a class="brand" href="/">
+      <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
+      <span class="brand-name">Todo Tracker</span>
+    </a>
+    <span class="muted">Report &amp; timeline</span>
+    <button id="print" class="btn ghost push-right" type="button">Print / PDF</button>
   </header>
   <main class="layout report">
-    <section id="summary" class="card login"></section>
-    <section id="days"></section>
+    <section id="summary" class="panel report-hero"></section>
+    <section id="days" class="days"></section>
   </main>
   <script type="module" src="js/report.js"></script>
 </body>
 </html>
+
