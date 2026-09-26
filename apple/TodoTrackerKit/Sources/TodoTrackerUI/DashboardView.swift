@@ -269,9 +269,14 @@ public struct DashboardView: View {
     private var captureBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "plus").font(.body.weight(.semibold)).foregroundStyle(Theme.accent)
-            TextField("What's on your mind?", text: $model.quickText)
-                .textFieldStyle(.plain)
-                .onSubmit { model.capture() }
+            if scrollable {
+                TextField("What's on your mind?", text: $model.quickText)
+                    .textFieldStyle(.plain)
+                    .onSubmit { model.capture() }
+            } else {
+                // Offscreen snapshots can't render live text fields; show the placeholder instead.
+                Text("What's on your mind?").foregroundStyle(.tertiary).frame(maxWidth: .infinity, alignment: .leading)
+            }
             Button { model.capture() } label: {
                 Text("Add").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                     .padding(.horizontal, 14).padding(.vertical, 7)
