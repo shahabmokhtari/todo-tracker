@@ -99,6 +99,7 @@ public partial class App : Application
             Port = args.Port ?? TodoTrackerServerOptions.DefaultPort,
             ApiToken = token,
         };
+        ApplyTheme(args.Theme);
         _dataDirectory = options.DataDirectory;
         _server = TodoTrackerHost.Build(TodoTrackerHost.CreateBuilder(options));
         string? serverProblem = null;
@@ -193,6 +194,9 @@ public partial class App : Application
                 await SeedDemoAsync(http, timeout.Token).ConfigureAwait(true);
                 await Task.Delay(1500, timeout.Token).ConfigureAwait(true);
                 SaveScreenshot(window, shot);
+                ThemeMode = ThemeMode.Dark;
+                await Task.Delay(1000, timeout.Token).ConfigureAwait(true);
+                SaveScreenshot(window, Path.ChangeExtension(shot, null) + "-dark.png");
             }
 
             _viewModel.IsCompact = true;
@@ -247,6 +251,15 @@ public partial class App : Application
         await Post("/api/items", new { title = "Update onboarding doc", priority = "low" }).ConfigureAwait(true);
     }
 
+    /// <summary>"light" or "dark" forces a theme; anything else follows Windows.</summary>
+    private void ApplyTheme(string? theme) =>
+        ThemeMode = theme?.ToLowerInvariant() switch
+        {
+            "light" => ThemeMode.Light,
+            "dark" => ThemeMode.Dark,
+            _ => ThemeMode.System,
+        };
+
     internal static void SaveScreenshot(Window window, string path)
     {
         window.UpdateLayout();
@@ -281,7 +294,7 @@ public partial class App : Application
     }
 }
 
-internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null)
+internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null)
 {
     public static StartupArgs Parse(string[] args)
     {
@@ -296,6 +309,7 @@ internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? Dat
                 "--port" when i + 1 < args.Length => result with { Port = int.Parse(args[++i], CultureInfo.InvariantCulture) },
                 "--no-dock" => result with { NoDock = true },
                 "--screenshot" when i + 1 < args.Length => result with { Screenshot = args[++i] },
+                "--theme" when i + 1 < args.Length => result with { Theme = args[++i] },
                 _ => result,
             };
         }

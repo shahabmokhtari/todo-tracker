@@ -86,6 +86,10 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial string? LastNote { get; set; }
 
+    /// <summary>Short toned facts (step, back in, due/overdue, notes) rendered as chips, same as the web dashboard.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<ChipViewModel> Chips { get; set; } = [];
+
     public Guid Id { get; init; }
 
     public bool HasBreadcrumb => Breadcrumb.Length > 0;
@@ -103,6 +107,7 @@ public sealed partial class CardViewModel : ObservableObject
         IsWaiting = other.IsWaiting;
         CanComplete = other.CanComplete;
         LastNote = other.LastNote;
+        Chips = other.Chips;
         OnPropertyChanged(nameof(HasBreadcrumb));
     }
 }
@@ -129,6 +134,9 @@ public sealed partial class GroupTabViewModel : ObservableObject
 
     public string CountText => Count > 0 ? Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
 }
+
+/// <param name="Tone">step | info | warn | danger | muted (mapped to colors by the view).</param>
+public sealed record ChipViewModel(string Text, string Tone);
 
 public sealed record WorkstreamViewModel(Guid Id, string Title, string PriorityColor, int ProgressPercent, string Summary);
 
@@ -174,11 +182,18 @@ public sealed partial class PomodoroViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsPaused { get; set; }
 
+    /// <summary>Elapsed share (0..1) of the current phase, for the progress ring.</summary>
+    [ObservableProperty]
+    public partial double Fraction { get; set; }
+
+    private TimeSpan _duration = TimeSpan.FromMinutes(25);
+
     internal void Update(PomodoroState timer, string? itemTitle, DateTimeOffset now)
     {
         _phase = timer.Phase;
         _endsAt = timer.EndsAt;
         _remaining = timer.Remaining;
+        _duration = timer.Duration;
         IsRunning = timer.IsRunning;
         IsIdle = timer.Phase == PomodoroPhase.Idle;
         IsBreak = timer.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
@@ -203,16 +218,17 @@ public sealed partial class PomodoroViewModel : ObservableObject
 
         var seconds = (int)Math.Ceiling(left.TotalSeconds);
         TimeText = $"{seconds / 60:00}:{seconds % 60:00}";
+        Fraction = _phase == PomodoroPhase.Idle || _duration <= TimeSpan.Zero ? 0 : Math.Clamp(1 - (left / _duration), 0, 1);
     }
 }
 
 /// <summary>Immutable copy of the timer taken inside the store lock (the live timer must not leave the lock).</summary>
-public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning)
+public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration)
 {
     public static PomodoroState Of(PomodoroTimer timer, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(timer);
-        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning);
+        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase));
     }
 }
 
