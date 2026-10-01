@@ -91,7 +91,7 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    private async Task<MainWindow> StartAsync(StartupArgs args, string? token = null, bool dock = true, bool toasts = true)
+    private async Task<MainWindow> StartAsync(StartupArgs args, string? token = null, bool interactive = true, bool toasts = true)
     {
         var options = new TodoTrackerServerOptions
         {
@@ -122,7 +122,15 @@ public partial class App : Application
             new WpfShell(),
             new SidebarOptions(connection.BaseUrl, path => TodoTrackerHost.CreateLaunchUrl(services, path), mcpConfig, TimeZoneInfo.Local, connection.Token));
 
-        var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), dockOnStart: dock && !args.NoDock);
+        // Automated runs start floating and never touch the user's saved placement.
+        var placementStore = interactive ? new WindowPlacementStore(Path.Combine(options.DataDirectory, "desktop.json")) : null;
+        var placement = placementStore?.Load() ?? WindowPlacement.Default with { Mode = PlacementMode.Floating };
+        if (args.NoDock)
+        {
+            placement = placement with { Mode = PlacementMode.Floating };
+        }
+
+        var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);
         MainWindow = window;
 
         var events = services.GetRequiredService<ServerEvents>();
@@ -135,7 +143,14 @@ public partial class App : Application
 
         window.Show();
         await _viewModel.RefreshAsync().ConfigureAwait(true);
-        _viewModel.StatusMessage = serverProblem;
+        if (serverProblem is not null)
+        {
+            _viewModel.StatusMessage = serverProblem;
+        }
+
+        // Never leave the screen edge reserved if the process dies or exits without closing the window.
+        AppDomain.CurrentDomain.UnhandledException += (_, _) => window.ReleaseScreenEdge();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => window.ReleaseScreenEdge();
         if (args.Screenshot is { } shot && !args.SmokeTest)
         {
             // Developer/docs aid: render the sidebar to a PNG shortly after startup (works without an interactive desktop).
@@ -164,7 +179,7 @@ public partial class App : Application
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-            var window = await StartAsync(args with { DataDirectory = dataDir, Port = port }, token, dock: false, toasts: false).ConfigureAwait(true);
+            var window = await StartAsync(args with { DataDirectory = dataDir, Port = port }, token, interactive: false, toasts: false).ConfigureAwait(true);
             log.Add($"window loaded={window.IsLoaded}");
 
             using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
@@ -188,6 +203,8 @@ public partial class App : Application
             Check(_viewModel.Focus is null, "completing from sidebar clears focus");
             var dashboard = await http.GetFromJsonAsync<JsonElement>(new Uri("/api/dashboard", UriKind.Relative), timeout.Token).ConfigureAwait(true);
             Check(dashboard.GetProperty("now").GetArrayLength() == 0, "API sees sidebar completion");
+
+            await CheckPlacementAsync(window, log, timeout.Token).ConfigureAwait(true);
 
             if (args.Screenshot is { } shot)
             {
@@ -259,6 +276,65 @@ public partial class App : Application
             "dark" => ThemeMode.Dark,
             _ => ThemeMode.System,
         };
+
+    /// <summary>
+    /// Exercises every placement on the real shell: floating + always on top, docking right and left (the Windows
+    /// work area must shrink by the sidebar width), and floating again (the work area must be given back).
+    /// </summary>
+    private static async Task CheckPlacementAsync(MainWindow window, List<string> log, CancellationToken cancellationToken)
+    {
+        static void Check(bool condition, string what)
+        {
+            if (!condition)
+            {
+                throw new InvalidOperationException("Placement check failed: " + what);
+            }
+        }
+
+        async Task<Int32Rect> WaitForWorkArea(Func<Int32Rect, bool> condition)
+        {
+            for (var i = 0; i < 40; i++)
+            {
+                var area = DesktopSidebarHost.Monitors()[0].WorkArea;
+                if (condition(area))
+                {
+                    return area;
+                }
+
+                await Task.Delay(100, cancellationToken).ConfigureAwait(true);
+            }
+
+            return DesktopSidebarHost.Monitors()[0].WorkArea;
+        }
+
+        var monitor = DesktopSidebarHost.Monitors()[0];
+        var original = monitor.WorkArea;
+        var width = (int)Math.Round(WindowPlacement.DefaultDockWidth * monitor.Scale);
+
+        window.ApplyPlacement(WindowPlacement.Default with { Mode = PlacementMode.Floating, AlwaysOnTop = true });
+        Check(!window.IsDocked && window.Topmost && window.ResizeMode == ResizeMode.CanResize, "floating + always on top");
+        window.ApplyPlacement(window.Placement with { AlwaysOnTop = false });
+        Check(!window.Topmost, "floating without always on top");
+        log.Add("placement: floating ok");
+
+        window.ApplyPlacement(window.Placement with { Mode = PlacementMode.Docked, Edge = DockEdge.Right });
+        var right = await WaitForWorkArea(a => a.X + a.Width <= original.X + original.Width - width + 1).ConfigureAwait(true);
+        Check(window.IsDocked && window.Topmost && window.ResizeMode == ResizeMode.NoResize, "docked right state");
+        Check(right.X + right.Width <= original.X + original.Width - width + 1, $"work area shrinks on the right ({original} -> {right})");
+        Check(Math.Abs(((window.Left + window.ActualWidth) * monitor.Scale) - (monitor.Bounds.X + monitor.Bounds.Width)) <= 2, "window hugs the right edge");
+        log.Add($"placement: docked right ok (work area {original.Width}px -> {right.Width}px)");
+
+        window.ApplyPlacement(window.Placement with { Edge = DockEdge.Left });
+        var left = await WaitForWorkArea(a => a.X >= original.X + width - 1).ConfigureAwait(true);
+        Check(window.IsDocked && left.X >= original.X + width - 1, $"work area shrinks on the left ({original} -> {left})");
+        Check(Math.Abs((window.Left * monitor.Scale) - monitor.Bounds.X) <= 2, "window hugs the left edge");
+        log.Add("placement: docked left ok");
+
+        window.ApplyPlacement(window.Placement with { Mode = PlacementMode.Floating });
+        var restored = await WaitForWorkArea(a => a.Equals(original)).ConfigureAwait(true);
+        Check(!window.IsDocked && restored.Equals(original), $"work area restored after floating ({restored} vs {original})");
+        log.Add("placement: undock restores work area ok");
+    }
 
     internal static void SaveScreenshot(Window window, string path)
     {

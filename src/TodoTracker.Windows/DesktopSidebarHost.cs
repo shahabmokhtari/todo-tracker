@@ -1,17 +1,25 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
-using System.Windows.Media;
+using TodoTracker.Desktop;
 
 namespace TodoTracker.Windows;
 
-/// <summary>
-/// Registers the window as a Win32 AppBar docked to the right edge, so the shell shrinks the work area and
-/// maximized windows never cover the sidebar. Handles DPI, monitor work areas, shell repositioning, and
-/// full-screen apps (drops Topmost while a full-screen app is active).
-/// </summary>
-internal sealed partial class DesktopSidebarHost : IDisposable
+/// <summary>A physical monitor, in device pixels (as reported by Win32).</summary>
+internal sealed record DisplayMonitor(string DeviceName, bool IsPrimary, Int32Rect Bounds, Int32Rect WorkArea, double Scale)
 {
+    /// <summary>Work area in physical pixels: one coordinate space shared by all monitors, whatever their DPI.</summary>
+    public PlacementBounds WorkAreaPixels => new(WorkArea.X, WorkArea.Y, WorkArea.Width, WorkArea.Height);
+}
+
+/// <summary>
+/// Registers the window as a Win32 AppBar on the left or right edge of a chosen monitor, so the shell shrinks the
+/// work area and maximized windows never cover the sidebar. Handles per-monitor DPI, display/DPI changes, shell
+/// repositioning, and full-screen apps (drops Topmost while a full-screen app is active).
+/// </summary>
+internal sealed unsafe partial class DesktopSidebarHost : IDisposable
+{
+    private const int AbeLeft = 0;
     private const int AbeRight = 2;
     private const int AbmNew = 0;
     private const int AbmRemove = 1;
@@ -22,17 +30,21 @@ internal sealed partial class DesktopSidebarHost : IDisposable
     private const int WmActivate = 0x0006;
     private const int WmWindowPosChanged = 0x0047;
     private const int WmDisplayChange = 0x007E;
-    private const int WmSettingChange = 0x001A;
     private const int WmDpiChanged = 0x02E0;
     private const int AbnPosChanged = 1;
     private const int AbnFullscreenApp = 2;
-    private const uint MonitorDefaultToNearest = 2;
+    private const uint MonitorInfoPrimary = 1;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
     private const string AppBarMessageName = "TodoTracker.Windows.AppBarCallback";
+    private const int WmSysCommand = 0x0112;
+    private const int ScMaximize = 0xF030;
 
     private readonly Window _window;
     private HwndSource? _source;
     private IntPtr _handle;
     private uint _callbackMessage;
+    private uint _taskbarCreatedMessage;
     private bool _registered;
     private bool _positioning;
 
@@ -43,8 +55,75 @@ internal sealed partial class DesktopSidebarHost : IDisposable
 
     public bool IsDocked => _registered;
 
-    /// <summary>Width in device-independent pixels reserved at the right edge.</summary>
-    public double WidthInDips { get; set; } = 360;
+    /// <summary>Width in device-independent pixels reserved at the edge.</summary>
+    public double WidthInDips { get; set; } = WindowPlacement.DefaultDockWidth;
+
+    public DockEdge Edge { get; set; } = DockEdge.Right;
+
+    /// <summary>Device name of the monitor to dock on; null or unknown means the primary monitor.</summary>
+    public string? MonitorDeviceName { get; set; }
+
+    /// <summary>Raised when docking is lost to something outside our control (e.g. the shell refused the AppBar).</summary>
+    public event EventHandler? DockFailed;
+
+    /// <summary>Raised when Explorer restarts; every AppBar registration is gone and must be re-created.</summary>
+    public event EventHandler? ShellRestarted;
+
+    /// <summary>When true, maximize requests are ignored (a floating sidebar must not cover the whole screen).</summary>
+    public bool BlockMaximize { get; set; }
+
+    /// <summary>Hooks window messages; call once the window handle exists, before docking or floating.</summary>
+    public void Attach()
+    {
+        _handle = new WindowInteropHelper(_window).Handle;
+        if (_handle == IntPtr.Zero || _source is not null)
+        {
+            return;
+        }
+
+        _callbackMessage = RegisterWindowMessage(AppBarMessageName);
+        _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+        _source = HwndSource.FromHwnd(_handle);
+        _source?.AddHook(WndProc);
+    }
+
+    /// <summary>Current window bounds in physical pixels.</summary>
+    public PlacementBounds WindowBoundsPixels()
+    {
+        GetWindowRect(_handle, out var r);
+        return new PlacementBounds(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
+    }
+
+    /// <summary>Moves/resizes in physical pixels (correct across monitors with different DPI).</summary>
+    public void MoveWindowPixels(PlacementBounds bounds)
+    {
+        ArgumentNullException.ThrowIfNull(bounds);
+        SetWindowPos(_handle, IntPtr.Zero, (int)Math.Round(bounds.Left), (int)Math.Round(bounds.Top), (int)Math.Round(bounds.Width), (int)Math.Round(bounds.Height), SwpNoZOrder | SwpNoActivate);
+    }
+
+    public static IReadOnlyList<DisplayMonitor> Monitors()
+    {
+        var list = new List<DisplayMonitor>();
+        var handle = GCHandle.Alloc(list);
+        try
+        {
+            EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, &OnMonitor, GCHandle.ToIntPtr(handle));
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        // Primary first: it is the fallback target everywhere.
+        return list.OrderByDescending(m => m.IsPrimary).ToList();
+    }
+
+    public DisplayMonitor? TargetMonitor()
+    {
+        var monitors = Monitors();
+        return monitors.FirstOrDefault(m => string.Equals(m.DeviceName, MonitorDeviceName, StringComparison.OrdinalIgnoreCase))
+            ?? (monitors.Count > 0 ? monitors[0] : null);
+    }
 
     public void Dock()
     {
@@ -56,30 +135,30 @@ internal sealed partial class DesktopSidebarHost : IDisposable
         _positioning = true;
         try
         {
-            _handle = new WindowInteropHelper(_window).Handle;
-            if (_handle == IntPtr.Zero)
+            Attach();
+            if (_handle == IntPtr.Zero || TargetMonitor() is not { } monitor)
             {
                 return;
             }
 
-            if (_callbackMessage == 0)
+            var width = (int)Math.Round(WidthInDips * monitor.Scale);
+            var data = new AppBarData
             {
-                _callbackMessage = RegisterWindowMessage(AppBarMessageName);
-            }
+                cbSize = Marshal.SizeOf<AppBarData>(),
+                hWnd = _handle,
+                uCallbackMessage = _callbackMessage,
+                uEdge = Edge == DockEdge.Left ? AbeLeft : AbeRight,
+                // AppBars are positioned against the full monitor; the shell subtracts other bars (taskbar) in QueryPos.
+                rc = Edge == DockEdge.Left
+                    ? new NativeRect(monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.X + width, monitor.Bounds.Y + monitor.Bounds.Height)
+                    : new NativeRect(monitor.Bounds.X + monitor.Bounds.Width - width, monitor.Bounds.Y, monitor.Bounds.X + monitor.Bounds.Width, monitor.Bounds.Y + monitor.Bounds.Height),
+            };
 
-            if (_source is null)
-            {
-                _source = HwndSource.FromHwnd(_handle);
-                _source?.AddHook(WndProc);
-            }
-
-            var transforms = DpiTransforms.For(_window);
-            var widthInPixels = (int)Math.Round(WidthInDips * transforms.ToDevice.M11);
-            var data = AppBarData.Create(_handle, _callbackMessage, widthInPixels, transforms.ToDevice);
             if (!_registered)
             {
                 if (SHAppBarMessage(AbmNew, ref data) == 0)
                 {
+                    DockFailed?.Invoke(this, EventArgs.Empty);
                     return;
                 }
 
@@ -87,15 +166,23 @@ internal sealed partial class DesktopSidebarHost : IDisposable
             }
 
             SHAppBarMessage(AbmQueryPos, ref data);
-            data.rc.Left = data.rc.Right - widthInPixels;
+            if (Edge == DockEdge.Left)
+            {
+                data.rc.Right = data.rc.Left + width;
+            }
+            else
+            {
+                data.rc.Left = data.rc.Right - width;
+            }
+
             SHAppBarMessage(AbmSetPos, ref data);
 
-            var topLeft = transforms.FromDevice.Transform(new Point(data.rc.Left, data.rc.Top));
-            var bottomRight = transforms.FromDevice.Transform(new Point(data.rc.Right, data.rc.Bottom));
-            _window.Left = topLeft.X;
-            _window.Top = topLeft.Y;
-            _window.Width = bottomRight.X - topLeft.X;
-            _window.Height = bottomRight.Y - topLeft.Y;
+            // Move in device pixels first (correct across monitors with different DPI), then mirror into WPF's DIPs.
+            SetWindowPos(_handle, IntPtr.Zero, data.rc.Left, data.rc.Top, data.rc.Right - data.rc.Left, data.rc.Bottom - data.rc.Top, SwpNoZOrder | SwpNoActivate);
+            _window.Left = data.rc.Left / monitor.Scale;
+            _window.Top = data.rc.Top / monitor.Scale;
+            _window.Width = (data.rc.Right - data.rc.Left) / monitor.Scale;
+            _window.Height = (data.rc.Bottom - data.rc.Top) / monitor.Scale;
         }
         finally
         {
@@ -103,7 +190,7 @@ internal sealed partial class DesktopSidebarHost : IDisposable
         }
     }
 
-    /// <summary>Gives the screen space back (the window becomes a normal floating window).</summary>
+    /// <summary>Gives the screen space back. Safe to call from any thread (e.g. crash handlers) and repeatedly.</summary>
     public void Undock()
     {
         if (!_registered)
@@ -111,9 +198,9 @@ internal sealed partial class DesktopSidebarHost : IDisposable
             return;
         }
 
-        var data = AppBarData.Create(_handle, _callbackMessage, 0, Matrix.Identity);
-        SHAppBarMessage(AbmRemove, ref data);
         _registered = false;
+        var data = new AppBarData { cbSize = Marshal.SizeOf<AppBarData>(), hWnd = _handle };
+        SHAppBarMessage(AbmRemove, ref data);
     }
 
     public void Dispose()
@@ -125,6 +212,20 @@ internal sealed partial class DesktopSidebarHost : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == WmSysCommand && BlockMaximize && (wParam.ToInt32() & 0xFFF0) == ScMaximize)
+        {
+            handled = true;
+            return IntPtr.Zero;
+        }
+
+        if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
+        {
+            // Explorer restarted and forgot every AppBar: our registration is gone without ABM_REMOVE.
+            _registered = false;
+            _window.Dispatcher.BeginInvoke(() => ShellRestarted?.Invoke(this, EventArgs.Empty));
+            return IntPtr.Zero;
+        }
+
         if (!_registered)
         {
             return IntPtr.Zero;
@@ -138,7 +239,8 @@ internal sealed partial class DesktopSidebarHost : IDisposable
             case WmWindowPosChanged:
                 NotifyShell(AbmWindowPosChanged);
                 return IntPtr.Zero;
-            case WmDisplayChange or WmDpiChanged or WmSettingChange when !_positioning:
+            // Not WM_SETTINGCHANGE: our own ABM_SETPOS broadcasts it (work area changed), which would loop.
+            case WmDisplayChange or WmDpiChanged when !_positioning:
                 // Resolution, monitor layout, or scale changed: recompute the reserved pixels.
                 _window.Dispatcher.BeginInvoke(Dock);
                 return IntPtr.Zero;
@@ -169,6 +271,25 @@ internal sealed partial class DesktopSidebarHost : IDisposable
         SHAppBarMessage(message, ref data);
     }
 
+    [UnmanagedCallersOnly]
+    private static int OnMonitor(IntPtr monitor, IntPtr hdc, NativeRect* rect, IntPtr state)
+    {
+        var list = (List<DisplayMonitor>)GCHandle.FromIntPtr(state).Target!;
+        var info = new MonitorInfoEx { Size = sizeof(MonitorInfoEx) };
+        if (GetMonitorInfo(monitor, ref info))
+        {
+            var scale = GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0 && dpiX > 0 ? dpiX / 96.0 : 1.0;
+            list.Add(new DisplayMonitor(
+                new string(info.Device, 0, 32).TrimEnd('\0'),
+                (info.Flags & MonitorInfoPrimary) != 0,
+                info.Monitor.ToInt32Rect(),
+                info.Work.ToInt32Rect(),
+                scale));
+        }
+
+        return 1;
+    }
+
     [LibraryImport("shell32.dll")]
     private static partial nuint SHAppBarMessage(int dwMessage, ref AppBarData pData);
 
@@ -176,22 +297,23 @@ internal sealed partial class DesktopSidebarHost : IDisposable
     private static partial uint RegisterWindowMessage(string lpString);
 
     [LibraryImport("user32.dll")]
-    private static partial IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, delegate* unmanaged<IntPtr, IntPtr, NativeRect*, IntPtr, int> callback, IntPtr state);
 
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+    private static partial bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfoEx info);
 
-    private sealed record DpiTransforms(Matrix ToDevice, Matrix FromDevice)
-    {
-        public static DpiTransforms For(Window window)
-        {
-            var source = PresentationSource.FromVisual(window);
-            return source?.CompositionTarget is null
-                ? new DpiTransforms(Matrix.Identity, Matrix.Identity)
-                : new DpiTransforms(source.CompositionTarget.TransformToDevice, source.CompositionTarget.TransformFromDevice);
-        }
-    }
+    [LibraryImport("shcore.dll")]
+    private static partial int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct AppBarData
@@ -202,55 +324,26 @@ internal sealed partial class DesktopSidebarHost : IDisposable
         public int uEdge;
         public NativeRect rc;
         public nint lParam;
-
-        public static AppBarData Create(IntPtr handle, uint callbackMessage, int widthInPixels, Matrix toDevice)
-        {
-            // AppBars must be positioned against the full monitor rect; the shell subtracts other bars (taskbar) in QueryPos.
-            var monitor = MonitorRectFor(handle, toDevice);
-            return new AppBarData
-            {
-                cbSize = Marshal.SizeOf<AppBarData>(),
-                hWnd = handle,
-                uCallbackMessage = callbackMessage,
-                uEdge = AbeRight,
-                rc = new NativeRect { Left = monitor.Right - widthInPixels, Top = monitor.Top, Right = monitor.Right, Bottom = monitor.Bottom },
-            };
-        }
-
-        private static NativeRect MonitorRectFor(IntPtr handle, Matrix toDevice)
-        {
-            var monitor = MonitorFromWindow(handle, MonitorDefaultToNearest);
-            if (monitor != IntPtr.Zero)
-            {
-                var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-                if (GetMonitorInfo(monitor, ref info))
-                {
-                    return info.Monitor;
-                }
-            }
-
-            var area = SystemParameters.WorkArea;
-            var topLeft = toDevice.Transform(new Point(area.Left, area.Top));
-            var bottomRight = toDevice.Transform(new Point(area.Right, area.Bottom));
-            return new NativeRect { Left = (int)topLeft.X, Top = (int)topLeft.Y, Right = (int)bottomRight.X, Bottom = (int)bottomRight.Y };
-        }
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct MonitorInfo
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MonitorInfoEx
     {
         public int Size;
         public NativeRect Monitor;
-        public NativeRect WorkArea;
+        public NativeRect Work;
         public uint Flags;
+        public fixed char Device[32];
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    private struct NativeRect(int left, int top, int right, int bottom)
     {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
+        public int Left = left;
+        public int Top = top;
+        public int Right = right;
+        public int Bottom = bottom;
+
+        public readonly Int32Rect ToInt32Rect() => new(Left, Top, Right - Left, Bottom - Top);
     }
 }
