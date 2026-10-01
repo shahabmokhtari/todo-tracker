@@ -110,9 +110,17 @@ blocks the others.
 ## 6. UX specification
 
 ### Windows sidebar
-* Docked as a Win32 **AppBar** on the right edge. The shell shrinks the work area, so maximized windows stop at the
-  sidebar. The window re-docks when the shell moves bars. It drops *Topmost* while a full-screen app runs, uses
-  per-monitor DPI v2, and can be undocked from the menu.
+* **Placement** (menu › *Position*), remembered across restarts in `desktop.json`:
+  * **Dock right** (default) or **Dock left**. The sidebar registers as a Win32 **AppBar**, so the shell shrinks the
+    work area and maximized windows stop at the sidebar. It docks on any monitor (menu lists displays when there are
+    several), re-docks when the shell moves bars or the display or DPI changes, and drops *Topmost* while a
+    full-screen app runs. A docked sidebar is always on top.
+  * **Float as a window:** a normal movable, resizable window (drag the header, resize from any edge) with an optional
+    **Always on top**. Its bounds are remembered and pulled back on screen if their monitor is gone. Floating gives the
+    screen edge back.
+  * The collapse chevrons point toward the docked edge.
+  * Known limitation: the chosen display is remembered by its Windows device name (`\\.\DISPLAYn`), which Windows
+    can reassign when monitors are reconnected; a missing display falls back to the primary one.
 * Layout, top to bottom:
   1. Header: collapse to a 56px strip, open dashboard, and a menu.
   2. Group tabs with counts and an attention dot.
@@ -125,7 +133,11 @@ blocks the others.
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional
   *Start with Windows*.
-* The menu has: copy the MCP config, copy the API token (for the extension), connect Teams, reserve screen edge, and start with Windows.
+* The menu has: Position, Always on top, copy the MCP config, copy the API token (for the extension), connect Teams,
+  and start with Windows.
+* **System test:** `tests/system/placement.system-test.ps1` drives the real app with UI Automation through every
+  placement, checks the live work area, window bounds, and topmost state, and verifies placement persists across a
+  restart. It runs in Windows CI.
 
 ### Web dashboard and report (`http://127.0.0.1:5317`)
 * The dashboard has the same sections as the sidebar, plus a task drawer. The drawer edits the title, priority,

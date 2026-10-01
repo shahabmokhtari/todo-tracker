@@ -198,9 +198,9 @@
             <!-- Brand + summary + window actions -->
             <DockPanel Grid.Row="0" LastChildFill="True">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource IconButton}" Content="&#xE76C;" ToolTip="Collapse to a thin strip" AutomationProperties.Name="Collapse" Command="{Binding ToggleCompactCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" ToolTip="Open dashboard &amp; full report in browser" AutomationProperties.Name="Open dashboard" Command="{Binding OpenDashboardCommand}" />
-                    <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="Menu" AutomationProperties.Name="Menu" Click="OnMenuClick" />
+                    <Button x:Name="CollapseButton" Style="{StaticResource IconButton}" Content="&#xE76C;" ToolTip="Collapse to a thin strip" AutomationProperties.Name="Collapse" Command="{Binding ToggleCompactCommand}" WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" ToolTip="Open dashboard &amp; full report in browser" AutomationProperties.Name="Open dashboard" Command="{Binding OpenDashboardCommand}" WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="Menu" AutomationProperties.Name="Menu" Click="OnMenuClick" WindowChrome.IsHitTestVisibleInChrome="True" />
                 </StackPanel>
                 <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" VerticalAlignment="Center">
                     <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
@@ -408,7 +408,7 @@
             <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" Margin="0,0,0,12">
                 <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
             </Border>
-            <Button Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Expand sidebar" AutomationProperties.Name="Expand" Command="{Binding ToggleCompactCommand}" Margin="0,0,0,12" />
+            <Button x:Name="ExpandButton" Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Expand sidebar" AutomationProperties.Name="Expand" Command="{Binding ToggleCompactCommand}" Margin="0,0,0,12" WindowChrome.IsHitTestVisibleInChrome="True" />
             <Border CornerRadius="12" Padding="8,3" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" ToolTip="Things to do now">
                 <TextBlock Text="{Binding CompactSummary}" Foreground="White" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" />
             </Border>
