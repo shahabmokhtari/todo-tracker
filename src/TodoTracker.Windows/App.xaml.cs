@@ -122,12 +122,14 @@ public partial class App : Application
             new WpfShell(),
             new SidebarOptions(connection.BaseUrl, path => TodoTrackerHost.CreateLaunchUrl(services, path), mcpConfig, TimeZoneInfo.Local, connection.Token));
 
-        // Automated runs start floating and never touch the user's saved placement.
+        // Automated runs start floating and never touch the user's saved placement; --no-dock is a
+        // session-only override (floating, nothing saved).
         var placementStore = interactive ? new WindowPlacementStore(Path.Combine(options.DataDirectory, "desktop.json")) : null;
         var placement = placementStore?.Load() ?? WindowPlacement.Default with { Mode = PlacementMode.Floating };
         if (args.NoDock)
         {
             placement = placement with { Mode = PlacementMode.Floating };
+            placementStore = null;
         }
 
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);

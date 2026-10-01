@@ -158,8 +158,13 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             {
                 if (SHAppBarMessage(AbmNew, ref data) == 0)
                 {
-                    DockFailed?.Invoke(this, EventArgs.Empty);
-                    return;
+                    // ABM_NEW fails if the shell still has us registered (e.g. a stale entry): clear it and retry once.
+                    SHAppBarMessage(AbmRemove, ref data);
+                    if (SHAppBarMessage(AbmNew, ref data) == 0)
+                    {
+                        DockFailed?.Invoke(this, EventArgs.Empty);
+                        return;
+                    }
                 }
 
                 _registered = true;
@@ -220,8 +225,15 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
 
         if (_taskbarCreatedMessage != 0 && msg == _taskbarCreatedMessage)
         {
-            // Explorer restarted and forgot every AppBar: our registration is gone without ABM_REMOVE.
-            _registered = false;
+            // Explorer restarted (registration lost) - or, on Windows 10+, the primary display's DPI changed
+            // (registration kept). Remove unconditionally so the re-dock starts clean in both cases.
+            if (_registered)
+            {
+                _registered = false;
+                var stale = new AppBarData { cbSize = Marshal.SizeOf<AppBarData>(), hWnd = _handle };
+                SHAppBarMessage(AbmRemove, ref stale);
+            }
+
             _window.Dispatcher.BeginInvoke(() => ShellRestarted?.Invoke(this, EventArgs.Empty));
             return IntPtr.Zero;
         }

@@ -90,14 +90,16 @@ try {
   Eventually { -not (IsTopmost $hwnd) } 'floating window is not topmost by default'
   $transform = $win.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
   Check ($transform.Current.CanMove -and $transform.Current.CanResize) 'floating window can be moved and resized'
-  $transform.Move(400, 150); $transform.Resize(500, 700)
+  # Target fits any work area (CI runners are 1024x768), so on-screen clamping never kicks in.
+  $X = $original.Left + 100; $Y = $original.Top + 100; $W = 500; $H = [Math]::Min(700, $original.Height - 200)
+  $transform.Move($X, $Y); $transform.Resize($W, $H)
   Start-Sleep -Milliseconds 300
   $r = Rect $hwnd
-  Check ($r.L -eq 400 -and $r.T -eq 150 -and ($r.R - $r.L) -eq 500 -and ($r.B - $r.T) -eq 700) "moved/resized to 400,150 500x700 (got $($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
+  Check ($r.L -eq $X -and $r.T -eq $Y -and ($r.R - $r.L) -eq $W -and ($r.B - $r.T) -eq $H) "moved/resized to $X,$Y ${W}x$H (got $($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
 
   # 4. Always on top (only meaningful while floating). Toggled right after the move: the window must not jump.
   ToggleAlwaysOnTop $win
-  Eventually { $r = Rect $hwnd; $r.L -eq 400 -and $r.T -eq 150 } 'toggling always on top keeps the window where it is'
+  Eventually { $r = Rect $hwnd; $r.L -eq $X -and $r.T -eq $Y } 'toggling always on top keeps the window where it is'
   Wait { IsTopmost $hwnd } 'topmost'
   Check (IsTopmost $hwnd) 'Always on top makes the floating window topmost'
   Start-Sleep -Milliseconds 900  # placement save is debounced
@@ -114,7 +116,7 @@ try {
   Start-Sleep -Milliseconds 800
   $r = Rect $hwnd
   Check ((WorkArea).Equals($original)) 'restarted floating: no screen space reserved'
-  Check ([Math]::Abs($r.L - 400) -le 2 -and [Math]::Abs($r.T - 150) -le 2 -and [Math]::Abs(($r.R - $r.L) - 500) -le 2) "restarted at remembered bounds ($($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
+  Check ([Math]::Abs($r.L - $X) -le 2 -and [Math]::Abs($r.T - $Y) -le 2 -and [Math]::Abs(($r.R - $r.L) - $W) -le 2) "restarted at remembered bounds ($($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
   Eventually { IsTopmost $hwnd } 'restarted with always on top'
 
   # 6. Back to docked right, then exit: work area must be restored.

@@ -119,6 +119,8 @@ blocks the others.
     **Always on top**. Its bounds are remembered and pulled back on screen if their monitor is gone. Floating gives the
     screen edge back.
   * The collapse chevrons point toward the docked edge.
+  * Known limitation: the chosen display is remembered by its Windows device name (`\\.\DISPLAYn`), which Windows
+    can reassign when monitors are reconnected; a missing display falls back to the primary one.
 * Layout, top to bottom:
   1. Header: collapse to a 56px strip, open dashboard, and a menu.
   2. Group tabs with counts and an attention dot.

@@ -97,7 +97,7 @@ public partial class MainWindow : Window
     /// <summary>Moves the sidebar: dock to an edge (optionally of another monitor) or float as a normal window.</summary>
     internal void ApplyPlacement(WindowPlacement placement) => ApplyPlacement(placement, isFallbackRetry: false);
 
-    private void ApplyPlacement(WindowPlacement placement, bool isFallbackRetry)
+    private void ApplyPlacement(WindowPlacement placement, bool isFallbackRetry, bool persist = true)
     {
         ArgumentNullException.ThrowIfNull(placement);
 
@@ -163,6 +163,18 @@ public partial class MainWindow : Window
             _applying = false;
         }
 
+        if (persist)
+        {
+            Persist();
+        }
+    }
+
+    /// <summary>Only changes stacking: the window stays exactly where the user put it.</summary>
+    private void SetAlwaysOnTop(bool value)
+    {
+        var live = Placement.Mode == PlacementMode.Floating && IsLoaded && WindowState == WindowState.Normal && !_vm.IsCompact;
+        Placement = Placement with { AlwaysOnTop = value, Floating = live ? _appBar.WindowBoundsPixels() : Placement.Floating };
+        Topmost = Placement.IsTopmost;
         Persist();
     }
 
@@ -228,7 +240,8 @@ public partial class MainWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _appBar.Attach();
-        ApplyPlacement(Placement);
+        // Restoring what was loaded: nothing new to save.
+        ApplyPlacement(Placement, isFallbackRetry: false, persist: false);
         if (_interactive)
         {
             _hotKey = new GlobalHotKey(this, FocusCapture);
@@ -347,8 +360,8 @@ public partial class MainWindow : Window
             ToolTip = Placement.Mode == PlacementMode.Docked ? "A docked sidebar is always on top." : null,
         };
         // Checked/Unchecked (not Click) so mouse, keyboard, and UI Automation toggles all apply the change.
-        onTop.Checked += (_, _) => ApplyPlacement(Placement with { AlwaysOnTop = true });
-        onTop.Unchecked += (_, _) => ApplyPlacement(Placement with { AlwaysOnTop = false });
+        onTop.Checked += (_, _) => SetAlwaysOnTop(true);
+        onTop.Unchecked += (_, _) => SetAlwaysOnTop(false);
         menu.Items.Add(onTop);
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
