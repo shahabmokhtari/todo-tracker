@@ -8,9 +8,10 @@ namespace TodoTracker.Core.Vault;
 /// <summary>A task file that can't be understood safely; the store keeps the last good version and never writes it.</summary>
 public sealed class VaultFormatException(string message, Exception? inner = null) : IOException(message, inner);
 
-/// <summary>How dates are shown (local time zone), what "now" is (for timestamps the file doesn't have yet), and the
-/// file's folder relative to the vault root (to resolve relative attachment links).</summary>
-public sealed record TaskMarkdownContext(TimeZoneInfo TimeZone, DateTimeOffset Now, string FileDirectory);
+/// <summary>How dates are shown (local time zone), what "now" is (for timestamps the file doesn't have yet), the
+/// file's folder relative to the vault root (to resolve relative attachment links), and an optional seed (the file's
+/// path) that makes ids for hand-written lines stable across reads, so files are never rewritten just to add ids.</summary>
+public sealed record TaskMarkdownContext(TimeZoneInfo TimeZone, DateTimeOffset Now, string FileDirectory, string? IdSeed = null);
 
 /// <summary>Shared formatting for the markdown vault (dates, durations, YAML scalars, hidden JSON).</summary>
 internal static partial class VaultText
@@ -158,6 +159,74 @@ internal static partial class VaultText
 
     /// <summary>Stable, short Obsidian block id for a task (unless the file already gave it one).</summary>
     public static string BlockId(Guid id) => "t" + id.ToString("N")[^7..];
+
+    /// <summary>A deterministic GUID (version-8 layout) for <paramref name="key"/>.</summary>
+    public static Guid StableGuid(string key)
+    {
+        var hash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key));
+        var bytes = hash.AsSpan(0, 16).ToArray();
+        bytes[7] = (byte)((bytes[7] & 0x0F) | 0x80);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes);
+    }
+
+    /// <summary>Tracks fenced code blocks like CommonMark: a fence closes only with the same character, at least as long.</summary>
+    public sealed class Fence
+    {
+        private char _marker;
+        private int _length;
+
+        public bool IsOpen => _length > 0;
+
+        /// <summary>Feeds one line; returns true when the line is part of a code block (including its fence lines).</summary>
+        public bool Accept(string line)
+        {
+            var trimmed = line.TrimStart(' ', '\t');
+            if (IsOpen)
+            {
+                var closing = trimmed.TrimEnd();
+                if (closing.Length >= _length && closing.All(c => c == _marker))
+                {
+                    _length = 0;
+                }
+
+                return true;
+            }
+
+            if (trimmed.Length >= 3 && trimmed[0] is '`' or '~')
+            {
+                var run = 0;
+                while (run < trimmed.Length && trimmed[run] == trimmed[0])
+                {
+                    run++;
+                }
+
+                if (run >= 3 && !(trimmed[0] == '`' && trimmed[run..].Contains('`', StringComparison.Ordinal)))
+                {
+                    _marker = trimmed[0];
+                    _length = run;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>The fence that would close what is open (for text that ends inside a code block).</summary>
+        public string Closer => new(_marker, _length);
+    }
+
+    /// <summary>Adds a closing fence if <paramref name="text"/> ends inside a code block, so it can't swallow what follows.</summary>
+    public static string CloseFences(string text)
+    {
+        var fence = new Fence();
+        foreach (var line in text.Split('\n'))
+        {
+            fence.Accept(line);
+        }
+
+        return fence.IsOpen ? text + "\n" + fence.Closer : text;
+    }
 
     [GeneratedRegex(@"(Z|[+-]\d{2}:?\d{2})$", RegexOptions.IgnoreCase)]
     private static partial Regex HasZone();

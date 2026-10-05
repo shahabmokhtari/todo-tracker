@@ -44,6 +44,14 @@ public sealed partial class TaskBoard
     /// <summary>Ids in <paramref name="root"/>'s tree that are already used on this board.</summary>
     internal bool HasAnyId(WorkItem root) => root.SelfAndDescendants().Any(i => _index.ContainsKey(i.Id));
 
+    /// <summary>Stable re-sort of the top-level tasks (e.g. into the order a store remembered).</summary>
+    internal void ReorderRoots(Func<WorkItem, int> key)
+    {
+        var sorted = RootList.Select((r, i) => (r, i)).OrderBy(x => key(x.r)).ThenBy(x => x.i).Select(x => x.r).ToList();
+        RootList.Clear();
+        RootList.AddRange(sorted);
+    }
+
     /// <summary>A box was checked outside the app: finish the subtree and advance a sequence like the app would.</summary>
     internal void CompleteExternally(WorkItem item, Actor actor, DateTimeOffset now)
     {

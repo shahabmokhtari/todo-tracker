@@ -87,14 +87,16 @@ internal sealed class Frontmatter
                 continue;
             }
 
-            if (TopLevelKey(line) is { } k)
+            // Comments start their own block so they stay where the user put them when a key around them is rewritten.
+            var comment = line.StartsWith('#');
+            if (TopLevelKey(line) is { } k || (comment && key is not null))
             {
                 if (raw.Length > 0 || key is not null)
                 {
                     blocks.Add((key, raw.ToString()));
                 }
 
-                key = k;
+                key = comment ? null : TopLevelKey(line);
                 raw.Clear();
             }
 

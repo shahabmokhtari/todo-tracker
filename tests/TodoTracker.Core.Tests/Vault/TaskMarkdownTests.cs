@@ -321,6 +321,123 @@ public class TaskMarkdownTests
         Assert.Equal(3, parsed.Root.Children.Select(c => c.Id).Distinct().Count());
     }
 
+    /// <summary>Parse, render, parse again: the second render must be identical and keep <paramref name="mustKeep"/>.</summary>
+    private static string RoundTrip(string text, params string[] mustKeep)
+    {
+        var parsed = TaskMarkdown.Parse(text, "T", Utc);
+        var rendered = TaskMarkdown.Render(parsed.Root, Utc, parsed);
+        foreach (var keep in mustKeep)
+        {
+            Assert.Contains(keep, rendered, StringComparison.Ordinal);
+        }
+
+        var again = TaskMarkdown.Parse(rendered, "T", Utc);
+        Assert.Equal(rendered, TaskMarkdown.Render(again.Root, Utc, again));
+        return rendered;
+    }
+
+    [Fact]
+    public void An_unclosed_code_fence_in_details_cannot_swallow_the_subtasks()
+    {
+        var parsed = TaskMarkdown.Parse("# T\n\n- [ ] a\n- [ ] b\n", "T", Utc);
+        parsed.Root.Details = "Paste:\n```\nlet x = 1";
+
+        var reread = TaskMarkdown.Parse(TaskMarkdown.Render(parsed.Root, Utc, parsed), "T", Utc);
+
+        Assert.Equal(["a", "b"], reread.Root.Children.Select(c => c.Title));
+    }
+
+    [Fact]
+    public void Fences_close_only_on_the_same_marker()
+    {
+        var root = TaskMarkdown.Parse("# T\n\n````\n```\n## Subtasks\n````\n\n## Subtasks\n\n- [ ] real\n", "T", Utc).Root;
+
+        Assert.Equal(["real"], root.Children.Select(c => c.Title));
+        Assert.Contains("## Subtasks\n````", root.Details, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Example_checklists_inside_code_blocks_stay_examples()
+    {
+        var root = TaskMarkdown.Parse("# T\n\n## Subtasks\n\n- [ ] Document it\n\t```md\n\t- [ ] example\n\t```\n", "T", Utc).Root;
+
+        var only = Assert.Single(root.Children);
+        Assert.Empty(only.Children);
+        Assert.Contains("- [ ] example", only.Details, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Obsidian_tasks_conventions_survive_a_save()
+    {
+        RoundTrip(
+            "# T\n\n## Subtasks\n\n- [/] Halfway\n- [>] Forwarded\n- [-] Dropped\n- [ ] Medium 🔼\n",
+            "- [/] Halfway", "- [>] Forwarded", "- [-] Dropped", "- [ ] Medium 🔼");
+    }
+
+    [Fact]
+    public void Attachment_links_keep_their_exact_form()
+    {
+        RoundTrip(
+            "# T\n\n## Attachments\n\n- ![[diagram.png|300]]\n- [[spec.pdf]]\n- ![shot](shot.png)\n",
+            "- ![[diagram.png|300]]", "- [[spec.pdf]]", "- ![shot](shot.png)");
+    }
+
+    [Fact]
+    public void Headings_between_subtasks_and_sections_after_them_stay_in_place()
+    {
+        var text = RoundTrip(
+            "# T\n\n## Subtasks\n\n### Phase 1\n\n- [ ] a\n\n### Phase 2\n\n- [ ] b\n\n## References\n\nSee the wiki.\n",
+            "### Phase 1");
+
+        Assert.True(text.IndexOf("### Phase 1", StringComparison.Ordinal) < text.IndexOf("- [ ] a", StringComparison.Ordinal));
+        Assert.True(text.IndexOf("- [ ] a", StringComparison.Ordinal) < text.IndexOf("### Phase 2", StringComparison.Ordinal));
+        Assert.True(text.IndexOf("### Phase 2", StringComparison.Ordinal) < text.IndexOf("- [ ] b", StringComparison.Ordinal));
+        Assert.True(text.IndexOf("- [ ] b", StringComparison.Ordinal) < text.IndexOf("## References", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Markdown_hard_line_breaks_are_kept()
+    {
+        var parsed = TaskMarkdown.Parse("# T\n\nfirst line  \nsecond line\n", "T", Utc);
+
+        Assert.Equal("first line  \nsecond line", parsed.Root.Details);
+    }
+
+    [Fact]
+    public void Property_values_the_app_does_not_use_are_never_replaced()
+    {
+        var text = RoundTrip(
+            "---\nid: 202401011200\nstatus: waiting\npriority: medium\n# keep this comment\n---\n# T\n",
+            "id: 202401011200", "status: waiting", "priority: medium", "# keep this comment");
+
+        var parsed = TaskMarkdown.Parse(text, "T", Utc);
+        Assert.Contains($"tt-id: {parsed.Root.Id}", text, StringComparison.Ordinal);
+        Assert.False(parsed.Root.IsDone);
+        Assert.Equal(Priority.Normal, parsed.Root.Priority);
+    }
+
+    [Fact]
+    public void Completing_a_task_with_a_custom_status_writes_done()
+    {
+        var parsed = TaskMarkdown.Parse("---\nstatus: waiting\n---\n# T\n", "T", Utc);
+        parsed.Root.CompletedAt = Now;
+
+        Assert.Contains("status: done", TaskMarkdown.Render(parsed.Root, Utc, parsed), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_checklist_typed_into_the_details_of_an_app_task_stays_in_the_details()
+    {
+        var board = new TaskBoard();
+        var root = board.AddTask(new NewTask("T") { Details = "Checklist:\n- [ ] typed in app" }, Actor.User, Now);
+
+        var parsed = TaskMarkdown.Parse(TaskMarkdown.Render(root, Utc), "T", Utc);
+
+        Assert.Empty(parsed.Root.Children);
+        Assert.False(parsed.NeedsWrite);
+        Assert.Contains("- [ ] typed in app", parsed.Root.Details, StringComparison.Ordinal);
+    }
+
     /// <summary>Everything the markdown must carry, flattened for comparison.</summary>
     private static string Describe(WorkItem item)
     {

@@ -3,6 +3,8 @@ namespace TodoTracker.Core.Vault;
 /// <summary>Attachments (<c>_attachments/&lt;task&gt;/</c>) and rich HTML versions (<c>Task.html</c> next to <c>Task.md</c>).</summary>
 public sealed partial class VaultBoardStore
 {
+    private readonly Dictionary<string, string> _wikiLinkCache = new(StringComparer.OrdinalIgnoreCase);
+
     public async Task<Attachment> AddAttachmentAsync(Guid itemId, string fileName, Stream content, Actor actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -13,12 +15,29 @@ public sealed partial class VaultBoardStore
         Directory.CreateDirectory(dir);
         var stem = VaultFiles.SafeName(Path.GetFileNameWithoutExtension(name), 100);
         var extension = Path.GetExtension(name) is { Length: > 1 } ext ? "." + VaultFiles.SafeName(ext[1..], 20) : string.Empty;
-        var unique = VaultFiles.UniqueStem(stem, s => File.Exists(Path.Combine(dir, s + extension)));
-        var full = Path.Combine(dir, unique + extension);
+
+        // Claim a unique file atomically (CreateNew), so two uploads named the same never touch each other's file.
+        FileStream? file = null;
+        var full = string.Empty;
+        var unique = stem;
+        for (var n = 1; file is null; n++)
+        {
+            unique = n == 1 ? stem : $"{stem} {n}";
+            full = Path.Combine(dir, unique + extension);
+            try
+            {
+                file = new FileStream(full, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true);
+            }
+            catch (IOException) when (File.Exists(full) && n < 1000)
+            {
+                // Taken: try the next name.
+            }
+        }
+
         long size = 0;
         try
         {
-            await using (var file = new FileStream(full, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            await using (file)
             {
                 var buffer = new byte[81920];
                 int read;
@@ -51,27 +70,25 @@ public sealed partial class VaultBoardStore
         return (ResolveAttachment(attachment.Path), attachment.FileName);
     }
 
-    public async Task RemoveAttachmentAsync(Guid itemId, Guid attachmentId, Actor actor, CancellationToken cancellationToken = default)
-    {
-        var attachment = await UpdateAsync(
+    public Task RemoveAttachmentAsync(Guid itemId, Guid attachmentId, Actor actor, CancellationToken cancellationToken = default) =>
+        UpdateAsync(
             b =>
             {
                 var a = FindAttachment(b, itemId, attachmentId);
                 b.RemoveAttachment(itemId, attachmentId, actor, Now);
-                return a;
+                return (a.Path, StillUsed: b.AllItems().Any(i => i.Attachments.Any(x => x.Path == a.Path)));
             },
-            cancellationToken).ConfigureAwait(false);
-
-        // Only files the app stored are removed (to the trash); files linked from elsewhere in the vault stay.
-        if (attachment.Path.StartsWith(VaultFiles.AttachmentsFolder + "/", StringComparison.OrdinalIgnoreCase))
-        {
-            var full = ResolveAttachment(attachment.Path);
-            if (File.Exists(full))
+            removed =>
             {
-                File.Move(full, TrashPath(Path.GetFileName(full)));
-            }
-        }
-    }
+                // Only a file the app stored under _attachments, and that no other task links, goes to the trash.
+                var full = VaultFiles.Full(_root, removed.Path);
+                var store = Path.Combine(_root, VaultFiles.AttachmentsFolder) + Path.DirectorySeparatorChar;
+                if (!removed.StillUsed && full.StartsWith(store, StringComparison.OrdinalIgnoreCase) && File.Exists(full))
+                {
+                    File.Move(full, TrashPath(Path.GetFileName(full)));
+                }
+            },
+            cancellationToken);
 
     /// <summary>The task's rich (HTML) version, or null. Only top-level tasks have one.</summary>
     public async Task<string?> ReadRichAsync(Guid rootId, CancellationToken cancellationToken = default)
@@ -92,21 +109,22 @@ public sealed partial class VaultBoardStore
         return UpdateAsync(
             b =>
             {
-                var full = VaultFiles.Full(_root, RichPath(b, rootId));
-                if (html is null)
-                {
-                    if (File.Exists(full))
-                    {
-                        File.Move(full, TrashPath(Path.GetFileName(full)));
-                    }
-                }
-                else
+                RichPath(b, rootId);
+                b.NoteRichContentChanged(rootId, html is null, actor, Now);
+                return rootId;
+            },
+            id =>
+            {
+                // After the save, so the task has its file (and path) before the HTML lands next to it.
+                var full = VaultFiles.Full(_root, Path.ChangeExtension(_caches.Paths[id], ".html"));
+                if (html is not null)
                 {
                     VaultFiles.WriteAtomic(full, html);
                 }
-
-                b.NoteRichContentChanged(rootId, html is null, actor, Now);
-                return true;
+                else if (File.Exists(full))
+                {
+                    File.Move(full, TrashPath(Path.GetFileName(full)));
+                }
             },
             cancellationToken);
     }
@@ -119,10 +137,7 @@ public sealed partial class VaultBoardStore
             throw new InvalidOperationException("Only top-level tasks have a rich version; open the task it belongs to.");
         }
 
-        lock (_paths)
-        {
-            return Path.ChangeExtension(_paths.GetValueOrDefault(rootId) ?? throw TaskNotFoundException.ForTask(rootId), ".html");
-        }
+        return Path.ChangeExtension(_caches.Paths.GetValueOrDefault(rootId) ?? throw TaskNotFoundException.ForTask(rootId), ".html");
     }
 
     private static Attachment FindAttachment(TaskBoard board, Guid itemId, Guid attachmentId) =>
@@ -136,17 +151,28 @@ public sealed partial class VaultBoardStore
             throw new UnauthorizedAccessException("That attachment points outside the vault.");
         }
 
-        if (!File.Exists(full) && !relative.Contains('/', StringComparison.Ordinal))
+        if (File.Exists(full) || relative.Contains('/', StringComparison.Ordinal) || relative.IndexOfAny(['*', '?']) >= 0)
         {
-            // An Obsidian wiki link ([[file.png]]) names a file anywhere in the vault.
-            var match = Directory.EnumerateFiles(_root, relative, SearchOption.AllDirectories)
-                .FirstOrDefault(f => !VaultFiles.Relative(_root, f).StartsWith(VaultFiles.MetaFolder, StringComparison.Ordinal));
-            if (match is not null)
-            {
-                return match;
-            }
+            return full;
         }
 
-        return full;
+        // An Obsidian wiki link ([[file.png]]) names a file anywhere in the vault (hidden folders excluded).
+        lock (_wikiLinkCache)
+        {
+            if (_wikiLinkCache.TryGetValue(relative, out var cached) && File.Exists(cached))
+            {
+                return cached;
+            }
+
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive };
+            var match = Directory.EnumerateFiles(_root, relative, options)
+                .FirstOrDefault(f => !VaultFiles.Relative(_root, f).Split('/').Any(s => s.StartsWith('.')));
+            if (match is not null)
+            {
+                _wikiLinkCache[relative] = match;
+            }
+
+            return match ?? full;
+        }
     }
 }

@@ -30,7 +30,7 @@ public sealed class VaultStoreTests : IDisposable
 
     private VaultBoardStore Open(string? legacy = null)
     {
-        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, Watch = false });
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, Watch = false, EditSettleTime = TimeSpan.Zero });
         _stores.Add(store);
         return store;
     }
@@ -167,7 +167,7 @@ public sealed class VaultStoreTests : IDisposable
         });
 
         Assert.Equal(("Groceries", 2, "Personal"), (title, steps, group));
-        Assert.StartsWith("---\nid: ", (await File.ReadAllTextAsync(P("Personal", "Groceries.md"))).ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Equal("- [ ] Milk\n- [ ] Bread\n", await File.ReadAllTextAsync(P("Personal", "Groceries.md")));
     }
 
     [Fact]
@@ -407,7 +407,7 @@ public sealed class VaultStoreTests : IDisposable
     [Fact]
     public async Task External_edits_raise_changed_when_watching()
     {
-        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = true });
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = true, EditSettleTime = TimeSpan.Zero });
         _stores.Add(store);
         var changed = new TaskCompletionSource();
         store.Changed += (_, _) => changed.TrySetResult();
@@ -416,5 +416,265 @@ public sealed class VaultStoreTests : IDisposable
 
         await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal("From obsidian", await store.ReadAsync(b => b.Items.Single().Title));
+    }
+
+    // ---- Adopting an existing folder ----------------------------------------------------
+
+    [Fact]
+    public async Task Opening_a_folder_of_existing_notes_never_rewrites_them()
+    {
+        Directory.CreateDirectory(P("Notes"));
+        var note = P("Notes", "Ideas.md");
+        const string original = "# Ideas\n\n- [ ] Write a book\n- [ ] Learn Rust\n";
+        await File.WriteAllTextAsync(note, original);
+        var stamp = File.GetLastWriteTimeUtc(note);
+
+        var store = Open();
+        var ids = await store.ReadAsync(b => b.Items.Single().SelfAndDescendants().Select(i => i.Id).ToList());
+        await Add(store, "Something else");
+        store.Dispose();
+        var again = await Open().ReadAsync(b => b.Items.Single(i => i.Title == "Ideas").SelfAndDescendants().Select(i => i.Id).ToList());
+
+        Assert.Equal(original, await File.ReadAllTextAsync(note));
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(note));
+        Assert.Equal(ids, again);
+    }
+
+    [Fact]
+    public async Task Changing_a_hand_written_task_only_rewrites_that_file()
+    {
+        Directory.CreateDirectory(P("Notes"));
+        await File.WriteAllTextAsync(P("Notes", "A.md"), "# A\n\n- [ ] one\n");
+        await File.WriteAllTextAsync(P("Notes", "B.md"), "# B\n\n- [ ] two\n");
+        var store = Open();
+        var one = await store.ReadAsync(b => b.Items.Single(i => i.Title == "A").Children[0].Id);
+
+        await store.UpdateAsync(b => b.Complete(one, Actor.User, T0));
+
+        Assert.Contains("- [x] one", await File.ReadAllTextAsync(P("Notes", "A.md")), StringComparison.Ordinal);
+        Assert.Equal("# B\n\n- [ ] two\n", await File.ReadAllTextAsync(P("Notes", "B.md")));
+    }
+
+    // ---- All-or-nothing saves -----------------------------------------------------------
+
+    [Fact]
+    public async Task A_save_that_fails_halfway_leaves_every_file_as_it_was()
+    {
+        var failOn = (string?)null;
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = false, EditSettleTime = TimeSpan.Zero, BeforeWrite = p => { if (p == failOn) throw new IOException("disk full"); } });
+        _stores.Add(store);
+        var a = await Add(store, "A");
+        var b = await Add(store, "B");
+        var step = await Add(store, "Step", a.Id);
+        var aBefore = await File.ReadAllTextAsync(P("Work", "A.md"));
+        var bBefore = await File.ReadAllTextAsync(P("Work", "B.md"));
+
+        // B (gaining the step) is written first; A fails, so B must be put back.
+        failOn = "Work/A.md";
+        await Assert.ThrowsAsync<IOException>(() => store.UpdateAsync(x => x.Move(step.Id, b.Id, null, null, Actor.User, T0)));
+
+        Assert.Equal(aBefore, await File.ReadAllTextAsync(P("Work", "A.md")));
+        Assert.Equal(bBefore, await File.ReadAllTextAsync(P("Work", "B.md")));
+        Assert.Equal(a.Id, await store.ReadAsync(x => x.Get(step.Id).Parent!.Id));
+
+        failOn = null;
+        await store.UpdateAsync(x => x.Move(step.Id, b.Id, null, null, Actor.User, T0));
+        Assert.Contains("Step", await File.ReadAllTextAsync(P("Work", "B.md")), StringComparison.Ordinal);
+        Assert.DoesNotContain("Step", await File.ReadAllTextAsync(P("Work", "A.md")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_edit_that_keeps_size_and_time_is_still_not_overwritten()
+    {
+        var store = Open();
+        var task = await Add(store, "Ship");
+        await Add(store, "Step", task.Id);
+        var file = P("Work", "Ship.md");
+        var stamp = File.GetLastWriteTimeUtc(file);
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("- [ ] Step", "- [x] Step", StringComparison.Ordinal));
+        File.SetLastWriteTimeUtc(file, stamp);
+
+        await store.UpdateAsync(b => b.AddNote(task.Id, "from the app", Actor.User, T0));
+
+        var text = await File.ReadAllTextAsync(file);
+        Assert.Contains("- [x] Step", text, StringComparison.Ordinal);
+        Assert.Contains("from the app", text, StringComparison.Ordinal);
+    }
+
+    // ---- Edits made outside the app -----------------------------------------------------
+
+    [Fact]
+    public async Task An_agent_marking_a_step_done_in_frontmatter_style_is_attributed_once_across_processes()
+    {
+        var a = Open();
+        var b = Open();
+        var rollout = await a.UpdateAsync(x => x.AddTask(new NewTask("Rollout") { Sequential = true, StepDelay = TimeSpan.FromHours(1) }, Actor.User, T0));
+        var (first, second) = await a.UpdateAsync(x =>
+        {
+            var steps = x.AddSteps(rollout.Id, ["Ring 0", "Ring 1"], TimeSpan.FromHours(1), Actor.User, T0);
+            return (steps[0].Id, steps[1].Id);
+        });
+        await b.ReadAsync(_ => 0);
+
+        // A tool that writes full metadata (so nothing needs normalizing) still triggers the sequence.
+        var file = P("Work", "Rollout.md");
+        var text = await File.ReadAllTextAsync(file);
+        text = text.Replace("1. [ ] Ring 0", "1. [x] Ring 0", StringComparison.Ordinal)
+            .Replace($"\"id\":\"{first}\",\"created\":\"2026-01-05T09:00:00.000Z\"", $"\"id\":\"{first}\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T09:00:00.000Z\"", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(file, text);
+
+        await a.ReadAsync(_ => 0);
+        await b.ReadAsync(_ => 0);
+        await a.ReadAsync(_ => 0);
+
+        Assert.Equal(T0.AddHours(1), await b.ReadAsync(x => x.Get(second).NextActionAt));
+        Assert.Single(await b.ReadAsync(x => x.Activity.Where(e => e.ItemId == first && e.Kind == ActivityKind.Completed).ToList()));
+    }
+
+    [Fact]
+    public async Task Edits_are_picked_up_but_only_acted_on_once_the_file_is_quiet()
+    {
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = false, EditSettleTime = TimeSpan.FromHours(1) });
+        _stores.Add(store);
+        var task = await Add(store, "Ship");
+        var step = await Add(store, "Step", task.Id);
+        var file = P("Work", "Ship.md");
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("- [ ] Step", "- [x] Step", StringComparison.Ordinal));
+        var written = await File.ReadAllTextAsync(file);
+
+        Assert.True(await store.ReadAsync(b => b.Get(step.Id).IsDone));
+        Assert.Equal(written, await File.ReadAllTextAsync(file));
+    }
+
+    // ---- Files and folders --------------------------------------------------------------
+
+    [Fact]
+    public async Task Moving_a_task_to_another_group_keeps_its_file_name_and_subfolder()
+    {
+        var store = Open();
+        Directory.CreateDirectory(P("Work", "Clients"));
+        await File.WriteAllTextAsync(P("Work", "Clients", "2024-05 Taxes.md"), "# Do taxes\n");
+        var id = await store.ReadAsync(b => b.Items.Single().Id);
+        var personal = await store.ReadAsync(b => b.Groups.Single(g => g.Name == "Personal").Id);
+
+        await store.UpdateAsync(b => b.MoveToGroup(id, personal, Actor.User, T0));
+
+        Assert.True(File.Exists(P("Personal", "Clients", "2024-05 Taxes.md")));
+        Assert.Equal("Personal/Clients/2024-05 Taxes.md", store.PathOf(id));
+    }
+
+    [Fact]
+    public async Task Renaming_a_group_keeps_links_to_files_inside_it_working()
+    {
+        var store = Open();
+        await File.WriteAllTextAsync(P("Work", "diagram.png"), "png");
+        await File.WriteAllTextAsync(P("Work", "Ship.md"), "# Ship\n\n## Attachments\n\n- [diagram.png](diagram.png)\n");
+        var (id, attachment) = await store.ReadAsync(b => (b.Items.Single().Id, b.Items.Single().Attachments.Single().Id));
+        var work = await store.ReadAsync(b => b.Groups.Single(g => g.Name == "Work").Id);
+
+        await store.UpdateAsync(b => b.UpdateGroup(work, "Office", null, Actor.User, T0));
+
+        var (full, _) = await store.GetAttachmentFileAsync(id, attachment);
+        Assert.Equal("png", await File.ReadAllTextAsync(full));
+    }
+
+    [Fact]
+    public async Task Deleting_a_group_keeps_other_files_from_its_folder()
+    {
+        var store = Open();
+        var personal = await store.ReadAsync(b => b.Groups.Single(g => g.Name == "Personal").Id);
+        await File.WriteAllTextAsync(P("Personal", "photo.png"), "png");
+        await File.WriteAllTextAsync(P("Personal", "Trip.md"), "# Trip\n\n## Attachments\n\n- [photo.png](photo.png)\n");
+        var (id, attachment) = await store.ReadAsync(b => (b.Items.Single().Id, b.Items.Single().Attachments.Single().Id));
+        var work = await store.ReadAsync(b => b.Groups.Single(g => g.Name == "Work").Id);
+
+        await store.UpdateAsync(b => b.DeleteGroup(personal, work, Actor.User, T0));
+
+        Assert.False(Directory.Exists(P("Personal")));
+        Assert.True(File.Exists(P("Work", "Trip.md")));
+        Assert.Equal("Work/Trip.md", store.PathOf(id));
+        var (full, _) = await store.GetAttachmentFileAsync(id, attachment);
+        Assert.Equal("png", await File.ReadAllTextAsync(full));
+    }
+
+    [Fact]
+    public async Task Group_names_with_a_leading_underscore_still_get_a_visible_folder()
+    {
+        var store = Open();
+
+        var group = await store.UpdateAsync(b => b.AddGroup("_Someday", null, Actor.User, T0));
+        await Add(store, "Learn piano", group: group.Id);
+        store.Dispose();
+
+        Assert.Contains("Learn piano", await Open().ReadAsync(b => b.Items.Select(i => i.Title).ToList()));
+    }
+
+    [Fact]
+    public async Task The_order_of_top_level_tasks_is_remembered()
+    {
+        var store = Open();
+        await Add(store, "First");
+        await Add(store, "Second");
+        var third = await Add(store, "Third");
+
+        await store.UpdateAsync(b => b.Move(third.Id, null, 0, null, Actor.User, T0));
+        store.Dispose();
+
+        Assert.Equal(["Third", "First", "Second"], await Open().ReadAsync(b => b.Items.Select(i => i.Title).ToList()));
+    }
+
+    [Fact]
+    public async Task Turning_a_task_with_a_rich_version_into_a_subtask_is_refused()
+    {
+        var store = Open();
+        var project = await Add(store, "Project");
+        var task = await Add(store, "Plan");
+        await store.WriteRichAsync(task.Id, "<p>x</p>", Actor.User);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => store.UpdateAsync(b => b.Move(task.Id, project.Id, null, null, Actor.User, T0)));
+        Assert.True(File.Exists(P("Work", "Plan.html")));
+    }
+
+    [Fact]
+    public async Task Two_attachments_with_the_same_name_at_once_both_survive()
+    {
+        var store = Open();
+        var task = await Add(store, "Ship");
+
+        var all = await Task.WhenAll(Enumerable.Range(0, 4).Select(i => store.AddAttachmentAsync(task.Id, "image.png", new MemoryStream([(byte)i]), Actor.User)));
+
+        Assert.Equal(4, all.Select(a => a.Path).Distinct().Count());
+        foreach (var a in all)
+        {
+            var (full, _) = await store.GetAttachmentFileAsync(task.Id, a.Id);
+            Assert.True(File.Exists(full));
+        }
+    }
+
+    [Fact]
+    public async Task Removing_an_attachment_never_deletes_files_outside_the_attachments_folder()
+    {
+        var store = Open();
+        var other = await Add(store, "Important");
+        await File.WriteAllTextAsync(P("Work", "Ship.md"), "# Ship\n\n## Attachments\n\n- ![[_attachments/../Work/Important.md]]\n");
+        var (id, attachment) = await store.ReadAsync(b => b.Items.Where(i => i.Title == "Ship").Select(i => (i.Id, i.Attachments.Single().Id)).Single());
+
+        await store.RemoveAttachmentAsync(id, attachment, Actor.User);
+
+        Assert.True(File.Exists(P("Work", "Important.md")));
+        Assert.True(await store.ReadAsync(b => b.Find(other.Id) is not null));
+    }
+
+    [Fact]
+    public async Task A_torn_last_activity_line_does_not_swallow_the_next_entry()
+    {
+        var store = Open();
+        await Add(store, "A");
+        await File.AppendAllTextAsync(P(".todo-tracker", "activity.jsonl"), "{\"at\":\"2026-01-05T");
+
+        var b = await Add(store, "B");
+        store.Dispose();
+
+        Assert.Contains(await Open().ReadAsync(x => x.Activity.ToList()), e => e.ItemId == b.Id && e.Kind == ActivityKind.Created);
     }
 }

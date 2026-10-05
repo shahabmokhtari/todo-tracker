@@ -19,6 +19,9 @@ public static class BoardSerializer
         return JsonSerializer.Serialize(ToDocument(board), Options);
     }
 
+    /// <summary>Everything stored for one task and its subtasks (used to tell which tasks a change touched).</summary>
+    internal static string SerializeItem(WorkItem item) => JsonSerializer.Serialize(ToDocument(item), Options);
+
     public static TaskBoard Deserialize(string json)
     {
         BoardDocument doc;

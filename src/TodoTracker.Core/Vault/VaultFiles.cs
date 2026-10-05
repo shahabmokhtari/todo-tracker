@@ -23,6 +23,13 @@ public sealed record VaultOptions(string Root)
 
     public long MaxAttachmentBytes { get; init; } = 25L * 1024 * 1024;
 
+    /// <summary>How long a file must be left alone before the app reacts to an edit in it (e.g. unlocks the next step
+    /// after a box was checked), so it never writes to a file someone is still typing in.</summary>
+    public TimeSpan EditSettleTime { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Test hook: called with the vault-relative path before each task file is written.</summary>
+    internal Action<string>? BeforeWrite { get; init; }
+
     public int MaxRichBytes { get; init; } = 2 * 1024 * 1024;
 }
 
@@ -59,6 +66,13 @@ internal static partial class VaultFiles
         return Reserved.Contains(cleaned) ? cleaned + "_" : cleaned;
     }
 
+    /// <summary>A group folder name: like <see cref="SafeName"/>, without a leading <c>_</c> or <c>.</c> (those folders are skipped).</summary>
+    public static string SafeFolderName(string name)
+    {
+        var cleaned = SafeName(name, 60).TrimStart('_', '.', ' ');
+        return cleaned.Length == 0 ? "Group" : cleaned;
+    }
+
     /// <summary><paramref name="stem"/>, or "stem 2", "stem 3"… so it is unique (case-insensitively) in the folder.</summary>
     public static string UniqueStem(string stem, Func<string, bool> taken)
     {
@@ -92,6 +106,28 @@ internal static partial class VaultFiles
         return Path.Combine(lockDirectory, $"vault-{hash}.lock");
     }
 
+    /// <summary>Async version of <see cref="AcquireLock"/> (doesn't block a thread while another process holds the lock).</summary>
+    public static async Task<FileStream> AcquireLockAsync(string path, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+            }
+            catch (IOException ex)
+            {
+                throw new StoreLockedException("Another Todo Tracker process kept the vault busy for too long. Try again.", ex);
+            }
+        }
+    }
+
     /// <summary>Holds the exclusive per-vault lock (same machine). Waits up to <paramref name="timeout"/>.</summary>
     public static FileStream AcquireLock(string path, TimeSpan timeout)
     {
@@ -119,8 +155,18 @@ internal static partial class VaultFiles
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = Path.Combine(Path.GetDirectoryName(path)!, "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp");
-        File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        File.Move(temp, path, overwrite: true);
+        try
+        {
+            File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(temp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temp))
+            {
+                File.Delete(temp);
+            }
+        }
     }
 
     public static string Relative(string root, string fullPath) =>

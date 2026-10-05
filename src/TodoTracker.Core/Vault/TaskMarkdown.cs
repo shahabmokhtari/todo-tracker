@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace TodoTracker.Core.Vault;
 
-/// <summary>A root task file read from disk, plus what is needed to write it back without losing anything.</summary>
+/// <summary>A root task file read from disk, plus everything needed to write it back without losing anything.</summary>
 public sealed class ParsedTaskFile
 {
     internal ParsedTaskFile(WorkItem root)
@@ -16,22 +16,42 @@ public sealed class ParsedTaskFile
     /// <summary>The task tree (not attached to a board).</summary>
     public WorkItem Root { get; }
 
-    /// <summary>The file lacked something the app needs (ids, timestamps, canonical sections) and should be rewritten.</summary>
+    /// <summary>The file lacks metadata the app keeps (ids, exact times, sections). The app adds it the next time it
+    /// saves this task for another reason; it never rewrites a file just because it read it.</summary>
     public bool NeedsWrite { get; internal set; }
+
+    /// <summary>The file carries the app's task id (it was created or saved by Todo Tracker).</summary>
+    public bool HasAppId { get; internal set; }
 
     public List<string> Warnings { get; } = [];
 
     internal Frontmatter Frontmatter { get; set; } = Frontmatter.Empty;
 
+    /// <summary>Frontmatter key holding the app's id: <c>id</c>, or <c>tt-id</c> when the user's own <c>id</c> isn't a GUID.</summary>
+    internal string IdKey { get; set; } = "id";
+
+    /// <summary>What each owned property meant when read; unchanged values are written back exactly as typed.</summary>
+    internal Dictionary<string, string> KeySignatures { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     internal Dictionary<Guid, string> BlockIds { get; } = [];
 
-    internal HashSet<Guid> WikiLinks { get; } = [];
+    internal Dictionary<Guid, char> CheckChars { get; } = [];
 
-    internal string? SubtasksPreamble { get; set; }
+    internal Dictionary<Guid, string> PriorityEmoji { get; } = [];
+
+    internal Dictionary<Guid, (string Raw, string Path, string Name)> RawLinks { get; } = [];
+
+    /// <summary>Headings or text right above a top-level subtask (e.g. <c>### Phase 1</c>).</summary>
+    internal Dictionary<Guid, string> Leading { get; } = [];
+
+    internal string? SubtasksTrailer { get; set; }
 
     internal string? NotesPreamble { get; set; }
 
     internal string? AttachmentsPreamble { get; set; }
+
+    /// <summary>Sections after the first app section, in file order: an app section kind, or raw text of another section.</summary>
+    internal List<(string? Kind, string? Raw)> Layout { get; } = [];
 
     internal string Newline { get; set; } = "\n";
 
@@ -43,10 +63,16 @@ public sealed class ParsedTaskFile
 /// YAML frontmatter for the task, <c># Title</c>, free-form details, and <c>## Subtasks</c>/<c>## Steps</c>,
 /// <c>## Notes</c>, <c>## Attachments</c> sections. Subtask lines use Obsidian Tasks tokens for what people edit
 /// (checkbox, priority, 📅 due, ⏳ scheduled, ✅ done, #tags) and a hidden <c>%%{json}%%</c> comment for exact times.
+/// Anything the app doesn't own (other properties, headings, sections, link styles, custom checkbox states) is
+/// written back as it was.
 /// </summary>
 public static partial class TaskMarkdown
 {
-    private static readonly string[] OwnedKeys = ["id", "status", "priority", "created", "completed", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
+    private const string Subtasks = "subtasks";
+    private const string Notes = "notes";
+    private const string Attachments = "attachments";
+
+    private static readonly string[] CanonicalKeys = ["status", "priority", "created", "completed", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
 
     public static ParsedTaskFile Parse(string text, string fileStem, TaskMarkdownContext context)
     {
@@ -66,34 +92,36 @@ public static partial class TaskMarkdown
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(context);
-        var tz = context.TimeZone;
         var sb = new StringBuilder();
         sb.Append("---\n");
-        RenderFrontmatter(sb, root, tz, previous);
+        RenderFrontmatter(sb, root, context.TimeZone, previous);
         sb.Append("---\n# ").Append(root.Title).Append('\n');
 
         var blocks = new List<string>();
         if (!string.IsNullOrWhiteSpace(root.Details))
         {
-            blocks.Add(root.Details.Replace("\r\n", "\n", StringComparison.Ordinal).Trim('\n'));
+            blocks.Add(VaultText.CloseFences(root.Details.Replace("\r\n", "\n", StringComparison.Ordinal).Trim('\n')));
         }
 
-        if (root.Children.Count > 0 || previous?.SubtasksPreamble is not null)
+        var rendered = new HashSet<string>();
+        foreach (var (kind, raw) in previous?.Layout ?? [])
         {
-            var list = new StringBuilder();
-            RenderItems(list, root.Children, root.Sequential, 0, context, previous);
-            blocks.Add(Section(root.Sequential ? "Steps" : "Subtasks", previous?.SubtasksPreamble, list.ToString().TrimEnd('\n')));
+            if (kind is null)
+            {
+                blocks.Add(raw!);
+            }
+            else if (rendered.Add(kind) && RenderSection(kind, root, context, previous) is { } section)
+            {
+                blocks.Add(section);
+            }
         }
 
-        var notes = root.SelfAndDescendants().SelectMany(i => i.Notes.Select(n => (Item: i, Note: n))).OrderBy(n => n.Note.At).ToList();
-        if (notes.Count > 0 || previous?.NotesPreamble is not null)
+        foreach (var kind in new[] { Subtasks, Notes, Attachments })
         {
-            blocks.Add(Section("Notes", previous?.NotesPreamble, string.Join("\n\n", notes.Select(n => RenderNote(n.Item, n.Note, root, tz, previous)))));
-        }
-
-        if (root.Attachments.Count > 0 || previous?.AttachmentsPreamble is not null)
-        {
-            blocks.Add(Section("Attachments", previous?.AttachmentsPreamble, string.Join("\n", root.Attachments.Select(a => "- " + RenderAttachment(a, context, previous)))));
+            if (rendered.Add(kind) && RenderSection(kind, root, context, previous) is { } section)
+            {
+                blocks.Add(section);
+            }
         }
 
         if (blocks.Count > 0)
@@ -124,174 +152,225 @@ public static partial class TaskMarkdown
         text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         var (fm, body, present) = Frontmatter.Split(text);
         var tz = ctx.TimeZone;
-        var used = new HashSet<Guid>();
-        var needsWrite = !present;
+        var state = new ParseState(ctx) { NeedsWrite = !present };
 
-        var id = Guid.TryParse(fm.Scalar("id"), out var parsedId) ? parsedId : Guid.Empty;
-        if (id == Guid.Empty)
+        // The app's id: tt-id, else a GUID id. A non-GUID id belongs to the user (e.g. a Zettelkasten id) and stays.
+        var idKey = "id";
+        Guid? appId = null;
+        if (Guid.TryParse(fm.Scalar("tt-id"), out var ttId))
         {
-            id = Guid.NewGuid();
-            needsWrite = true;
+            (idKey, appId) = ("tt-id", ttId);
+        }
+        else if (Guid.TryParse(fm.Scalar("id"), out var plainId))
+        {
+            appId = plainId;
+        }
+        else if (fm.Has("id"))
+        {
+            idKey = "tt-id";
         }
 
-        used.Add(id);
-        var created = VaultText.ParseTime(fm.Scalar("created"), tz, "00:00");
-        needsWrite |= created is null;
+        var id = state.NewId(appId, "root");
 
-        // Sections (headings inside code fences don't count).
+        // Sections: text before the first app section is the details; later unknown sections keep their place.
         string? title = null;
         var details = new List<string>();
-        var sections = new Dictionary<string, List<string>> { ["subtasks"] = [], ["notes"] = [], ["attachments"] = [] };
-        var seen = new HashSet<string>();
+        var sections = new Dictionary<string, List<string>> { [Subtasks] = [], [Notes] = [], [Attachments] = [] };
+        var layout = new List<(string? Kind, List<string>? Lines)>();
         var current = details;
-        var fenced = false;
+        var fence = new VaultText.Fence();
         foreach (var line in body.Split('\n'))
         {
-            var trimmed = line.TrimStart();
-            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+            if (!fence.Accept(line))
             {
-                fenced = !fenced;
-            }
-            else if (!fenced && title is null && line.StartsWith("# ", StringComparison.Ordinal))
-            {
-                title = line[2..].Trim();
-                continue;
-            }
-            else if (!fenced && line.StartsWith("## ", StringComparison.Ordinal))
-            {
-                var kind = line[3..].Trim().ToLowerInvariant() switch
+                if (title is null && line.StartsWith("# ", StringComparison.Ordinal) && layout.Count == 0)
                 {
-                    "subtasks" or "steps" or "tasks" or "checklist" => "subtasks",
-                    "notes" or "log" => "notes",
-                    "attachments" or "files" => "attachments",
-                    _ => null,
-                };
-                if (kind is not null)
-                {
-                    current = sections[kind];
-                    seen.Add(kind);
+                    title = line[2..].Trim();
                     continue;
                 }
 
-                current = details;
+                if (line.StartsWith("## ", StringComparison.Ordinal))
+                {
+                    var kind = SectionKind(line[3..]);
+                    if (kind is not null)
+                    {
+                        current = sections[kind];
+                        if (!layout.Exists(l => l.Kind == kind))
+                        {
+                            layout.Add((kind, null));
+                        }
+
+                        continue;
+                    }
+
+                    if (layout.Count > 0)
+                    {
+                        current = [];
+                        layout.Add((null, current));
+                    }
+                }
             }
 
             current.Add(line);
         }
 
-        if (!seen.Contains("subtasks") && ExtractChecklist(details) is { Count: > 0 } checklist)
+        var hasAppId = appId is not null;
+        if (!layout.Exists(l => l.Kind == Subtasks) && !hasAppId && ExtractChecklist(details) is { Count: > 0 } checklist)
         {
-            sections["subtasks"] = checklist;
-            needsWrite = true;
+            // A note typed in Obsidian: its first checkbox list is the subtasks.
+            sections[Subtasks] = checklist;
+            state.NeedsWrite = true;
         }
 
-        if (title is null)
-        {
-            needsWrite = true;
-        }
-
+        state.NeedsWrite |= title is null || !hasAppId;
+        var created = VaultText.ParseTime(fm.Scalar("created"), tz, "00:00");
+        state.NeedsWrite |= created is null;
         var root = new WorkItem(id, string.IsNullOrWhiteSpace(title) ? fileStem : title, ParsePriority(fm.Scalar("priority")), created ?? ctx.Now)
         {
-            Details = JoinTrimmed(details),
+            Details = JoinKeep(details),
             Deadline = VaultText.ParseTime(fm.Scalar("due"), tz, VaultText.DefaultDueTime),
             NextActionAt = VaultText.ParseTime(fm.Scalar("scheduled"), tz, VaultText.DefaultScheduledTime),
             StepDelay = VaultText.ParseDuration(fm.Scalar("step-delay")),
         };
-        var result = new ParsedTaskFile(root) { Frontmatter = fm, Newline = newline, Bom = bom };
+        var result = new ParsedTaskFile(root) { Frontmatter = fm, Newline = newline, Bom = bom, IdKey = idKey, HasAppId = hasAppId };
+        state.File = result;
 
         var status = (fm.Scalar("status") ?? string.Empty).Trim().ToLowerInvariant();
         var done = status is "done" or "completed" or "complete" or "cancelled" or "canceled";
-        needsWrite |= status.Length == 0;
+        state.NeedsWrite |= status.Length == 0;
         var completed = VaultText.ParseTime(fm.Scalar("completed"), tz, VaultText.DefaultDoneTime);
         if (done)
         {
             root.CompletedAt = completed ?? ctx.Now;
-            needsWrite |= completed is null;
+            state.NeedsWrite |= completed is null;
         }
         else
         {
-            needsWrite |= completed is not null;
+            state.NeedsWrite |= completed is not null;
         }
 
         root.TagList.AddRange(fm.List("tags").Select(t => t.TrimStart('#')).Where(t => t.Length > 0));
         root.LabelList.AddRange(fm.List("labels"));
+        var reminderIndex = 0;
         foreach (var map in fm.Maps("reminders"))
         {
-            if (ParseReminder(map, tz, used, ref needsWrite) is { } reminder)
+            if (ParseReminder(map, tz, state, reminderIndex++) is { } reminder)
             {
                 root.ReminderList.Add(reminder);
             }
         }
 
-        var state = new ParseState(result, ctx, used) { NeedsWrite = needsWrite };
-        var ordered = ParseList(sections["subtasks"], root, state);
+        var ordered = ParseList(sections[Subtasks], root, state);
         root.Sequential = ordered ?? IsTrue(fm.Scalar("sequential"));
-        ParseNotes(sections["notes"], root, state);
-        ParseAttachments(sections["attachments"], root, state);
+        ParseNotes(sections[Notes], root, state);
+        ParseAttachments(sections[Attachments], root, state);
+
+        foreach (var (kind, lines) in layout)
+        {
+            if (kind is not null)
+            {
+                result.Layout.Add((kind, null));
+            }
+            else if (JoinKeep(lines!) is { } raw)
+            {
+                result.Layout.Add((null, raw));
+            }
+        }
+
+        var signatures = Signatures(root);
+        foreach (var key in CanonicalKeys)
+        {
+            if (fm.Has(key))
+            {
+                result.KeySignatures[key] = signatures[key];
+            }
+        }
+
         result.NeedsWrite = state.NeedsWrite;
         return result;
     }
 
-    private sealed class ParseState(ParsedTaskFile file, TaskMarkdownContext context, HashSet<Guid> used)
+    private static string? SectionKind(string heading) => heading.Trim().ToLowerInvariant() switch
     {
-        public ParsedTaskFile File { get; } = file;
+        "subtasks" or "steps" or "tasks" or "checklist" => Subtasks,
+        "notes" or "log" => Notes,
+        "attachments" or "files" => Attachments,
+        _ => null,
+    };
+
+    private sealed class ParseState(TaskMarkdownContext context)
+    {
+        private readonly HashSet<Guid> _used = [];
+
+        public ParsedTaskFile File { get; set; } = null!;
 
         public TaskMarkdownContext Context { get; } = context;
-
-        public HashSet<Guid> Used { get; } = used;
 
         public bool NeedsWrite { get; set; }
 
         public Dictionary<string, WorkItem> ByBlockId { get; } = new(StringComparer.Ordinal);
 
-        public Guid NewId(Guid? candidate)
+        /// <summary>The id from the file if it's new here; else a fresh one (stable per file when the store gave a seed).</summary>
+        public Guid NewId(Guid? candidate, string seedKey)
         {
-            if (candidate is { } c && c != Guid.Empty && Used.Add(c))
+            if (candidate is { } c && c != Guid.Empty && _used.Add(c))
             {
                 return c;
             }
 
             NeedsWrite = true;
-            var fresh = Guid.NewGuid();
-            Used.Add(fresh);
-            return fresh;
+            for (var n = 0; ; n++)
+            {
+                var fresh = Context.IdSeed is { } seed ? VaultText.StableGuid($"{seed}|{seedKey}|{n}") : Guid.NewGuid();
+                if (_used.Add(fresh))
+                {
+                    return fresh;
+                }
+            }
         }
     }
 
-    private sealed class Frame(WorkItem item, int indent)
+    private sealed class Frame(WorkItem item, int indent, string seedKey)
     {
         public WorkItem Item { get; } = item;
 
         public int Indent { get; } = indent;
+
+        public string SeedKey { get; } = seedKey;
 
         public bool? Ordered { get; set; }
 
         public List<string> Details { get; } = [];
     }
 
-    /// <summary>A file typed in Obsidian without a "## Subtasks" heading: its first checkbox list is the subtasks.</summary>
+    /// <summary>The first top-level checkbox list in the details (for files typed without a "## Subtasks" heading).</summary>
     private static List<string>? ExtractChecklist(List<string> details)
     {
-        var fenced = false;
+        var fence = new VaultText.Fence();
         for (var i = 0; i < details.Count; i++)
         {
-            var trimmed = details[i].TrimStart();
-            if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+            if (fence.Accept(details[i]))
             {
-                fenced = !fenced;
                 continue;
             }
 
             var m = ListItem().Match(details[i]);
-            if (fenced || !m.Success || m.Groups["ind"].Length > 0 || !m.Groups["c"].Success)
+            if (!m.Success || m.Groups["ind"].Length > 0 || !m.Groups["c"].Success)
             {
                 continue;
             }
 
             var end = i + 1;
+            var inner = new VaultText.Fence();
             while (end < details.Count)
             {
                 var line = details[end];
+                if (inner.Accept(line))
+                {
+                    end++;
+                    continue;
+                }
+
                 if (line.Trim().Length == 0)
                 {
                     var next = details.Skip(end + 1).FirstOrDefault(l => l.Trim().Length > 0);
@@ -319,12 +398,24 @@ public static partial class TaskMarkdown
     /// <summary>Parses the subtasks list into <paramref name="root"/>; returns whether its top-level list is ordered.</summary>
     private static bool? ParseList(List<string> lines, WorkItem root, ParseState state)
     {
-        var frames = new List<Frame> { new(root, -1) };
+        var frames = new List<Frame> { new(root, -1, string.Empty) };
         var created = new List<Frame>();
-        var preamble = new List<string>();
+        var leading = new List<string>();
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
         var pendingBlank = 0;
+        var fence = new VaultText.Fence();
+        List<string>? fenceTarget = null;
+        var fenceStrip = 0;
         foreach (var line in lines)
         {
+            if (fence.IsOpen)
+            {
+                // Inside a code block: every line belongs to whoever opened it (examples never become tasks).
+                fenceTarget!.Add(fenceStrip == 0 ? line : StripColumns(line, fenceStrip));
+                fence.Accept(line);
+                continue;
+            }
+
             if (line.Trim().Length == 0)
             {
                 pendingBlank++;
@@ -344,11 +435,19 @@ public static partial class TaskMarkdown
                 var rest = m.Groups["rest"].Value;
                 if (m.Groups["c"].Success || frames.Count == 1)
                 {
-                    var item = ParseItem(m.Groups["c"].Success ? m.Groups["c"].Value[0] : ' ', rest, state, isPlain: !m.Groups["c"].Success);
+                    var titleKey = $"{parent.SeedKey}/{TitleForSeed(rest)}";
+                    occurrences[titleKey] = occurrences.GetValueOrDefault(titleKey) + 1;
+                    var item = ParseItem(m.Groups["c"].Success ? m.Groups["c"].Value[0] : ' ', rest, state, isPlain: !m.Groups["c"].Success, $"{titleKey}#{occurrences[titleKey]}");
                     item.Parent = parent.Item;
                     parent.Item.ChildList.Add(item);
                     parent.Ordered ??= char.IsDigit(m.Groups["m"].Value[0]);
-                    var frame = new Frame(item, indent);
+                    if (frames.Count == 1 && JoinKeep(leading) is { } heading)
+                    {
+                        state.File.Leading[item.Id] = heading;
+                    }
+
+                    leading.Clear();
+                    var frame = new Frame(item, indent, titleKey);
                     frames.Add(frame);
                     created.Add(frame);
                     pendingBlank = 0;
@@ -370,28 +469,37 @@ public static partial class TaskMarkdown
                 }
             }
 
-            var target = frames[^1];
-            var bucket = frames.Count == 1 ? preamble : target.Details;
+            var topLevel = frames.Count == 1;
+            var bucket = topLevel ? leading : frames[^1].Details;
             if (bucket.Count > 0)
             {
                 bucket.AddRange(Enumerable.Repeat(string.Empty, pendingBlank));
             }
 
             pendingBlank = 0;
-            bucket.Add(frames.Count == 1 ? line : StripColumns(line, target.Indent + 4));
+            var strip = topLevel ? 0 : frames[^1].Indent + 4;
+            var text = topLevel ? line : StripColumns(line, strip);
+            bucket.Add(text);
+            if (fence.Accept(text))
+            {
+                fenceTarget = bucket;
+                fenceStrip = strip;
+            }
         }
 
         foreach (var frame in created)
         {
-            frame.Item.Details = JoinTrimmed(frame.Details);
+            frame.Item.Details = JoinKeep(frame.Details);
             frame.Item.Sequential = frame.Ordered ?? frame.Item.Sequential;
         }
 
-        state.File.SubtasksPreamble = JoinTrimmed(preamble);
+        state.File.SubtasksTrailer = JoinKeep(leading);
         return frames[0].Ordered;
     }
 
-    private static WorkItem ParseItem(char check, string rest, ParseState state, bool isPlain)
+    private static string TitleForSeed(string rest) => HiddenMeta().Replace(TrailingBlockId().Replace(rest, string.Empty), string.Empty).Trim();
+
+    private static WorkItem ParseItem(char check, string rest, ParseState state, bool isPlain, string seedKey)
     {
         var ctx = state.Context;
         var tz = ctx.TimeZone;
@@ -438,15 +546,11 @@ public static partial class TaskMarkdown
         });
 
         var priority = Priority.Normal;
+        string? emoji = null;
         rest = PriorityToken().Replace(rest, t =>
         {
-            priority = t.Groups[1].Value switch
-            {
-                "🔺" => Priority.Critical,
-                "⏫" => Priority.High,
-                "🔽" or "⏬" => Priority.Low,
-                _ => Priority.Normal,
-            };
+            emoji = t.Groups[1].Value;
+            priority = PriorityOf(emoji);
             return " ";
         });
 
@@ -465,7 +569,7 @@ public static partial class TaskMarkdown
             title = trailing.Count > 0 ? "#" + trailing[0] : "(untitled)";
         }
 
-        var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null);
+        var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null, seedKey);
         var createdMeta = VaultText.ParseInstant(Str(meta, "created"));
         state.NeedsWrite |= createdMeta is null || isPlain;
         var item = new WorkItem(id, title, priority, createdMeta ?? ctx.Now)
@@ -481,11 +585,12 @@ public static partial class TaskMarkdown
             item.LabelList.AddRange(labels.OfType<JsonValue>().Select(l => l.TryGetValue<string>(out var v) ? v : null).OfType<string>());
         }
 
+        var reminderIndex = 0;
         foreach (var r in meta?["reminders"] as JsonArray ?? [])
         {
             if (r is JsonObject o && VaultText.ParseInstant(Str(o, "at")) is { } at)
             {
-                var reminderId = Guid.TryParse(Str(o, "id"), out var rid) ? rid : Guid.NewGuid();
+                var reminderId = state.NewId(Guid.TryParse(Str(o, "id"), out var rid) ? rid : null, $"{seedKey}|r{reminderIndex++}");
                 item.ReminderList.Add(new Reminder(reminderId, at, Str(o, "msg") ?? string.Empty, Str(o, "kind") == "next-action" ? ReminderKind.NextAction : ReminderKind.Manual)
                 {
                     NotifiedAt = VaultText.ParseInstant(Str(o, "notified")),
@@ -494,9 +599,18 @@ public static partial class TaskMarkdown
             }
         }
 
-        var isDone = check is 'x' or 'X' or '-';
+        if (check is not (' ' or 'x'))
+        {
+            state.File.CheckChars[id] = check;
+        }
+
+        if (emoji is "🔼" or "⏬")
+        {
+            state.File.PriorityEmoji[id] = emoji;
+        }
+
         var doneMeta = VaultText.ParseInstant(Str(meta, "done"));
-        if (isDone)
+        if (IsDoneChar(check))
         {
             item.CompletedAt = doneDate is { } d && (doneMeta is null || DateOnly.FromDateTime(VaultText.ToLocal(doneMeta.Value, tz).DateTime) != d)
                 ? VaultText.AtLocal(d, VaultText.DefaultDoneTime, tz)
@@ -548,6 +662,7 @@ public static partial class TaskMarkdown
         var preamble = new List<string>();
         var i = 0;
         var pendingBlank = 0;
+        var index = 0;
         while (i < lines.Count)
         {
             var header = CalloutHeader().Match(lines[i]);
@@ -573,6 +688,7 @@ public static partial class TaskMarkdown
             }
 
             var head = header.Groups["head"].Value;
+            var seedKey = $"note|{index++}|{head}";
             JsonObject? meta = null;
             if (HiddenMeta().Match(head) is { Success: true } hidden)
             {
@@ -619,7 +735,7 @@ public static partial class TaskMarkdown
                 body.RemoveAt(body.Count - 1);
             }
 
-            var text = JoinTrimmed(body);
+            var text = JoinKeep(body);
             var exact = VaultText.ParseInstant(Str(meta, "at"));
             var at = exact is { } e && (visible is null || VaultText.LocalMinute(e, tz) == VaultText.LocalMinute(visible.Value, tz)) ? e : visible ?? state.Context.Now;
             state.NeedsWrite |= meta is null || exact != at;
@@ -629,11 +745,11 @@ public static partial class TaskMarkdown
                 continue;
             }
 
-            var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null);
+            var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null, seedKey);
             target.NoteList.Add(new Note(id, at, text, author, sourceUrl, sourceTitle));
         }
 
-        state.File.NotesPreamble = JoinTrimmed(preamble);
+        state.File.NotesPreamble = JoinKeep(preamble);
     }
 
     private static void ParseAttachments(List<string> lines, WorkItem root, ParseState state)
@@ -642,7 +758,7 @@ public static partial class TaskMarkdown
         foreach (var line in lines)
         {
             var m = ListItem().Match(line);
-            if (m.Success && !m.Groups["c"].Success && ParseAttachmentLine(m.Groups["rest"].Value, state) is { } attachment)
+            if (m.Success && !m.Groups["c"].Success && m.Groups["ind"].Length == 0 && ParseAttachmentLine(m.Groups["rest"].Value, state) is { } attachment)
             {
                 root.AttachmentList.Add(attachment);
             }
@@ -652,7 +768,7 @@ public static partial class TaskMarkdown
             }
         }
 
-        state.File.AttachmentsPreamble = JoinTrimmed(preamble);
+        state.File.AttachmentsPreamble = JoinKeep(preamble);
     }
 
     private static Attachment? ParseAttachmentLine(string rest, ParseState state)
@@ -666,7 +782,6 @@ public static partial class TaskMarkdown
 
         rest = rest.Trim();
         string name, path;
-        var wiki = false;
         if (MarkdownLink().Match(rest) is { Success: true } md && md.Length == rest.Length)
         {
             var url = md.Groups["url"].Value.Trim('<', '>');
@@ -682,26 +797,21 @@ public static partial class TaskMarkdown
         {
             path = w.Groups["target"].Value.Trim();
             name = path[(path.LastIndexOf('/') + 1)..];
-            wiki = true;
         }
         else
         {
             return null;
         }
 
-        var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null);
+        var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null, $"attachment|{path}");
         var at = VaultText.ParseInstant(Str(meta, "at"));
         state.NeedsWrite |= at is null;
         var attachment = new Attachment(id, name, path, Long(meta, "size") ?? 0, at ?? state.Context.Now, VaultText.ParseActor(Str(meta, "by")));
-        if (wiki)
-        {
-            state.File.WikiLinks.Add(id);
-        }
-
+        state.File.RawLinks[id] = (rest, path, name);
         return attachment;
     }
 
-    private static Reminder? ParseReminder(YamlDotNet.RepresentationModel.YamlMappingNode map, TimeZoneInfo tz, HashSet<Guid> used, ref bool needsWrite)
+    private static Reminder? ParseReminder(YamlDotNet.RepresentationModel.YamlMappingNode map, TimeZoneInfo tz, ParseState state, int index)
     {
         var at = VaultText.ParseTime(Frontmatter.Get(map, "at"), tz, "09:00");
         if (at is null)
@@ -709,12 +819,11 @@ public static partial class TaskMarkdown
             return null;
         }
 
-        var hasId = Guid.TryParse(Frontmatter.Get(map, "id"), out var g) && used.Add(g);
-        needsWrite |= !hasId;
         var kind = (Frontmatter.Get(map, "kind") ?? string.Empty).Replace("-", string.Empty, StringComparison.Ordinal).Equals("nextaction", StringComparison.OrdinalIgnoreCase)
             ? ReminderKind.NextAction
             : ReminderKind.Manual;
-        return new Reminder(hasId ? g : Guid.NewGuid(), at.Value, Frontmatter.Get(map, "message") ?? string.Empty, kind)
+        var id = state.NewId(Guid.TryParse(Frontmatter.Get(map, "id"), out var g) ? g : null, $"reminder|{index}");
+        return new Reminder(id, at.Value, Frontmatter.Get(map, "message") ?? string.Empty, kind)
         {
             NotifiedAt = VaultText.ParseTime(Frontmatter.Get(map, "notified"), tz, "00:00"),
             DismissedAt = VaultText.ParseTime(Frontmatter.Get(map, "dismissed"), tz, "00:00"),
@@ -723,55 +832,104 @@ public static partial class TaskMarkdown
 
     // ---- Rendering ----------------------------------------------------------------------
 
+    /// <summary>What each owned property means, to tell whether the value changed since it was read.</summary>
+    private static Dictionary<string, string> Signatures(WorkItem root) => new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["status"] = root.IsDone ? "done" : "open",
+        ["priority"] = root.Priority.ToString(),
+        ["created"] = VaultText.Utc(root.CreatedAt),
+        ["completed"] = root.CompletedAt is { } c ? VaultText.Utc(c) : string.Empty,
+        ["due"] = root.Deadline is { } d ? VaultText.Utc(d) : string.Empty,
+        ["scheduled"] = root.NextActionAt is { } n ? VaultText.Utc(n) : string.Empty,
+        ["sequential"] = root.Sequential ? "true" : "false",
+        ["step-delay"] = root.StepDelay is { } s ? ((long)s.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+        ["tags"] = string.Join('\u001f', root.Tags),
+        ["labels"] = string.Join('\u001f', root.Labels),
+        ["reminders"] = string.Join('\u001e', root.Reminders.Select(r => $"{r.Id}|{VaultText.Utc(r.DueAt)}|{r.Message}|{r.Kind}|{r.NotifiedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{r.DismissedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}")),
+    };
+
     private static void RenderFrontmatter(StringBuilder sb, WorkItem root, TimeZoneInfo tz, ParsedTaskFile? previous)
     {
+        var idKey = previous?.IdKey ?? "id";
+        var signatures = Signatures(root);
+        var emitted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, raw) in previous?.Frontmatter.Blocks ?? [])
         {
             if (key is null)
             {
                 sb.Append(raw);
+                continue;
+            }
+
+            var owned = string.Equals(key, idKey, StringComparison.OrdinalIgnoreCase) || CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
+            if (!owned)
+            {
+                sb.Append(raw);
+            }
+            else if (emitted.Add(key))
+            {
+                // An unchanged value is written exactly as the user typed it (date-only due, flow lists, quotes…).
+                var unchanged = previous!.KeySignatures.TryGetValue(key, out var before) && before == signatures.GetValueOrDefault(key);
+                sb.Append(unchanged ? raw : CanonicalProperty(key, idKey, root, tz) ?? string.Empty);
             }
         }
 
-        sb.Append("id: ").Append(root.Id).Append('\n');
-        sb.Append("status: ").Append(root.IsDone ? "done" : "open").Append('\n');
-        if (root.Priority != Priority.Normal)
+        foreach (var key in CanonicalKeys.Prepend(idKey))
         {
-            sb.Append("priority: ").Append(root.Priority.ToString().ToLowerInvariant()).Append('\n');
+            if (emitted.Add(key))
+            {
+                sb.Append(CanonicalProperty(key, idKey, root, tz) ?? string.Empty);
+            }
+        }
+    }
+
+    private static string? CanonicalProperty(string key, string idKey, WorkItem root, TimeZoneInfo tz)
+    {
+        if (string.Equals(key, idKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{idKey}: {root.Id}\n";
         }
 
-        sb.Append("created: ").Append(VaultText.Utc(root.CreatedAt)).Append('\n');
-        if (root.CompletedAt is { } completed)
+        switch (key.ToLowerInvariant())
         {
-            sb.Append("completed: ").Append(VaultText.Utc(completed)).Append('\n');
+            case "status":
+                return $"status: {(root.IsDone ? "done" : "open")}\n";
+            case "priority":
+                return root.Priority == Priority.Normal ? null : $"priority: {root.Priority.ToString().ToLowerInvariant()}\n";
+            case "created":
+                return $"created: {VaultText.Utc(root.CreatedAt)}\n";
+            case "completed":
+                return root.CompletedAt is { } c ? $"completed: {VaultText.Utc(c)}\n" : null;
+            case "due":
+                return root.Deadline is { } d ? $"due: {VaultText.LocalDateTime(d, tz)}\n" : null;
+            case "scheduled":
+                return root.NextActionAt is { } n ? $"scheduled: {VaultText.LocalDateTime(n, tz)}\n" : null;
+            case "sequential":
+                return root.Sequential ? "sequential: true\n" : null;
+            case "step-delay":
+                return root.StepDelay is { } s ? $"step-delay: {VaultText.Duration(s)}\n" : null;
+            case "tags":
+                return List("tags", root.Tags);
+            case "labels":
+                return List("labels", root.Labels);
+            case "reminders":
+                return Reminders(root.Reminders);
+            default:
+                return null;
         }
 
-        if (root.Deadline is { } due)
-        {
-            sb.Append("due: ").Append(VaultText.LocalDateTime(due, tz)).Append('\n');
-        }
+        static string? List(string key, IReadOnlyList<string> values) =>
+            values.Count == 0 ? null : $"{key}:\n" + string.Concat(values.Select(v => $"  - {VaultText.YamlScalar(v)}\n"));
 
-        if (root.NextActionAt is { } next)
+        static string? Reminders(IReadOnlyList<Reminder> reminders)
         {
-            sb.Append("scheduled: ").Append(VaultText.LocalDateTime(next, tz)).Append('\n');
-        }
+            if (reminders.Count == 0)
+            {
+                return null;
+            }
 
-        if (root.Sequential)
-        {
-            sb.Append("sequential: true\n");
-        }
-
-        if (root.StepDelay is { } delay)
-        {
-            sb.Append("step-delay: ").Append(VaultText.Duration(delay)).Append('\n');
-        }
-
-        AppendList(sb, "tags", root.Tags);
-        AppendList(sb, "labels", root.Labels);
-        if (root.Reminders.Count > 0)
-        {
-            sb.Append("reminders:\n");
-            foreach (var r in root.Reminders)
+            var sb = new StringBuilder("reminders:\n");
+            foreach (var r in reminders)
             {
                 sb.Append("  - id: ").Append(r.Id).Append('\n');
                 sb.Append("    at: ").Append(VaultText.Utc(r.DueAt)).Append('\n');
@@ -787,55 +945,96 @@ public static partial class TaskMarkdown
                     sb.Append("    dismissed: ").Append(VaultText.Utc(d)).Append('\n');
                 }
             }
-        }
 
-        foreach (var (key, raw) in previous?.Frontmatter.Blocks ?? [])
+            return sb.ToString();
+        }
+    }
+
+    private static string? RenderSection(string kind, WorkItem root, TaskMarkdownContext context, ParsedTaskFile? previous)
+    {
+        switch (kind)
         {
-            if (key is not null && !OwnedKeys.Contains(key, StringComparer.OrdinalIgnoreCase))
+            case Subtasks:
             {
-                sb.Append(raw);
+                var list = new StringBuilder();
+                var current = root.Children.Select(c => c.Id).ToHashSet();
+                for (var i = 0; i < root.Children.Count; i++)
+                {
+                    var item = root.Children[i];
+                    if (previous?.Leading.GetValueOrDefault(item.Id) is { } heading)
+                    {
+                        if (list.Length > 0)
+                        {
+                            list.Append('\n');
+                        }
+
+                        list.Append(VaultText.CloseFences(heading)).Append("\n\n");
+                    }
+
+                    RenderItem(list, item, i, root.Sequential, 0, context, previous);
+                }
+
+                // Text that sat above subtasks that are gone now, and text after the list, stays at the end.
+                var rest = (previous?.Leading.Where(l => !current.Contains(l.Key)).Select(l => l.Value) ?? [])
+                    .Concat(previous?.SubtasksTrailer is { } t ? [t] : [])
+                    .ToList();
+                if (rest.Count > 0)
+                {
+                    list.Append(list.Length > 0 ? "\n" : string.Empty).Append(VaultText.CloseFences(string.Join("\n\n", rest))).Append('\n');
+                }
+
+                return list.Length == 0 ? null : $"## {(root.Sequential ? "Steps" : "Subtasks")}\n\n{list.ToString().TrimEnd('\n')}";
+            }
+
+            case Notes:
+            {
+                var notes = root.SelfAndDescendants().SelectMany(i => i.Notes.Select(n => (Item: i, Note: n))).OrderBy(n => n.Note.At).ToList();
+                if (notes.Count == 0 && previous?.NotesPreamble is null)
+                {
+                    return null;
+                }
+
+                return Section("Notes", previous?.NotesPreamble, string.Join("\n\n", notes.Select(n => RenderNote(n.Item, n.Note, root, context.TimeZone, previous))));
+            }
+
+            default:
+            {
+                if (root.Attachments.Count == 0 && previous?.AttachmentsPreamble is null)
+                {
+                    return null;
+                }
+
+                return Section("Attachments", previous?.AttachmentsPreamble, string.Join("\n", root.Attachments.Select(a => "- " + RenderAttachment(a, context, previous))));
             }
         }
     }
 
-    private static void AppendList(StringBuilder sb, string key, IReadOnlyList<string> values)
-    {
-        if (values.Count == 0)
-        {
-            return;
-        }
-
-        sb.Append(key).Append(":\n");
-        foreach (var value in values)
-        {
-            sb.Append("  - ").Append(VaultText.YamlScalar(value)).Append('\n');
-        }
-    }
-
-    private static void RenderItems(StringBuilder sb, IReadOnlyList<WorkItem> items, bool ordered, int depth, TaskMarkdownContext ctx, ParsedTaskFile? previous)
+    private static void RenderItem(StringBuilder sb, WorkItem item, int index, bool ordered, int depth, TaskMarkdownContext ctx, ParsedTaskFile? previous)
     {
         var indent = new string('\t', depth);
-        for (var i = 0; i < items.Count; i++)
+        sb.Append(indent).Append(ordered ? $"{index + 1}." : "-").Append(" [").Append(CheckChar(item, previous)).Append("] ")
+            .Append(ItemLine(item, ctx.TimeZone, previous)).Append('\n');
+        if (!string.IsNullOrEmpty(item.Details))
         {
-            var item = items[i];
-            sb.Append(indent).Append(ordered ? $"{i + 1}." : "-").Append(" [").Append(item.IsDone ? 'x' : ' ').Append("] ")
-                .Append(ItemLine(item, ctx.TimeZone, previous)).Append('\n');
-            if (!string.IsNullOrEmpty(item.Details))
+            foreach (var line in VaultText.CloseFences(item.Details.Replace("\r\n", "\n", StringComparison.Ordinal)).Split('\n'))
             {
-                foreach (var line in item.Details.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
-                {
-                    sb.Append(line.Length == 0 ? string.Empty : indent + "\t" + line).Append('\n');
-                }
+                sb.Append(line.Length == 0 ? string.Empty : indent + "\t" + line).Append('\n');
             }
+        }
 
-            foreach (var attachment in item.Attachments)
-            {
-                sb.Append(indent).Append("\t- 📎 ").Append(RenderAttachment(attachment, ctx, previous)).Append('\n');
-            }
+        foreach (var attachment in item.Attachments)
+        {
+            sb.Append(indent).Append("\t- 📎 ").Append(RenderAttachment(attachment, ctx, previous)).Append('\n');
+        }
 
-            RenderItems(sb, item.Children, item.Sequential, depth + 1, ctx, previous);
+        for (var i = 0; i < item.Children.Count; i++)
+        {
+            RenderItem(sb, item.Children[i], i, item.Sequential, depth + 1, ctx, previous);
         }
     }
+
+    private static char CheckChar(WorkItem item, ParsedTaskFile? previous) =>
+        previous?.CheckChars.TryGetValue(item.Id, out var c) == true && IsDoneChar(c) == item.IsDone ? c : item.IsDone ? 'x' : ' ';
 
     private static string ItemLine(WorkItem item, TimeZoneInfo tz, ParsedTaskFile? previous)
     {
@@ -848,13 +1047,20 @@ public static partial class TaskMarkdown
             }
         }
 
-        sb.Append(item.Priority switch
+        var emoji = previous?.PriorityEmoji.GetValueOrDefault(item.Id) is { } kept && PriorityOf(kept) == item.Priority
+            ? kept
+            : item.Priority switch
+            {
+                Priority.Critical => "🔺",
+                Priority.High => "⏫",
+                Priority.Low => "🔽",
+                _ => null,
+            };
+        if (emoji is not null)
         {
-            Priority.Critical => " 🔺",
-            Priority.High => " ⏫",
-            Priority.Low => " 🔽",
-            _ => string.Empty,
-        });
+            sb.Append(' ').Append(emoji);
+        }
+
         if (item.Deadline is { } due)
         {
             sb.Append(" 📅 ").Append(VaultText.LocalDate(due, tz));
@@ -963,8 +1169,9 @@ public static partial class TaskMarkdown
 
     private static string RenderAttachment(Attachment attachment, TaskMarkdownContext ctx, ParsedTaskFile? previous)
     {
-        var link = previous?.WikiLinks.Contains(attachment.Id) == true
-            ? $"![[{attachment.Path}]]"
+        // The link exactly as written (wiki link, embed, alias/size) as long as it still points to the same file.
+        var link = previous?.RawLinks.TryGetValue(attachment.Id, out var raw) == true && raw.Path == attachment.Path && raw.Name == attachment.FileName
+            ? raw.Raw
             : $"[{LinkAlias().Replace(attachment.FileName, " ")}]({EscapeUrl(RelativeTo(ctx.FileDirectory, attachment.Path))})";
         var meta = new JsonObject
         {
@@ -987,7 +1194,8 @@ public static partial class TaskMarkdown
 
     // ---- Helpers ------------------------------------------------------------------------
 
-    private static string? JoinTrimmed(List<string> lines)
+    /// <summary>The lines without leading/trailing blank lines, otherwise exactly as written (hard line breaks stay).</summary>
+    private static string? JoinKeep(List<string> lines)
     {
         var start = lines.FindIndex(l => l.Trim().Length > 0);
         if (start < 0)
@@ -996,7 +1204,7 @@ public static partial class TaskMarkdown
         }
 
         var end = lines.FindLastIndex(l => l.Trim().Length > 0);
-        return string.Join('\n', lines.Skip(start).Take(end - start + 1).Select(l => l.TrimEnd()));
+        return string.Join('\n', lines.Skip(start).Take(end - start + 1));
     }
 
     private static int Columns(string line)
@@ -1084,6 +1292,16 @@ public static partial class TaskMarkdown
         "low" or "lowest" => Priority.Low,
         _ => Priority.Normal,
     };
+
+    private static Priority PriorityOf(string emoji) => emoji switch
+    {
+        "🔺" => Priority.Critical,
+        "⏫" => Priority.High,
+        "🔽" or "⏬" => Priority.Low,
+        _ => Priority.Normal,
+    };
+
+    private static bool IsDoneChar(char c) => c is 'x' or 'X' or '-';
 
     private static bool IsTrue(string? text) => (text ?? string.Empty).Trim().ToLowerInvariant() is "true" or "yes";
 

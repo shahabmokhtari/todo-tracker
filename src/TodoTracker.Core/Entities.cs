@@ -72,7 +72,7 @@ public sealed class Attachment
     public string FileName { get; }
 
     /// <summary>Location relative to the store root, with forward slashes (e.g. <c>_attachments/7b0c2f9e/plan.pdf</c>).</summary>
-    public string Path { get; }
+    public string Path { get; internal set; }
 
     public long Size { get; }
 
