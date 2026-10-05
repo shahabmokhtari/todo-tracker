@@ -278,8 +278,12 @@ public static class Wire
     public static IReadOnlyList<TimelineDto> Timeline(TaskBoard board, Guid? itemId, int limit) =>
         board.Timeline(itemId)
             .Take(Math.Clamp(limit, 1, 1000))
-            .Select(a => new TimelineDto(a.At, a.ItemId, board.Find(a.ItemId)?.Title, Of(a.Kind), a.Summary, a.Actor.DisplayName, Of(a.Actor.Kind)))
+            .Select(a => new TimelineDto(a.At, a.ItemId, board.Find(a.ItemId)?.Title, Of(a.Kind), CurrentSummary(board, a), a.Actor.DisplayName, Of(a.Actor.Kind)))
             .ToList();
+
+    /// <summary>A note's entry shows the note as it reads now (notes autosave while typed and can be edited).</summary>
+    private static string CurrentSummary(TaskBoard board, ActivityEntry entry) =>
+        entry.Kind == ActivityKind.NoteAdded && board.Find(entry.ItemId)?.Notes.FirstOrDefault(n => n.At == entry.At) is { } note ? note.Text : entry.Summary;
 
     public static PomodoroDto Pomodoro(TaskBoard board, DateTimeOffset now)
     {

@@ -227,6 +227,13 @@ internal static class ApiEndpoints
                 return Wire.Note(b.Get(id), note);
             }));
 
+        api.MapPatch("/items/{id:guid}/notes/{noteId:guid}", (Guid id, Guid noteId, NoteRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+            store.UpdateAsync(b =>
+            {
+                var note = b.UpdateNote(id, noteId, request.Text ?? string.Empty, Security.ActorOf(http), time.GetUtcNow());
+                return Wire.Note(b.Get(id), note);
+            }));
+
         api.MapPost("/items/{id:guid}/schedule", (Guid id, ScheduleRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             Mutate(store, time, http, (b, now, actor) =>
             {

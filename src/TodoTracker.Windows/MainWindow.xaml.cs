@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -23,6 +25,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     private GlobalHotKey? _hotKey;
     private bool _applying;
+
+    /// <summary>Where the tasks live (set by the app once the server is up).</summary>
+    internal TodoTracker.Core.Vault.VaultBoardStore? Vault { get; set; }
     private WindowPlacement? _preferred;
 
     /// <param name="placementStore">Where placement is remembered; null keeps it in memory only (smoke tests).</param>
@@ -366,6 +371,18 @@ public partial class MainWindow : Window
         }
 
         var menu = new ContextMenu { PlacementTarget = element };
+        if (Vault?.PathOf(card.Id) is { } rel)
+        {
+            var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
+            var obsidian = new MenuItem { Header = "Open in Obsidian" };
+            obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(full));
+            var show = new MenuItem { Header = "Show the markdown file" };
+            show.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{full}\"") { UseShellExecute = false });
+            menu.Items.Add(obsidian);
+            menu.Items.Add(show);
+            menu.Items.Add(new Separator());
+        }
+
         menu.Items.Add(new MenuItem { Header = "Add subtask…", Command = _vm.AddSubtaskCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Edit details in browser", Command = _vm.EditInBrowserCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Open full report", Command = _vm.OpenReportCommand, CommandParameter = card });
@@ -394,6 +411,11 @@ public partial class MainWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
         menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
+        if (Vault is not null)
+        {
+            menu.Items.Add(StorageMenu());
+        }
+
         if (_settings is not null)
         {
             var teams = new MenuItem { Header = _settings.Current.TeamsWebhookUrl is null ? "Connect Teams reminders…" : "Teams reminders: connected (change…)" };
@@ -411,6 +433,82 @@ public partial class MainWindow : Window
         exit.Click += (_, _) => Close();
         menu.Items.Add(exit);
         menu.IsOpen = true;
+    }
+
+    /// <summary>Tasks are markdown files: open them, keep them in an Obsidian vault, or pick another folder.</summary>
+    private MenuItem StorageMenu()
+    {
+        var root = Vault!.RootPath;
+        var storage = new MenuItem { Header = "Tasks folder", ToolTip = root };
+        var open = new MenuItem { Header = "Open the folder" };
+        open.Click += (_, _) => Open(root);
+        var obsidian = new MenuItem { Header = "Open in Obsidian" };
+        obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(root));
+        storage.Items.Add(new MenuItem { Header = root, IsEnabled = false });
+        storage.Items.Add(open);
+        storage.Items.Add(obsidian);
+        storage.Items.Add(new Separator());
+
+        var vaults = TodoTracker.Core.Vault.ObsidianVaults.Discover();
+        if (vaults.Count > 0)
+        {
+            var use = new MenuItem { Header = "Keep tasks in an Obsidian vault" };
+            foreach (var vault in vaults)
+            {
+                var target = TodoTracker.Core.Vault.ObsidianVaults.TaskFolderIn(vault);
+                var item = new MenuItem { Header = vault.Name, ToolTip = target, IsCheckable = true, IsChecked = string.Equals(target, root, StringComparison.OrdinalIgnoreCase) };
+                item.Click += (_, _) => SwitchVault(target);
+                use.Items.Add(item);
+            }
+
+            storage.Items.Add(use);
+        }
+
+        var choose = new MenuItem { Header = "Choose another folder…" };
+        choose.Click += (_, _) =>
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Where should Todo Tracker keep your tasks?", InitialDirectory = root };
+            if (dialog.ShowDialog(this) == true)
+            {
+                SwitchVault(dialog.FolderName);
+            }
+        };
+        storage.Items.Add(choose);
+        return storage;
+    }
+
+    private void SwitchVault(string folder)
+    {
+        if (string.Equals(Path.GetFullPath(folder), Vault?.RootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var message = $"Keep your tasks in\n{folder}?\n\nTodo Tracker restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
+        if (MessageBox.Show(this, message, "Tasks folder", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        _settings?.SetVaultPath(folder);
+        if (Environment.ProcessPath is { } exe)
+        {
+            ReleaseScreenEdge();
+            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, Arguments = "--restart" });
+            Application.Current.Shutdown();
+        }
+    }
+
+    private static void Open(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Nothing registered for the link (e.g. Obsidian isn't installed).
+        }
     }
 
     private MenuItem PositionMenu()

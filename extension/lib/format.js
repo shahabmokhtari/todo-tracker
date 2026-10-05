@@ -119,3 +119,29 @@ export function pomodoroFraction(p, now = new Date()) {
   const remaining = p.running && p.endsAt ? Math.max(0, (new Date(p.endsAt) - now) / 1000) : p.remainingSeconds;
   return total > 0 ? Math.min(1, Math.max(0, 1 - remaining / total)) : 0;
 }
+
+export function fileSize(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return `${Number(value.toFixed(value < 10 ? 1 : 0))} ${units[unit]}`;
+}
+
+/** Tags typed as "#a, b c" → ['a', 'b', 'c'] (case-insensitive duplicates dropped). */
+export function parseTags(text) {
+  const seen = new Set();
+  return (text ?? '').split(/[\s,]+/).map((t) => t.replace(/^#+/, '').trim()).filter((t) => {
+    if (!t || seen.has(t.toLowerCase())) return false;
+    seen.add(t.toLowerCase());
+    return true;
+  });
+}
+
+/** Search query for a clicked tag or label chip (same syntax as the server's TaskQuery). */
+export function queryFor({ tag, label }) {
+  if (tag) return `#${tag}`;
+  return /\s/.test(label) ? `label:"${label}"` : `label:${label}`;
+}

@@ -43,7 +43,7 @@ public sealed class Note
 
     public DateTimeOffset At { get; }
 
-    public string Text { get; }
+    public string Text { get; internal set; }
 
     public Actor Author { get; }
 

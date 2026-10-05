@@ -47,6 +47,69 @@ public sealed class SidebarViewModelTests : IDisposable
         _store.UpdateAsync(b => b.AddTask(new NewTask(title) { Priority = priority, ParentId = parent, GroupId = group }, Actor.User, T0));
 
     [Fact]
+    public async Task A_note_saves_itself_after_a_pause_and_keeps_updating_the_same_note()
+    {
+        var task = await Seed("Ship");
+        await _vm.RefreshAsync();
+        var card = _vm.Focus!;
+
+        card.NoteDraft = "deployed";
+        _time.Advance(TimeSpan.FromSeconds(2));
+        await _vm.WhenNotesSavedAsync();
+        card.NoteDraft = "deployed ring 0";
+        _time.Advance(TimeSpan.FromSeconds(2));
+        await _vm.WhenNotesSavedAsync();
+
+        var note = Assert.Single(await _store.ReadAsync(b => b.Get(task.Id).Notes.ToList()));
+        Assert.Equal("deployed ring 0", note.Text);
+        Assert.Equal("deployed ring 0", card.NoteDraft);
+    }
+
+    [Fact]
+    public async Task Enter_finishes_the_note_so_the_next_one_is_new()
+    {
+        var task = await Seed("Ship");
+        await _vm.RefreshAsync();
+        var card = _vm.Focus!;
+
+        card.NoteDraft = "first";
+        await _vm.AddNoteCommand.ExecuteAsync(card);
+        card.NoteDraft = "second";
+        _time.Advance(TimeSpan.FromSeconds(2));
+        await _vm.WhenNotesSavedAsync();
+
+        Assert.Equal(["first", "second"], await _store.ReadAsync(b => b.Get(task.Id).Notes.Select(n => n.Text).ToList()));
+    }
+
+    [Fact]
+    public async Task Nothing_is_saved_while_still_typing()
+    {
+        var task = await Seed("Ship");
+        await _vm.RefreshAsync();
+
+        _vm.Focus!.NoteDraft = "dep";
+        _time.Advance(TimeSpan.FromMilliseconds(500));
+        _vm.Focus!.NoteDraft = "deploy";
+        _time.Advance(TimeSpan.FromMilliseconds(500));
+        await _vm.WhenNotesSavedAsync();
+
+        Assert.Empty(await _store.ReadAsync(b => b.Get(task.Id).Notes.ToList()));
+    }
+
+    [Fact]
+    public async Task Cards_show_tags_and_colored_labels()
+    {
+        await _store.UpdateAsync(b => b.AddTask(new NewTask("Ship") { Tags = ["release"], Labels = ["Deep work"] }, Actor.User, T0));
+
+        await _vm.RefreshAsync();
+
+        Assert.Equal(["#release"], _vm.Focus!.Tags);
+        var label = Assert.Single(_vm.Focus!.Labels);
+        Assert.Equal("Deep work", label.Name);
+        Assert.Matches("^#[0-9a-f]{6}$", label.Color);
+    }
+
+    [Fact]
     public async Task Refresh_projects_focus_now_waiting_workstreams_and_tabs()
     {
         var x = await Seed("Roll out feature X", Priority.High);

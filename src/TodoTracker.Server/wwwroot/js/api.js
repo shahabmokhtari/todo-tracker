@@ -32,6 +32,23 @@ export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
 
+/** Uploads one file as multipart form data (the browser sets the boundary). */
+export async function upload(path, file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'X-TodoTracker-Client': 'web' }, body: form });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status, data?.detail || data?.title || `Upload failed (${response.status})`);
+  return data;
+}
+
+/** GET returning plain text (e.g. a markdown version from the history). */
+export async function text(path) {
+  const response = await fetch(path, { credentials: 'same-origin', headers: { 'X-TodoTracker-Client': 'web' } });
+  if (!response.ok) throw new ApiError(response.status, `Request failed (${response.status})`);
+  return response.text();
+}
+
 // Minimal DOM builder: text is always set via textContent, never innerHTML.
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);

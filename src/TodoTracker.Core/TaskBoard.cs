@@ -149,6 +149,27 @@ public sealed partial class TaskBoard
         return note;
     }
 
+    /// <summary>Notes are autosaved while typed: the first save adds the note, later ones update it in place.
+    /// Edits within 10 minutes of writing it are part of writing it (no extra timeline entries).</summary>
+    public Note UpdateNote(Guid id, Guid noteId, string text, Actor actor, DateTimeOffset now)
+    {
+        var item = Get(id);
+        var note = item.NoteList.Find(n => n.Id == noteId) ?? throw new TaskNotFoundException($"Note {noteId} was not found.");
+        var clean = RequireText(text, nameof(text), MaxTextLength, "A note cannot be empty.");
+        if (clean == note.Text)
+        {
+            return note;
+        }
+
+        note.Text = clean;
+        if (now - note.At > TimeSpan.FromMinutes(10))
+        {
+            Log(now, id, ActivityKind.Updated, $"Edited a note on \"{item.Title}\"", actor);
+        }
+
+        return note;
+    }
+
     public void Complete(Guid id, Actor actor, DateTimeOffset now)
     {
         var item = Get(id);

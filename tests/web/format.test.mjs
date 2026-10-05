@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -115,4 +115,22 @@ test('pomodoroFraction shows elapsed share of the current phase', () => {
   assert.equal(pomodoroFraction({ ...base, phase: 'focus', running: false, remainingSeconds: 750 }, now), 0.5);
   const endsAt = new Date(now.getTime() + 60_000).toISOString();
   assert.equal(pomodoroFraction({ ...base, phase: 'shortBreak', running: true, endsAt }, now), 0.8);
+});
+
+test('fileSize is short and readable', () => {
+  assert.equal(fileSize(0), '0 B');
+  assert.equal(fileSize(512), '512 B');
+  assert.equal(fileSize(1536), '1.5 KB');
+  assert.equal(fileSize(5 * 1024 * 1024), '5 MB');
+});
+
+test('parseTags accepts #, commas and spaces, and dedupes', () => {
+  assert.deepEqual(parseTags('#release, infra/k8s  Release #ux'), ['release', 'infra/k8s', 'ux']);
+  assert.deepEqual(parseTags('  '), []);
+});
+
+test('queryFor builds filter queries for tags and labels', () => {
+  assert.equal(queryFor({ tag: 'infra' }), '#infra');
+  assert.equal(queryFor({ label: 'Deep work' }), 'label:"Deep work"');
+  assert.equal(queryFor({ label: 'Later' }), 'label:Later');
 });

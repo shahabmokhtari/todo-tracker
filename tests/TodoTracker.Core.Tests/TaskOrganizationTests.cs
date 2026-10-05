@@ -250,6 +250,42 @@ public class TaskOrganizationTests
     private List<WorkItem> Search(string query) => TaskQuery.Parse(query).Apply(_board).ToList();
 
     [Fact]
+    public void A_note_being_typed_is_updated_in_place_without_flooding_the_timeline()
+    {
+        var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
+        var note = _board.AddNote(task.Id, "deployed", Actor.User, T0);
+
+        _board.UpdateNote(task.Id, note.Id, "deployed ring 0", Actor.User, T0.AddSeconds(5));
+        _board.UpdateNote(task.Id, note.Id, "deployed ring 0 and 1", Actor.User, T0.AddSeconds(9));
+
+        var saved = Assert.Single(task.Notes);
+        Assert.Equal((note.Id, "deployed ring 0 and 1", T0), (saved.Id, saved.Text, saved.At));
+        Assert.Single(_board.Activity, a => a.Kind == ActivityKind.NoteAdded);
+        Assert.DoesNotContain(_board.Activity, a => a.Kind == ActivityKind.Updated);
+    }
+
+    [Fact]
+    public void Editing_an_old_note_is_logged()
+    {
+        var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
+        var note = _board.AddNote(task.Id, "deployed", Actor.User, T0);
+
+        _board.UpdateNote(task.Id, note.Id, "deployed (fixed typo)", Actor.Agent("copilot"), T0.AddHours(2));
+
+        Assert.Contains(_board.Activity, a => a.Kind == ActivityKind.Updated && a.Actor.Kind == ActorKind.Agent);
+    }
+
+    [Fact]
+    public void Notes_cannot_be_emptied()
+    {
+        var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
+        var note = _board.AddNote(task.Id, "deployed", Actor.User, T0);
+
+        Assert.Throws<ArgumentException>(() => _board.UpdateNote(task.Id, note.Id, "  ", Actor.User, T0));
+        Assert.Throws<TaskNotFoundException>(() => _board.UpdateNote(task.Id, Guid.NewGuid(), "x", Actor.User, T0));
+    }
+
+    [Fact]
     public void Tags_labels_and_attachments_survive_serialization()
     {
         var root = _board.AddTask(new NewTask("Ship") { Tags = ["release"], Labels = ["Deep work"] }, Actor.User, T0);

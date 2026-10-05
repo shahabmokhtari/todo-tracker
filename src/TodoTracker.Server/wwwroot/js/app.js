@@ -1,13 +1,51 @@
-import { api, post, patch, put, del, h, ApiError } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction } from './format.js';
+import { api, post, patch, put, del, h, upload, text, ApiError } from './api.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from './format.js';
 import { icon, ring } from './icons.js';
+import { createAutosave } from './autosave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
   dashboard: null,
   group: localStorage.getItem('tt.group') || null,
   drawerId: null,
+  query: '',
+  vault: null,
 };
+
+/** Notes autosave while typed: the first pause creates the note, later pauses update the same note. */
+const noteSessions = new Map();
+
+function noteSession(itemId, key = itemId) {
+  if (!noteSessions.has(key)) {
+    const session = { noteId: null };
+    session.autosave = createAutosave({
+      delay: 1200,
+      save: async (text) => {
+        if (!text.trim()) return;
+        if (session.noteId) await patch(`/api/items/${itemId}/notes/${session.noteId}`, { text });
+        else session.noteId = (await post(`/api/items/${itemId}/notes`, { text })).id;
+      },
+      onState: (s) => setSaveState(s),
+    });
+    noteSessions.set(key, session);
+  }
+  return noteSessions.get(key);
+}
+
+/** Finishes the note being typed (saves it now) so the next keystrokes start a new note. */
+async function finishNote(key) {
+  const session = noteSessions.get(key);
+  if (!session) return;
+  noteSessions.delete(key);
+  await session.autosave.flush();
+}
+
+function setSaveState(s) {
+  const el = document.getElementById('save-state');
+  if (!el) return;
+  el.dataset.state = s;
+  el.textContent = { pending: 'Editing…', saving: 'Saving…', saved: 'Saved', error: 'Couldn’t save – will retry' }[s] ?? '';
+}
 
 // ---------- boot & refresh ----------
 
@@ -15,8 +53,12 @@ async function refresh({ background = false } = {}) {
   // Background refreshes never interrupt typing: an open note box or a focused field keeps its content.
   if (background && isEditing()) return;
   try {
-    const query = state.group ? `?group=${encodeURIComponent(state.group)}` : '';
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    if (state.query) params.set('q', state.query);
+    const query = params.toString() ? `?${params}` : '';
     state.dashboard = await api(`/api/dashboard${query}`);
+    if (!state.vault) api('/api/vault').then((v) => { state.vault = v; renderVault(); }).catch(() => {});
     showBoard(true);
     const drafts = collectNoteDrafts();
     render();
@@ -34,8 +76,9 @@ async function refresh({ background = false } = {}) {
 /** True only when something unsaved would be lost: typed capture text, a non-empty note, or dirty drawer fields. */
 function isEditing() {
   if ($('#capture-input').value.trim()) return true;
+  if ([...noteSessions.values()].some((s) => s.autosave.dirty)) return true;
   if ([...document.querySelectorAll('.inline-note:not([hidden]) input')].some((i) => i.value.trim())) return true;
-  return !$('#drawer').hidden && collectDrawerEdits().size > 0;
+  return !$('#drawer').hidden && !!state.drawerAutosave?.dirty;
 }
 
 function collectNoteDrafts() {
@@ -80,7 +123,7 @@ async function act(promise, message) {
     toast(err.message, 'error');
   }
   await refresh();
-  if (state.drawerId) await openDrawer(state.drawerId, { keepEdits: true });
+  if (state.drawerId) await openDrawer(state.drawerId);
   return ok;
 }
 
@@ -114,7 +157,47 @@ function render() {
   renderSection('#sec-overview', streams.map(workstream), streams.length, 'Tasks with subtasks or rollout steps show up here with progress.');
   renderSection('#sec-notes', d.recentNotes.map(noteRow), d.recentNotes.length, 'Notes you and your agents log appear here.');
   renderPomodoro(d.pomodoro);
+  renderProblems(d.problems ?? []);
+  renderFilter();
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
+}
+
+/** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
+function renderProblems(problems) {
+  const el = $('#problems');
+  el.hidden = problems.length === 0;
+  if (!problems.length) return;
+  el.replaceChildren(icon('alert', { size: 16 }),
+    h('span', null, problems.length === 1 ? `A task file needs fixing: ${problems[0].path} – ${problems[0].message}` : `${problems.length} task files need fixing (first: ${problems[0].path}).`));
+}
+
+function renderFilter() {
+  const input = $('#filter');
+  if (document.activeElement !== input) input.value = state.query;
+  $('#filter-clear').hidden = !state.query;
+}
+
+function setQuery(q) {
+  state.query = (q ?? '').trim();
+  renderFilter();
+  refresh();
+}
+
+function renderVault() {
+  const v = state.vault;
+  if (!v) return;
+  $('#vault').replaceChildren(
+    icon('folder', { size: 14 }),
+    h('span', { class: 'muted', title: v.path }, 'Saved as markdown in ', h('code', null, v.path)),
+    h('a', { href: v.obsidianUrl, class: 'link' }, 'Open in Obsidian'));
+}
+
+const tagChip = (t) => h('button', { class: 'chip tag', title: `Show #${t}`, onclick: (e) => { e.stopPropagation(); setQuery(queryFor({ tag: t })); } }, `#${t}`);
+
+function labelChip(l, { onclick } = {}) {
+  const el = h('button', { class: 'chip label', title: `Show "${l.name}"`, onclick: onclick ?? ((e) => { e.stopPropagation(); setQuery(queryFor({ label: l.name })); }) }, h('span', { class: 'swatch', 'aria-hidden': 'true' }), l.name);
+  el.style.setProperty('--label', l.color);
+  return el;
 }
 
 function renderTabs(d) {
@@ -159,7 +242,8 @@ function renderFocus(d) {
   if (f.stepNumber) {
     sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
   }
-  if (chips.length) sub.push(h('div', { class: 'meta' }, ...chips.map(chip)));
+  const tagged = [...(f.labels ?? []).map((l) => labelChip(l)), ...(f.tags ?? []).map(tagChip)];
+  if (chips.length || tagged.length) sub.push(h('div', { class: 'meta' }, ...chips.map(chip), ...tagged));
 
   const el = h('div', { class: `focus-card${f.needsAttention ? ' attention' : ''}` },
     h('div', { class: 'focus-top' },
@@ -194,7 +278,8 @@ function card(c, { waiting = false } = {}) {
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', onclick: () => openDrawer(c.id) }, c.title),
-      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(chip)),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(chip), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
+        c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
@@ -210,15 +295,22 @@ function actionButton({ name, iconName, big, tone = '', primary = false, onclick
 
 function actions(c, { waiting = false, big = false } = {}) {
   const bar = h('div', { class: `actions${big ? ' big' : ''}` });
-  const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: async (e) => {
-    e.preventDefault();
-    const input = noteBox.querySelector('input');
-    const text = input.value;
-    if (!text.trim()) return;
-    input.value = '';
+  // Saved as you type; Enter finishes the note (and starts a fresh one next time).
+  const noteInput = h('input', {
+    placeholder: 'What did you do? What is next? (saves as you type)', maxlength: 10000, 'aria-label': 'Note',
+    oninput: () => noteSession(c.id, `card:${c.id}`).autosave.schedule(noteInput.value),
+    onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } },
+    onblur: () => { if (noteInput.value.trim()) noteSession(c.id, `card:${c.id}`).autosave.flush(); },
+  });
+  const finish = async () => {
+    const hadText = noteInput.value.trim();
+    await finishNote(`card:${c.id}`);
+    noteInput.value = '';
     noteBox.hidden = true;
-    if (!(await act(post(`/api/items/${c.id}/notes`, { text }), 'Note saved'))) restoreNoteDrafts(new Map([[c.id, text]]));
-  } }, h('input', { placeholder: 'What did you do? What is next?', maxlength: 10000, 'aria-label': 'Note' }), h('button', { class: 'btn primary', type: 'submit' }, 'Save'));
+    if (hadText) await act(Promise.resolve(), 'Note saved');
+  };
+  const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: (e) => { e.preventDefault(); finish(); } },
+    noteInput, h('button', { class: 'btn', type: 'submit', title: 'Finish this note (Enter)', 'aria-label': 'Finish note' }, icon('check', { size: 16 }), 'Finish'));
 
   if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Done', iconName: 'check', big, tone: 'ok', primary: true, onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
   if (c.needsAttention && c.reminderId) bar.append(actionButton({ name: 'Dismiss', iconName: 'bellOff', big, title: 'Dismiss reminder', onclick: () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`)) }));
@@ -343,16 +435,22 @@ async function editGroup(g) {
 
 // ---------- drawer (task details) ----------
 
-function closeDrawer() {
+async function closeDrawer() {
+  // Everything typed is saved before the panel closes.
+  const flushes = [state.drawerAutosave?.flush(), ...[...noteSessions.keys()].filter((k) => k.startsWith('drawer:')).map(finishNote)];
   state.drawerId = null;
+  state.drawerAutosave = null;
   $('#drawer').hidden = true;
   $('#scrim').hidden = true;
+  await Promise.all(flushes);
+  refresh({ background: true });
 }
 
 $('#scrim').addEventListener('click', closeDrawer);
 
-async function openDrawer(id, { keepEdits = false } = {}) {
-  const edits = keepEdits && $('#drawer').dataset.itemId === id ? collectDrawerEdits() : new Map();
+async function openDrawer(id) {
+  // Anything still being typed in the previous panel is saved first.
+  await state.drawerAutosave?.flush();
   state.drawerId = id;
   let item;
   try {
@@ -361,42 +459,93 @@ async function openDrawer(id, { keepEdits = false } = {}) {
     closeDrawer();
     return toast(err.message, 'error');
   }
+  if (state.drawerId !== id) return;
   const drawer = $('#drawer');
-  const close = closeDrawer;
   const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
+  const section = (title, ...children) => h('section', { class: 'drawer-section' }, h('h3', null, title), ...children);
 
-  const title = h('input', { value: item.title, maxlength: 300, dataset: { field: 'title' } });
+  // ---- Fields: saved automatically as you type ----
+  const title = h('input', { value: item.title, maxlength: 300, class: 'title-input', 'aria-label': 'Title', dataset: { field: 'title' } });
   const priority = h('select', { dataset: { field: 'priority' } }, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
   const deadline = h('input', { type: 'datetime-local', value: toLocalInput(item.deadline), dataset: { field: 'deadline' } });
-  const details = h('textarea', { rows: 3, maxlength: 10000, placeholder: 'Details, links, context…', dataset: { field: 'details' } }, item.details ?? '');
+  const details = h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown)', dataset: { field: 'details' } }, item.details ?? '');
   const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
-  const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours (empty = none)', dataset: { field: 'delay' } });
-  const group = h('select', { disabled: !!item.parentId, dataset: { field: 'group' } }, ...state.dashboard.groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
+  const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
+  const tags = h('input', { value: item.tags.map((t) => `#${t}`).join(' '), placeholder: '#tag #another', 'aria-label': 'Tags', dataset: { field: 'tags' } });
+  const labels = new Set(item.labels.map((l) => l.name));
 
-  const save = () => act((async () => {
-    await patch(`/api/items/${id}`, {
-      title: title.value,
-      details: details.value,
-      priority: priority.value,
-      deadline: deadline.value ? new Date(deadline.value).toISOString() : null,
-      clearDeadline: !deadline.value,
-      sequential: sequential.checked,
-      stepDelayMinutes: Number(delay.value) > 0 ? Math.round(Number(delay.value) * 60) : null,
-      clearStepDelay: !(Number(delay.value) > 0),
-    });
-    if (!item.parentId && group.value !== item.groupId) await post(`/api/items/${id}/move`, { groupId: group.value });
-  })(), 'Saved');
+  const values = () => ({
+    title: title.value,
+    details: details.value,
+    priority: priority.value,
+    deadline: deadline.value ? new Date(deadline.value).toISOString() : null,
+    clearDeadline: !deadline.value,
+    sequential: sequential.checked,
+    stepDelayMinutes: Number(delay.value) > 0 ? Math.round(Number(delay.value) * 60) : null,
+    clearStepDelay: !(Number(delay.value) > 0),
+    tags: parseTags(tags.value),
+    labels: [...labels],
+  });
+  const autosave = createAutosave({
+    delay: 700,
+    onState: setSaveState,
+    save: async (v) => {
+      if (!v.title.trim()) throw new Error('A title is required');
+      await patch(`/api/items/${id}`, v);
+      refresh({ background: true });
+    },
+  });
+  state.drawerAutosave = autosave;
+  const changed = () => autosave.schedule(values());
+  for (const el of [title, details, delay, tags]) el.addEventListener('input', changed);
+  for (const el of [priority, deadline, sequential]) el.addEventListener('change', changed);
 
-  const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300, dataset: { field: 'subtask' } });
+  const labelPicker = h('div', { class: 'label-picker' });
+  const renderLabels = () => {
+    const known = new Map((state.dashboard?.labels ?? []).map((l) => [l.name.toLowerCase(), l]));
+    item.labels.forEach((l) => known.set(l.name.toLowerCase(), l));
+    const all = [...known.values()];
+    const newLabel = h('input', { placeholder: '+ label', maxlength: 40, 'aria-label': 'New label', class: 'label-input', onkeydown: (e) => {
+      if (e.key !== 'Enter' || !newLabel.value.trim()) return;
+      e.preventDefault();
+      labels.add(newLabel.value.trim());
+      item.labels.push({ name: newLabel.value.trim(), color: '#64748b' });
+      changed();
+      renderLabels();
+    } });
+    labelPicker.replaceChildren(...all.map((l) => {
+      const on = [...labels].some((x) => x.toLowerCase() === l.name.toLowerCase());
+      const chipEl = labelChip(l, { onclick: () => { if (on) [...labels].filter((x) => x.toLowerCase() === l.name.toLowerCase()).forEach((x) => labels.delete(x)); else labels.add(l.name); changed(); renderLabels(); } });
+      chipEl.classList.toggle('off', !on);
+      chipEl.setAttribute('aria-pressed', String(on));
+      return chipEl;
+    }), newLabel);
+  };
+  renderLabels();
+
+  const group = h('select', { disabled: !!item.parentId, 'aria-label': 'Group', onchange: () => act(post(`/api/items/${id}/move`, { groupId: group.value }), 'Moved') },
+    ...state.dashboard.groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
+  const parent = parentPicker(item);
+
+  // ---- Subtasks (any depth) ----
+  const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300 });
   const stepsInput = h('textarea', { rows: 3, placeholder: 'Rollout steps, one per line' });
   const stepDelay = h('input', { type: 'number', min: 0, value: 24, 'aria-label': 'Hours between steps' });
-  const noteInput = h('textarea', { rows: 2, placeholder: 'Note: what happened, what is next…', maxlength: 10000, dataset: { field: 'note' } });
+
+  // ---- Notes: saved as you type ----
+  const noteKey = `drawer:${id}`;
+  const noteInput = h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type)',
+    oninput: () => noteSession(id, noteKey).autosave.schedule(noteInput.value),
+    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } });
+  const newNote = async () => {
+    if (!noteInput.value.trim()) return;
+    await finishNote(noteKey);
+    noteInput.value = '';
+    await act(Promise.resolve());
+  };
+
   const remindIn = h('select', null, ...snoozeOptions().map((o) => h('option', { value: o.minutes }, o.label)));
   const remindMsg = h('input', { placeholder: 'Reminder message (optional)', maxlength: 300 });
-
-  const section = (title, ...children) => h('section', { class: 'drawer-section' }, h('h3', null, title), ...children);
-  title.classList.add('title-input');
-  title.setAttribute('aria-label', 'Title');
   const meta = priorityMeta(item.priority);
   drawer.style.setProperty('--prio', meta.color);
 
@@ -404,14 +553,16 @@ async function openDrawer(id, { keepEdits = false } = {}) {
     h('div', { class: 'drawer-head' },
       h('span', { class: 'prio-pill' }, meta.label),
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
-      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: close }, icon('x'))),
+      h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
+      item.obsidianUrl ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
     title,
+    h('div', { class: 'chips-row' }, labelPicker),
+    field('Tags', tags),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
-    h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
-    field('Group', group),
+    h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent)),
     h('div', { class: 'row buttons' },
-      h('button', { class: 'btn primary', onclick: save }, 'Save'),
       item.completedAt
         ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, icon('undo', { size: 16 }), 'Reopen')
         : h('button', { class: 'btn success', onclick: () => {
@@ -420,15 +571,13 @@ async function openDrawer(id, { keepEdits = false } = {}) {
           act(post(`/api/items/${id}/complete`), 'Done');
         } }, icon('check', { size: 16 }), 'Done'),
       h('a', { class: 'btn ghost', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, icon('report', { size: 16 }), 'Full report'),
-      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks?`)) { close(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
+      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks? (It goes to the vault's trash.)`)) { autosave.cancel(); closeDrawer(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
 
     section(`Subtasks${item.sequential ? ' · in order' : ''}`,
-      h('ul', { class: 'subtasks' }, ...item.children.map((c) => h('li', { class: `sub ${c.state}` },
-        h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
-        h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
-        h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c))))),
+      subtaskTree(item.children),
       h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (t) => post('/api/items', { title: t, parentId: id })); } }, subtaskInput, h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add')),
-      h('details', null, h('summary', null, 'Add rollout steps'),
+      h('details', null, h('summary', null, 'Steps in order & rollout steps'),
+        h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
         stepsInput,
         h('div', { class: 'row' }, field('Hours between steps', stepDelay),
           h('button', { class: 'btn', onclick: () => {
@@ -436,37 +585,124 @@ async function openDrawer(id, { keepEdits = false } = {}) {
             if (titles.length) act(post(`/api/items/${id}/steps`, { titles, stepDelayMinutes: Math.round(Number(stepDelay.value || 0) * 60) || null }), `Added ${titles.length} steps`);
           } }, icon('layers', { size: 16 }), 'Add steps')))),
 
+    section('Notes',
+      h('div', { class: 'note-form' }, noteInput, h('button', { class: 'btn', title: 'Start a new note (Ctrl+Enter)', onclick: newNote }, icon('plus', { size: 16 }), 'New note')),
+      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, n.text), h('div', { class: 'meta' },
+        h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
+        isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))),
+
+    attachmentsSection(item),
+    item.hasRich ? richSection(item) : null,
+
     section('Reminders',
       h('ul', { class: 'reminders' }, ...item.reminders.filter((r) => !r.dismissedAt).map((r) => h('li', null,
         h('span', { class: 'author' }, icon('clock', { size: 14 }), `${r.message} · ${relativeTime(r.dueAt)}`),
         h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'Dismiss')))),
       h('div', { class: 'row' }, remindIn, remindMsg, h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me'))),
 
-    section('Notes',
-      h('form', { class: 'note-form', onsubmit: (e) => { e.preventDefault(); submitAndClear(noteInput, (text) => post(`/api/items/${id}/notes`, { text }), 'Note saved'); } }, noteInput, h('button', { class: 'btn primary', type: 'submit' }, 'Add note')),
-      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, n.text), h('div', { class: 'meta' },
-        h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
-        isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))));
+    historySection(item));
   $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
-  drawer.querySelectorAll('[data-field]').forEach((el) => { el.dataset.original = fieldValue(el); });
-  edits.forEach((value, name) => {
-    const el = drawer.querySelector(`[data-field="${name}"]`);
-    if (el) setFieldValue(el, value);
-  });
   drawer.hidden = false;
+
+  // Drop files anywhere on the panel to attach them.
+  drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
+  drawer.ondragleave = (e) => { if (e.target === drawer) drawer.classList.remove('dropping'); };
+  drawer.ondrop = (e) => { e.preventDefault(); drawer.classList.remove('dropping'); uploadFiles(id, e.dataTransfer.files); };
 }
 
-const fieldValue = (el) => (el.type === 'checkbox' ? String(el.checked) : el.value);
-const setFieldValue = (el, v) => { if (el.type === 'checkbox') el.checked = v === 'true'; else el.value = v; };
+function subtaskTree(children) {
+  if (!children.length) return h('p', { class: 'muted small' }, 'No subtasks yet.');
+  return h('ul', { class: 'subtasks' }, ...children.map((c) => h('li', { class: `sub ${c.state}` },
+    h('div', { class: 'sub-row' },
+      h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
+      h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
+      ...c.tags.map(tagChip),
+      h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c))),
+    c.children.length ? subtaskTree(c.children) : null)));
+}
 
-/** Unsaved drawer edits (fields that differ from what the server sent), so a rebuild never discards typing. */
-function collectDrawerEdits() {
-  const edits = new Map();
-  $('#drawer').querySelectorAll('[data-field]').forEach((el) => {
-    if (fieldValue(el) !== el.dataset.original) edits.set(el.dataset.field, fieldValue(el));
+/** "Belongs to": move the task under another task or back to the top level. Options load on first use. */
+function parentPicker(item) {
+  const select = h('select', { 'aria-label': 'Belongs to' },
+    h('option', { value: '', selected: !item.parentId }, 'Nothing (top level)'),
+    item.parentId ? h('option', { value: item.parentId, selected: true }, item.path.at(-2)) : null);
+  let loaded = false;
+  select.addEventListener('focus', async () => {
+    if (loaded) return;
+    loaded = true;
+    const roots = await api('/api/items');
+    const options = [];
+    const walk = (nodes, depth) => nodes.forEach((n) => {
+      if (n.id === item.id) return; // a task can't go inside itself
+      options.push(h('option', { value: n.id, selected: n.id === item.parentId }, `${'  '.repeat(depth)}${depth ? '↳ ' : ''}${n.title}`));
+      walk(n.children.filter((c) => !c.completedAt), depth + 1);
+    });
+    walk(roots, 0);
+    select.replaceChildren(h('option', { value: '', selected: !item.parentId }, 'Nothing (top level)'), ...options);
   });
-  return edits;
+  select.addEventListener('change', () => act(post(`/api/items/${item.id}/move`, select.value ? { parentId: select.value } : { toTopLevel: true, groupId: item.groupId }), 'Moved'));
+  return select;
+}
+
+function attachmentsSection(item) {
+  const picker = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => uploadFiles(item.id, picker.files) });
+  return h('section', { class: 'drawer-section' },
+    h('h3', null, 'Attachments'),
+    item.attachments.length
+      ? h('ul', { class: 'attachments' }, ...item.attachments.map((a) => h('li', null,
+        icon('paperclip', { size: 14 }),
+        h('a', { href: a.url, target: '_blank', rel: 'noopener', class: 'link' }, a.fileName),
+        h('span', { class: 'muted small' }, `${fileSize(a.size)} · ${a.addedBy}`),
+        h('button', { class: 'icon-btn small', title: 'Remove', 'aria-label': `Remove ${a.fileName}`, onclick: () => { if (confirm(`Remove "${a.fileName}"?`)) act(del(a.url), 'Removed'); } }, icon('x', { size: 14 })))))
+      : null,
+    h('div', { class: 'dropzone' }, picker,
+      h('button', { class: 'btn', onclick: () => picker.click() }, icon('paperclip', { size: 16 }), 'Attach files'),
+      h('span', { class: 'muted small' }, 'or drop files here')));
+}
+
+async function uploadFiles(id, files) {
+  const list = [...(files ?? [])];
+  if (!list.length) return;
+  await act((async () => { for (const file of list) await upload(`/api/items/${id}/attachments`, file); })(), list.length === 1 ? `Attached ${list[0].name}` : `Attached ${list.length} files`);
+}
+
+/** The task's rich HTML version, shown in a locked-down frame (no scripts, separate origin). */
+function richSection(item) {
+  const frame = h('iframe', { class: 'rich-frame', sandbox: '', src: `/api/items/${item.id}/rich`, title: `Rich version of ${item.title}`, referrerpolicy: 'no-referrer' });
+  return h('section', { class: 'drawer-section' },
+    h('h3', null, 'Rich view'),
+    frame,
+    h('div', { class: 'row' },
+      h('a', { class: 'btn ghost', href: `/api/items/${item.id}/rich`, target: '_blank', rel: 'noopener' }, 'Open full size'),
+      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm('Remove the rich version? (It is kept in the history.)')) act(put(`/api/items/${item.id}/rich`, { html: null }), 'Removed'); } }, 'Remove')));
+}
+
+/** Every change is kept as a version; any version can be viewed or restored. */
+function historySection(item) {
+  const list = h('ul', { class: 'history' });
+  const preview = h('pre', { class: 'history-preview', hidden: true });
+  const box = h('details', { class: 'drawer-section history-box' }, h('summary', null, h('h3', null, 'History')), list, preview);
+  box.addEventListener('toggle', async () => {
+    if (!box.open || box.dataset.loaded) return;
+    box.dataset.loaded = '1';
+    const versions = await api(`/api/items/${item.id}/history`).catch(() => []);
+    if (!versions.length) {
+      list.replaceChildren(h('li', { class: 'muted small' }, 'Versions appear here a few seconds after changes (needs git).'));
+      return;
+    }
+    list.replaceChildren(...versions.map((v, i) => h('li', null,
+      h('span', { class: 'when', title: new Date(v.at).toLocaleString() }, relativeTime(v.at)),
+      h('span', { class: 'what' }, v.message.split('\n')[0]),
+      h('button', { class: 'link', onclick: async () => {
+        preview.hidden = false;
+        preview.textContent = await text(`/api/items/${item.id}/history/${v.id}`).catch((e) => e.message);
+      } }, 'View'),
+      i === 0 ? h('span', { class: 'muted small' }, 'current') : h('button', { class: 'link', onclick: () => {
+        if (confirm('Restore this version? The current one stays in the history.')) act(post(`/api/items/${item.id}/history/${v.id}/restore`), 'Restored');
+      } }, 'Restore'))));
+  });
+  return box;
 }
 
 /** Clears an input optimistically and puts the text back if the request fails. */
@@ -474,16 +710,12 @@ async function submitAndClear(input, request, message) {
   const value = input.value;
   if (!value.trim()) return;
   input.value = '';
-  input.dataset.original = '';
-  if (!(await act(request(value), message))) {
-    const el = $('#drawer').querySelector(`[data-field="${input.dataset.field}"]`);
-    if (el) el.value = value;
-  }
+  if (!(await act(request(value), message))) input.value = value;
 }
 
 function stateLabel(item) {
   if (item.state === 'waiting' && item.nextActionAt) return `waiting · ${relativeTime(item.nextActionAt)}`;
-  return { actionable: 'now', container: 'in progress', locked: '🔒 later', done: 'done', waiting: 'waiting' }[item.state] ?? item.state;
+  return { actionable: 'now', container: 'in progress', locked: 'later', done: 'done', waiting: 'waiting' }[item.state] ?? item.state;
 }
 
 function toLocalInput(iso) {
@@ -518,9 +750,23 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closeMenus(); closeDrawer(); }
-  if (e.key === 'n' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) { e.preventDefault(); $('#capture-input').focus(); }
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (e.key === 'Escape') { closeMenus(); if (!$('#drawer').hidden) closeDrawer(); }
+  if (e.key === 'n' && !typing) { e.preventDefault(); $('#capture-input').focus(); }
+  if (e.key === '/' && !typing) { e.preventDefault(); $('#filter').focus(); }
 });
+
+// Filter: one search box with the same syntax as the CLI and agents (#tag, label:x, group:x, is:done, words).
+let filterTimer;
+$('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(() => setQuery($('#filter').value), 250); });
+$('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
+$('#filter-clear').addEventListener('click', () => setQuery(''));
+$('#search-icon').append(icon('search', { size: 16 }));
+
+// Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
+const flushAll = () => { state.drawerAutosave?.flush(); noteSessions.forEach((s) => s.autosave.flush()); };
+window.addEventListener('pagehide', flushAll);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
 
 document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh({ background: true }));
 setInterval(() => document.visibilityState === 'visible' && refresh({ background: true }), 15000);

@@ -25,6 +25,20 @@ public sealed class VaultApiTests : IAsyncLifetime
     private string VaultFile(params string[] parts) => Path.Combine([_server.VaultDirectory, .. parts]);
 
     [Fact]
+    public async Task Notes_autosave_in_place_as_they_are_typed()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Ship" });
+        var note = await _client.PostJson($"/api/items/{item.Id()}/notes", new { text = "deployed" });
+
+        var updated = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}/notes/{note.Id()}", new { text = "deployed ring 0" })).Json();
+        var timeline = await _client.GetJson($"/api/items/{item.Id()}/timeline");
+
+        Assert.Equal((note.Id(), "deployed ring 0"), (updated.Id(), updated["text"]!.GetValue<string>()));
+        Assert.Contains("deployed ring 0", await File.ReadAllTextAsync(VaultFile("Work", "Ship.md")), StringComparison.Ordinal);
+        Assert.Equal("deployed ring 0", timeline.AsArray().Single(t => t!["kind"]!.GetValue<string>() == "noteAdded")!["summary"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Tasks_are_stored_as_markdown_in_the_vault()
     {
         var item = await _client.PostJson("/api/items", new { title = "Durable", tags = new[] { "release" }, labels = new[] { "Deep work" } });
