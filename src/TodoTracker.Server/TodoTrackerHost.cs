@@ -62,6 +62,8 @@ public static class TodoTrackerHost
         }));
         services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
         services.AddSingleton<VaultLinks>();
+        services.AddSingleton<HistoryService>();
+        services.AddHostedService<HistoryLoop>();
         services.AddSingleton<SettingsStore>();
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();

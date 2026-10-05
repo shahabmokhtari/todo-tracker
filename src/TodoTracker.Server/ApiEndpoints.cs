@@ -343,6 +343,7 @@ internal static class ApiEndpoints
 
         MapLabels(api);
         MapFiles(api);
+        MapHistory(api);
 
         api.MapGet("/vault", async (VaultLinks links) =>
         {
@@ -440,6 +441,32 @@ internal static class ApiEndpoints
         {
             await store.UpdateAsync(b => b.DeleteLabel(name, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();
+        });
+    }
+
+    private static void MapHistory(RouteGroupBuilder api)
+    {
+        api.MapGet("/history", async (HistoryService history) =>
+            history.History is { } versions ? await versions.LogAsync(null).ConfigureAwait(false) : []);
+
+        api.MapPost("/history/commit", async (HistoryService history) =>
+            new { committed = await history.Required.CommitAsync().ConfigureAwait(false) });
+
+        api.MapGet("/items/{id:guid}/history", async (Guid id, HistoryService history, IBoardStore store) =>
+        {
+            await store.ReadAsync(b => b.Get(id)).ConfigureAwait(false);
+            return history.History is { } versions ? await versions.TaskHistoryAsync(id).ConfigureAwait(false) : [];
+        });
+
+        api.MapGet("/items/{id:guid}/history/{version}", async (Guid id, string version, HistoryService history) =>
+            await history.Required.TaskVersionAsync(id, version).ConfigureAwait(false) is { } text
+                ? Results.Text(text, "text/markdown; charset=utf-8")
+                : Results.Problem("This task didn't exist in that version.", statusCode: StatusCodes.Status404NotFound));
+
+        api.MapPost("/items/{id:guid}/history/{version}/restore", async (Guid id, string version, HttpContext http, HistoryService history, IBoardStore store, TimeProvider time, VaultLinks links) =>
+        {
+            await history.Required.RestoreTaskAsync(id, version, Security.ActorOf(http)).ConfigureAwait(false);
+            return await store.ReadAsync(b => Wire.Item(b.Get(id), time.GetUtcNow(), b, links)).ConfigureAwait(false);
         });
     }
 

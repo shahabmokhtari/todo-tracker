@@ -132,6 +132,43 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     public Task<T> UpdateAsync<T>(Func<TaskBoard, T> mutate, CancellationToken cancellationToken = default) =>
         UpdateAsync(mutate, afterCommit: null, cancellationToken);
 
+    /// <summary>Runs <paramref name="action"/> while no process can change the vault (e.g. to snapshot it).</summary>
+    internal async Task<T> WithLockAsync<T>(Func<T> action, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            using var fileLock = await VaultFiles.AcquireLockAsync(_lockPath, LockTimeout, cancellationToken).ConfigureAwait(false);
+            return action();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Replaces the file of the task's top-level task with <paramref name="text"/> (an earlier version).</summary>
+    internal async Task RestoreRootFileAsync(Guid taskId, string text, Actor actor, string summary)
+    {
+        await UpdateAsync(
+            b => _caches.Paths[b.Get(taskId).Root.Id],
+            rel =>
+            {
+                VaultFiles.WriteAtomic(VaultFiles.Full(_root, rel), text);
+                MarkDirty();
+            }).ConfigureAwait(false);
+        await UpdateAsync(b =>
+        {
+            if (b.Find(taskId)?.Root is { } root)
+            {
+                b.LogExternal(root.Id, ActivityKind.Updated, $"{summary} of \"{root.Title}\"", actor, Now);
+            }
+
+            return true;
+        }).ConfigureAwait(false);
+    }
+
     /// <summary>Applies a change and saves it; <paramref name="afterCommit"/> runs (still under the lock) once it's saved.</summary>
     internal async Task<T> UpdateAsync<T>(Func<TaskBoard, T> mutate, Action<T>? afterCommit, CancellationToken cancellationToken = default)
     {

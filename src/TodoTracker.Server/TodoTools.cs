@@ -13,7 +13,7 @@ namespace TodoTracker.Server;
 /// destroy data. Tasks also live as markdown files (see <c>vault_info</c>), so agents with file tools can work there.
 /// </summary>
 [McpServerToolType]
-public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links)
+public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history)
 {
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
@@ -227,6 +227,19 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         await store.ReadAsync(_ => 0).ConfigureAwait(false);
         return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath));
     }
+
+    [McpServerTool(Name = "task_history", ReadOnly = true), Description("Saved versions of a task's file, newest first (every change is versioned). Use restore_task_version to go back.")]
+    public Task<IReadOnlyList<VaultVersion>> TaskHistory(string taskId) =>
+        Guard(() => history.Required.TaskHistoryAsync(ParseId(taskId)));
+
+    [McpServerTool(Name = "restore_task_version"), Description("Put a task back the way it was in an earlier version (from task_history). The current state stays in the history, so this can be undone.")]
+    public Task<ItemDto> RestoreTaskVersion(McpServer server, string taskId, string versionId) =>
+        Guard(async () =>
+        {
+            var id = ParseId(taskId);
+            await history.Required.RestoreTaskAsync(id, versionId, ActorOf(server)).ConfigureAwait(false);
+            return await store.ReadAsync(b => Wire.Item(b.Get(id), time.GetUtcNow(), b, links)).ConfigureAwait(false);
+        });
 
     [McpServerTool(Name = "get_report", ReadOnly = true), Description("Timeline report (newest first) for one task or the whole board.")]
     public Task<ReportDto> GetReport(string? taskId = null, int limit = 100) =>

@@ -36,6 +36,9 @@ public sealed class TodoTrackerServerOptions
     /// <summary>Watch the vault for edits made outside the app (Obsidian, editors, agents).</summary>
     public bool WatchVault { get; set; } = true;
 
+    /// <summary>Keep version history of the vault in a private git repository (needs git on the PATH).</summary>
+    public bool EnableHistory { get; set; } = true;
+
     public string ResolveVaultPath(string? chosenInApp)
     {
         if (!string.IsNullOrWhiteSpace(VaultPath))
