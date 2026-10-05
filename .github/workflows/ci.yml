@@ -36,7 +36,7 @@ jobs:
         run: |
           for p in Core Server Desktop; do
             dotnet test --project tests/TodoTracker.$p.Tests --configuration Release --no-build \
-              --coverage --coverage-output-format cobertura --coverage-output $p.cobertura.xml \
+              --coverage --coverage-settings build/coverage.config --coverage-output-format cobertura --coverage-output $p.cobertura.xml \
               --results-directory TestResults/$p
           done
       - name: Coverage gate
