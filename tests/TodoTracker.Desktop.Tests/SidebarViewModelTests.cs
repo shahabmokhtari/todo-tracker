@@ -104,9 +104,13 @@ public sealed class SidebarViewModelTests : IDisposable
     {
         var task = await Seed("Ship");
         await _vm.RefreshAsync();
+        Assert.False(_vm.HasUnsavedNotes);
         _vm.Focus!.NoteDraft = "typed right before closing";
+        Assert.True(_vm.HasUnsavedNotes);
 
         await _vm.FlushNotesAsync();
+
+        Assert.False(_vm.HasUnsavedNotes);
 
         Assert.Equal(["typed right before closing"], await _store.ReadAsync(b => b.Get(task.Id).Notes.Select(n => n.Text).ToList()));
     }

@@ -227,10 +227,16 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Whether a note was typed that isn't saved yet.</summary>
+    public bool HasUnsavedNotes => Cards().Any(c => c.DraftTimer is not null || !c.DraftSaving.IsCompleted
+        || (!string.IsNullOrWhiteSpace(c.NoteDraft) && c.NoteDraft != c.SavedDraft));
+
+    private IEnumerable<CardViewModel> Cards() => Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>().Distinct();
+
     /// <summary>Saves everything typed but not saved yet (before the app closes or restarts).</summary>
     public async Task FlushNotesAsync()
     {
-        foreach (var card in Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>().Distinct().ToList())
+        foreach (var card in Cards().ToList())
         {
             card.DraftTimer?.Dispose();
             card.DraftTimer = null;

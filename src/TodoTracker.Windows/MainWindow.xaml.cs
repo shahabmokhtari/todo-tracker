@@ -484,18 +484,22 @@ public partial class MainWindow : Window
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         RememberFloatingBounds();
-        if (_notesFlushed)
+        if (_notesFlushed || !_vm.HasUnsavedNotes)
         {
             return;
         }
 
+        // Close again once the notes are saved (never from inside this event: WPF forbids Close while closing).
         e.Cancel = true;
         _notesFlushed = true;
         await _vm.FlushNotesAsync().ConfigureAwait(true);
-        if (!_closed)
+        _ = Dispatcher.BeginInvoke(() =>
         {
-            Close();
-        }
+            if (!_closed)
+            {
+                Close();
+            }
+        });
     }
 
     private async void SwitchVault(string folder)
