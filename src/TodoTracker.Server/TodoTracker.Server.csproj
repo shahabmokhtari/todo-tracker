@@ -6,9 +6,12 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
     <ProjectReference Include="..\TodoTracker.Core\TodoTracker.Core.csproj" />
     <InternalsVisibleTo Include="TodoTracker.Server.Tests" />
+    <InternalsVisibleTo Include="tt" />
+    <InternalsVisibleTo Include="TodoTracker.Cli.Tests" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="wwwroot\**\*" />

@@ -244,7 +244,7 @@ public sealed class SidebarViewModelTests : IDisposable
     {
         await _vm.RefreshAsync();
         await _vm.SelectGroupCommand.ExecuteAsync(_vm.Groups.Single(g => g.Name == "Personal"));
-        _vm.QuickText = "Call mom !! @2h";
+        _vm.QuickText = "Call mom !! @2h #family";
 
         await _vm.CaptureCommand.ExecuteAsync(null);
 
@@ -252,6 +252,7 @@ public sealed class SidebarViewModelTests : IDisposable
         var item = await _store.ReadAsync(b => b.Items.Single());
         Assert.Equal("Call mom", item.Title);
         Assert.Equal(Priority.Critical, item.Priority);
+        Assert.Equal(["family"], item.Tags);
         Assert.Equal(T0.AddHours(2), item.NextActionAt);
         Assert.Equal("Personal", await _store.ReadAsync(b => b.GetGroup(item.GroupId).Name));
         Assert.Single(_vm.Waiting);

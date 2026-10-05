@@ -151,7 +151,7 @@ internal static class ApiEndpoints
             var item = await Mutate(store, time, http, (b, now, actor) =>
             {
                 var capture = QuickCaptureParser.Parse(request.Text ?? string.Empty, now, options.TimeZone);
-                var created = b.AddTask(new NewTask(capture.Title) { ParentId = request.ParentId, GroupId = request.GroupId, Priority = capture.Priority, Deadline = capture.Deadline }, actor, now);
+                var created = b.AddTask(new NewTask(capture.Title) { ParentId = request.ParentId, GroupId = request.GroupId, Priority = capture.Priority, Deadline = capture.Deadline, Tags = capture.Tags }, actor, now);
                 if (capture.NextActionAt is { } at)
                 {
                     b.ScheduleNextAction(created.Id, at, actor, now, notify: true);

@@ -17,6 +17,36 @@ public class QuickCaptureTests
         Assert.Equal(Priority.Normal, capture.Priority);
         Assert.Null(capture.NextActionAt);
         Assert.Null(capture.Deadline);
+        Assert.Empty(capture.Tags);
+    }
+
+    [Fact]
+    public void Hash_words_become_tags_and_leave_the_title()
+    {
+        var capture = QuickCaptureParser.Parse("Plan trip #personal #travel/japan #Personal !", Now, TimeZoneInfo.Utc);
+
+        Assert.Equal("Plan trip", capture.Title);
+        Assert.Equal(["personal", "travel/japan"], capture.Tags);
+        Assert.Equal(Priority.High, capture.Priority);
+    }
+
+    [Theory]
+    [InlineData("Fix bug #123")]
+    [InlineData("Fix bug #")]
+    [InlineData("Fix bug ##heading")]
+    [InlineData("Fix bug #a,b")]
+    public void Hash_words_that_are_not_tags_stay_in_the_title(string input)
+    {
+        var capture = QuickCaptureParser.Parse(input, Now, TimeZoneInfo.Utc);
+
+        Assert.Equal(input, capture.Title);
+        Assert.Empty(capture.Tags);
+    }
+
+    [Fact]
+    public void Tags_alone_are_not_a_title()
+    {
+        Assert.Throws<ArgumentException>(() => QuickCaptureParser.Parse("#work !", Now, TimeZoneInfo.Utc));
     }
 
     [Theory]

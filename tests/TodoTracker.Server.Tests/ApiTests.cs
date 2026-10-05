@@ -196,10 +196,11 @@ public sealed class ApiTests : IAsyncLifetime
     [Fact]
     public async Task Quick_capture_parses_priority_and_defer()
     {
-        var item = await _client.PostJson("/api/capture", new { text = "Check canary !! @2h" });
+        var item = await _client.PostJson("/api/capture", new { text = "Check canary !! @2h #release" });
 
         Assert.Equal("Check canary", item["title"]!.GetValue<string>());
         Assert.Equal("critical", item["priority"]!.GetValue<string>());
+        Assert.Equal(["release"], item["tags"]!.AsArray().Select(t => t!.GetValue<string>()));
         Assert.Equal(ServerFixture.T0.AddHours(2), item["nextActionAt"]!.GetValue<DateTimeOffset>());
         Assert.Single(item["reminders"]!.AsArray());
     }

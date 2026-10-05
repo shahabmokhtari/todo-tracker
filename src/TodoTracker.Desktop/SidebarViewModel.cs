@@ -152,7 +152,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         {
             var now = _time.GetUtcNow();
             var capture = QuickCaptureParser.Parse(text, now, _options.TimeZone);
-            var item = b.AddTask(new NewTask(capture.Title) { GroupId = _selectedGroupId, Priority = capture.Priority, Deadline = capture.Deadline }, Actor.User, now);
+            var item = b.AddTask(new NewTask(capture.Title) { GroupId = _selectedGroupId, Priority = capture.Priority, Deadline = capture.Deadline, Tags = capture.Tags }, Actor.User, now);
             if (capture.NextActionAt is { } at)
             {
                 b.ScheduleNextAction(item.Id, at, Actor.User, now, notify: true);

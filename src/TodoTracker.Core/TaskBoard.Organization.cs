@@ -147,13 +147,16 @@ public sealed partial class TaskBoard
         Log(now, id, ActivityKind.Moved, parent is null ? $"Moved \"{item.Title}\" to {group!.Name}" : $"Moved \"{item.Title}\" under \"{parent.Title}\"", actor);
     }
 
+    internal static bool IsValidTag(string tag) =>
+        tag.Length is > 0 and <= MaxTagLength && TagPattern().IsMatch(tag) && !tag.All(c => char.IsDigit(c) || c == '/');
+
     internal static List<string> NormalizeTags(IEnumerable<string>? tags)
     {
         var result = new List<string>();
         foreach (var raw in tags ?? [])
         {
             var tag = (raw ?? string.Empty).Trim().TrimStart('#');
-            if (tag.Length == 0 || tag.Length > MaxTagLength || !TagPattern().IsMatch(tag) || tag.All(c => char.IsDigit(c) || c == '/'))
+            if (!IsValidTag(tag))
             {
                 throw new ArgumentException($"\"{raw}\" isn't a valid tag. Use letters, numbers, - _ and / (not only digits), up to {MaxTagLength} characters.", nameof(tags));
             }
