@@ -1041,9 +1041,14 @@ public static partial class TaskMarkdown
         {
             if (segment == "..")
             {
-                if (parts.Count > 0)
+                // Keep ".." that climbs above the vault so the store can refuse it instead of silently clamping.
+                if (parts.Count > 0 && parts[^1] != "..")
                 {
                     parts.RemoveAt(parts.Count - 1);
+                }
+                else
+                {
+                    parts.Add("..");
                 }
             }
             else if (segment is not ("." or ""))

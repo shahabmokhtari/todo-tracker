@@ -18,7 +18,7 @@ public sealed class WorkItem
         CreatedAt = createdAt;
     }
 
-    public Guid Id { get; }
+    public Guid Id { get; internal set; }
 
     public string Title { get; internal set; }
 
