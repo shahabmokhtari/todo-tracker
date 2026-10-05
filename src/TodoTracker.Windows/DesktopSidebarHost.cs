@@ -1,12 +1,14 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Threading;
 using TodoTracker.Desktop;
 
 namespace TodoTracker.Windows;
 
 /// <summary>A physical monitor, in device pixels (as reported by Win32).</summary>
-internal sealed record DisplayMonitor(string DeviceName, bool IsPrimary, Int32Rect Bounds, Int32Rect WorkArea, double Scale)
+internal sealed record DisplayMonitor(string Id, string DeviceName, string? FriendlyName, bool IsPrimary, Int32Rect Bounds, Int32Rect WorkArea, double Scale)
+    : MonitorKey(Id, DeviceName, FriendlyName, IsPrimary, Bounds.Width, Bounds.Height)
 {
     /// <summary>Work area in physical pixels: one coordinate space shared by all monitors, whatever their DPI.</summary>
     public PlacementBounds WorkAreaPixels => new(WorkArea.X, WorkArea.Y, WorkArea.Width, WorkArea.Height);
@@ -47,6 +49,8 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
     private uint _taskbarCreatedMessage;
     private bool _registered;
     private bool _positioning;
+    private string? _dockedOn;
+    private DispatcherTimer? _displayDebounce;
 
     public DesktopSidebarHost(Window window)
     {
@@ -60,8 +64,11 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
 
     public DockEdge Edge { get; set; } = DockEdge.Right;
 
-    /// <summary>Device name of the monitor to dock on; null or unknown means the primary monitor.</summary>
-    public string? MonitorDeviceName { get; set; }
+    /// <summary>Stable id (or legacy device name) of the monitor to dock on; null or disconnected means the primary.</summary>
+    public string? MonitorId { get; set; }
+
+    /// <summary>Raised (debounced) after monitors are added, removed, rearranged, or change resolution/scale.</summary>
+    public event EventHandler? DisplaysChanged;
 
     /// <summary>Raised when docking is lost to something outside our control (e.g. the shell refused the AppBar).</summary>
     public event EventHandler? DockFailed;
@@ -85,6 +92,14 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         _source = HwndSource.FromHwnd(_handle);
         _source?.AddHook(WndProc);
+
+        // Plugging monitors in or out sends a burst of WM_DISPLAYCHANGE while the shell settles: react once.
+        _displayDebounce = new DispatcherTimer(TimeSpan.FromMilliseconds(400), DispatcherPriority.Normal, (_, _) =>
+        {
+            _displayDebounce!.Stop();
+            DisplaysChanged?.Invoke(this, EventArgs.Empty);
+        }, _window.Dispatcher);
+        _displayDebounce.Stop();
     }
 
     /// <summary>Current window bounds in physical pixels.</summary>
@@ -114,15 +129,19 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             handle.Free();
         }
 
-        // Primary first: it is the fallback target everywhere.
-        return list.OrderByDescending(m => m.IsPrimary).ToList();
+        // Primary first: it is the fallback target everywhere. Stable ids/friendly names come from the CCD API.
+        var names = DisplayConfig.Query();
+        return list
+            .Select(m => names.TryGetValue(m.DeviceName, out var n) ? m with { Id = n.DevicePath, FriendlyName = n.FriendlyName, Aliases = n.ClonePaths } : m)
+            .OrderByDescending(m => m.IsPrimary)
+            .ToList();
     }
 
+    /// <summary>The monitor to dock on: the saved one if connected, else the primary.</summary>
     public DisplayMonitor? TargetMonitor()
     {
         var monitors = Monitors();
-        return monitors.FirstOrDefault(m => string.Equals(m.DeviceName, MonitorDeviceName, StringComparison.OrdinalIgnoreCase))
-            ?? (monitors.Count > 0 ? monitors[0] : null);
+        return MonitorIdentity.Resolve(MonitorId, monitors) ?? (monitors.Count > 0 ? monitors[0] : null);
     }
 
     public void Dock()
@@ -142,6 +161,13 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             }
 
             var width = (int)Math.Round(WidthInDips * monitor.Scale);
+            if (_registered && !string.Equals(_dockedOn, monitor.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                // Moving to another monitor (chosen, unplugged, or plugged back in): re-register so the shell
+                // gives the old monitor's edge back and recomputes every work area.
+                Undock();
+            }
+
             var data = new AppBarData
             {
                 cbSize = Marshal.SizeOf<AppBarData>(),
@@ -170,6 +196,7 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
                 _registered = true;
             }
 
+            _dockedOn = monitor.Id;
             SHAppBarMessage(AbmQueryPos, ref data);
             if (Edge == DockEdge.Left)
             {
@@ -211,6 +238,7 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
     public void Dispose()
     {
         Undock();
+        _displayDebounce?.Stop();
         _source?.RemoveHook(WndProc);
         _source = null;
     }
@@ -238,6 +266,14 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             return IntPtr.Zero;
         }
 
+        if (msg == WmDisplayChange)
+        {
+            // Docked or floating: monitors were added/removed/rearranged or changed resolution.
+            _displayDebounce?.Stop();
+            _displayDebounce?.Start();
+            return IntPtr.Zero;
+        }
+
         if (!_registered)
         {
             return IntPtr.Zero;
@@ -252,8 +288,8 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
                 NotifyShell(AbmWindowPosChanged);
                 return IntPtr.Zero;
             // Not WM_SETTINGCHANGE: our own ABM_SETPOS broadcasts it (work area changed), which would loop.
-            case WmDisplayChange or WmDpiChanged when !_positioning:
-                // Resolution, monitor layout, or scale changed: recompute the reserved pixels.
+            case WmDpiChanged when !_positioning:
+                // Scale changed: recompute the reserved pixels.
                 _window.Dispatcher.BeginInvoke(Dock);
                 return IntPtr.Zero;
         }
@@ -291,8 +327,11 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         if (GetMonitorInfo(monitor, ref info))
         {
             var scale = GetDpiForMonitor(monitor, 0, out var dpiX, out _) == 0 && dpiX > 0 ? dpiX / 96.0 : 1.0;
+            var deviceName = new string(info.Device, 0, 32).TrimEnd('\0');
             list.Add(new DisplayMonitor(
-                new string(info.Device, 0, 32).TrimEnd('\0'),
+                deviceName,
+                deviceName,
+                null,
                 (info.Flags & MonitorInfoPrimary) != 0,
                 info.Monitor.ToInt32Rect(),
                 info.Work.ToInt32Rect(),

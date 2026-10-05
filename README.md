@@ -89,6 +89,14 @@ cd tests/e2e && npm install && npx playwright install chromium && npx playwright
 `src/TodoTracker.Windows/bin/.../TodoTracker.exe --smoke-test --smoke-log smoke.log` boots the real app against a
 temporary board and verifies that the API and the sidebar see the same data. CI runs it on every PR.
 
+System tests drive the real sidebar with UI Automation on the live Windows shell (pass `-Exe <path to TodoTracker.exe>`):
+* `tests/system/placement.system-test.ps1`: dock right/left, float, always on top, persistence across restarts,
+  and a floating window being pulled back on screen after a display change. Runs in Windows CI.
+* `tests/system/multimonitor.system-test.ps1`: docks and floats on every display (including displays at negative
+  coordinates), checks that only that display's work area changes, that the display is saved by its stable device
+  path, and that a display change keeps the sidebar on it. Needs two or more monitors, so it skips in CI.
+  Run it locally after changing placement code.
+
 | Path | What |
 |---|---|
 | `src/TodoTracker.Core` | Domain model, agenda rules, quick capture, focus timer, JSON store, reminder dispatcher |

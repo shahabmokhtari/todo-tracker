@@ -38,7 +38,7 @@ public sealed record PlacementBounds(double Left, double Top, double Width, doub
 }
 
 /// <summary>Where and how the sidebar lives. Persisted per user in <c>desktop.json</c>.</summary>
-/// <param name="Monitor">Device name of the monitor to dock on (null = primary).</param>
+/// <param name="Monitor">Stable id (device path) of the chosen monitor; null = primary. See <see cref="MonitorIdentity"/>.</param>
 /// <param name="Floating">Last floating window bounds (null = use a default near the chosen edge).</param>
 public sealed record WindowPlacement(
     PlacementMode Mode,
