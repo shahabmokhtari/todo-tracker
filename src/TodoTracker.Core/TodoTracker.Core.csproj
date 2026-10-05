@@ -4,6 +4,7 @@
     <RootNamespace>TodoTracker.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
     <InternalsVisibleTo Include="TodoTracker.Core.Tests" />
   </ItemGroup>
 </Project>

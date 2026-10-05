@@ -65,7 +65,7 @@ public static class Agenda
         return item.Ancestors().Select(a => a.Priority).Append(item.Priority).Max();
     }
 
-    public static DashboardSnapshot Build(TaskBoard board, DateTimeOffset now, int recentNoteCount = 5, Guid? groupId = null)
+    public static DashboardSnapshot Build(TaskBoard board, DateTimeOffset now, int recentNoteCount = 5, Guid? groupId = null, TaskQuery? filter = null)
     {
         ArgumentNullException.ThrowIfNull(board);
         var allOpen = board.AllItems().Where(i => !i.IsDone).Select(i => Describe(i, now)).ToList();
@@ -79,7 +79,8 @@ public static class Agenda
                 waitingAll.Count(e => e.Item.GroupId == g.Id),
                 nowAll.Count(e => e.Item.GroupId == g.Id && e.NeedsAttention)));
 
-        bool InScope(WorkItem item) => groupId is null || item.GroupId == groupId;
+        // Group tabs keep their totals; the filter narrows only what is listed.
+        bool InScope(WorkItem item) => (groupId is null || item.GroupId == groupId) && (filter is null || filter.IsEmpty || filter.Matches(item, board));
 
         var nowList = nowAll.Where(e => InScope(e.Item))
             .OrderByDescending(e => e.NeedsAttention)

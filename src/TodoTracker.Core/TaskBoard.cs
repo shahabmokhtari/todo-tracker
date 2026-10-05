@@ -53,6 +53,8 @@ public sealed partial class TaskBoard
         ArgumentNullException.ThrowIfNull(spec);
         var title = RequireText(spec.Title, nameof(spec.Title), MaxTitleLength, "A task title is required.");
         ValidateStepDelay(spec.StepDelay);
+        var tags = NormalizeTags(spec.Tags);
+        var labels = ValidateLabelNames(spec.Labels);
         var parent = spec.ParentId is { } parentId ? Get(parentId) : null;
         var groupId = parent is null ? (spec.GroupId is { } g ? GetGroup(g).Id : DefaultGroupId) : parent.GroupId;
 
@@ -64,6 +66,8 @@ public sealed partial class TaskBoard
             StepDelay = spec.StepDelay,
             OwnGroupId = groupId,
         };
+        item.TagList.AddRange(tags);
+        item.LabelList.AddRange(labels.Select(l => EnsureLabel(l).Name));
         Attach(item, parent);
         Log(now, item.Id, ActivityKind.Created, parent is null ? $"Created \"{title}\"" : $"Added \"{title}\" to \"{parent.Title}\"", actor);
         return item;
@@ -434,9 +438,9 @@ public sealed partial class TaskBoard
     private string ValidateGroup(string name, string? color, TaskGroup? except)
     {
         var clean = RequireText(name, nameof(name), 60, "A group name is required.");
-        if (color is not null && !HexColor().IsMatch(color))
+        if (color is not null)
         {
-            throw new ArgumentException("Group colors must be #rrggbb.", nameof(color));
+            ValidateColor(color);
         }
 
         if (GroupList.Exists(g => g != except && string.Equals(g.Name, clean, StringComparison.OrdinalIgnoreCase)))

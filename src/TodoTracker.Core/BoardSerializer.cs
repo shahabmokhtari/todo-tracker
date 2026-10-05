@@ -56,6 +56,7 @@ public static class BoardSerializer
     {
         SchemaVersion = TaskBoard.CurrentSchemaVersion,
         Groups = board.Groups.Select(g => new GroupDocument { Id = g.Id, Name = g.Name, Color = g.Color }).ToList(),
+        Labels = board.Labels.Count == 0 ? null : board.Labels.Select(l => new LabelDocument { Name = l.Name, Color = l.Color }).ToList(),
         Items = board.Items.Select(ToDocument).ToList(),
         Activity = board.Activity.Select(a => new ActivityDocument { At = a.At, ItemId = a.ItemId, Kind = a.Kind, Summary = a.Summary, Actor = ToDocument(a.Actor) }).ToList(),
         Pomodoro = new PomodoroDocument
@@ -90,6 +91,9 @@ public static class BoardSerializer
         GroupId = item.Parent is null ? item.OwnGroupId : null,
         Reminders = item.Reminders.Count == 0 ? null : item.Reminders.Select(r => new ReminderDocument { Id = r.Id, DueAt = r.DueAt, Message = r.Message, Kind = r.Kind, NotifiedAt = r.NotifiedAt, DismissedAt = r.DismissedAt }).ToList(),
         Notes = item.Notes.Count == 0 ? null : item.Notes.Select(n => new NoteDocument { Id = n.Id, At = n.At, Text = n.Text, Author = ToDocument(n.Author), SourceUrl = n.SourceUrl, SourceTitle = n.SourceTitle }).ToList(),
+        Tags = item.Tags.Count == 0 ? null : item.Tags.ToList(),
+        Labels = item.Labels.Count == 0 ? null : item.Labels.ToList(),
+        Attachments = item.Attachments.Count == 0 ? null : item.Attachments.Select(a => new AttachmentDocument { Id = a.Id, FileName = a.FileName, Path = a.Path, Size = a.Size, AddedAt = a.AddedAt, AddedBy = ToDocument(a.AddedBy) }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
 
@@ -109,6 +113,14 @@ public static class BoardSerializer
         if (board.Groups.Count == 0)
         {
             board.SeedDefaultGroups();
+        }
+
+        foreach (var l in doc.Labels ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(l.Name) && board.FindLabel(l.Name) is null)
+            {
+                board.LabelDefinitionList.Add(new LabelDefinition(l.Name.Trim(), l.Color ?? TaskBoard.LabelPalette[0]));
+            }
         }
 
         foreach (var item in doc.Items ?? [])
@@ -153,6 +165,16 @@ public static class BoardSerializer
             item.NoteList.Add(new Note(n.Id, n.At, n.Text ?? string.Empty, FromDocument(n.Author), n.SourceUrl, n.SourceTitle));
         }
 
+        item.TagList.AddRange((doc.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t)));
+        item.LabelList.AddRange((doc.Labels ?? []).Where(l => !string.IsNullOrWhiteSpace(l)).Select(l => board.EnsureLabel(l.Trim()).Name));
+        foreach (var a in doc.Attachments ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(a.FileName) && !string.IsNullOrWhiteSpace(a.Path))
+            {
+                item.AttachmentList.Add(new Attachment(a.Id, a.FileName, a.Path, a.Size, a.AddedAt, FromDocument(a.AddedBy)));
+            }
+        }
+
         board.Attach(item, parent);
         foreach (var child in doc.Children ?? [])
         {
@@ -177,6 +199,8 @@ public static class BoardSerializer
         public int SchemaVersion { get; set; } = 1;
 
         public List<GroupDocument>? Groups { get; set; }
+
+        public List<LabelDocument>? Labels { get; set; }
 
         public List<ItemDocument>? Items { get; set; }
 
@@ -222,7 +246,35 @@ public static class BoardSerializer
 
         public List<NoteDocument>? Notes { get; set; }
 
+        public List<string>? Tags { get; set; }
+
+        public List<string>? Labels { get; set; }
+
+        public List<AttachmentDocument>? Attachments { get; set; }
+
         public List<ItemDocument>? Children { get; set; }
+    }
+
+    private sealed class LabelDocument
+    {
+        public string Name { get; set; } = string.Empty;
+
+        public string? Color { get; set; }
+    }
+
+    private sealed class AttachmentDocument
+    {
+        public Guid Id { get; set; }
+
+        public string FileName { get; set; } = string.Empty;
+
+        public string Path { get; set; } = string.Empty;
+
+        public long Size { get; set; }
+
+        public DateTimeOffset AddedAt { get; set; }
+
+        public ActorDocument? AddedBy { get; set; }
     }
 
     private sealed class ReminderDocument
