@@ -119,8 +119,12 @@ blocks the others.
     **Always on top**. Its bounds are remembered and pulled back on screen if their monitor is gone. Floating gives the
     screen edge back.
   * The collapse chevrons point toward the docked edge.
-  * Known limitation: the chosen display is remembered by its Windows device name (`\\.\DISPLAYn`), which Windows
-    can reassign when monitors are reconnected; a missing display falls back to the primary one.
+  * **Displays come and go.** The *Position* menu lists the connected displays (with the model name when the monitor
+    reports one) each time it opens. The chosen display is saved by its stable device path, which survives
+    reconnects and Windows renumbering `\\.\DISPLAYn`. If that display is unplugged, a docked sidebar moves to the
+    primary display and returns to the chosen one when it is plugged back in; a floating window is pulled back on
+    screen. The saved choice is never overwritten by the fallback. Placements saved by older versions (by device
+    name) are still understood.
 * Layout, top to bottom:
   1. Header: collapse to a 56px strip, open dashboard, and a menu.
   2. Group tabs with counts and an attention dot.

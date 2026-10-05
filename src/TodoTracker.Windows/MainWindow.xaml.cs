@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         _appBar = new DesktopSidebarHost(this);
         _appBar.DockFailed += (_, _) => _vm.StatusMessage = "Windows didn't allow docking here; floating for now.";
         _appBar.ShellRestarted += OnShellRestarted;
+        _appBar.DisplaysChanged += OnDisplaysChanged;
         _vm.PropertyChanged += OnViewModelPropertyChanged;
         _statusTimer.Tick += (_, _) =>
         {
@@ -121,7 +122,7 @@ public partial class MainWindow : Window
         {
             Placement = placement;
             _appBar.Edge = placement.Edge;
-            _appBar.MonitorDeviceName = placement.Monitor;
+            _appBar.MonitorId = placement.Monitor;
             _appBar.WidthInDips = _vm.IsCompact ? CompactWidth : placement.DockWidth;
 
             if (placement.Mode == PlacementMode.Docked)
@@ -204,7 +205,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var anchor = monitors.FirstOrDefault(m => string.Equals(m.DeviceName, placement.Monitor, StringComparison.OrdinalIgnoreCase)) ?? monitors[0];
+        var anchor = MonitorIdentity.Resolve(placement.Monitor, monitors) ?? monitors[0];
         var bounds = placement.Floating ?? PlacementMath.DefaultFloating(anchor.WorkAreaPixels, placement.Edge, anchor.Scale);
         bounds = PlacementMath.EnsureVisible(bounds, monitors.Select(m => m.WorkAreaPixels).ToList());
         if (_vm.IsCompact)
@@ -245,6 +246,33 @@ public partial class MainWindow : Window
         if (_interactive)
         {
             _hotKey = new GlobalHotKey(this, FocusCapture);
+        }
+    }
+
+    /// <summary>
+    /// Monitors were plugged in or out, rearranged, or changed resolution. Docked: dock on the saved monitor if it is
+    /// connected (so the sidebar returns when it is plugged back in), else on the primary. The saved choice is kept.
+    /// Floating: pull the window back on screen if its monitor went away.
+    /// </summary>
+    private void OnDisplaysChanged(object? sender, EventArgs e)
+    {
+        if (_preferred is { } preferred)
+        {
+            // Docking failed earlier (e.g. every monitor was gone mid-change): try the user's choice again.
+            ApplyPlacement(preferred, isFallbackRetry: true, persist: false);
+        }
+        else if (Placement.Mode == PlacementMode.Docked)
+        {
+            ApplyPlacement(Placement, isFallbackRetry: true, persist: false);
+        }
+        else if (WindowState == WindowState.Normal && IsLoaded)
+        {
+            var current = _appBar.WindowBoundsPixels();
+            var visible = PlacementMath.EnsureVisible(current, DesktopSidebarHost.Monitors().Select(m => m.WorkAreaPixels).ToList());
+            if (visible != current)
+            {
+                _appBar.MoveWindowPixels(visible);
+            }
         }
     }
 
@@ -404,17 +432,17 @@ public partial class MainWindow : Window
         if (monitors.Count > 1)
         {
             position.Items.Add(new Separator());
-            var current = _appBar.TargetMonitor()?.DeviceName;
+            var current = _appBar.TargetMonitor()?.Id;
             for (var i = 0; i < monitors.Count; i++)
             {
                 var m = monitors[i];
-                var label = $"Display {i + 1}{(m.IsPrimary ? " (primary)" : string.Empty)} · {m.Bounds.Width}×{m.Bounds.Height}";
+                var label = MonitorIdentity.Label(i, m);
                 var target = Placement with
                 {
-                    Monitor = m.DeviceName,
+                    Monitor = m.Id,
                     Floating = Placement.Mode == PlacementMode.Floating ? PlacementMath.DefaultFloating(m.WorkAreaPixels, Placement.Edge, m.Scale) : Placement.Floating,
                 };
-                position.Items.Add(Option(label, string.Equals(current, m.DeviceName, StringComparison.OrdinalIgnoreCase), target));
+                position.Items.Add(Option(label, string.Equals(current, m.Id, StringComparison.OrdinalIgnoreCase), target));
             }
         }
 

@@ -1,7 +1,8 @@
-# End-to-end placement test against the real Todo Tracker sidebar on the live Windows shell.
-# Drives the UI like a user (UI Automation): Menu > Position > Dock left / Float, Always on top,
-# then restarts the app to verify the placement is remembered.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5402)
+# Multi-monitor placement test against the real Todo Tracker sidebar on the live Windows shell.
+# For every display: Menu > Position > Display N, then Dock right / Dock left / Float. Checks the window lands on that
+# monitor, only that monitor's work area changes, and every work area is restored on exit.
+# Skips (exit 0) on machines with a single monitor, such as CI runners.
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -80,80 +81,63 @@ function ToggleAlwaysOnTop($win) {
 function IsTopmost($hwnd) { ([Native]::GetWindowLong($hwnd, -20) -band 0x8) -ne 0 }
 function Rect($hwnd) { $r = New-Object Native+RECT; [void][Native]::GetWindowRect($hwnd, [ref]$r); $r }
 
-$original = WorkArea; $screen = Bounds
-Write-Host "Primary screen $screen, work area $original"
+Add-Type @"
+using System; using System.Runtime.InteropServices; using System.Collections.Generic;
+public struct R4 { public int L, T, R, B; }
+public static class Mon2 {
+  public delegate bool P(IntPtr h, IntPtr dc, ref R4 r, IntPtr d);
+  [DllImport("user32.dll")] public static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, P cb, IntPtr d);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern bool GetMonitorInfo(IntPtr h, ref MI mi);
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct MI { public int cb; public R4 m; public R4 w; public int f; [MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)] public string n; }
+  public static List<MI> All() { var l = new List<MI>(); EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr dc, ref R4 r, IntPtr d) => { var mi = new MI(); mi.cb = Marshal.SizeOf(mi); GetMonitorInfo(h, ref mi); l.Add(mi); return true; }, IntPtr.Zero); return l; }
+}
+"@
+function Mons { [Mon2]::All() }
+function MonByName($n) { Mons | ? { $_.n -eq $n } }
+$initial = Mons
+if ($initial.Count -lt 2) { Write-Host 'SKIPPED: needs at least two monitors'; exit 0 }
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = MainWindow $proc
-
-  # 1. Default: docked right, reserving screen space.
-  Wait { (WorkArea).Right -lt $original.Right } 'work area to shrink on the right'
-  $r = Rect $hwnd
-  Check ((WorkArea).Right -lt $original.Right) "default docks right and reserves space (work area right $($original.Right) -> $((WorkArea).Right))"
-  Check ([Math]::Abs($r.R - $screen.Right) -le 2) 'window hugs the right edge'
-  Check (IsTopmost $hwnd) 'docked sidebar is topmost'
-
-  # 2. Menu > Position > Dock left.
-  ChoosePosition $win 'Dock left'
-  Wait { (WorkArea).Left -gt $original.Left -and (WorkArea).Right -eq $original.Right } 'work area to move to the left'
-  $r = Rect $hwnd
-  Check ((WorkArea).Left -gt $original.Left -and (WorkArea).Right -eq $original.Right) "dock left reserves the left edge (work area left -> $((WorkArea).Left))"
-  Eventually { $r = Rect $hwnd; [Math]::Abs($r.L - $screen.Left) -le 2 } 'window hugs the left edge'
-
-  # 3. Menu > Position > Float as a window: space is given back; window can move and resize; not topmost.
-  ChoosePosition $win 'Float as a window'
-  Wait { (WorkArea).Equals($original) } 'work area restored'
-  Check ((WorkArea).Equals($original)) 'floating gives the screen edge back'
-  Eventually { -not (IsTopmost $hwnd) } 'floating window is not topmost by default'
-  $transform = $win.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
-  Check ($transform.Current.CanMove -and $transform.Current.CanResize) 'floating window can be moved and resized'
-  # Target fits any work area (CI runners are 1024x768), so on-screen clamping never kicks in.
-  $X = $original.Left + 100; $Y = $original.Top + 100; $W = 500; $H = [Math]::Min(700, $original.Height - 200)
-  $transform.Move($X, $Y); $transform.Resize($W, $H)
-  Start-Sleep -Milliseconds 300
-  $r = Rect $hwnd
-  Check ($r.L -eq $X -and $r.T -eq $Y -and ($r.R - $r.L) -eq $W -and ($r.B - $r.T) -eq $H) "moved/resized to $X,$Y ${W}x$H (got $($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
-
-  # 4. Always on top (only meaningful while floating). Toggled right after the move: the window must not jump.
-  ToggleAlwaysOnTop $win
-  Eventually { $r = Rect $hwnd; $r.L -eq $X -and $r.T -eq $Y } 'toggling always on top keeps the window where it is'
-  Wait { IsTopmost $hwnd } 'topmost'
-  Check (IsTopmost $hwnd) 'Always on top makes the floating window topmost'
-  Start-Sleep -Milliseconds 900  # placement save is debounced
-
-  # 5. Restart: placement is remembered.
-  $win.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
-  Check ($proc.WaitForExit(15000)) 'app exits cleanly'
-  Check ((WorkArea).Equals($original)) 'no screen space left reserved after exit'
-  $json = Get-Content (Join-Path $DataDir 'desktop.json') -Raw | ConvertFrom-Json
-  Check ($json.mode -eq 'floating' -and $json.alwaysOnTop -eq $true) "desktop.json remembers floating + always on top"
-
-  $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
-  $win = MainWindow $proc
-  Start-Sleep -Milliseconds 800
-  $r = Rect $hwnd
-  Check ((WorkArea).Equals($original)) 'restarted floating: no screen space reserved'
-  Check ([Math]::Abs($r.L - $X) -le 2 -and [Math]::Abs($r.T - $Y) -le 2 -and [Math]::Abs(($r.R - $r.L) - $W) -le 2) "restarted at remembered bounds ($($r.L),$($r.T) $($r.R - $r.L)x$($r.B - $r.T))"
-  Eventually { IsTopmost $hwnd } 'restarted with always on top'
-
-  # 5b. Monitor unplugged while floating: a display change pulls an off-screen window back onto a monitor.
-  [void][Native]::SetWindowPos($hwnd, [IntPtr]::Zero, 30000, 30000, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010)
-  Eventually { (Rect $hwnd).L -ge 30000 } 'window pushed off-screen (simulated unplug)'
-  [void][Native]::PostMessage($hwnd, 0x007E, [IntPtr]32, [IntPtr]0)  # WM_DISPLAYCHANGE
-  Eventually { $r = Rect $hwnd; $r.L -ge $original.Left -and $r.R -le $original.Right -and $r.T -ge $original.Top -and $r.B -le $original.Bottom } 'display change brings the floating window back on screen'
-
-  # 6. Back to docked right, then exit: work area must be restored.
+  Start-Sleep 2
+  for ($i = 0; $i -lt $initial.Count; $i++) {
+    $m = $initial[$i]; $label = "Display $($i + 1)"
+    Write-Host "--- $label $($m.n) bounds=$($m.m.L),$($m.m.T),$($m.m.R),$($m.m.B)"
+    # Choose the display (prefix match on the menu item name).
+    $position = OpenMenuItem $win 'Position'
+    $position.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand(); Start-Sleep -Milliseconds 300
+    $items = (Root).FindAll([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)))
+    $item = $items | ? { $_.Current.Name -like "$label*" } | Select-Object -First 1
+    if (-not $item) { throw "menu item $label not found: $(($items | % { $_.Current.Name }) -join ' | ')" }
+    Invoke $item
+    foreach ($edge in 'Dock right', 'Dock left') {
+      ChoosePosition $win $edge
+      Eventually { $r = Rect $hwnd; $mm = MonByName $m.n; $r.T -ge $mm.m.T -and $r.B -le $mm.m.B -and (($edge -eq 'Dock right' -and [Math]::Abs($r.R - $mm.m.R) -le 2) -or ($edge -eq 'Dock left' -and [Math]::Abs($r.L - $mm.m.L) -le 2)) } "$label ${edge}: window on that monitor's edge"
+      Eventually { $mm = MonByName $m.n; ($edge -eq 'Dock right' -and $mm.w.R -lt $m.w.R) -or ($edge -eq 'Dock left' -and $mm.w.L -gt $m.w.L) } "$label ${edge}: that monitor's work area shrinks"
+      foreach ($o in $initial | ? { $_.n -ne $m.n }) { $oo = MonByName $o.n; Check ($oo.w.L -eq $o.w.L -and $oo.w.R -eq $o.w.R) "$label ${edge}: other monitor $($o.n) untouched" }
+    }
+    # Saved by stable device path (survives reconnects), and a display change keeps the sidebar on this monitor.
+    Start-Sleep -Milliseconds 300
+    $saved = (Get-Content (Join-Path $DataDir 'desktop.json') -Raw | ConvertFrom-Json).monitor
+    Check ($saved -like '\\?\*') "$label saved by stable device path ($saved)"
+    [void][Native]::PostMessage($hwnd, 0x007E, [IntPtr]32, [IntPtr]0)  # WM_DISPLAYCHANGE
+    Start-Sleep -Milliseconds 1200
+    Eventually { $r = Rect $hwnd; $mm = MonByName $m.n; [Math]::Abs($r.L - $mm.m.L) -le 2 -and $r.T -ge $mm.m.T -and $r.B -le $mm.m.B } "$label display change: still docked on this monitor"
+    ChoosePosition $win 'Float as a window'
+    Eventually { $mm = MonByName $m.n; $mm.w.L -eq $m.w.L -and $mm.w.R -eq $m.w.R } "$label float: work area restored"
+    Eventually { $r = Rect $hwnd; $cx = ($r.L + $r.R) / 2; $cy = ($r.T + $r.B) / 2; $cx -ge $m.m.L -and $cx -le $m.m.R -and $cy -ge $m.m.T -and $cy -le $m.m.B } "$label float: window centered on that monitor"
+  }
   ChoosePosition $win 'Dock right'
-  Wait { (WorkArea).Right -lt $original.Right } 'docked right again'
-  Check ((WorkArea).Right -lt $original.Right) 'dock right again from floating'
+  Start-Sleep 1
   $win.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
   [void]$proc.WaitForExit(15000)
-  Wait { (WorkArea).Equals($original) } 'work area restored after exit'
-  Check ((WorkArea).Equals($original)) 'exit while docked releases the screen edge'
-  Write-Host "`nALL $($results.Count) SYSTEM CHECKS PASSED"
+  Start-Sleep 1
+  foreach ($o in $initial) { $oo = MonByName $o.n; Check ($oo.w.L -eq $o.w.L -and $oo.w.R -eq $o.w.R -and $oo.w.T -eq $o.w.T -and $oo.w.B -eq $o.w.B) "after exit: $($o.n) work area restored" }
+  Write-Host "`nALL $($results.Count) MULTI-MONITOR CHECKS PASSED"
 }
 finally {
-  # Close gracefully so a docked instance releases its screen edge; kill only as a last resort.
   if (-not $proc.HasExited) { [void]$proc.CloseMainWindow(); if (-not $proc.WaitForExit(10000)) { $proc.Kill() } }
   Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+
