@@ -9,8 +9,8 @@ namespace TodoTracker.Core.Vault;
 public sealed record VaultVersion(string Id, DateTimeOffset At, string Message, string? Path = null);
 
 /// <summary>
-/// Version history for the vault, kept in a private git repository (<c>.todo-tracker/history.git</c>, separate from
-/// any repository the user has) so every change, in the app or outside it, can be looked at and restored.
+/// Version history for the vault, kept in a private git repository in local app data (never in the synced vault, and
+/// separate from any repository the user has) so every change, in the app or outside it, can be looked at and restored.
 /// Requires <c>git</c> on the PATH; without it there is simply no history.
 /// </summary>
 public sealed partial class VaultHistory : IDisposable
@@ -22,14 +22,15 @@ public sealed partial class VaultHistory : IDisposable
     private readonly string _git;
     private readonly string _gitDir;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private int _activitySeen;
 
     private VaultHistory(VaultBoardStore store, string git)
     {
         _store = store;
         _git = git;
-        _gitDir = Path.Combine(store.RootPath, VaultFiles.MetaFolder, "history.git");
+        _gitDir = store.HistoryPath;
     }
+
+    private string EmptyConfig => Path.Combine(_gitDir, "todo-tracker-empty-config");
 
     /// <summary>History for <paramref name="store"/>, or null when git isn't available.</summary>
     public static VaultHistory? TryCreate(VaultBoardStore store, string git = "git")
@@ -43,14 +44,21 @@ public sealed partial class VaultHistory : IDisposable
                 return null;
             }
 
+            Directory.CreateDirectory(history._gitDir);
+            if (!File.Exists(history.EmptyConfig))
+            {
+                File.WriteAllText(history.EmptyConfig, string.Empty);
+            }
+
             if (!Directory.Exists(Path.Combine(history._gitDir, "objects")))
             {
                 history.Git("init", "--quiet");
             }
 
+            // Attachments are large and never edited in place, so they aren't versioned.
             var exclude = Path.Combine(history._gitDir, "info", "exclude");
             Directory.CreateDirectory(Path.GetDirectoryName(exclude)!);
-            File.WriteAllText(exclude, $"/{VaultFiles.MetaFolder}/\n.obsidian/\n.trash/\n.git\n*.tmp\n.DS_Store\n");
+            File.WriteAllText(exclude, $"/{VaultFiles.MetaFolder}/\n/{VaultFiles.AttachmentsFolder}/\n.obsidian/\n.trash/\n.git\n*.tmp\n.DS_Store\n");
             return history;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or IOException or InvalidOperationException)
@@ -66,19 +74,23 @@ public sealed partial class VaultHistory : IDisposable
         try
         {
             var activity = await _store.ReadAsync(b => b.Activity.ToList(), cancellationToken).ConfigureAwait(false);
+            RemoveStaleIndexLock();
+
+            // Hash new content without holding the vault lock (that can take a while); the add under the lock is then quick.
+            Run(Args("add", "--all", "--", "."));
             return await _store.WithLockAsync(() =>
             {
-                Git("add", "--all", "--", ".");
+                AddAll();
                 if (Run(Args("diff", "--cached", "--quiet")).Code == 0)
                 {
-                    _activitySeen = activity.Count;
+                    MarkSeen(activity);
                     return false;
                 }
 
                 var changed = Git("diff", "--cached", "--name-only").Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                var message = Message(activity.Skip(Math.Min(_activitySeen, activity.Count)).ToList(), changed);
+                var message = Message(activity.Skip(FirstUnseen(activity)).ToList(), changed);
                 Git("commit", "--quiet", "--no-verify", "-m", message);
-                _activitySeen = activity.Count;
+                MarkSeen(activity);
                 return true;
             }, cancellationToken).ConfigureAwait(false);
         }
@@ -140,6 +152,9 @@ public sealed partial class VaultHistory : IDisposable
     public async Task RestoreTaskAsync(Guid taskId, string versionId, Actor actor)
     {
         var text = await TaskVersionAsync(taskId, versionId).ConfigureAwait(false) ?? throw new TaskNotFoundException($"Version {versionId} of this task was not found.");
+
+        // Keep what is there now (edits from the last few seconds may not be saved as a version yet).
+        await CommitAsync().ConfigureAwait(false);
         await _store.RestoreRootFileAsync(taskId, text, actor, $"Restored an earlier version ({versionId[..Math.Min(7, versionId.Length)]})").ConfigureAwait(false);
         await CommitAsync().ConfigureAwait(false);
     }
@@ -150,6 +165,86 @@ public sealed partial class VaultHistory : IDisposable
     {
         await _store.ReadAsync(b => b.Get(taskId)).ConfigureAwait(false);
         return _store.PathOf(taskId) ?? throw TaskNotFoundException.ForTask(taskId);
+    }
+
+    // The last activity entry already described by a version, kept next to the repository so every process
+    // (app, tt, tt mcp) describes only what is new.
+    private string SeenPath => Path.Combine(_gitDir, "todo-tracker-seen");
+
+    private int FirstUnseen(List<ActivityEntry> activity)
+    {
+        string marker;
+        try
+        {
+            marker = File.ReadAllText(SeenPath).Trim();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+
+        for (var i = activity.Count - 1; i >= 0; i--)
+        {
+            if (Marker(activity[i]) == marker)
+            {
+                return i + 1;
+            }
+        }
+
+        return 0;
+    }
+
+    private void MarkSeen(List<ActivityEntry> activity)
+    {
+        if (activity.Count > 0)
+        {
+            try
+            {
+                File.WriteAllText(SeenPath, Marker(activity[^1]));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static string Marker(ActivityEntry entry) =>
+        $"{entry.At.UtcTicks.ToString(CultureInfo.InvariantCulture)} {entry.ItemId:N} {entry.Kind} {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(entry.Summary)))[..16]}";
+
+    /// <summary>Stages everything; another process's quick git command may briefly hold the index, so retry.</summary>
+    private void AddAll()
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            var (code, _, error) = Run(Args("add", "--all", "--", "."));
+            if (code == 0)
+            {
+                return;
+            }
+
+            if (attempt == 5 || !error.Contains("index.lock", StringComparison.Ordinal))
+            {
+                throw new IOException($"git add failed: {error.Trim()}");
+            }
+
+            Thread.Sleep(200 * attempt);
+        }
+    }
+
+    /// <summary>A git that was killed (or a crash) leaves index.lock behind, which would stop history for good.</summary>
+    private void RemoveStaleIndexLock()
+    {
+        var path = Path.Combine(_gitDir, "index.lock");
+        try
+        {
+            if (File.Exists(path) && DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > Timeout + Timeout)
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private static void ValidateVersion(string versionId)
@@ -178,6 +273,7 @@ public sealed partial class VaultHistory : IDisposable
     [
         "-c", "core.autocrlf=false", "-c", "core.quotepath=off", "-c", "core.longpaths=true", "-c", "commit.gpgsign=false",
         "-c", "user.name=Todo Tracker", "-c", "user.email=todo-tracker@localhost", "-c", "core.safecrlf=false",
+        "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + Path.Combine(_gitDir, "no-hooks"),
         $"--git-dir={_gitDir}", $"--work-tree={_store.RootPath}", .. args,
     ];
 
@@ -206,6 +302,10 @@ public sealed partial class VaultHistory : IDisposable
 
         start.Environment["GIT_TERMINAL_PROMPT"] = "0";
         start.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+
+        // Ignore the user's and the system's git settings (pagers, hooks, credential helpers, fsmonitor...).
+        start.Environment["GIT_CONFIG_NOSYSTEM"] = "1";
+        start.Environment["GIT_CONFIG_GLOBAL"] = EmptyConfig;
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Couldn't start git.");
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();

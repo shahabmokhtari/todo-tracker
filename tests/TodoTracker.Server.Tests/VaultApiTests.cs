@@ -104,6 +104,16 @@ public sealed class VaultApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_shows_done_tasks_only_when_asked_with_is()
+    {
+        var done = await _client.PostJson("/api/items", new { title = "Analysis: Q3" });
+        await _client.PostJson($"/api/items/{done.Id()}/complete", new { });
+
+        Assert.Empty((await _client.GetJson("/api/search?q=analysis:")).AsArray());
+        Assert.Equal(["Analysis: Q3"], (await _client.GetJson("/api/search?q=analysis%20is:done")).Titles());
+    }
+
+    [Fact]
     public async Task Labels_can_be_created_renamed_recolored_and_deleted()
     {
         await _client.PostJson("/api/labels", new { name = "Later", color = "#64748b" });

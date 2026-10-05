@@ -46,7 +46,9 @@ public sealed class VaultHistoryTests : IDisposable
 
         var versions = await _history.LogAsync(null);
         Assert.Contains("Ship", versions[0].Message, StringComparison.Ordinal);
-        Assert.True(Directory.Exists(Path.Combine(_root, ".todo-tracker", "history.git")));
+        Assert.False(Directory.Exists(Path.Combine(_root, ".todo-tracker", "history.git")));
+        Assert.True(Directory.Exists(_store.HistoryPath));
+        Assert.StartsWith(_locks, _store.HistoryPath, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(task.Id, await _store.ReadAsync(b => b.Items.Single().Id));
     }
 
@@ -95,6 +97,83 @@ public sealed class VaultHistoryTests : IDisposable
 
         Assert.True(await _history.CommitAsync());
         Assert.Contains("Edited outside the app", (await _history.LogAsync(null))[0].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Version_messages_describe_only_new_changes_even_across_processes()
+    {
+        // The app, tt and tt mcp each keep their own VaultHistory: what was already described must be remembered on disk.
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Draft"), Actor.User, T0));
+        Assert.True(await _history.CommitAsync());
+
+        await _store.UpdateAsync(b =>
+        {
+            b.Update(task.Id, new TaskChanges { Title = "Final" }, Actor.Agent("claude"), T0.AddMinutes(1));
+            return true;
+        });
+        using var other = VaultHistory.TryCreate(_store)!;
+        Assert.True(await other.CommitAsync());
+
+        var latest = (await other.LogAsync(null))[0].Message;
+        Assert.DoesNotContain("Created", latest, StringComparison.Ordinal);
+        Assert.Contains("claude", latest, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Restoring_keeps_edits_that_were_not_saved_as_a_version_yet()
+    {
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Plan"), Actor.User, T0));
+        await _history.CommitAsync();
+        var first = (await _history.TaskHistoryAsync(task.Id))[0].Id;
+        await _store.UpdateAsync(b =>
+        {
+            b.Update(task.Id, new TaskChanges { Details = "typed just now" }, Actor.User, T0);
+            return true;
+        });
+
+        await _history.RestoreTaskAsync(task.Id, first, Actor.User);
+
+        var versions = await _history.TaskHistoryAsync(task.Id);
+        var texts = await Task.WhenAll(versions.Select(v => _history.TaskVersionAsync(task.Id, v.Id)));
+        Assert.Contains(texts, t => t?.Contains("typed just now", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task A_lock_left_by_a_killed_git_does_not_stop_history()
+    {
+        await _store.UpdateAsync(b => b.AddTask(new NewTask("One"), Actor.User, T0));
+        await _history.CommitAsync();
+        var stale = Path.Combine(_store.HistoryPath, "index.lock");
+        await File.WriteAllTextAsync(stale, string.Empty);
+        File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddHours(-1));
+
+        await _store.UpdateAsync(b => b.AddTask(new NewTask("Two"), Actor.User, T0));
+
+        Assert.True(await _history.CommitAsync());
+    }
+
+    [Fact]
+    public async Task Attachments_are_not_versioned()
+    {
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Logs"), Actor.User, T0));
+        using (var content = new MemoryStream(new byte[1024]))
+        {
+            await _store.AddAttachmentAsync(task.Id, "dump.bin", content, Actor.User);
+        }
+
+        await _history.CommitAsync();
+
+        var start = new System.Diagnostics.ProcessStartInfo("git") { RedirectStandardOutput = true, UseShellExecute = false };
+        foreach (var arg in new[] { $"--git-dir={_store.HistoryPath}", "ls-tree", "-r", "--name-only", "HEAD" })
+        {
+            start.ArgumentList.Add(arg);
+        }
+
+        using var git = System.Diagnostics.Process.Start(start)!;
+        var tracked = (await git.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken)).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        await git.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Work/Logs.md", tracked);
+        Assert.DoesNotContain(tracked, t => t.StartsWith("_attachments/", StringComparison.Ordinal));
     }
 
     [Fact]

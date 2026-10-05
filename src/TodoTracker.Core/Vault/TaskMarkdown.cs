@@ -497,7 +497,20 @@ public static partial class TaskMarkdown
         return frames[0].Ordered;
     }
 
-    private static string TitleForSeed(string rest) => HiddenMeta().Replace(TrailingBlockId().Replace(rest, string.Empty), string.Empty).Trim();
+    /// <summary>
+    /// The part of a line that identifies a hand-written subtask: its words, without what people (or the Obsidian Tasks
+    /// plugin) add as they work on it — the checkbox, dates such as ✅ 2026-01-05, priority, tags, block ids, case.
+    /// </summary>
+    private static string TitleForSeed(string rest)
+    {
+        var text = HiddenMeta().Replace(rest, string.Empty);
+        text = TrailingBlockId().Replace(text, string.Empty);
+        text = SeedNoise().Replace(text, " ");
+        return Spaces().Replace(text, " ").Trim().ToLowerInvariant();
+    }
+
+    [GeneratedRegex(@"(?:📅|⏳|✅|➕|🛫|❌)\uFE0F?\s*\d{4}-\d{2}-\d{2}|🔺|⏫|🔼|🔽|⏬|🔁|(?<=^|\s)#[\p{L}\p{N}_\-/]+|\uFE0F")]
+    private static partial Regex SeedNoise();
 
     private static WorkItem ParseItem(char check, string rest, ParseState state, bool isPlain, string seedKey)
     {

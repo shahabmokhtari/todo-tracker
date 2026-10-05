@@ -17,6 +17,8 @@ public partial class MainWindow : Window
     private const double CompactWidth = 56;
     private const double HeaderHeight = 44;
     private readonly SidebarViewModel _vm;
+    private bool _notesFlushed;
+    private bool _closed;
     private readonly SettingsStore? _settings;
     private readonly WindowPlacementStore? _placementStore;
     private readonly bool _interactive;
@@ -59,7 +61,7 @@ public partial class MainWindow : Window
         SourceInitialized += OnSourceInitialized;
         LocationChanged += (_, _) => QueueSave();
         SizeChanged += (_, _) => QueueSave();
-        Closing += (_, _) => RememberFloatingBounds();
+        Closing += OnClosing;
         StateChanged += (_, _) =>
         {
             // Win+Up maximizes without WM_SYSCOMMAND; a floating sidebar stays a sidebar-sized window.
@@ -70,6 +72,7 @@ public partial class MainWindow : Window
         };
         Closed += (_, _) =>
         {
+            _closed = true;
             _hotKey?.Dispose();
             _appBar.Dispose();
             _vm.PropertyChanged -= OnViewModelPropertyChanged;
@@ -477,7 +480,25 @@ public partial class MainWindow : Window
         return storage;
     }
 
-    private void SwitchVault(string folder)
+    /// <summary>Notes typed but not saved yet are saved before the window goes away.</summary>
+    private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        RememberFloatingBounds();
+        if (_notesFlushed)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        _notesFlushed = true;
+        await _vm.FlushNotesAsync().ConfigureAwait(true);
+        if (!_closed)
+        {
+            Close();
+        }
+    }
+
+    private async void SwitchVault(string folder)
     {
         if (string.Equals(Path.GetFullPath(folder), Vault?.RootPath, StringComparison.OrdinalIgnoreCase))
         {
@@ -485,11 +506,20 @@ public partial class MainWindow : Window
         }
 
         var message = $"Keep your tasks in\n{folder}?\n\nTodo Tracker restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
-        if (MessageBox.Show(this, message, "Tasks folder", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+        var summary = TodoTracker.Core.Vault.VaultFolder.Inspect(folder);
+        if (summary is { IsTaskFolder: false, Tasks: > 0 })
+        {
+            message += $"\n\nThis folder already has {summary.Tasks} notes in {summary.Groups} folders. Each folder will show as a tab and each note as a task. " +
+                "Notes aren't changed unless you edit that task here.";
+        }
+
+        if (MessageBox.Show(this, message, "Tasks folder", MessageBoxButton.OKCancel, summary.Tasks > 0 && !summary.IsTaskFolder ? MessageBoxImage.Warning : MessageBoxImage.Question) != MessageBoxResult.OK)
         {
             return;
         }
 
+        await _vm.FlushNotesAsync().ConfigureAwait(true);
+        _notesFlushed = true;
         _settings?.SetVaultPath(folder);
         if (Environment.ProcessPath is { } exe)
         {

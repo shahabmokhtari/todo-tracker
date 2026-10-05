@@ -1,7 +1,7 @@
-import { api, post, patch, put, del, h, upload, text, ApiError } from './api.js';
+import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
 import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from './format.js';
 import { icon, ring } from './icons.js';
-import { createAutosave } from './autosave.js';
+import { createAutosave, changedFields } from './autosave.js';
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
@@ -32,12 +32,16 @@ function noteSession(itemId, key = itemId) {
   return noteSessions.get(key);
 }
 
-/** Finishes the note being typed (saves it now) so the next keystrokes start a new note. */
+/**
+ * Finishes the note being typed (saves it now) so the next keystrokes start a new note. Returns false when it couldn't
+ * be saved: the session (and the text in the box) are kept so nothing typed is lost and the next try continues it.
+ */
 async function finishNote(key) {
   const session = noteSessions.get(key);
-  if (!session) return;
-  noteSessions.delete(key);
-  await session.autosave.flush();
+  if (!session) return true;
+  if (!(await session.autosave.flush())) return false;
+  if (noteSessions.get(key) === session) noteSessions.delete(key);
+  return true;
 }
 
 function setSaveState(s) {
@@ -300,14 +304,22 @@ function actions(c, { waiting = false, big = false } = {}) {
     placeholder: 'What did you do? What is next? (saves as you type)', maxlength: 10000, 'aria-label': 'Note',
     oninput: () => noteSession(c.id, `card:${c.id}`).autosave.schedule(noteInput.value),
     onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } },
-    onblur: () => { if (noteInput.value.trim()) noteSession(c.id, `card:${c.id}`).autosave.flush(); },
+    // Leaving the box finishes the note, so coming back starts a new one instead of overwriting it.
+    onblur: () => { if (noteInput.value.trim()) finish(); },
   });
+  let finishing = false;
   const finish = async () => {
-    const hadText = noteInput.value.trim();
-    await finishNote(`card:${c.id}`);
-    noteInput.value = '';
-    noteBox.hidden = true;
-    if (hadText) await act(Promise.resolve(), 'Note saved');
+    if (finishing) return;
+    finishing = true;
+    try {
+      const hadText = noteInput.value.trim();
+      if (!(await finishNote(`card:${c.id}`))) return toast('Couldn’t save the note yet – it’s kept here, try again', 'error');
+      noteInput.value = '';
+      noteBox.hidden = true;
+      if (hadText) await act(Promise.resolve(), 'Note saved');
+    } finally {
+      finishing = false;
+    }
   };
   const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: (e) => { e.preventDefault(); finish(); } },
     noteInput, h('button', { class: 'btn', type: 'submit', title: 'Finish this note (Enter)', 'aria-label': 'Finish note' }, icon('check', { size: 16 }), 'Finish'));
@@ -435,22 +447,44 @@ async function editGroup(g) {
 
 // ---------- drawer (task details) ----------
 
+/** Saves the drawer's fields and notes (except `keepKey`'s note). Returns false when something couldn't be saved. */
+async function flushDrawer(keepKey = null) {
+  const results = await Promise.all([
+    state.drawerAutosave?.flush() ?? true,
+    ...[...noteSessions.keys()].filter((k) => k.startsWith('drawer:') && k !== keepKey).map(finishNote),
+  ]);
+  return results.every((ok) => ok !== false);
+}
+
 async function closeDrawer() {
-  // Everything typed is saved before the panel closes.
-  const flushes = [state.drawerAutosave?.flush(), ...[...noteSessions.keys()].filter((k) => k.startsWith('drawer:')).map(finishNote)];
+  // Everything typed is saved before the panel closes; if that fails the panel stays open with the text in it.
+  if (!(await flushDrawer())) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
   state.drawerId = null;
   state.drawerAutosave = null;
+  state.drawerNote = null;
   $('#drawer').hidden = true;
   $('#scrim').hidden = true;
-  await Promise.all(flushes);
   refresh({ background: true });
 }
 
 $('#scrim').addEventListener('click', closeDrawer);
 
+/** What is being typed in the drawer, so re-opening the same task (after an action) keeps it and the caret. */
+function drawerDraft() {
+  const drawer = $('#drawer');
+  const active = document.activeElement;
+  const focused = active && drawer.contains(active) && active.dataset?.field ? { field: active.dataset.field, start: active.selectionStart, end: active.selectionEnd } : null;
+  const note = state.drawerNote;
+  return { note: note?.value ?? '', noteFocused: !!note && active === note, noteStart: note?.selectionStart, noteEnd: note?.selectionEnd, focused };
+}
+
 async function openDrawer(id) {
-  // Anything still being typed in the previous panel is saved first.
-  await state.drawerAutosave?.flush();
+  // Anything still being typed is saved first. Re-opening the same task keeps the note being written (same note);
+  // another task finishes it so the next keystrokes can't overwrite it.
+  const same = state.drawerId === id && !$('#drawer').hidden;
+  const draft = same ? drawerDraft() : null;
+  const saved = await flushDrawer(same ? `drawer:${id}` : null);
+  if (!saved && !same && !$('#drawer').hidden) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
   state.drawerId = id;
   let item;
   try {
@@ -474,6 +508,7 @@ async function openDrawer(id) {
   const tags = h('input', { value: item.tags.map((t) => `#${t}`).join(' '), placeholder: '#tag #another', 'aria-label': 'Tags', dataset: { field: 'tags' } });
   const labels = new Set(item.labels.map((l) => l.name));
 
+  const fieldGroups = [['title'], ['details'], ['priority'], ['deadline', 'clearDeadline'], ['sequential'], ['stepDelayMinutes', 'clearStepDelay'], ['tags'], ['labels']];
   const values = () => ({
     title: title.value,
     details: details.value,
@@ -486,12 +521,17 @@ async function openDrawer(id) {
     tags: parseTags(tags.value),
     labels: [...labels],
   });
+  // Only fields changed here are sent, so edits made elsewhere meanwhile (Obsidian, agents, another tab) survive.
+  let lastSaved = values();
   const autosave = createAutosave({
     delay: 700,
     onState: setSaveState,
     save: async (v) => {
-      if (!v.title.trim()) throw new Error('A title is required');
-      await patch(`/api/items/${id}`, v);
+      const changes = changedFields(lastSaved, v, fieldGroups);
+      if (!Object.keys(changes).length) return;
+      if ('title' in changes && !v.title.trim()) throw new Error('A title is required');
+      await patch(`/api/items/${id}`, changes);
+      lastSaved = v;
       refresh({ background: true });
     },
   });
@@ -530,16 +570,17 @@ async function openDrawer(id) {
   // ---- Subtasks (any depth) ----
   const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300 });
   const stepsInput = h('textarea', { rows: 3, placeholder: 'Rollout steps, one per line' });
-  const stepDelay = h('input', { type: 'number', min: 0, value: 24, 'aria-label': 'Hours between steps' });
+  const stepDelay = h('input', { type: 'number', min: 0, value: 24, 'aria-label': 'Hours between the new steps' });
 
   // ---- Notes: saved as you type ----
   const noteKey = `drawer:${id}`;
   const noteInput = h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type)',
     oninput: () => noteSession(id, noteKey).autosave.schedule(noteInput.value),
     onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } });
+  state.drawerNote = noteInput;
   const newNote = async () => {
     if (!noteInput.value.trim()) return;
-    await finishNote(noteKey);
+    if (!(await finishNote(noteKey))) return toast('Couldn’t save the note yet – it’s kept, try again', 'error');
     noteInput.value = '';
     await act(Promise.resolve());
   };
@@ -579,7 +620,7 @@ async function openDrawer(id) {
       h('details', null, h('summary', null, 'Steps in order & rollout steps'),
         h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
         stepsInput,
-        h('div', { class: 'row' }, field('Hours between steps', stepDelay),
+        h('div', { class: 'row' }, field('Hours between the new steps', stepDelay),
           h('button', { class: 'btn', onclick: () => {
             const titles = stepsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
             if (titles.length) act(post(`/api/items/${id}/steps`, { titles, stepDelayMinutes: Math.round(Number(stepDelay.value || 0) * 60) || null }), `Added ${titles.length} steps`);
@@ -604,11 +645,32 @@ async function openDrawer(id) {
   $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
   drawer.hidden = false;
+  restoreDrawerDraft(drawer, draft, noteInput);
 
   // Drop files anywhere on the panel to attach them.
   drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
   drawer.ondragleave = (e) => { if (e.target === drawer) drawer.classList.remove('dropping'); };
   drawer.ondrop = (e) => { e.preventDefault(); drawer.classList.remove('dropping'); uploadFiles(id, e.dataTransfer.files); };
+}
+
+function restoreDrawerDraft(drawer, draft, noteInput) {
+  if (!draft) return;
+  if (draft.note) {
+    noteInput.value = draft.note;
+    if (draft.noteFocused) {
+      noteInput.focus();
+      noteInput.setSelectionRange(draft.noteStart ?? draft.note.length, draft.noteEnd ?? draft.note.length);
+    }
+  }
+  if (draft.focused) {
+    const el = drawer.querySelector(`[data-field="${CSS.escape(draft.focused.field)}"]`);
+    if (el) {
+      el.focus();
+      if (typeof draft.focused.start === 'number' && typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(draft.focused.start, draft.focused.end); } catch { /* not a text field */ }
+      }
+    }
+  }
 }
 
 function subtaskTree(children) {
@@ -764,7 +826,13 @@ $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#search-icon').append(icon('search', { size: 16 }));
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
-const flushAll = () => { state.drawerAutosave?.flush(); noteSessions.forEach((s) => s.autosave.flush()); };
+const flushAll = () => {
+  // The page may be going away: these requests must outlive it.
+  setKeepalive(true);
+  state.drawerAutosave?.flush();
+  noteSessions.forEach((s) => s.autosave.flush());
+  setKeepalive(false);
+};
 window.addEventListener('pagehide', flushAll);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
 

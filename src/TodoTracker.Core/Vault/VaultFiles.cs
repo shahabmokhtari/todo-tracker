@@ -15,6 +15,12 @@ public sealed record VaultOptions(string Root)
     /// <summary>Local (never synced) folder for the cross-process write lock. Default: local app data.</summary>
     public string? LockDirectory { get; init; }
 
+    /// <summary>
+    /// Where version history is kept (default: local app data, or next to <see cref="LockDirectory"/> when that is set).
+    /// Never inside the vault: two devices running git on one synced repository would corrupt it.
+    /// </summary>
+    public string? HistoryDirectory { get; init; }
+
     /// <summary>A <c>board.json</c> from earlier versions to import into an empty vault (then renamed to <c>.migrated</c>).</summary>
     public string? LegacyBoardPath { get; init; }
 

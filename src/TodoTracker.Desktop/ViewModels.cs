@@ -111,6 +111,9 @@ public sealed partial class CardViewModel : ObservableObject
 
     internal ITimer? DraftTimer { get; set; }
 
+    /// <summary>The draft save in flight; saves run one after another so two can't both create a note.</summary>
+    internal Task DraftSaving { get; set; } = Task.CompletedTask;
+
     internal Action<CardViewModel>? DraftEdited { get; set; }
 
     partial void OnNoteDraftChanged(string value) => DraftEdited?.Invoke(this);

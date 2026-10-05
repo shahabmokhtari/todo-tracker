@@ -20,6 +20,9 @@ public sealed class TaskQuery
 
     public static TaskQuery Empty { get; } = new();
 
+    /// <summary>Whether the query says which state it wants (<c>is:open</c> or <c>is:done</c>).</summary>
+    public bool HasState => _done is not null;
+
     public bool IsEmpty => _words.Count == 0 && _tags.Count == 0 && _labels.Count == 0 && _groups.Count == 0 && _done is null;
 
     public static TaskQuery Parse(string? text)

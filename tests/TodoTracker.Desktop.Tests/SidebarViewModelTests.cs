@@ -82,6 +82,36 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Overlapping_saves_of_one_draft_never_create_two_notes()
+    {
+        var task = await Seed("Ship");
+        await _vm.RefreshAsync();
+        var card = _vm.Focus!;
+
+        card.NoteDraft = "called";
+        _time.Advance(TimeSpan.FromSeconds(2));
+        var first = _vm.WhenNotesSavedAsync();
+        card.NoteDraft = "called vendor";
+        var enter = _vm.AddNoteCommand.ExecuteAsync(card);
+        await Task.WhenAll(first, enter);
+
+        var note = Assert.Single(await _store.ReadAsync(b => b.Get(task.Id).Notes.ToList()));
+        Assert.Equal("called vendor", note.Text);
+    }
+
+    [Fact]
+    public async Task Unsaved_drafts_are_saved_when_the_app_closes()
+    {
+        var task = await Seed("Ship");
+        await _vm.RefreshAsync();
+        _vm.Focus!.NoteDraft = "typed right before closing";
+
+        await _vm.FlushNotesAsync();
+
+        Assert.Equal(["typed right before closing"], await _store.ReadAsync(b => b.Get(task.Id).Notes.Select(n => n.Text).ToList()));
+    }
+
+    [Fact]
     public async Task Nothing_is_saved_while_still_typing()
     {
         var task = await Seed("Ship");

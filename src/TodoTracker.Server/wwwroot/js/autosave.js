@@ -1,6 +1,19 @@
 // Autosave: saves the latest value once typing pauses (or right away on flush), one save at a time, without ever
 // losing what was typed while a save was in flight. Timers are injectable for tests.
 
+/**
+ * The fields of `next` that differ from `prev`, so a save only sends what this person changed and never puts back
+ * values someone else changed meanwhile. `groups` lists fields that must travel together (e.g. a value and its clear flag).
+ */
+export function changedFields(prev, next, groups = Object.keys(next).map((k) => [k])) {
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const out = {};
+  for (const group of groups) {
+    if (group.some((k) => !same(prev?.[k], next[k]))) group.forEach((k) => { out[k] = next[k]; });
+  }
+  return out;
+}
+
 export function createAutosave({ save, delay = 700, setTimer = setTimeout, clearTimer = clearTimeout, onState = () => {} }) {
   let pending = null; // { value } waiting to be saved
   let timer = null;
@@ -51,7 +64,10 @@ export function createAutosave({ save, delay = 700, setTimer = setTimeout, clear
       onState('pending');
       arm();
     },
-    /** Save now (e.g. on Enter, blur, or closing the panel). Resolves once everything typed so far is saved. */
+    /**
+     * Save now (e.g. on Enter, blur, or closing the panel). Resolves to true once everything typed so far is saved,
+     * or false when a save failed (the text stays pending, so nothing typed is dropped).
+     */
     async flush() {
       if (timer !== null) { clearTimer(timer); timer = null; }
       while (running || pending) {
@@ -59,9 +75,10 @@ export function createAutosave({ save, delay = 700, setTimer = setTimeout, clear
         else {
           const before = pending;
           await drain();
-          if (pending === before) break; // the save failed; keep it pending instead of looping
+          if (pending === before) return false; // the save failed; keep it pending instead of looping
         }
       }
+      return true;
     },
     /** Forget unsaved changes (e.g. the task was deleted). */
     cancel() {

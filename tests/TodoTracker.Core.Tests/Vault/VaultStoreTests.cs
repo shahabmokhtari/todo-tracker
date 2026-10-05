@@ -365,6 +365,25 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Images_pasted_in_obsidian_resolve_from_the_enclosing_obsidian_vault_but_nothing_outside_it()
+    {
+        // Tasks live in <obsidian vault>/Todo Tracker; Obsidian saves pasted images at the vault root by default.
+        Directory.CreateDirectory(P(".obsidian"));
+        await File.WriteAllBytesAsync(P("Pasted image 1.png"), [1, 2, 3]);
+        var store = VaultBoardStore.Open(new VaultOptions(P("Todo Tracker")) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = false, EditSettleTime = TimeSpan.Zero });
+        _stores.Add(store);
+        var task = await Add(store, "Ship");
+        var file = P("Todo Tracker", "Work", "Ship.md");
+        await File.AppendAllTextAsync(file, "\n## Attachments\n\n- ![[Pasted image 1.png]]\n- [secret](../../../../etc/passwd)\n");
+        store.MarkDirty();
+        var attachments = await store.ReadAsync(b => b.Get(task.Id).Attachments.ToList());
+
+        var (path, _) = await store.GetAttachmentFileAsync(task.Id, attachments[0].Id);
+        Assert.Equal(P("Pasted image 1.png"), path);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => store.GetAttachmentFileAsync(task.Id, attachments[1].Id));
+    }
+
+    [Fact]
     public async Task Oversized_attachments_are_rejected()
     {
         var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = false, MaxAttachmentBytes = 4 });
@@ -438,6 +457,27 @@ public sealed class VaultStoreTests : IDisposable
         Assert.Equal(original, await File.ReadAllTextAsync(note));
         Assert.Equal(stamp, File.GetLastWriteTimeUtc(note));
         Assert.Equal(ids, again);
+        Assert.False(File.Exists(P("AGENTS.md")), "an existing notes folder doesn't get a guide note added to it");
+    }
+
+    [Fact]
+    public void A_folder_can_be_inspected_before_it_is_adopted()
+    {
+        Directory.CreateDirectory(P("Projects", "Old"));
+        File.WriteAllText(P("Projects", "Plan.md"), "# Plan");
+        File.WriteAllText(P("Projects", "Old", "Notes.md"), "x");
+        Directory.CreateDirectory(P("Journal"));
+        File.WriteAllText(P("Journal", "Today.md"), "x");
+        Directory.CreateDirectory(P(".obsidian"));
+        File.WriteAllText(P(".obsidian", "app.md"), "x");
+        File.WriteAllText(P("Readme.md"), "x");
+
+        var summary = VaultFolder.Inspect(_root);
+
+        Assert.Equal(new VaultFolderSummary(Exists: true, IsTaskFolder: false, Groups: 2, Tasks: 3), summary);
+        Assert.Equal(new VaultFolderSummary(false, false, 0, 0), VaultFolder.Inspect(P("missing")));
+        Open().Dispose();
+        Assert.True(VaultFolder.Inspect(_root).IsTaskFolder);
     }
 
     [Fact]
@@ -544,6 +584,98 @@ public sealed class VaultStoreTests : IDisposable
 
         Assert.True(await store.ReadAsync(b => b.Get(step.Id).IsDone));
         Assert.Equal(written, await File.ReadAllTextAsync(file));
+    }
+
+    [Fact]
+    public async Task An_edit_is_acted_on_once_it_settles_even_if_the_app_saved_something_else_meanwhile()
+    {
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, Watch = false, EditSettleTime = TimeSpan.FromSeconds(2) });
+        _stores.Add(store);
+        var rollout = await store.UpdateAsync(b => b.AddTask(new NewTask("Rollout") { Sequential = true }, Actor.User, T0));
+        var (first, second) = await store.UpdateAsync(b =>
+        {
+            var steps = b.AddSteps(rollout.Id, ["Ring 0", "Ring 1"], TimeSpan.FromHours(24), Actor.User, T0);
+            return (steps[0].Id, steps[1].Id);
+        });
+        var other = await Add(store, "Something else");
+        var file = P("Work", "Rollout.md");
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("1. [ ] Ring 0", "1. [x] Ring 0", StringComparison.Ordinal));
+
+        Assert.True(await store.ReadAsync(b => b.Get(first).IsDone));
+        Assert.Null(await store.ReadAsync(b => b.Get(second).NextActionAt));
+
+        // The app saves an unrelated change while the edit is still settling: the edit must not be forgotten.
+        await store.UpdateAsync(b => b.AddNote(other.Id, "busy", Actor.User, _time.GetUtcNow()));
+        _time.Advance(TimeSpan.FromSeconds(3));
+
+        var (gate, completions) = await store.ReadAsync(b => (b.Get(second).NextActionAt, b.Activity.Count(a => a.ItemId == first && a.Kind == ActivityKind.Completed)));
+        Assert.Equal(_time.GetUtcNow().AddHours(24), gate);
+        Assert.Equal(1, completions);
+    }
+
+    [Fact]
+    public async Task Cascaded_completions_are_not_logged_again_by_another_process()
+    {
+        var a = Open();
+        var b = Open();
+        var parent = await Add(a, "Parent");
+        await Add(a, "One", parent.Id);
+        await Add(a, "Two", parent.Id);
+        await b.ReadAsync(_ => 0);
+
+        await a.UpdateAsync(x =>
+        {
+            x.Complete(parent.Id, Actor.User, _time.GetUtcNow());
+            return true;
+        });
+        var logged = await a.ReadAsync(x => x.Activity.Count);
+        await b.ReadAsync(_ => 0);
+        await a.ReadAsync(_ => 0);
+
+        Assert.Equal(logged, await b.ReadAsync(x => x.Activity.Count));
+        Assert.Equal(logged, await a.ReadAsync(x => x.Activity.Count));
+    }
+
+    [Fact]
+    public async Task A_completion_followed_by_a_note_is_not_replayed_by_another_process()
+    {
+        var a = Open();
+        var b = Open();
+        var rollout = await a.UpdateAsync(x => x.AddTask(new NewTask("Rollout") { Sequential = true }, Actor.User, T0));
+        var (first, second) = await a.UpdateAsync(x =>
+        {
+            var steps = x.AddSteps(rollout.Id, ["Ring 0", "Ring 1"], TimeSpan.FromHours(1), Actor.User, T0);
+            return (steps[0].Id, steps[1].Id);
+        });
+        await b.ReadAsync(_ => 0);
+
+        await a.UpdateAsync(x =>
+        {
+            x.Complete(first, Actor.User, T0);
+            return x.AddNote(first, "went fine", Actor.User, T0);
+        });
+        _time.Advance(TimeSpan.FromMinutes(30));
+        await b.ReadAsync(_ => 0);
+
+        Assert.Equal(T0.AddHours(1), await b.ReadAsync(x => x.Get(second).NextActionAt));
+        Assert.Single(await b.ReadAsync(x => x.Activity.Where(e => e.ItemId == first && e.Kind == ActivityKind.Completed).ToList()));
+    }
+
+    [Fact]
+    public async Task Checking_a_hand_written_step_with_the_obsidian_tasks_plugin_keeps_its_identity()
+    {
+        var store = Open();
+        await File.WriteAllTextAsync(P("Work", "Trip.md"), "# Trip\n\n- [ ] Book flights\n- [ ] Pack\n");
+        var flights = await store.ReadAsync(b => b.AllItems().Single(i => i.Title == "Book flights").Id);
+
+        // What the Tasks plugin writes when the box is checked, plus a tag and priority added by hand.
+        await File.WriteAllTextAsync(P("Work", "Trip.md"), "# Trip\n\n- [x] Book flights #travel ⏫ ✅ 2026-01-05\n- [ ] Pack\n");
+        _time.Advance(TimeSpan.FromMinutes(1));
+
+        var item = await store.ReadAsync(b => b.Find(flights));
+        Assert.NotNull(item);
+        Assert.True(item.IsDone);
+        Assert.Single(await store.ReadAsync(b => b.Activity.Where(e => e.ItemId == flights && e.Kind == ActivityKind.Completed).ToList()));
     }
 
     // ---- Files and folders --------------------------------------------------------------

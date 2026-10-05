@@ -118,15 +118,29 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   await drawer.locator('textarea[placeholder^="Note"]').fill('Outline done, next: review');
   await expect(drawer.locator('#save-state')).toHaveText('Saved');
 
-  // Attach a file.
+  // Attach a file: the panel refreshes, but the note being written stays in the box (and stays the same note).
   await drawer.locator('input[type=file]').setInputFiles({ name: 'plan.md', mimeType: 'text/markdown', buffer: Buffer.from('# Plan') });
   await expect(drawer.locator('.attachments')).toContainText('plan.md');
+  const noteBox = drawer.locator('textarea[placeholder^="Note"]');
+  await expect(noteBox).toHaveValue('Outline done, next: review');
+  await noteBox.fill('Outline done, next: review, sent to Bob');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  // Someone else renames the task meanwhile; typing details here must not put the old title back.
+  const id = await drawer.getAttribute('data-item-id');
+  await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Launch plan (renamed elsewhere)' } });
+  await drawer.getByPlaceholder(/^Details/).fill('Audience: partners');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+  const saved = await (await request.get(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  expect(saved.title).toBe('Launch plan (renamed elsewhere)');
+  expect(saved.details).toBe('Audience: partners');
+  await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Write the launch plan v2' } });
 
   await page.keyboard.press('Escape');
   await page.reload();
   await page.locator('#sec-notes > summary').click();
   await expect(page.locator('#sec-notes .note').filter({ hasText: 'Outline done' })).toHaveCount(1);
-  await expect(page.locator('#sec-notes .note').first()).toContainText('next: review');
+  await expect(page.locator('#sec-notes .note').first()).toContainText('sent to Bob');
 
   // Clicking a tag filters everything to it; Escape-clearing brings the rest back.
   const card = page.locator('.item, .focus-card').filter({ hasText: 'Write the launch plan v2' }).first();

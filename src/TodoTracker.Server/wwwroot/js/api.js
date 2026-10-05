@@ -8,9 +8,17 @@ export class ApiError extends Error {
   }
 }
 
+let keepalive = false;
+
+/** While the page is going away, requests must outlive it (the browser would abort a plain fetch). */
+export function setKeepalive(on) {
+  keepalive = on;
+}
+
 export async function api(path, { method = 'GET', body } = {}) {
   const response = await fetch(path, {
     method,
+    keepalive,
     credentials: 'same-origin',
     headers: {
       'X-TodoTracker-Client': 'web',

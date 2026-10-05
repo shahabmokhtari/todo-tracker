@@ -420,8 +420,7 @@ internal static class ApiEndpoints
     internal static List<SearchHitDto> Search(TaskBoard board, string? query, DateTimeOffset now, VaultLinks? links)
     {
         var parsed = TaskQuery.Parse(query);
-        var includeDone = query?.Contains("is:", StringComparison.OrdinalIgnoreCase) == true;
-        return parsed.Apply(board).Where(i => includeDone || !i.IsDone).Take(200).Select(i => Wire.SearchHit(i, now, board, links)).ToList();
+        return parsed.Apply(board).Where(i => parsed.HasState || !i.IsDone).Take(200).Select(i => Wire.SearchHit(i, now, board, links)).ToList();
     }
 
     private static void MapLabels(RouteGroupBuilder api)

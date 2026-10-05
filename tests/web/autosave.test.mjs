@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAutosave } from '../../src/TodoTracker.Server/wwwroot/js/autosave.js';
+import { createAutosave, changedFields } from '../../src/TodoTracker.Server/wwwroot/js/autosave.js';
 
 /** Manual clock: timers only fire when the test says so. */
 function fakeTimers() {
@@ -99,4 +99,27 @@ test('cancel drops unsaved changes', async () => {
   await autosave.flush();
 
   assert.deepEqual(saves, []);
+});
+
+test('flush reports whether everything was saved', async () => {
+  let fail = true;
+  const autosave = createAutosave({ save: async () => { if (fail) throw new Error('offline'); }, setTimer: () => 0, clearTimer: () => {} });
+
+  autosave.schedule('note');
+  assert.equal(await autosave.flush(), false);
+  assert.equal(autosave.dirty, true);
+
+  fail = false;
+  assert.equal(await autosave.flush(), true);
+  assert.equal(autosave.dirty, false);
+});
+
+test('changedFields sends only what changed, keeping linked fields together', () => {
+  const groups = [['title'], ['details'], ['deadline', 'clearDeadline'], ['tags']];
+  const before = { title: 'Ship', details: 'x', deadline: '2026-01-01T00:00:00Z', clearDeadline: false, tags: ['a'] };
+
+  assert.deepEqual(changedFields(before, { ...before, details: 'xy' }, groups), { details: 'xy' });
+  assert.deepEqual(changedFields(before, { ...before, deadline: null, clearDeadline: true }, groups), { deadline: null, clearDeadline: true });
+  assert.deepEqual(changedFields(before, { ...before, tags: ['a', 'b'] }, groups), { tags: ['a', 'b'] });
+  assert.deepEqual(changedFields(before, { ...before }, groups), {});
 });

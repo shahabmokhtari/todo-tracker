@@ -30,6 +30,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private Caches _caches = new();
     private PathIndex _index = PathIndex.Empty;
     private Dictionary<Guid, bool> _acked = [];
+    private Dictionary<string, ((DateTime Time, long Size) Stamp, DateTimeOffset Seen)> _firstSeen = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<Guid, bool>? _mutationBaseline;
+    private volatile bool _reactionPending;
     private List<ConfigGroup> _dormantGroups = [];
     private FileSystemWatcher? _watcher;
     private Timer? _rescan;
@@ -48,7 +51,16 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _options = options;
         _root = Path.GetFullPath(options.Root);
         _lockPath = VaultFiles.LockPath(options.LockDirectory ?? VaultFiles.DefaultLockDirectory(), _root);
+        HistoryPath = Path.ChangeExtension(
+            VaultFiles.LockPath(options.HistoryDirectory ?? (options.LockDirectory is { } locks ? Path.Combine(locks, "history") : DefaultHistoryDirectory()), _root),
+            ".git");
     }
+
+    /// <summary>This vault's private history repository (outside the vault, on this device).</summary>
+    public string HistoryPath { get; }
+
+    public static string DefaultHistoryDirectory() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create), "TodoTracker", "history");
 
     public event EventHandler? Changed;
 
@@ -151,22 +163,20 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     /// <summary>Replaces the file of the task's top-level task with <paramref name="text"/> (an earlier version).</summary>
     internal async Task RestoreRootFileAsync(Guid taskId, string text, Actor actor, string summary)
     {
+        // One change: the audit entry is saved, then (still under the lock) the file is put back.
         await UpdateAsync(
-            b => _caches.Paths[b.Get(taskId).Root.Id],
+            b =>
+            {
+                var root = b.Get(taskId).Root;
+                b.LogExternal(root.Id, ActivityKind.Updated, $"{summary} of \"{root.Title}\"", actor, Now);
+                return _caches.Paths[root.Id];
+            },
             rel =>
             {
                 VaultFiles.WriteAtomic(VaultFiles.Full(_root, rel), text);
                 MarkDirty();
             }).ConfigureAwait(false);
-        await UpdateAsync(b =>
-        {
-            if (b.Find(taskId)?.Root is { } root)
-            {
-                b.LogExternal(root.Id, ActivityKind.Updated, $"{summary} of \"{root.Title}\"", actor, Now);
-            }
-
-            return true;
-        }).ConfigureAwait(false);
+        await ReadAsync(_ => 0).ConfigureAwait(false);
     }
 
     /// <summary>Applies a change and saves it; <paramref name="afterCommit"/> runs (still under the lock) once it's saved.</summary>
@@ -182,7 +192,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             using var fileLock = await VaultFiles.AcquireLockAsync(_lockPath, LockTimeout, cancellationToken).ConfigureAwait(false);
             for (var attempt = 1; ; attempt++)
             {
-                if (_dirty || DiskDiffers())
+                if (_dirty || _reactionPending || DiskDiffers())
                 {
                     changed |= Reload();
                 }
@@ -190,6 +200,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 var snapshot = BoardSerializer.Serialize(_board);
                 try
                 {
+                    // Only what this change did to completion is "handled"; edits still settling stay pending.
+                    _mutationBaseline = _board.AllItems().ToDictionary(i => i.Id, i => i.IsDone);
                     result = mutate(_board);
                     changed |= Persist();
                     afterCommit?.Invoke(result);
@@ -206,6 +218,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     _board = BoardSerializer.Deserialize(snapshot);
                     MarkDirty();
                     throw;
+                }
+                finally
+                {
+                    _mutationBaseline = null;
                 }
             }
         }
@@ -267,7 +283,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
             var guide = Path.Combine(_root, "AGENTS.md");
             var existing = File.Exists(guide) ? File.ReadAllText(guide) : null;
-            if (existing is null || (existing.StartsWith("<!-- todo-tracker-guide v", StringComparison.Ordinal) && !existing.StartsWith(VaultGuide.Marker, StringComparison.Ordinal)))
+            // A new vault gets the guide; a folder of existing notes isn't changed (only an older guide of ours is updated).
+            if ((existing is null && fresh) || (existing is not null && existing.StartsWith("<!-- todo-tracker-guide v", StringComparison.Ordinal) && !existing.StartsWith(VaultGuide.Marker, StringComparison.Ordinal)))
             {
                 VaultFiles.WriteAtomic(guide, Guide + "\n");
             }
@@ -376,7 +393,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return false;
         }
 
-        if (!_forceContent && !DiskDiffers())
+        if (!_forceContent && !_reactionPending && !DiskDiffers())
         {
             _dirty = false;
             return false;
@@ -586,57 +603,77 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         var now = Now;
         var changed = false;
         var unsettled = false;
-        var lastActivity = _board.Activity.GroupBy(a => a.ItemId).ToDictionary(g => g.Key, g => g.Last().Kind);
+        var logged = _board.Activity.Select(a => a.ItemId).ToHashSet();
+
+        // Whether a task's last completion entry (from any process: the activity log is shared) already says this.
+        var lastToggle = _board.Activity.Where(a => a.Kind is ActivityKind.Completed or ActivityKind.Reopened)
+            .GroupBy(a => a.ItemId).ToDictionary(g => g.Key, g => g.Last().Kind);
+        bool Recorded(WorkItem item) => lastToggle.GetValueOrDefault(item.Id) == (item.IsDone ? ActivityKind.Completed : ActivityKind.Reopened);
+
         var acked = new Dictionary<Guid, bool>();
+        var seen = new Dictionary<string, ((DateTime Time, long Size) Stamp, DateTimeOffset Seen)>(StringComparer.OrdinalIgnoreCase);
         foreach (var root in _board.Items.ToList())
         {
             var rel = _caches.Paths[root.Id];
-            var settled = DateTime.UtcNow - files[rel].Stamp.Time >= _options.EditSettleTime;
-            foreach (var item in root.SelfAndDescendants().ToList())
+            var stamp = files[rel].Stamp;
+            var firstSeen = _firstSeen.TryGetValue(rel, out var s) && s.Stamp == stamp ? s.Seen : now;
+            seen[rel] = (stamp, firstSeen);
+            var items = root.SelfAndDescendants().ToList();
+            var flipped = items.Where(i => _acked.TryGetValue(i.Id, out var was) && was != i.IsDone).ToList();
+            if (flipped.Count > 0 && now - firstSeen < _options.EditSettleTime)
             {
-                var known = _acked.TryGetValue(item.Id, out var wasDone);
-                if (known && wasDone == item.IsDone)
+                // Someone may still be typing: show the edit, act on it once the file is quiet.
+                unsettled = true;
+                foreach (var item in items)
                 {
-                    acked[item.Id] = item.IsDone;
+                    if (_acked.TryGetValue(item.Id, out var was))
+                    {
+                        acked[item.Id] = was;
+                    }
+                }
+
+                continue;
+            }
+
+            foreach (var item in items.Where(i => !_acked.ContainsKey(i.Id) && !logged.Contains(i.Id)))
+            {
+                _board.LogExternal(item.Id, ActivityKind.Created, $"Created \"{item.Title}\"", actor, now);
+                changed = true;
+            }
+
+            // A completion cascades to subtasks (and finishing the last step completes its parent): when a related task
+            // that flipped the same way is already recorded, this one was part of that change, not a new edit.
+            foreach (var item in flipped)
+            {
+                var explained = Recorded(item) || flipped.Exists(other => other != item && other.IsDone == item.IsDone && Recorded(other)
+                    && (item.Ancestors().Contains(other) || other.Ancestors().Contains(item)));
+                if (explained)
+                {
                     continue;
                 }
 
-                if (!settled)
-                {
-                    // Someone may still be typing: show the edit, act on it once the file is quiet.
-                    unsettled = true;
-                    if (known)
-                    {
-                        acked[item.Id] = wasDone;
-                    }
-
-                    continue;
-                }
-
-                acked[item.Id] = item.IsDone;
-                var last = lastActivity.GetValueOrDefault(item.Id);
-                if (!known)
-                {
-                    if (!lastActivity.ContainsKey(item.Id))
-                    {
-                        _board.LogExternal(item.Id, ActivityKind.Created, $"Created \"{item.Title}\"", actor, now);
-                        changed = true;
-                    }
-                }
-                else if (item.IsDone && last != ActivityKind.Completed)
+                if (item.IsDone)
                 {
                     _board.CompleteExternally(item, actor, now);
-                    changed = true;
                 }
-                else if (!item.IsDone && last != ActivityKind.Reopened)
+                else
                 {
                     _board.LogExternal(item.Id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor, now);
-                    changed = true;
                 }
+
+                lastToggle[item.Id] = item.IsDone ? ActivityKind.Completed : ActivityKind.Reopened;
+                changed = true;
+            }
+
+            foreach (var item in root.SelfAndDescendants())
+            {
+                acked[item.Id] = item.IsDone;
             }
         }
 
         _acked = acked;
+        _firstSeen = seen;
+        _reactionPending = unsettled;
         if (unsettled)
         {
             ScheduleRefresh(_options.EditSettleTime, contentCheck: false);
@@ -755,9 +792,15 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
         ApplyPendingStamps();
         PublishIndex();
-        foreach (var item in _board.AllItems())
+        if (_mutationBaseline is { } before)
         {
-            _acked[item.Id] = item.IsDone;
+            foreach (var item in _board.AllItems())
+            {
+                if (!before.TryGetValue(item.Id, out var was) || was != item.IsDone)
+                {
+                    _acked[item.Id] = item.IsDone;
+                }
+            }
         }
 
         return true;

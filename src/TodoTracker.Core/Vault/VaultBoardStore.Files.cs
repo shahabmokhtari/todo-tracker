@@ -143,10 +143,28 @@ public sealed partial class VaultBoardStore
     private static Attachment FindAttachment(TaskBoard board, Guid itemId, Guid attachmentId) =>
         board.Get(itemId).Attachments.FirstOrDefault(a => a.Id == attachmentId) ?? throw new TaskNotFoundException($"Attachment {attachmentId} was not found.");
 
+    private static bool IsInside(string path, string root) =>
+        path.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The Obsidian vault the tasks folder is part of (a parent folder with <c>.obsidian</c>), if any.</summary>
+    private string? EnclosingObsidianVault()
+    {
+        for (var dir = Directory.GetParent(_root); dir is not null; dir = dir.Parent)
+        {
+            if (Directory.Exists(Path.Combine(dir.FullName, ".obsidian")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        return null;
+    }
+
     private string ResolveAttachment(string relative)
     {
         var full = VaultFiles.Full(_root, relative);
-        if (!full.StartsWith(_root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        var obsidian = EnclosingObsidianVault();
+        if (!IsInside(full, _root) && !(obsidian is not null && IsInside(full, obsidian)))
         {
             throw new UnauthorizedAccessException("That attachment points outside the vault.");
         }
@@ -165,8 +183,11 @@ public sealed partial class VaultBoardStore
             }
 
             var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive };
-            var match = Directory.EnumerateFiles(_root, relative, options)
-                .FirstOrDefault(f => !VaultFiles.Relative(_root, f).Split('/').Any(s => s.StartsWith('.')));
+            string? Find(string root) => Directory.EnumerateFiles(root, relative, options)
+                .FirstOrDefault(f => !VaultFiles.Relative(root, f).Split('/').Any(s => s.StartsWith('.')));
+
+            // When the tasks folder sits inside an Obsidian vault, Obsidian keeps pasted images elsewhere in that vault.
+            var match = Find(_root) ?? (obsidian is not null ? Find(obsidian) : null);
             if (match is not null)
             {
                 _wikiLinkCache[relative] = match;

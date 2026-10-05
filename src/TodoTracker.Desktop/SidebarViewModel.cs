@@ -227,8 +227,35 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task<bool> SaveDraftAsync(CardViewModel card)
+    /// <summary>Saves everything typed but not saved yet (before the app closes or restarts).</summary>
+    public async Task FlushNotesAsync()
     {
+        foreach (var card in Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>().Distinct().ToList())
+        {
+            card.DraftTimer?.Dispose();
+            card.DraftTimer = null;
+            await SaveDraftInBackgroundAsync(card).ConfigureAwait(true);
+        }
+    }
+
+    private Task<bool> SaveDraftAsync(CardViewModel card)
+    {
+        var saving = SaveDraftAfterAsync(card.DraftSaving, card);
+        card.DraftSaving = saving;
+        return saving;
+    }
+
+    private async Task<bool> SaveDraftAfterAsync(Task previous, CardViewModel card)
+    {
+        try
+        {
+            await previous.ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            // Reported by whoever started that save; this one retries with the latest text.
+        }
+
         var text = card.NoteDraft;
         if (string.IsNullOrWhiteSpace(text) || text == card.SavedDraft)
         {

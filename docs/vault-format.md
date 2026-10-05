@@ -2,7 +2,8 @@
 
 Todo Tracker stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
 Obsidian vault, in a git repository, or in any sync service. People, the apps, the `tt` CLI, and AI agents all edit
-the same files. The app writes a copy of this guide for agents to `AGENTS.md` at the vault root.
+the same files. A vault the app creates gets a copy of this guide for agents in `AGENTS.md` at the vault root (a folder
+of existing notes is left as it is).
 
 ## Layout
 
@@ -20,7 +21,6 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
     state.json                      ← focus timer
     activity.jsonl                  ← audit log (append-only)
     trash/                          ← deleted task files (kept 30 days)
-    history.git/                    ← version history (private git repository)
 ```
 
 * Folders starting with `_` or `.` are not groups. Files directly in the vault root are not tasks.
@@ -101,7 +101,9 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
   and an optional link to a subtask. The last line `🔗 [title](url)` is the source. Notes are editable;
   `.todo-tracker/activity.jsonl` is the audit trail.
 * Attachments are links in `## Attachments` (or `- 📎` items under a subtask). Markdown links, embeds, and Obsidian
-  wiki links (`![[file.png|300]]`) all work and keep their form. Links that point outside the vault are refused.
+  wiki links (`![[file.png|300]]`) all work and keep their form. When the tasks folder is inside an Obsidian vault, wiki
+  links also find files elsewhere in that vault (where Obsidian puts pasted images). Links that point outside the vault
+  (or the Obsidian vault around it) are refused.
 
 ## How the app treats your files
 
@@ -120,6 +122,7 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
 * **Copies get their own identity.** A duplicated task file gets new ids; the original keeps its own.
 * **Several processes, one vault.** The app, the CLI, and MCP servers coordinate with a lock in local app data (not in
   the synced folder). Changes from other devices arrive through your sync service and are picked up like any edit.
-* **History.** Every change, in the app or outside it, is kept as a version in `.todo-tracker/history.git` (a private
-  repository that doesn't touch any repository you have). Any task can be viewed or restored from its history; a
+* **History.** Every change, in the app or outside it, is kept as a version in a private git repository on this device
+  (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
+  versioned). Any task can be viewed or restored from its history; a
   restore is itself a version. Needs `git`.

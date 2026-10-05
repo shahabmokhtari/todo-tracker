@@ -64,7 +64,7 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
   from earlier versions is imported once (and renamed to `board.json.migrated`).
 * **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
-* **History.** Every change is kept as a version in a private git repository (`.todo-tracker/history.git`), saved a
+* **History.** Every change is kept as a version in a private git repository on this device (local app data, never in the synced vault), saved a
   few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
   viewed or restored from its history. Off when git isn't installed.
 * **Data folder.** `%LOCALAPPDATA%\TodoTracker` (override with `TODOTRACKER_DATA` or `--data`) holds
