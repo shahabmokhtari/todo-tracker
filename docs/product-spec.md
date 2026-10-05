@@ -14,7 +14,8 @@ Product principles:
 2. **Defer, don't forget.** Waiting work leaves the main list and returns on time, with a reminder.
 3. **Low friction.** One-line capture, one-click Done/Snooze/Note, a global hotkey, and no required forms.
 4. **Calm UI.** Few colors (priority only), no animations, collapsible sections, and remembered section state.
-5. **Local-first and fast.** Native shells, a local JSON store, and no account or cloud needed.
+5. **Local-first, AI-native, and yours.** Tasks are plain markdown files in a folder you own (an Obsidian vault works
+   as is), readable and writable by people, apps, and AI agents. No account or cloud needed; every change is versioned.
 6. **Agents are collaborators.** Copilot and other agents use MCP tools. Their changes are attributed, visible, and non-destructive.
 7. **One set of rules.** Scheduling and ordering live in the core. The Swift port is checked against the same fixtures.
 
@@ -53,26 +54,38 @@ TodoTracker.Web  – the same server as a standalone process (no WPF); used by C
 apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS and macOS.
 ```
 
-* **Single writer.** One process owns `board.json`. The file store holds an exclusive lock-file handle for the
-  process lifetime; the OS releases it if the process crashes. A second instance reports "already running".
-* **Atomic saves.** Each save writes a temp file and then replaces the board, keeping a `.bak` copy. A corrupt board
-  is set aside as `board.json.corrupt-<timestamp>` and the backup is loaded.
-  Mutations that throw are rolled back in memory.
-* **Data folder.** `%LOCALAPPDATA%\TodoTracker` (override with `TODOTRACKER_DATA` or `--data`) holds `board.json`,
-  `settings.json` (Teams webhook), and `api-token`.
+* **Markdown vault.** The board lives in a folder of markdown files: one folder per group, one file per top-level
+  task, Obsidian-compatible. The full format and the app's rules for touching files are in
+  [`vault-format.md`](vault-format.md). In short: reading never writes, a change rewrites only the files it touched,
+  saves are verified against the files' content and are all-or-nothing, edits made outside the app (Obsidian,
+  editors, agents) are picked up and acted on, and broken files are reported and never overwritten.
+* **Vault location.** `Documents/Todo Tracker` by default, or a folder chosen in the app (for example
+  `<Obsidian vault>/Todo Tracker`), `TODOTRACKER_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
+  from earlier versions is imported once (and renamed to `board.json.migrated`).
+* **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
+  (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
+* **History.** Every change is kept as a version in a private git repository (`.todo-tracker/history.git`), saved a
+  few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
+  viewed or restored from its history. Off when git isn't installed.
+* **Data folder.** `%LOCALAPPDATA%\TodoTracker` (override with `TODOTRACKER_DATA` or `--data`) holds
+  `settings.json` (Teams webhook, vault folder), `api-token`, and `desktop.json` (window placement).
 
-## 4. Domain model (schema v1)
+## 4. Domain model
 
 | Entity | Fields |
 |---|---|
-| **Board** | `schemaVersion`, `groups[]`, `items[]` (roots), `activity[]`, `pomodoro` |
-| **Group (tab)** | `id`, `name` (unique, case-insensitive), `color` (`#rrggbb`) |
-| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `reminders[]`, `notes[]`, `children[]` |
+| **Board** | `groups[]`, `labels[]`, `items[]` (roots), `activity[]`, `pomodoro` |
+| **Group (tab)** | `id`, `name` (= its folder; unique, case-insensitive), `color` (`#rrggbb`) |
+| **Label** | `name` (≤40), `color`. Curated and colored; using a new one defines it with the next palette color. |
+| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `tags[]` (free-form, nested with `/`, ≤20), `labels[]`, `attachments[]`, `reminders[]`, `notes[]`, `children[]` (any depth). Tasks can move anywhere in the hierarchy. A top-level task can have a rich HTML version. |
+| **Attachment** | `id`, `fileName`, `path` (vault-relative), `size`, `addedAt`, `addedBy` |
 | **Reminder** | `id`, `dueAt`, `message`, `kind` (`manual` or `nextAction`), `notifiedAt`, `dismissedAt` |
-| **Note** | `id`, `at`, `text`, `author {kind: user/agent/browser/teams/system, name}`, `sourceUrl` (http/https only), `sourceTitle` |
+| **Note** | `id`, `at`, `text`, `author {kind: user/agent/browser/teams/system/vault, name}`, `sourceUrl` (http/https only), `sourceTitle`. Notes save while being typed (edits within 10 minutes of writing are part of writing it). |
 | **Activity** | `at`, `itemId`, `kind`, `summary`, `actor`. This is the audit trail and the report timeline. |
 
-Timestamps are UTC ISO-8601 with milliseconds. Readers ignore unknown fields and reject newer schema versions.
+**Search.** One query syntax everywhere (dashboard filter, CLI, MCP): words match the title or details; `#tag`
+(including nested tags), `label:name` (quote multi-word values), `group:name`, and `is:open`/`is:done` narrow it.
+Tags and labels are inherited, so `#release` also finds the steps of a tagged project.
 
 ## 5. Scheduling rules
 
@@ -144,11 +157,24 @@ blocks the others.
   restart. It runs in Windows CI.
 
 ### Web dashboard and report (`http://127.0.0.1:5317`)
-* The dashboard has the same sections as the sidebar, plus a task drawer. The drawer edits the title, priority,
-  deadline, details, steps-in-order, hours between steps, and group, and manages subtasks, rollout steps
-  (one per line), reminders, and notes.
+* The dashboard has the same sections as the sidebar, plus a filter box (`/`) with the search syntax. Tag and label
+  chips on cards filter on click. Files that need fixing are shown in a banner, and the footer shows where the
+  markdown lives with an *Open in Obsidian* link.
+* **Nothing needs a Save button.** The task drawer saves as you type (debounced; edits made during a save are saved
+  after it; failures retry; everything is flushed when the panel closes or the page is hidden). Notes save while
+  typed and stay one note until you start a new one.
+* The drawer edits the title, labels (toggle chips, add new), tags, priority, deadline, details, group, and where the
+  task belongs (any other task, or the top level). It shows the subtask tree, rollout steps (one per line),
+  attachments (button or drag and drop; images open inline, everything else downloads), the rich HTML version in a
+  sandboxed frame, reminders, notes, and the task's version history with view and restore.
 * `report.html?id=…` shows the task tree, progress, and a day-grouped timeline with linked sources. It is printable.
 * Responsive layout down to phone width. It follows the system dark mode and respects reduced motion.
+
+### Windows sidebar: tasks folder and notes
+* Card notes save themselves after a short pause and keep updating the same note; Enter finishes it.
+* Cards show labels (colored) and tags. The card menu opens the task in Obsidian or shows its markdown file.
+* Menu › *Tasks folder* shows where tasks live, opens the folder or Obsidian, keeps tasks in an Obsidian vault found on
+  this machine (`<vault>/Todo Tracker`), or chooses another folder (the app restarts to switch).
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
@@ -191,10 +217,21 @@ menu option *Copy MCP config* copies a ready `mcpServers` block. Tools:
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |
 | `schedule_next_action`, `add_reminder` | Defer and remind |
-| `complete_task`, `reopen_task`, `update_task` | Status and fields |
+| `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags and labels) |
+| `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
+| `move_task`, `list_labels` | Reorganize the hierarchy; curated labels |
+| `attach_text`, `get_rich_html`, `set_rich_html` | Text attachments and the rich HTML version |
+| `task_history`, `restore_task_version` | Versions of a task's file, and going back (itself undoable) |
+| `vault_info` | Where the markdown lives, files that need fixing, and the format guide (for agents with file tools) |
 
 Every change is attributed as `Agent: <client name>`. There is intentionally **no delete tool**, and completion can
-be undone with `reopen_task`.
+be undone with `reopen_task`. There is no tool that copies arbitrary local files into the vault (that would let a
+remote connector read files from the machine).
+
+### Obsidian
+The vault is plain Obsidian-flavored markdown: frontmatter properties, Obsidian Tasks tokens, callouts, block ids and
+links, wiki-link attachments. Point the app at a folder inside an Obsidian vault (Menu › *Tasks folder*) and edit
+tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidian://open?path=…`).
 
 ### Teams
 Paste a Teams **Workflows** webhook URL (channel › Workflows › "Post to a channel when a webhook request is
@@ -218,7 +255,13 @@ or history sync.
   other localhost origins cannot forge writes. No CORS policy is enabled.
 * Strict CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), `nosniff`, `no-referrer`, and
   `Cache-Control: no-store` on the API. The DOM is built with `textContent` only. Links are http(s) only.
-* Input limits: titles ≤300 characters, notes ≤10k. Schema-version guard. Unknown groups and ids return 404, bad input returns 400, and sequence violations return 409.
+* Input limits: titles ≤300 characters, notes ≤10k, attachments ≤25 MB, rich HTML ≤2 MB. Unknown groups and ids
+  return 404, bad input returns 400, and sequence violations return 409.
+* Attachments: only raster images are served inline; HTML, SVG, and everything else download as
+  `application/octet-stream` with a `sandbox` CSP. Attachment links that resolve outside the vault are refused, and
+  removing an attachment only ever deletes (to the trash) files under `_attachments/` that no other task links.
+* Rich HTML is untrusted: it's served with `sandbox; script-src 'none'` and only framed by the app (sandboxed iframe,
+  opaque origin, no scripts).
 
 ## 9. Platforms and build
 
@@ -251,7 +294,10 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Decision | Choice | Why |
 |---|---|---|
 | Restart vs. extend PR #1 | Restart on a new branch, reusing the spec and AppBar ideas | PR #1 was sample data only: no persistence, editing, notifications, MCP, or Apple app |
-| Persistence | Local JSON, single writer | Human-readable, easy to back up and export, and shared with Swift. SQLite is not needed at this size. |
+| Persistence | Markdown vault (one file per top-level task) with a private git history | AI-native and Obsidian-compatible; people, apps, and agents edit the same files. File-per-subtask was rejected (thousands of tiny files, clunky in Obsidian). |
+| Subtask metadata | Obsidian Tasks tokens + hidden `%%{json}%%` on the same line | Everything about a subtask moves with its line; nothing is split between the body and frontmatter. |
+| File writes | Never on read; only touched files; verified by content; all-or-nothing | Pointing the app at existing notes must change nothing, and no edit may be lost to a race. |
+| Versioning | Private git repository in `.todo-tracker/` | Real history and restore without touching a user's own repository or Obsidian Git. |
 | Apple stack | Native SwiftUI + Swift core port | Native feel and reliable CI. Parity with C# is enforced by the shared fixtures. |
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
@@ -276,3 +322,11 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | High-level glance: what to do now | ✅ focus card, workstreams, tab badges |
 | Pomodoro | ✅ linked to tasks |
 | Multiple task groups as tabs (Personal/Work/…) | ✅ follow-up request |
+| Sidebar placement: dock left/right on any monitor, float with always-on-top, monitor hot-plug | ✅ follow-up requests |
+| AI-native: data as markdown in folders, HTML version when needed | ✅ vault format v2, rich HTML companion |
+| Obsidian (must) | ✅ the vault *is* Obsidian markdown; open in Obsidian; keep tasks in an Obsidian vault |
+| Hierarchy, notes, attachments, tags, labels; intuitive and minimal | ✅ any depth with moves, notes, attachments, tags, colored labels, one filter box |
+| Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
+| Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
+| Available to AI tools (CLI, API, Claude/ChatGPT/Copilot connectors), in-app agent chat, plugins | ⏳ next PRs (CLI + stdio MCP + connector packages; plugins + ACP chat) |
+| Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |
