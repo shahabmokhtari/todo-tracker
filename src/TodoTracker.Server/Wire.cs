@@ -1,8 +1,13 @@
 using TodoTracker.Core;
+using TodoTracker.Core.Vault;
 
 namespace TodoTracker.Server;
 
 // Wire contracts. Enums are sent as camelCase strings so every client (web, extension, MCP, Swift) sees the same values.
+public sealed record LabelDto(string Name, string Color);
+
+public sealed record AttachmentDto(Guid Id, Guid ItemId, string FileName, long Size, DateTimeOffset AddedAt, string AddedBy, string Url);
+
 public sealed record GroupDto(Guid Id, string Name, string? Color, int Now, int Waiting, int Attention);
 
 public sealed record CardDto(
@@ -26,7 +31,10 @@ public sealed record CardDto(
     int? StepCount,
     int NoteCount,
     string? LastNote,
-    string? Details);
+    string? Details,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<LabelDto> Labels,
+    int AttachmentCount);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -62,7 +70,29 @@ public sealed record ItemDto(
     IReadOnlyList<string> Path,
     IReadOnlyList<ReminderDto> Reminders,
     IReadOnlyList<NoteDto> Notes,
-    IReadOnlyList<ItemDto> Children);
+    IReadOnlyList<ItemDto> Children,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<LabelDto> Labels,
+    IReadOnlyList<AttachmentDto> Attachments,
+    bool HasRich,
+    string? File,
+    string? ObsidianUrl);
+
+/// <summary>A search result: enough to show and act on a task without loading its whole tree.</summary>
+public sealed record SearchHitDto(
+    Guid Id,
+    string Title,
+    IReadOnlyList<string> Breadcrumb,
+    string State,
+    string Priority,
+    bool IsDone,
+    DateTimeOffset? Deadline,
+    DateTimeOffset? NextActionAt,
+    Guid GroupId,
+    Guid? ParentId,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<LabelDto> Labels,
+    string? File);
 
 public sealed record TimelineDto(DateTimeOffset At, Guid ItemId, string? ItemTitle, string Kind, string Summary, string Actor, string ActorKind);
 
@@ -87,7 +117,10 @@ public sealed record DashboardDto(
     IReadOnlyList<CardDto> Waiting,
     IReadOnlyList<OverviewDto> Overview,
     IReadOnlyList<NoteDto> RecentNotes,
-    PomodoroDto Pomodoro);
+    PomodoroDto Pomodoro,
+    IReadOnlyList<LabelDto> Labels,
+    IReadOnlyList<VaultProblem> Problems,
+    string? Query);
 
 public sealed record ReportDto(ItemDto? Item, IReadOnlyList<TimelineDto> Timeline);
 
@@ -112,14 +145,15 @@ public static class Wire
             : throw new ArgumentException($"Unknown priority \"{value}\". Use low, normal, high, or critical.", nameof(value));
     }
 
-    public static DashboardDto Dashboard(TaskBoard board, DateTimeOffset now, Guid? groupId, int recentNotes = 5)
+    public static DashboardDto Dashboard(TaskBoard board, DateTimeOffset now, Guid? groupId, int recentNotes = 5, VaultLinks? links = null, string? query = null)
     {
         if (groupId is { } g)
         {
             board.GetGroup(g);
         }
 
-        var snapshot = Agenda.Build(board, now, recentNotes, groupId);
+        var filter = string.IsNullOrWhiteSpace(query) ? null : TaskQuery.Parse(query);
+        var snapshot = Agenda.Build(board, now, recentNotes, groupId, filter);
         return new DashboardDto(
             now,
             groupId,
@@ -128,9 +162,9 @@ public static class Wire
                 var c = snapshot.GroupCounts[gr.Id];
                 return new GroupDto(gr.Id, gr.Name, gr.Color, c.Now, c.Waiting, c.Attention);
             }).ToList(),
-            snapshot.Focus is { } f ? Card(f, now) : null,
-            snapshot.Now.Select(e => Card(e, now)).ToList(),
-            snapshot.Waiting.Select(e => Card(e, now)).ToList(),
+            snapshot.Focus is { } f ? Card(f, now, board) : null,
+            snapshot.Now.Select(e => Card(e, now, board)).ToList(),
+            snapshot.Waiting.Select(e => Card(e, now, board)).ToList(),
             snapshot.Overview.Select(o => new OverviewDto(
                 o.Item.Id,
                 o.Item.Title,
@@ -144,11 +178,16 @@ public static class Wire
                 o.Item.GroupId,
                 o.Item.Children.Count > 0)).ToList(),
             snapshot.RecentNotes.Select(n => Note(n.Item, n.Note)).ToList(),
-            Pomodoro(board, now));
+            Pomodoro(board, now),
+            Labels(board),
+            links?.Vault.Problems ?? [],
+            string.IsNullOrWhiteSpace(query) ? null : query.Trim());
     }
 
-    public static CardDto Card(AgendaEntry e, DateTimeOffset now)
+    public static CardDto Card(AgendaEntry e, DateTimeOffset now, TaskBoard board)
     {
+        ArgumentNullException.ThrowIfNull(e);
+        ArgumentNullException.ThrowIfNull(board);
         var item = e.Item;
         int? stepNumber = null;
         int? stepCount = null;
@@ -179,10 +218,13 @@ public static class Wire
             stepCount,
             item.Notes.Count,
             item.Notes.Count > 0 ? item.Notes[^1].Text : null,
-            item.Details);
+            item.Details,
+            item.Tags,
+            Labels(board, item),
+            item.Attachments.Count);
     }
 
-    public static ItemDto Item(WorkItem item, DateTimeOffset now) => new(
+    public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
         item.Id,
         item.Title,
         item.Details,
@@ -199,7 +241,36 @@ public static class Wire
         item.Path,
         item.Reminders.Select(r => new ReminderDto(r.Id, r.DueAt, r.Message, Of(r.Kind), r.NotifiedAt, r.DismissedAt)).ToList(),
         item.Notes.OrderByDescending(n => n.At).Select(n => Note(item, n)).ToList(),
-        item.Children.Select(c => Item(c, now)).ToList());
+        item.Children.Select(c => Item(c, now, board, links)).ToList(),
+        item.Tags,
+        Labels(board, item),
+        item.Attachments.Select(a => Attachment(item, a)).ToList(),
+        links?.HasRich(item) ?? false,
+        links?.FileOf(item.Id),
+        links?.ObsidianUrlOf(item.Id));
+
+    public static SearchHitDto SearchHit(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
+        item.Id,
+        item.Title,
+        item.Ancestors().Reverse().Select(a => a.Title).ToList(),
+        Of(Agenda.StateOf(item, now)),
+        Of(Agenda.EffectivePriority(item)),
+        item.IsDone,
+        item.Deadline,
+        item.NextActionAt,
+        item.GroupId,
+        item.Parent?.Id,
+        item.Tags,
+        Labels(board, item),
+        links?.FileOf(item.Id));
+
+    public static AttachmentDto Attachment(WorkItem item, Attachment attachment) =>
+        new(attachment.Id, item.Id, attachment.FileName, attachment.Size, attachment.AddedAt, attachment.AddedBy.DisplayName, VaultLinks.AttachmentUrl(item.Id, attachment.Id));
+
+    public static IReadOnlyList<LabelDto> Labels(TaskBoard board) => board.Labels.Select(l => new LabelDto(l.Name, l.Color)).ToList();
+
+    public static IReadOnlyList<LabelDto> Labels(TaskBoard board, WorkItem item) =>
+        item.Labels.Select(n => board.FindLabel(n) is { } l ? new LabelDto(l.Name, l.Color) : new LabelDto(n, "#64748b")).ToList();
 
     public static NoteDto Note(WorkItem item, Note note) =>
         new(note.Id, item.Id, item.Title, note.At, note.Text, note.Author.DisplayName, Of(note.Author.Kind), note.SourceUrl, note.SourceTitle);

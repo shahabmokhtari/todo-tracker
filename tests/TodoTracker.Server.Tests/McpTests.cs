@@ -109,4 +109,52 @@ public sealed class McpTests : IAsyncLifetime
         Assert.True(badGroup.IsError);
         Assert.True(badPriority.IsError);
     }
+
+    [Fact]
+    public async Task Agents_organize_with_tags_labels_search_and_moves()
+    {
+        var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();
+        Assert.Contains("search_tasks", tools);
+        Assert.Contains("move_task", tools);
+        Assert.Contains("list_labels", tools);
+
+        var project = await Call("create_task", new() { ["title"] = "Upgrade cluster", ["tags"] = new[] { "infra/k8s" }, ["labels"] = new[] { "Deep work" } });
+        var idea = await Call("create_task", new() { ["title"] = "Drain nodes first" });
+        await Call("move_task", new() { ["taskId"] = idea.GetProperty("id").GetString(), ["parentId"] = project.GetProperty("id").GetString() });
+        var updated = await Call("update_task", new() { ["taskId"] = idea.GetProperty("id").GetString(), ["tags"] = new[] { "risky" } });
+        var found = await Call("search_tasks", new() { ["query"] = "#infra" });
+
+        Assert.Equal("infra/k8s", project.GetProperty("tags")[0].GetString());
+        Assert.Equal("Deep work", project.GetProperty("labels")[0].GetProperty("name").GetString());
+        Assert.Equal("risky", updated.GetProperty("tags")[0].GetString());
+        Assert.Equal(["Upgrade cluster", "Drain nodes first"], found.EnumerateArray().Select(t => t.GetProperty("title").GetString()));
+        Assert.Equal("Deep work", (await Call("list_labels", new()))[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Agents_can_attach_text_and_keep_a_rich_html_version()
+    {
+        var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();
+        Assert.DoesNotContain("attach_file", tools);
+        var task = await Call("create_task", new() { ["title"] = "Incident review" });
+        var id = task.GetProperty("id").GetString();
+
+        var attachment = await Call("attach_text", new() { ["taskId"] = id, ["fileName"] = "timeline.md", ["text"] = "# Timeline\n- 10:00 alert" });
+        await Call("set_rich_html", new() { ["taskId"] = id, ["html"] = "<table><tr><td>MTTR</td><td>42m</td></tr></table>" });
+        var rich = await _mcp.CallToolAsync("get_rich_html", new Dictionary<string, object?> { ["taskId"] = id });
+
+        Assert.Equal("timeline.md", attachment.GetProperty("fileName").GetString());
+        Assert.Contains("MTTR", string.Concat(rich.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        var stored = await _server.Store.ReadAsync(b => b.Get(Guid.Parse(id!)).Attachments.Single());
+        Assert.Equal(ActorKind.Agent, stored.AddedBy.Kind);
+    }
+
+    [Fact]
+    public async Task Vault_info_teaches_agents_the_file_format()
+    {
+        var info = await Call("vault_info", new());
+
+        Assert.Equal(_server.VaultDirectory, info.GetProperty("path").GetString());
+        Assert.Contains("Todo Tracker vault", info.GetProperty("guide").GetString(), StringComparison.Ordinal);
+    }
 }

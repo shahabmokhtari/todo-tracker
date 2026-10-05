@@ -48,6 +48,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     public string RootPath => _root;
 
+    /// <summary>The format guide written to <c>AGENTS.md</c> (for AI tools that work with the files directly).</summary>
+    public static string Guide => VaultGuide.Text.ReplaceLineEndings("\n");
+
     /// <summary>Files that couldn't be read (their last good version stays visible and they are never overwritten).</summary>
     public IReadOnlyList<VaultProblem> Problems
     {

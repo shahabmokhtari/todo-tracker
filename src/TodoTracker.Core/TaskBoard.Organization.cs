@@ -35,17 +35,25 @@ public sealed partial class TaskBoard
         Log(now, id, ActivityKind.Updated, resolved.Count == 0 ? $"Cleared labels on \"{item.Title}\"" : $"Labels on \"{item.Title}\": {string.Join(", ", resolved)}", actor);
     }
 
-    public LabelDefinition DefineLabel(string name, string color, Actor actor, DateTimeOffset now)
+    public LabelDefinition DefineLabel(string name, string? color, Actor actor, DateTimeOffset now)
     {
         var clean = ValidateLabelNames([name]).Single();
-        ValidateColor(color);
+        if (color is not null)
+        {
+            ValidateColor(color);
+        }
+
         if (FindLabel(clean) is not null)
         {
             throw new ArgumentException($"A label named \"{clean}\" already exists.", nameof(name));
         }
 
-        var label = new LabelDefinition(clean, color.ToLowerInvariant());
-        LabelDefinitionList.Add(label);
+        var label = color is null ? EnsureLabel(clean) : new LabelDefinition(clean, color.ToLowerInvariant());
+        if (color is not null)
+        {
+            LabelDefinitionList.Add(label);
+        }
+
         Log(now, Guid.Empty, ActivityKind.LabelChanged, $"Added label \"{clean}\"", actor);
         return label;
     }

@@ -9,6 +9,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.AspNetCore;
 using TodoTracker.Core;
+using TodoTracker.Core.Vault;
 
 namespace TodoTracker.Server;
 
@@ -51,7 +52,16 @@ public static class TodoTrackerHost
         services.AddSingleton(options);
         services.AddSingleton(ApiToken.LoadOrCreate(options));
         services.TryAddSingleton(TimeProvider.System);
-        services.TryAddSingleton<IBoardStore>(_ => FileBoardStore.Open(Path.Combine(options.DataDirectory, "board.json")));
+        services.AddSingleton(_ => InstanceLock.Acquire(options.DataDirectory));
+        services.TryAddSingleton(sp => VaultBoardStore.Open(new VaultOptions(options.ResolveVaultPath(sp.GetRequiredService<SettingsStore>().Current.VaultPath))
+        {
+            TimeZone = options.TimeZone,
+            Time = sp.GetRequiredService<TimeProvider>(),
+            LegacyBoardPath = Path.Combine(options.DataDirectory, "board.json"),
+            Watch = options.WatchVault,
+        }));
+        services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
+        services.AddSingleton<VaultLinks>();
         services.AddSingleton<SettingsStore>();
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();
@@ -85,7 +95,8 @@ public static class TodoTrackerHost
         var options = app.Services.GetRequiredService<TodoTrackerServerOptions>();
         var token = app.Services.GetRequiredService<ApiToken>();
 
-        // Fail fast if the board is locked by another instance or unreadable.
+        // Fail fast if another instance owns the data folder, or the vault can't be opened.
+        app.Services.GetRequiredService<InstanceLock>();
         app.Services.GetRequiredService<IBoardStore>();
 
         app.Use((context, next) => Security.Guard(context, next, options, token));

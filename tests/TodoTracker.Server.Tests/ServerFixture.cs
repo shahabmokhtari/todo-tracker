@@ -29,6 +29,9 @@ public sealed class ServerFixture : IAsyncDisposable
 
     public string DataDirectory { get; }
 
+    /// <summary>With an explicit data folder, the vault defaults to <c>&lt;data&gt;/vault</c>.</summary>
+    public string VaultDirectory => Path.Combine(DataDirectory, "vault");
+
     public FakeTimeProvider Time { get; }
 
     public RecordingNotifier Notifier { get; }
@@ -47,6 +50,7 @@ public sealed class ServerFixture : IAsyncDisposable
             TimeZone = TimeZoneInfo.Utc,
             TickInterval = TimeSpan.FromHours(1),
             EnableBackgroundLoop = false,
+            WatchVault = false,
         };
         configure?.Invoke(options);
         var time = new FakeTimeProvider(T0);

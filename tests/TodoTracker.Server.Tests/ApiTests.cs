@@ -312,6 +312,6 @@ public sealed class ApiTests : IAsyncLifetime
         var json = await _server.Store.ReadAsync(BoardSerializer.Serialize);
 
         Assert.Contains("Durable", json, StringComparison.Ordinal);
-        Assert.Contains("Durable", await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "board.json")), StringComparison.Ordinal);
+        Assert.Contains("# Durable", await File.ReadAllTextAsync(Path.Combine(_server.VaultDirectory, "Work", "Durable.md")), StringComparison.Ordinal);
     }
 }
