@@ -351,6 +351,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Opens "Connect an AI app" (Claude, Copilot, VS Code, ChatGPT…) in the browser.</summary>
+    [RelayCommand]
+    private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));
+
     [RelayCommand]
     private void CopyMcpConfig()
     {

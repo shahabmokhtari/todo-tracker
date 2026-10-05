@@ -673,6 +673,48 @@ function restoreDrawerDraft(drawer, draft, noteInput) {
   }
 }
 
+// ---------- connect an AI app ----------
+
+/** One place to hook up Claude, Copilot, VS Code, ChatGPT…: pick the app, copy one thing, done. */
+async function openConnect() {
+  if (!(await flushDrawer())) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+  let info;
+  try {
+    info = await api('/api/connect');
+  } catch (err) {
+    return toast(err.message, 'error');
+  }
+  state.drawerId = null;
+  state.drawerAutosave = null;
+  state.drawerNote = null;
+  const drawer = $('#drawer');
+  drawer.style.removeProperty('--prio');
+  delete drawer.dataset.itemId;
+  const copy = async (snippet) => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      toast('Copied');
+    } catch {
+      toast('Couldn’t copy – select the text and copy it', 'error');
+    }
+  };
+  drawer.replaceChildren(
+    h('div', { class: 'drawer-head' },
+      h('span', { class: 'connect-title' }, icon('sparkles', { size: 18 }), 'Connect an AI app'),
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
+    h('p', { class: 'muted' }, 'Let Claude, Copilot and other AI apps see what you are working on and add, organize and finish tasks for you. ',
+      'Everything they change shows up here, marked with who did it, and can be undone from the history.'),
+    ...info.setups.map((s, i) => h('details', { class: 'connect', open: i === 0, dataset: { id: s.id } },
+      h('summary', null, s.app),
+      h('p', { class: 'muted small' }, s.steps),
+      h('pre', { class: 'snippet' }, h('code', null, s.snippet)),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn', type: 'button', onclick: () => copy(s.snippet) }, icon('note', { size: 16 }), 'Copy'),
+        s.link ? h('a', { class: 'link', href: s.link, target: '_blank', rel: 'noopener noreferrer' }, 'How to set it up') : null))));
+  $('#scrim').hidden = false;
+  drawer.hidden = false;
+}
+
 function subtaskTree(children) {
   if (!children.length) return h('p', { class: 'muted small' }, 'No subtasks yet.');
   return h('ul', { class: 'subtasks' }, ...children.map((c) => h('li', { class: `sub ${c.state}` },
@@ -824,6 +866,8 @@ $('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filter
 $('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
 $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#search-icon').append(icon('search', { size: 16 }));
+$('#connect-ai').append(icon('sparkles'));
+$('#connect-ai').addEventListener('click', openConnect);
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
 const flushAll = () => {
@@ -840,7 +884,9 @@ document.addEventListener('visibilitychange', () => document.visibilityState ===
 setInterval(() => document.visibilityState === 'visible' && refresh({ background: true }), 15000);
 refresh().then(() => {
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
-  const item = new URLSearchParams(location.search).get('item');
+  const params = new URLSearchParams(location.search);
+  const item = params.get('item');
   if (item && state.dashboard) openDrawer(item);
+  else if (params.has('connect') && state.dashboard) openConnect();
 });
 

@@ -101,6 +101,7 @@ internal static class ApiEndpoints
         });
 
         api.MapGet("/connection", (ApiToken token, TodoTrackerServerOptions options) => Connection(token, options));
+        api.MapGet("/connect", (ApiToken token, TodoTrackerServerOptions options) => AiSetups.For(Connection(token, options), options.TtPath ?? AiSetups.FindTt()));
 
         api.MapPost("/launch", (LaunchRequest? request, LaunchCodes codes, TodoTrackerServerOptions options) =>
             new LaunchDto(LaunchUrl(codes, options, request?.Return, null)));

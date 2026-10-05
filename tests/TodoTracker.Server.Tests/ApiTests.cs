@@ -306,6 +306,46 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Connect_lists_ready_made_setups_for_ai_apps()
+    {
+        await using var server = await ServerFixture.StartAsync(o => o.TtPath = @"C:\Program Files\Todo Tracker\tt.exe");
+        using var client = server.Client();
+
+        var connect = await client.GetJson("/api/connect");
+
+        var setups = connect["setups"]!.AsArray().ToDictionary(s => s!["id"]!.GetValue<string>(), s => s!);
+        Assert.Contains("claude-code", setups.Keys);
+        Assert.Equal("claude mcp add todo-tracker --scope user -- \"C:\\Program Files\\Todo Tracker\\tt.exe\" mcp", setups["claude-code"]["snippet"]!.GetValue<string>());
+
+        // JSON snippets are valid JSON with the path escaped.
+        foreach (var id in new[] { "copilot-cli", "claude-desktop", "vscode" })
+        {
+            var snippet = System.Text.Json.Nodes.JsonNode.Parse(setups[id]["snippet"]!.GetValue<string>())!;
+            Assert.Contains("tt.exe", snippet.ToJsonString(), StringComparison.Ordinal);
+        }
+
+        Assert.Contains(ServerFixture.Token, setups["http"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Contains("/openapi/swagger2.json", setups["cloud"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Tt_next_to_the_app_is_preferred_over_the_path()
+    {
+        var dir = Directory.CreateTempSubdirectory("tt-find-").FullName;
+        try
+        {
+            Assert.Equal("tt", AiSetups.FindTt(dir));
+            var exe = Path.Combine(dir, OperatingSystem.IsWindows() ? "tt.exe" : "tt");
+            File.WriteAllText(exe, string.Empty);
+            Assert.Equal(exe, AiSetups.FindTt(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Board_is_persisted_to_the_data_directory()
     {
         await _client.PostJson("/api/items", new { title = "Durable" });

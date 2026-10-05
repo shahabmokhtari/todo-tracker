@@ -51,7 +51,7 @@ internal static partial class OpenApiSetup
     // Sign-in plumbing, settings, deletes, binary uploads/downloads and the event stream stay out of the AI surface.
     private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase)
     {
-        "GET api/health", "GET api/auth", "POST api/login", "GET api/connection", "POST api/launch", "GET api/events",
+        "GET api/health", "GET api/auth", "POST api/login", "GET api/connection", "GET api/connect", "POST api/launch", "GET api/events",
         "DELETE api/items/{id}", "PATCH api/groups/{id}", "DELETE api/groups/{id}", "GET api/export",
         "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings",
         "POST api/labels", "PATCH api/labels/{name}", "DELETE api/labels/{name}",

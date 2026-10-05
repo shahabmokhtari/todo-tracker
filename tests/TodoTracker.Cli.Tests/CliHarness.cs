@@ -71,6 +71,26 @@ public sealed class CliHarness : IDisposable
     {
         try
         {
+            // Version history lives outside the vault (local app data); remove what these tests created.
+            if (History && Directory.Exists(VaultDirectory))
+            {
+                string historyPath;
+                using (var store = TodoTracker.Core.Vault.VaultBoardStore.Open(new TodoTracker.Core.Vault.VaultOptions(VaultDirectory) { Watch = false }))
+                {
+                    historyPath = store.HistoryPath;
+                }
+
+                if (Directory.Exists(historyPath))
+                {
+                    foreach (var file in Directory.EnumerateFiles(historyPath, "*", SearchOption.AllDirectories))
+                    {
+                        File.SetAttributes(file, FileAttributes.Normal);
+                    }
+
+                    Directory.Delete(historyPath, recursive: true);
+                }
+            }
+
             if (Directory.Exists(DataDirectory))
             {
                 foreach (var file in Directory.EnumerateFiles(DataDirectory, "*", SearchOption.AllDirectories))

@@ -19,7 +19,7 @@ env:
 
 jobs:
   core:
-    name: Core, server & view models (Linux)
+    name: Core, server, CLI & view models (Linux)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -29,12 +29,12 @@ jobs:
           global-json-file: global.json
       - name: Build
         run: |
-          for p in Core Server Desktop; do
+          for p in Core Server Desktop Cli; do
             dotnet build tests/TodoTracker.$p.Tests --configuration Release -warnaserror
           done
       - name: Test with coverage
         run: |
-          for p in Core Server Desktop; do
+          for p in Core Server Desktop Cli; do
             dotnet test --project tests/TodoTracker.$p.Tests --configuration Release --no-build \
               --coverage --coverage-settings build/coverage.config --coverage-output-format cobertura --coverage-output $p.cobertura.xml \
               --results-directory TestResults/$p
@@ -44,6 +44,7 @@ jobs:
           python3 build/coverage-gate.py "$(find TestResults/Core -name Core.cobertura.xml)" TodoTracker.Core=90
           python3 build/coverage-gate.py "$(find TestResults/Server -name Server.cobertura.xml)" TodoTracker.Server=85
           python3 build/coverage-gate.py "$(find TestResults/Desktop -name Desktop.cobertura.xml)" TodoTracker.Desktop=85
+          python3 build/coverage-gate.py "$(find TestResults/Cli -name Cli.cobertura.xml)" tt=85
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -88,6 +89,46 @@ jobs:
         with:
           name: browser-extension
           path: todo-tracker-extension.zip
+
+  connectors:
+    name: AI connectors (tt CLI, Claude Desktop extension, plugin)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate the Claude Desktop extension manifest
+        run: npx --yes @anthropic-ai/mcpb validate integrations/claude-desktop/manifest.json
+      - name: Validate plugin and marketplace JSON
+        run: |
+          for f in .claude-plugin/marketplace.json .github/plugin/marketplace.json integrations/agent-plugin/.claude-plugin/plugin.json integrations/agent-plugin/.mcp.json integrations/vscode/mcp.json; do
+            python3 -m json.tool "$f" > /dev/null && echo "ok $f"
+          done
+      - name: dotnet tool package (dotnet tool install -g TodoTracker.Cli --add-source <folder>)
+        run: dotnet pack src/TodoTracker.Cli --configuration Release --output artifacts/nuget
+      - name: Self-contained tt and Claude Desktop extensions
+        run: |
+          for rid in win-x64 win-arm64 osx-arm64 osx-x64 linux-x64; do
+            dotnet publish src/TodoTracker.Cli --configuration Release --runtime $rid --self-contained \
+              -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
+              --output publish/$rid
+            python3 build/package-mcpb.py $rid publish/$rid staging/$rid
+            npx --yes @anthropic-ai/mcpb pack staging/$rid artifacts/todo-tracker-$rid.mcpb
+            (cd publish/$rid && zip -q ../../artifacts/tt-$rid.zip *)
+          done
+      - name: Smoke test tt mcp from the Linux bundle
+        run: |
+          unzip -q -o artifacts/todo-tracker-linux-x64.mcpb -d bundle
+          python3 build/mcp-smoke.py bundle/server/tt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ai-connectors
+          path: artifacts
 
   windows:
     name: Windows desktop (WPF)

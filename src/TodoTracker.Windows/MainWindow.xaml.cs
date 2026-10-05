@@ -412,6 +412,7 @@ public partial class MainWindow : Window
         onTop.Unchecked += (_, _) => SetAlwaysOnTop(false);
         menu.Items.Add(onTop);
         menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Connect an AI app (Claude, Copilot…)", Command = _vm.ConnectAiCommand });
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
         menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
         if (Vault is not null)

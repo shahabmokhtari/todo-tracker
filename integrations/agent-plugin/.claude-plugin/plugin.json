@@ -1,0 +1,19 @@
+{
+  "name": "todo-tracker",
+  "displayName": "Todo Tracker",
+  "version": "1.0.0",
+  "description": "Your ADHD-friendly task list for AI agents: see what to do now, capture and organize tasks, log progress, defer work. Tasks are markdown files you can also open in Obsidian.",
+  "author": {
+    "name": "Todo Tracker",
+    "url": "https://github.com/shahabmokhtari/todo-tracker"
+  },
+  "homepage": "https://github.com/shahabmokhtari/todo-tracker",
+  "repository": "https://github.com/shahabmokhtari/todo-tracker",
+  "keywords": [
+    "tasks",
+    "todo",
+    "adhd",
+    "obsidian",
+    "mcp"
+  ]
+}
