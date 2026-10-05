@@ -297,7 +297,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Persistence | Markdown vault (one file per top-level task) with a private git history | AI-native and Obsidian-compatible; people, apps, and agents edit the same files. File-per-subtask was rejected (thousands of tiny files, clunky in Obsidian). |
 | Subtask metadata | Obsidian Tasks tokens + hidden `%%{json}%%` on the same line | Everything about a subtask moves with its line; nothing is split between the body and frontmatter. |
 | File writes | Never on read; only touched files; verified by content; all-or-nothing | Pointing the app at existing notes must change nothing, and no edit may be lost to a race. |
-| Versioning | Private git repository in `.todo-tracker/` | Real history and restore without touching a user's own repository or Obsidian Git. |
+| Versioning | Private git repository per vault in local app data | Real history and restore without touching a user's own repository or Obsidian Git; never inside the synced folder, where two devices running git on one repository would corrupt it. |
 | Apple stack | Native SwiftUI + Swift core port | Native feel and reliable CI. Parity with C# is enforced by the shared fixtures. |
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
