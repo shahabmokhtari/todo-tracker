@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    <!-- A scripted ACP agent for tests: no xunit, no analyzers noise. -->
+    <NoWarn>$(NoWarn);CA1303;CA1515;CA2007;CA1031</NoWarn>
+  </PropertyGroup>
+</Project>

@@ -7,11 +7,12 @@
     <!-- Test method names use underscores for readability. -->
     <NoWarn>$(NoWarn);CA1707;CA1515;CA1861;CA2007;xUnit1051</NoWarn>
   </PropertyGroup>
-  <ItemGroup>
+  <!-- Helper programs used by tests (e.g. the scripted ACP agent) are plain executables, not test projects. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'FakeAcpAgent'">
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="xunit.v3" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'FakeAcpAgent'">
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>
