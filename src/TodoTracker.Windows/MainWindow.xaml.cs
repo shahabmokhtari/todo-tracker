@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private const double CompactWidth = 56;
     private const double HeaderHeight = 44;
     private readonly SidebarViewModel _vm;
+    private int _pendingPastes;
     private bool _notesFlushed;
     private bool _closed;
     private readonly SettingsStore? _settings;
@@ -344,9 +345,72 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Ctrl+V (or Shift+Insert) with a picture on the clipboard: attach it to the task and embed it in the note.</summary>
+    private async void OnNotePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var paste = (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
+        if (!paste || sender is not TextBox { DataContext: CardViewModel card } box)
+        {
+            return;
+        }
+
+        // The clipboard belongs to other apps too: any of these calls can fail while one of them holds it.
+        byte[] png;
+        try
+        {
+            if (Clipboard.ContainsText() || !Clipboard.ContainsImage())
+            {
+                return;
+            }
+
+            e.Handled = true;
+            if (Clipboard.GetImage() is not { } image)
+            {
+                _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
+                return;
+            }
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+            png = stream.ToArray();
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException)
+        {
+            e.Handled = true;
+            _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
+            return;
+        }
+
+        // Enter waits for the picture, so the note doesn't go without it.
+        _pendingPastes++;
+        try
+        {
+            // The box may show another task by now, and text may have been selected meanwhile: insert at the caret
+            // of this task's box only, never in place of a selection.
+            if (await _vm.AttachPastedImageAsync(card, png).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
+            {
+                var at = box.SelectionStart + box.SelectionLength;
+                var text = (at > 0 && !char.IsWhiteSpace(box.Text[at - 1]) ? " " : string.Empty) + embed;
+                box.Text = box.Text.Insert(at, text);
+                box.CaretIndex = at + text.Length;
+            }
+        }
+        finally
+        {
+            _pendingPastes--;
+        }
+    }
+
     private void OnNoteKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && sender is FrameworkElement { DataContext: CardViewModel card })
+        if (e.Key == Key.Enter && _pendingPastes > 0)
+        {
+            e.Handled = true;
+            _vm.StatusMessage = "Still adding the picture – press Enter again in a moment.";
+        }
+        else if (e.Key == Key.Enter && sender is FrameworkElement { DataContext: CardViewModel card })
         {
             e.Handled = true;
             _vm.AddNoteCommand.Execute(card);
@@ -429,7 +493,12 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
-        menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
+        if (On("browser-extension"))
+        {
+            menu.Items.Add(new MenuItem { Header = "Set up the browser extension (Edge, Chrome, Safari)…", Command = _vm.SetUpBrowserExtensionCommand });
+        }
+
+        menu.Items.Add(new MenuItem { Header = "Copy API token", Command = _vm.CopyApiTokenCommand });
         if (Vault is not null)
         {
             menu.Items.Add(StorageMenu());

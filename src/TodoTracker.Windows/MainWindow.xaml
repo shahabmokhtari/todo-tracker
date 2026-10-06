@@ -91,7 +91,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="False" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note." />
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" PreviewKeyDown="OnNotePreviewKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
                             <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>
@@ -197,7 +197,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note." />
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" PreviewKeyDown="OnNotePreviewKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
                             <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>

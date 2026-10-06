@@ -1,6 +1,11 @@
-import { createClient, normalizeServerUrl, pageSource } from './lib/client.js';
+import { createClient, normalizeServerUrl, pageSource, pair } from './lib/client.js';
 import { relativeTime, priorityMeta, metaChips, summaryLine } from './lib/format.js';
 import { icon } from './lib/icons.js';
+
+// Safari names the API `browser` (with promises); Edge and Chrome name it `chrome`.
+const ext = globalThis.browser ?? globalThis.chrome;
+// Safari has no side panel: the same page opens as the toolbar button's popup, sized for that.
+if (!ext.sidePanel) document.documentElement.classList.add('popup');
 
 const $ = (id) => document.getElementById(id);
 let client = null;
@@ -23,7 +28,7 @@ function el(tag, attrs = {}, ...children) {
 }
 
 async function init() {
-  const { serverUrl, token, groupId } = await chrome.storage.local.get(['serverUrl', 'token', 'groupId']);
+  const { serverUrl, token, groupId } = await ext.storage.local.get(['serverUrl', 'token', 'groupId']);
   group = groupId || null;
   if (!serverUrl || !token) return showSetup();
   client = createClient({ serverUrl, token });
@@ -43,10 +48,10 @@ async function refresh() {
     $('main').hidden = false;
     render();
   } catch (err) {
-    if (err.unauthorized) return showSetup('The token was rejected. Copy it again from the sidebar menu.');
+    if (err.unauthorized) return showSetup('Todo Tracker didn’t accept this connection any more. Get a new pairing code in Todo Tracker (Browser extension).');
     if (err.status === 404 && group) {
       group = null;
-      await chrome.storage.local.remove('groupId');
+      await ext.storage.local.remove('groupId');
       return refresh();
     }
     $('status').textContent = `Can't reach Todo Tracker: ${err.message}`;
@@ -101,7 +106,7 @@ const chip = (c) => el('span', { class: `chip ${c.tone}` }, c.text);
 function tab(id, name, count, color) {
   const button = el('button', {
     class: 'tab', 'aria-pressed': String(group === id),
-    onclick: async () => { group = id; await chrome.storage.local.set({ groupId: id }); refresh(); },
+    onclick: async () => { group = id; await ext.storage.local.set({ groupId: id }); refresh(); },
   }, id ? el('span', { class: 'tab-dot' }) : null, name, count ? el('span', { class: 'badge' }, count) : null);
   if (color) button.style.setProperty('--group', color);
   return button;
@@ -122,7 +127,7 @@ function card(c, big = false) {
   return li;
 }
 async function currentTab() {
-  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const [active] = await ext.tabs.query({ active: true, lastFocusedWindow: true });
   return active;
 }
 
@@ -136,10 +141,15 @@ $('setup-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
     const serverUrl = normalizeServerUrl($('server').value);
-    const token = $('token').value.trim();
-    await chrome.storage.local.set({ serverUrl, token });
+    const typed = $('token').value.trim();
+    if (!typed && !$('code').value.trim()) throw new Error('Enter the pairing code shown in Todo Tracker.');
+    const token = typed || await pair({ serverUrl, code: $('code').value });
+    await ext.storage.local.set({ serverUrl, token });
+    $('code').value = '';
+    $('token').value = '';
     client = createClient({ serverUrl, token });
     await refresh();
+    $('status').textContent = typed ? 'Connected' : 'Paired ✓ – this browser now has its own access to your tasks';
   } catch (err) {
     $('setup-error').textContent = err.message;
   }
@@ -179,17 +189,17 @@ $('note').addEventListener('submit', async (e) => {
   await refresh();
 });
 
-$('open').addEventListener('click', () => run(async () => chrome.tabs.create({ url: await client.launchUrl('/') })));
+$('open').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/') })));
 $('settings').addEventListener('click', async () => {
-  const { serverUrl } = await chrome.storage.local.get('serverUrl');
+  const { serverUrl } = await ext.storage.local.get('serverUrl');
   $('server').value = serverUrl || 'http://127.0.0.1:5317';
   showSetup();
 });
 
 $('open').append(icon('external', { size: 17 }));
 $('settings').append(icon('settings', { size: 17 }));
-chrome.tabs.onActivated.addListener(showPage);
-chrome.tabs.onUpdated.addListener((_, info) => info.title && showPage());
+ext.tabs.onActivated.addListener(showPage);
+ext.tabs.onUpdated.addListener((_, info) => info.title && showPage());
 setInterval(() => client && refresh(), 30000);
 showPage();
 init();

@@ -59,7 +59,7 @@ internal static partial class OpenApiSetup
         "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings",
         "POST api/labels", "PATCH api/labels/{name}", "DELETE api/labels/{name}",
         "GET api/history", "POST api/history/commit",
-        "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}",
+        "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",
     };
 
     public static void AddServices(IServiceCollection services)

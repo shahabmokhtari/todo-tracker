@@ -19,7 +19,11 @@ public interface IDesktopShell
 }
 
 /// <param name="LaunchUrl">Creates a single-use sign-in link to a local path (keeps the API token out of URLs).</param>
-public sealed record SidebarOptions(string BaseUrl, Func<string, string> LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "");
+public sealed record SidebarOptions(string BaseUrl, Func<string, string> LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "")
+{
+    /// <summary>Stores a file as one of a task's attachments and returns its file name (for pasted images).</summary>
+    public Func<Guid, string, byte[], Task<string>>? Attach { get; init; }
+}
 
 public enum ToastAction
 {

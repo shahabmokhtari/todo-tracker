@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createClient, normalizeServerUrl, pageSource } from '../lib/client.js';
+import { browserName, createClient, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
 
 function fakeFetch(responses = {}) {
   const calls = [];
@@ -76,6 +76,20 @@ test('launch url comes from a single-use code, never the token', async () => {
   assert.ok(!url.includes('secret'));
 });
 
+test('a paired browser (no sign-in links) just opens the dashboard', async () => {
+  const fetch = fakeFetch({ 'POST /api/launch': { status: 403 } });
+  const client = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 'ttb_x', fetch });
+
+  assert.equal(await client.launchUrl('/'), 'http://127.0.0.1:5317/');
+});
+
+test('browserName names the browser and the system', () => {
+  assert.equal(browserName('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 Edg/130.0'), 'Edge on Windows');
+  assert.equal(browserName('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15'), 'Safari on macOS');
+  assert.equal(browserName('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'), 'Chrome on Linux');
+  assert.equal(browserName(''), 'Browser');
+});
+
 test('server url must be a loopback http url', () => {
   assert.equal(normalizeServerUrl(' http://localhost:5317/ '), 'http://localhost:5317');
   assert.equal(normalizeServerUrl('http://127.0.0.1:6000'), 'http://127.0.0.1:6000');
@@ -102,4 +116,24 @@ test('manifest only requests loopback host access', () => {
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*', 'http://localhost/*']);
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
+});
+
+test('pairing trades the code shown in Todo Tracker for the token (no token to copy)', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 200, body: { token: 'tok-123' } } });
+
+  const token = await pair({ serverUrl: 'http://127.0.0.1:5317/', code: ' 123 456 ', name: 'Edge on Windows', fetch });
+
+  assert.equal(token, 'tok-123');
+  assert.equal(fetch.calls[0].url, 'http://127.0.0.1:5317/api/plugins/browser-extension/claim');
+  // The name is what Todo Tracker lists under paired browsers (to take one back).
+  assert.deepEqual(fetch.calls[0].body, { code: '123456', name: 'Edge on Windows' });
+  // A custom header: a web page can't send it without the server's permission, so it can't claim codes.
+  assert.equal(fetch.calls[0].init.headers['X-TodoTracker-Client'], 'browser-extension');
+});
+
+test('a wrong or old pairing code says what to do', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 400, body: { detail: 'That code didn\u2019t work.' } } });
+
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '000000', fetch }), /didn.t work/);
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '12', fetch }), /6 digits/);
 });

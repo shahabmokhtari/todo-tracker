@@ -66,6 +66,57 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_pasted_picture_is_attached_and_embedded_like_obsidian_does()
+    {
+        var attached = new List<(Guid Task, string Name, int Bytes)>();
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc)
+        {
+            Attach = (task, name, bytes) =>
+            {
+                attached.Add((task, name, bytes.Length));
+                return Task.FromResult(name.Replace(".png", " 2.png", StringComparison.Ordinal));
+            },
+        });
+        var task = await Seed("Ship");
+        await vm.RefreshAsync();
+
+        var embed = await vm.AttachPastedImageAsync(vm.Focus!, [1, 2, 3]);
+
+        // The stored name (made unique by the vault) is the one embedded.
+        Assert.Equal("![[Pasted image 20260105143000 2.png]]", embed);
+        Assert.Equal([(task.Id, "Pasted image 20260105143000.png", 3)], attached);
+    }
+
+    [Fact]
+    public async Task A_picture_that_can_not_be_stored_says_so()
+    {
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc)
+        {
+            Attach = (_, _, _) => throw new ArgumentException("Attachments can be at most 25 MB."),
+        });
+        await Seed("Ship");
+        await vm.RefreshAsync();
+
+        Assert.Null(await vm.AttachPastedImageAsync(vm.Focus!, [1]));
+        Assert.Contains("25 MB", vm.StatusMessage, StringComparison.Ordinal);
+        Assert.Null(await _vm.AttachPastedImageAsync(vm.Focus!, [1]));
+    }
+
+    [Fact]
+    public async Task A_picture_pasted_into_a_task_deleted_meanwhile_says_so()
+    {
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc)
+        {
+            Attach = (_, _, _) => throw new KeyNotFoundException("That task is gone."),
+        });
+        await Seed("Ship");
+        await vm.RefreshAsync();
+
+        Assert.Null(await vm.AttachPastedImageAsync(vm.Focus!, [1]));
+        Assert.Contains("gone", vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Enter_finishes_the_note_so_the_next_one_is_new()
     {
         var task = await Seed("Ship");
@@ -486,9 +537,10 @@ public sealed class SidebarViewModelTests : IDisposable
         _vm.CopyMcpConfigCommand.Execute(null);
         _vm.ConnectAiCommand.Execute(null);
         _vm.OpenSyncCommand.Execute(null);
+        _vm.SetUpBrowserExtensionCommand.Execute(null);
 
         Assert.Equal(
-            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1"],
+            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
 

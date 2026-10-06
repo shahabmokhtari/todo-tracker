@@ -40,10 +40,10 @@ export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
 
-/** Uploads one file as multipart form data (the browser sets the boundary). */
-export async function upload(path, file) {
+/** Uploads one file as multipart form data (the browser sets the boundary), optionally under another name. */
+export async function upload(path, file, name = file.name) {
   const form = new FormData();
-  form.append('file', file, file.name);
+  form.append('file', file, name);
   const response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'X-TodoTracker-Client': 'web' }, body: form });
   const data = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(response.status, data?.detail || data?.title || `Upload failed (${response.status})`);

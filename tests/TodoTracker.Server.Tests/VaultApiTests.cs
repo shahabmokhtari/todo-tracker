@@ -184,6 +184,29 @@ public sealed class VaultApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_image_embedded_by_name_is_served_from_the_task_or_its_parents()
+    {
+        // Pasted images are embedded in details and notes as ![[name]]; the app shows them by name.
+        var parent = await _client.PostJson("/api/items", new { title = "Trip" });
+        var child = await _client.PostJson("/api/items", new { title = "Visa", parentId = parent.Id() });
+        using var form = new MultipartFormDataContent();
+        var png = new ByteArrayContent([0x89, 0x50, 0x4E, 0x47]);
+        png.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(png, "file", "Pasted image 20261006.png");
+        await _client.PostAsync($"/api/items/{parent.Id()}/attachments", form);
+
+        using var fromChild = await _client.GetAsync($"/api/items/{child.Id()}/embed/{Uri.EscapeDataString("Pasted image 20261006.png")}");
+        using var missing = await _client.GetAsync($"/api/items/{child.Id()}/embed/{Uri.EscapeDataString("nope.png")}");
+        using var outside = await _client.GetAsync($"/api/items/{child.Id()}/embed/{Uri.EscapeDataString("../../api-token")}");
+
+        Assert.Equal(HttpStatusCode.OK, fromChild.StatusCode);
+        Assert.Equal("image/png", fromChild.Content.Headers.ContentType!.MediaType);
+        Assert.Equal([0x89, 0x50, 0x4E, 0x47], await fromChild.Content.ReadAsByteArrayAsync());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, outside.StatusCode);
+    }
+
+    [Fact]
     public async Task Images_open_inline_but_html_and_svg_always_download()
     {
         var item = await _client.PostJson("/api/items", new { title = "Ship" });

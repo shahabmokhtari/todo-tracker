@@ -6,7 +6,8 @@ namespace TodoTracker.Server;
 // Wire contracts. Enums are sent as camelCase strings so every client (web, extension, MCP, Swift) sees the same values.
 public sealed record LabelDto(string Name, string Color);
 
-public sealed record AttachmentDto(Guid Id, Guid ItemId, string FileName, long Size, DateTimeOffset AddedAt, string AddedBy, string Url);
+/// <summary>An attachment; <paramref name="StoredName"/> is its file's name in the vault (what an Obsidian embed refers to).</summary>
+public sealed record AttachmentDto(Guid Id, Guid ItemId, string FileName, long Size, DateTimeOffset AddedAt, string AddedBy, string Url, string StoredName);
 
 public sealed record GroupDto(Guid Id, string Name, string? Color, int Now, int Waiting, int Attention);
 
@@ -265,7 +266,7 @@ public static class Wire
         links?.FileOf(item.Id));
 
     public static AttachmentDto Attachment(WorkItem item, Attachment attachment) =>
-        new(attachment.Id, item.Id, attachment.FileName, attachment.Size, attachment.AddedAt, attachment.AddedBy.DisplayName, VaultLinks.AttachmentUrl(item.Id, attachment.Id));
+        new(attachment.Id, item.Id, attachment.FileName, attachment.Size, attachment.AddedAt, attachment.AddedBy.DisplayName, VaultLinks.AttachmentUrl(item.Id, attachment.Id), Path.GetFileName(attachment.Path));
 
     public static IReadOnlyList<LabelDto> Labels(TaskBoard board) => board.Labels.Select(l => new LabelDto(l.Name, l.Color)).ToList();
 

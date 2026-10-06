@@ -94,6 +94,7 @@ public sealed class PluginHost
         new FocusTimerPlugin(),
         new HistoryPlugin(),
         new ObsidianPlugin(),
+        new BrowserExtensionPlugin(),
         new Sync.OneDriveSyncPlugin(),
         new Sync.ICloudSyncPlugin(),
         new Sync.GistSyncPlugin(),

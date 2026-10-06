@@ -97,8 +97,9 @@ See [`docs/plugins.md`](docs/plugins.md).
 
 ### Browser extension
 
-1. Open `edge://extensions` or `chrome://extensions`, turn on developer mode, choose **Load unpacked**, and select the `extension/` folder.
-2. Open the side panel and paste the token from sidebar menu **⋯ › Copy API token**.
+Edge, Chrome and Safari. Open **Browser extension** (puzzle button in the dashboard, or **⋯ › Set up the browser
+extension** in the sidebar): it walks you through loading it (it isn't in the stores yet) and pairs it with a 6-digit
+code. See [`docs/browser-extension.md`](docs/browser-extension.md).
 
 ### Teams reminders
 

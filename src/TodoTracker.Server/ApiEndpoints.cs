@@ -517,6 +517,25 @@ internal static class ApiEndpoints
 
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
 
+    /// <summary>Raster images open in the browser; everything else (HTML, SVG, scripts, documents) downloads.</summary>
+    private static IResult ServeAttachment(HttpContext http, string full, string name)
+    {
+        if (!File.Exists(full))
+        {
+            return Results.Problem($"\"{name}\" is missing from the vault.", statusCode: StatusCodes.Status404NotFound);
+        }
+
+        var type = ContentTypes.TryGetContentType(name, out var t) ? t : "application/octet-stream";
+        http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'";
+        if (InlineImageTypes.Contains(type))
+        {
+            http.Response.Headers.ContentDisposition = new ContentDispositionHeaderValue("inline") { FileNameStar = name }.ToString();
+            return Results.File(full, type, enableRangeProcessing: true);
+        }
+
+        return Results.File(full, "application/octet-stream", fileDownloadName: name, enableRangeProcessing: true);
+    }
+
     private static void MapFiles(RouteGroupBuilder api)
     {
         api.MapPost("/items/{id:guid}/attachments", async (Guid id, HttpContext http, VaultLinks links) =>
@@ -532,22 +551,17 @@ internal static class ApiEndpoints
         api.MapGet("/items/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, HttpContext http, VaultLinks links) =>
         {
             var (full, name) = await links.Vault.GetAttachmentFileAsync(id, attachmentId, http.RequestAborted).ConfigureAwait(false);
-            if (!File.Exists(full))
-            {
-                return Results.Problem($"\"{name}\" is missing from the vault.", statusCode: StatusCodes.Status404NotFound);
-            }
+            return ServeAttachment(http, full, name);
+        });
 
-            // Raster images open in the browser; everything else (HTML, SVG, scripts, documents) downloads.
-            var type = ContentTypes.TryGetContentType(name, out var t) ? t : "application/octet-stream";
-            var inline = InlineImageTypes.Contains(type);
-            http.Response.Headers.ContentSecurityPolicy = "sandbox; default-src 'none'";
-            if (inline)
-            {
-                http.Response.Headers.ContentDisposition = new ContentDispositionHeaderValue("inline") { FileNameStar = name }.ToString();
-                return Results.File(full, type, enableRangeProcessing: true);
-            }
-
-            return Results.File(full, "application/octet-stream", fileDownloadName: name, enableRangeProcessing: true);
+        // An embed in details or a note (![[Pasted image.png]]): found by name among the task's attachments, or its
+        // parents' (a pasted image is attached where it was pasted).
+        api.MapGet("/items/{id:guid}/embed/{name}", async (Guid id, string name, HttpContext http, VaultLinks links) =>
+        {
+            var found = await links.Vault.FindEmbedAsync(id, name, http.RequestAborted).ConfigureAwait(false);
+            return found is { } file
+                ? ServeAttachment(http, file.FullPath, file.FileName)
+                : Results.Problem($"\"{name}\" isn't attached to this task.", statusCode: StatusCodes.Status404NotFound);
         });
 
         api.MapDelete("/items/{id:guid}/attachments/{attachmentId:guid}", async (Guid id, Guid attachmentId, HttpContext http, VaultLinks links) =>

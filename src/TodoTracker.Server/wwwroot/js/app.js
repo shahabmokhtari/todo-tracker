@@ -3,6 +3,32 @@ import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, 
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
+import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone } from './media.js';
+
+/** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
+function embedNode(itemId, name, image) {
+  const url = embedUrl(itemId, name);
+  if (!image) return h('a', { class: 'embed-file', href: url, target: '_blank', rel: 'noopener' }, icon('paperclip', { size: 13 }), name);
+  const img = h('img', { src: url, alt: name, loading: 'lazy' });
+  const link = h('a', { class: 'embed', href: url, target: '_blank', rel: 'noopener', title: name }, img);
+  img.addEventListener('error', () => link.replaceWith(h('span', { class: 'embed-missing', title: 'Not found among this task’s attachments' }, icon('paperclip', { size: 13 }), name)), { once: true });
+  return link;
+}
+
+/** Text with its embedded files (![[Pasted image.png]]) shown as pictures or links; the rest stays plain text. */
+function withEmbeds(value, itemId) {
+  return splitEmbeds(value).map((part) => (part.embed ? embedNode(itemId, part.embed, part.image) : part.text));
+}
+
+/** Pasting a screenshot (or any file) into this box attaches it to the task and embeds it at the caret. */
+function acceptMedia(box, itemId, onUploaded) {
+  acceptPastedMedia(box, {
+    upload: (file, name) => upload(`/api/items/${itemId}/attachments`, file, name),
+    onError: (err) => toast(err.message, 'error'),
+    onUploaded,
+  });
+  return box;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
@@ -484,11 +510,14 @@ function actions(c, { waiting = false, big = false } = {}) {
     // Leaving the box finishes the note, so coming back starts a new one instead of overwriting it.
     onblur: () => { if (noteInput.value.trim()) finish(); },
   });
+  acceptMedia(noteInput, c.id);
   let finishing = false;
   const finish = async () => {
     if (finishing) return;
     finishing = true;
     try {
+      // A picture still uploading goes into this note, not the next one.
+      await pastesDone();
       const hadText = noteInput.value.trim();
       if (!(await finishNote(`card:${c.id}`))) return toast('Couldn’t save the note yet – it’s kept here, try again', 'error');
       noteInput.value = '';
@@ -552,7 +581,7 @@ function avatar(kind, author) {
 
 function noteRow(n) {
   return h('li', { class: 'note' },
-    h('div', { class: 'note-text' }, n.text),
+    h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
     h('div', { class: 'meta' },
       h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
       h('span', null, '·'),
@@ -686,7 +715,27 @@ async function openDrawer(id) {
   const title = h('input', { value: item.title, maxlength: 300, class: 'title-input', 'aria-label': 'Title', dataset: { field: 'title' } });
   const priority = h('select', { dataset: { field: 'priority' } }, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
   const deadline = h('input', { type: 'datetime-local', value: toLocalInput(item.deadline), dataset: { field: 'deadline' } });
-  const details = h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown)', dataset: { field: 'details' } }, item.details ?? '');
+  // A pasted file shows up in Attachments right away (without redrawing the panel and losing the caret).
+  let attachmentsNode = null;
+  const pastedFile = (attachment) => {
+    item.attachments.push(attachment);
+    const fresh = attachmentsSection(item);
+    attachmentsNode?.replaceWith(fresh);
+    attachmentsNode = fresh;
+  };
+  const details = acceptMedia(h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown; paste images)', dataset: { field: 'details' } }, item.details ?? ''), id, pastedFile);
+  // Images embedded in the details show under the box (a text box can't show them); redrawn only when they change.
+  const detailImages = h('div', { class: 'embeds' });
+  let shownNames = '';
+  const showDetailImages = () => {
+    const parts = splitEmbeds(details.value).filter((p) => p.embed);
+    const names = parts.map((p) => p.embed).join('\n');
+    if (names === shownNames) return;
+    shownNames = names;
+    detailImages.replaceChildren(...parts.map((p) => embedNode(id, p.embed, p.image)));
+  };
+  showDetailImages();
+  details.addEventListener('input', showDetailImages);
   const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
   const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
   const tags = h('input', { value: item.tags.map((t) => `#${t}`).join(' '), placeholder: '#tag #another', 'aria-label': 'Tags', dataset: { field: 'tags' } });
@@ -758,11 +807,13 @@ async function openDrawer(id) {
 
   // ---- Notes: saved as you type ----
   const noteKey = `drawer:${id}`;
-  const noteInput = h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type)',
+  const noteInput = acceptMedia(h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type; paste images)',
     oninput: () => noteSession(id, noteKey).autosave.schedule(noteInput.value),
-    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } });
+    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } }), id, pastedFile);
   state.drawerNote = noteInput;
   const newNote = async () => {
+    // A picture still uploading goes into this note, not the next one.
+    await pastesDone();
     if (!noteInput.value.trim()) return;
     if (!(await finishNote(noteKey))) return toast('Couldn’t save the note yet – it’s kept, try again', 'error');
     noteInput.value = '';
@@ -786,6 +837,7 @@ async function openDrawer(id) {
     field('Tags', tags),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
+    detailImages,
     h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent)),
     h('div', { class: 'row buttons' },
       item.completedAt
@@ -812,11 +864,11 @@ async function openDrawer(id) {
 
     section('Notes',
       h('div', { class: 'note-form' }, noteInput, h('button', { class: 'btn', title: 'Start a new note (Ctrl+Enter)', onclick: newNote }, icon('plus', { size: 16 }), 'New note')),
-      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, n.text), h('div', { class: 'meta' },
+      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, ...withEmbeds(n.text, id)), h('div', { class: 'meta' },
         h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
         isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))),
 
-    attachmentsSection(item),
+    (attachmentsNode = attachmentsSection(item)),
     item.hasRich ? richSection(item) : null,
 
     section('Reminders',
@@ -889,7 +941,7 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
 
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
 const pluginHost = {
-  api, post, put, h, icon, toast, openPanel, closePanel: closeDrawer,
+  api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
   refresh: () => refresh({ background: true }),
   addHeaderButton({ iconName, label, onClick }) {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));

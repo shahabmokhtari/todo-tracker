@@ -281,6 +281,32 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>Completes when note drafts that are due to be saved have been saved (used by tests).</summary>
     public Task WhenNotesSavedAsync() => _noteSaves;
 
+    /// <summary>
+    /// A picture pasted into a note: attached to the task (named like Obsidian names pasted images) and returned as the
+    /// embed to put at the caret (<c>![[Pasted image 20261006132517.png]]</c>), or null if it couldn't be stored.
+    /// </summary>
+    public async Task<string?> AttachPastedImageAsync(CardViewModel card, byte[] png)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(png);
+        if (_options.Attach is not { } attach)
+        {
+            return null;
+        }
+
+        var name = $"Pasted image {TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone):yyyyMMddHHmmss}.png";
+        try
+        {
+            var stored = await attach(card.Id, name, png).ConfigureAwait(true);
+            return $"![[{stored}]]";
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException)
+        {
+            StatusMessage = $"Couldn't attach the picture: {ex.Message}";
+            return null;
+        }
+    }
+
     /// <summary>Notes save themselves: once typing pauses, the draft is saved (first as a new note, then in place).</summary>
     private void OnNoteDraftEdited(CardViewModel card)
     {
@@ -436,6 +462,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>Opens the Sync panel (where it syncs, and anything changed on two computers) in the browser.</summary>
     [RelayCommand]
     private void OpenSync() => _shell.OpenUrl(Launch("/?sync=1"));
+
+    /// <summary>Opens the step-by-step browser extension setup (Edge, Chrome, Safari) with a pairing code.</summary>
+    [RelayCommand]
+    private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
 
     [RelayCommand]
     private void CopyMcpConfig()
