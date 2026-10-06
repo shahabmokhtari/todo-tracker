@@ -410,6 +410,7 @@
 
             <!-- Focus timer -->
             <Border Grid.Row="5" Margin="0,6,0,0" Padding="10,8" CornerRadius="16" BorderThickness="1"
+                    Visibility="{Binding ShowFocusTimer, Converter={StaticResource VisibleWhen}}"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Left" Width="36" Height="36">

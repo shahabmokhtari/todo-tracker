@@ -260,3 +260,18 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await expect(drawer).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('Plugins: every extra can be switched off (after a restart)', async ({ page, request }) => {
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await page.getByRole('button', { name: 'Plugins' }).click();
+  const drawer = page.locator('#drawer');
+  for (const name of ['Ask AI', 'Connect AI apps', 'Focus timer', 'Version history', 'Obsidian', 'Teams reminders']) {
+    await expect(drawer.getByRole('checkbox', { name })).toBeChecked();
+  }
+  await drawer.getByRole('checkbox', { name: 'Teams reminders' }).uncheck();
+  await expect(drawer).toContainText('Restart Todo Tracker to apply');
+  const plugins = await (await request.get('/api/plugins', { headers: { Authorization: `Bearer ${token}` } })).json();
+  expect(plugins.find((p) => p.id === 'teams').enabled).toBe(true); // still running until the restart
+  await drawer.getByRole('checkbox', { name: 'Teams reminders' }).check();
+});

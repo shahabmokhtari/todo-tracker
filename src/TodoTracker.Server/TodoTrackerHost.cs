@@ -51,7 +51,6 @@ public static class TodoTrackerHost
         AddVaultServices(services, options);
         services.AddSingleton(ApiToken.LoadOrCreate(options));
         services.AddSingleton(_ => InstanceLock.Acquire(options.DataDirectory));
-        services.AddHostedService<HistoryLoop>();
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();

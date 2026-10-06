@@ -60,6 +60,37 @@ public sealed class PluginApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Every_optional_feature_is_a_plugin()
+    {
+        var ids = (await _client.GetJson("/api/plugins")).AsArray().Select(p => p!["id"]!.GetValue<string>()).ToList();
+
+        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "history", "obsidian", "teams"], ids);
+    }
+
+    [Fact]
+    public async Task Turning_version_history_off_means_no_versions_even_when_git_is_there()
+    {
+        var data = Directory.CreateTempSubdirectory("tt-plugins-").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), "{\"history\": false}", TestContext.Current.CancellationToken);
+            await using var server = await ServerFixture.StartAsync(o =>
+            {
+                o.DataDirectory = data;
+                o.EnableHistory = true;
+            });
+
+            Assert.Null(server.App.Services.GetRequiredService<HistoryService>().History);
+            Assert.False(TodoTracker.Server.Plugins.PluginHost.IsEnabled(data, "history"));
+            Assert.True(TodoTracker.Server.Plugins.PluginHost.IsEnabled(data, "teams"));
+        }
+        finally
+        {
+            Directory.Delete(data, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Plugin_routes_need_the_token()
     {
         using var anonymous = _server.Client(authenticated: false);

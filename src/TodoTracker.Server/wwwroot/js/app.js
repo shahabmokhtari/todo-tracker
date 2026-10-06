@@ -11,6 +11,7 @@ const state = {
   drawerId: null,
   query: '',
   vault: null,
+  plugins: null, // ids of the plugins that are on (null until loaded: everything shows)
 };
 
 /** Notes autosave while typed: the first pause creates the note, later pauses update the same note. */
@@ -195,7 +196,7 @@ function renderVault() {
   $('#vault').replaceChildren(
     icon('folder', { size: 14 }),
     h('span', { class: 'muted', title: v.path }, 'Saved as markdown in ', h('code', null, v.path)),
-    h('a', { href: v.obsidianUrl, class: 'link' }, 'Open in Obsidian'));
+      pluginOn('obsidian') ? h('a', { href: v.obsidianUrl, class: 'link' }, 'Open in Obsidian') : null);
 }
 
 const tagChip = (t) => h('button', { class: 'chip tag', title: `Show #${t}`, onclick: (e) => { e.stopPropagation(); setQuery(queryFor({ tag: t })); } }, `#${t}`);
@@ -532,6 +533,7 @@ function noteRow(n) {
 // ---------- pomodoro ----------
 
 function renderPomodoro(p) {
+  $('#pomodoro').hidden = !pluginOn('focus-timer');
   const label = { idle: 'Focus timer', focus: 'Focus', shortBreak: 'Break', longBreak: 'Long break' }[p.phase] ?? p.phase;
   const buttons = [];
   if (p.phase === 'idle') {
@@ -741,7 +743,7 @@ async function openDrawer(id) {
       h('span', { class: 'prio-pill' }, meta.label),
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
-      item.obsidianUrl ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
       h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
     title,
     h('div', { class: 'chips-row' }, labelPicker),
@@ -787,7 +789,7 @@ async function openDrawer(id) {
         h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'Dismiss')))),
       h('div', { class: 'row' }, remindIn, remindMsg, h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me'))),
 
-    historySection(item));
+    pluginOn('history') ? historySection(item) : null);
   $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
   drawer.hidden = false;
@@ -855,10 +857,13 @@ const pluginHost = {
   refresh: () => refresh({ background: true }),
   addHeaderButton({ iconName, label, onClick }) {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
-    $('#connect-ai').before(button);
+    $('#plugin-buttons').append(button);
     return button;
   },
 };
+
+/** Whether a built-in feature (plugin) is on. Until the list loads everything shows. */
+const pluginOn = (id) => !state.plugins || state.plugins.has(id);
 
 /** Loads the UI of each enabled plugin (built-in modules served by the app). One failing never breaks the board. */
 async function loadPlugins() {
@@ -868,6 +873,8 @@ async function loadPlugins() {
   } catch {
     return;
   }
+  state.plugins = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
+  if (state.dashboard) render();
   for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
     try {
       const module = await import(p.webModule);
@@ -878,46 +885,34 @@ async function loadPlugins() {
   }
 }
 
-// ---------- connect an AI app ----------
+// ---------- plugins panel ----------
 
-/** One place to hook up Claude, Copilot, VS Code, ChatGPT…: pick the app, copy one thing, done. */
-async function openConnect() {
-  if (!(await flushDrawer())) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
-  let info;
+/** Every optional feature is a plugin: switch them on or off here (applies after a restart). */
+async function openPlugins() {
+  let plugins;
   try {
-    info = await api('/api/connect');
+    plugins = await api('/api/plugins');
   } catch (err) {
     return toast(err.message, 'error');
   }
-  state.drawerId = null;
-  state.drawerAutosave = null;
-  state.drawerNote = null;
-  const drawer = $('#drawer');
-  drawer.style.removeProperty('--prio');
-  delete drawer.dataset.itemId;
-  const copy = async (snippet) => {
-    try {
-      await navigator.clipboard.writeText(snippet);
-      toast('Copied');
-    } catch {
-      toast('Couldn’t copy – select the text and copy it', 'error');
-    }
+  const note = h('p', { class: 'muted small', hidden: true }, 'Restart Todo Tracker to apply the change.');
+  const row = (p) => {
+    const toggle = h('input', { type: 'checkbox', checked: p.enabled, 'aria-label': p.name, onchange: async () => {
+      try {
+        const result = await api(`/api/plugins/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: toggle.checked } });
+        note.hidden = !result.restartRequired && note.hidden;
+        if (result.restartRequired) note.hidden = false;
+      } catch (err) {
+        toggle.checked = !toggle.checked;
+        toast(err.message, 'error');
+      }
+    } });
+    return h('label', { class: 'plugin-row' }, toggle, h('span', null, h('strong', null, p.name), h('span', { class: 'muted small' }, p.description)));
   };
-  drawer.replaceChildren(
-    h('div', { class: 'drawer-head' },
-      h('span', { class: 'connect-title' }, icon('sparkles', { size: 18 }), 'Connect an AI app'),
-      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
-    h('p', { class: 'muted' }, 'Let Claude, Copilot and other AI apps see what you are working on and add, organize and finish tasks for you. ',
-      'Everything they change shows up here, marked with who did it, and can be undone from the history.'),
-    ...info.setups.map((s, i) => h('details', { class: 'connect', open: i === 0, dataset: { id: s.id } },
-      h('summary', null, s.app),
-      h('p', { class: 'muted small' }, s.steps),
-      h('pre', { class: 'snippet' }, h('code', null, s.snippet)),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn', type: 'button', onclick: () => copy(s.snippet) }, icon('note', { size: 16 }), 'Copy'),
-        s.link ? h('a', { class: 'link', href: s.link, target: '_blank', rel: 'noopener noreferrer' }, 'How to set it up') : null))));
-  $('#scrim').hidden = false;
-  drawer.hidden = false;
+  openPanel('Plugins', h('div', { class: 'plugins' },
+    h('p', { class: 'muted' }, 'Every extra is a plugin. Turn off what you don’t use to keep Todo Tracker calm.'),
+    ...plugins.map(row),
+    note), { iconName: 'layers' });
 }
 
 function subtaskTree(children, parentId) {
@@ -1085,8 +1080,8 @@ $('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filter
 $('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
 $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#search-icon').append(icon('search', { size: 16 }));
-$('#connect-ai').append(icon('sparkles'));
-$('#connect-ai').addEventListener('click', openConnect);
+$('#plugins-btn').append(icon('layers'));
+$('#plugins-btn').addEventListener('click', openPlugins);
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
 const flushAll = () => {
@@ -1107,6 +1102,6 @@ refresh().then(() => {
   const params = new URLSearchParams(location.search);
   const item = params.get('item');
   if (item && state.dashboard) openDrawer(item);
-  else if (params.has('connect') && state.dashboard) openConnect();
+  else if (params.has('plugins') && state.dashboard) openPlugins();
 });
 

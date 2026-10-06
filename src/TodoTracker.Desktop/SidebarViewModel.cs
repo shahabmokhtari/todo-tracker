@@ -180,6 +180,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return $"Snoozed: {request.Option.Label.ToLowerInvariant()}";
     });
 
+    /// <summary>Whether the focus timer is shown (the Focus timer plugin).</summary>
+    [ObservableProperty]
+    public partial bool ShowFocusTimer { get; set; } = true;
+
     /// <summary>Ask AI in the sidebar (set by the host when the Ask AI plugin is on).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAsk))]

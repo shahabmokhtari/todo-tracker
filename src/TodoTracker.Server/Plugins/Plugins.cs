@@ -87,7 +87,19 @@ public sealed class PluginHost
         Settings = settings;
     }
 
-    public static IReadOnlyList<ITodoPlugin> BuiltIn { get; } = [new TeamsPlugin(), new AgentChat.AgentChatPlugin()];
+    public static IReadOnlyList<ITodoPlugin> BuiltIn { get; } =
+    [
+        new AgentChat.AgentChatPlugin(),
+        new ConnectAiPlugin(),
+        new FocusTimerPlugin(),
+        new HistoryPlugin(),
+        new ObsidianPlugin(),
+        new TeamsPlugin(),
+    ];
+
+    /// <summary>Whether a plugin is switched on in this data folder (for processes without a host, e.g. tt).</summary>
+    public static bool IsEnabled(string dataDirectory, string id) =>
+        BuiltIn.FirstOrDefault(p => p.Info.Id == id) is { } plugin && new PluginSettings(dataDirectory).IsEnabled(plugin.Info);
 
     public IReadOnlyList<(ITodoPlugin Plugin, bool Enabled)> Plugins { get; }
 
@@ -100,6 +112,10 @@ public sealed class PluginHost
         ArgumentNullException.ThrowIfNull(options);
         var settings = new PluginSettings(options.DataDirectory);
         var plugins = BuiltIn.Select(p => (p, settings.IsEnabled(p.Info))).ToList();
+        if (!plugins.Any(p => p.p.Info.Id == HistoryPlugin.Definition.Id && p.Item2))
+        {
+            HistoryPlugin.Disable(options);
+        }
         foreach (var (plugin, enabled) in plugins)
         {
             if (enabled)
@@ -134,6 +150,60 @@ public sealed class PluginHost
                 plugin.MapEndpoints(app.MapGroup($"/api/plugins/{plugin.Info.Id}").AddEndpointFilter(ApiEndpoints.MapDomainErrors));
             }
         }
+    }
+}
+
+/// <summary>"Connect an AI app": ready-made setups for Claude, Copilot, VS Code, ChatGPT…</summary>
+public sealed class ConnectAiPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("connect-ai", "Connect AI apps", "Step-by-step setup for Claude, Copilot, VS Code, ChatGPT and other AI apps.");
+
+    public string? WebModule => "/js/plugins/connect-ai.js";
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+    }
+
+    public void MapEndpoints(RouteGroupBuilder group)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        group.MapGet("/", (ApiToken token, TodoTrackerServerOptions options) => AiSetups.For(ApiEndpoints.Connection(token, options), options.TtPath ?? AiSetups.FindTt()));
+    }
+}
+
+/// <summary>The focus timer (Pomodoro) in the dashboard and the sidebar.</summary>
+public sealed class FocusTimerPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("focus-timer", "Focus timer", "A Pomodoro-style timer linked to the task you're working on.");
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+    }
+}
+
+/// <summary>Version history: every change saved in a private git repository, viewable and restorable.</summary>
+public sealed class HistoryPlugin : ITodoPlugin
+{
+    public static PluginInfo Definition { get; } = new("history", "Version history", "Keeps every version of every task (needs git) so any change can be undone.");
+
+    public PluginInfo Info => Definition;
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+        services.AddHostedService<HistoryLoop>();
+    }
+
+    /// <summary>Turned off: no versions are saved and history tools say so.</summary>
+    internal static void Disable(TodoTrackerServerOptions options) => options.EnableHistory = false;
+}
+
+/// <summary>Open tasks and the tasks folder in Obsidian; keep tasks in an Obsidian vault.</summary>
+public sealed class ObsidianPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("obsidian", "Obsidian", "Open tasks in Obsidian and keep them in an Obsidian vault.");
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
     }
 }
 

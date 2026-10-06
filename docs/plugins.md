@@ -1,0 +1,59 @@
+# Plugins
+
+Every optional part of Todo Tracker is a plugin, so you can turn off what you don't use and keep the app calm.
+Switch them in the dashboard (**Plugins** button in the header) or the sidebar menu (**⋯ › Plugins**). A change
+applies after a restart; the sidebar offers to restart right away.
+
+| Plugin | What it adds | On by default |
+| --- | --- | --- |
+| **Ask AI** | Chat with GitHub Copilot or Claude Code inside the app (dashboard panel and a one-line box in the sidebar) | Yes |
+| **Connect AI apps** | Step-by-step setup for Claude, Copilot, VS Code, ChatGPT… | Yes |
+| **Focus timer** | The Pomodoro-style timer | Yes |
+| **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
+| **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
+| **Teams reminders** | Reminder cards in a Teams channel | Yes |
+
+The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in
+`plugins.json` in the app's data folder and respected by every process (the app, `tt`, and `tt mcp`).
+
+## Ask AI
+
+Ask AI talks to an agent you already have, over the Agent Client Protocol:
+
+* **GitHub Copilot CLI** (`copilot --acp`), or
+* **Claude Code** through its ACP adapter (`claude-agent-acp`, or a pinned version run with `npx` the first time).
+
+If both are installed you pick one (the choice is remembered). The agent starts when you first ask something and then
+stays running (warm), so later answers are quick. **New chat** starts over with the same agent.
+
+What the agent can do:
+
+* **It gets Todo Tracker's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
+  endpoint; agents that only support stdio get `tt mcp`.
+* **Reading your tasks needs no permission. Changing them asks first:** *Allow*, *Allow for this chat*, or
+  *Don't allow*. Anything else (commands, files) always asks, and an unanswered question is refused after 5 minutes.
+* It runs in its own working folder (`<data>/agent-chat/work`), not in your tasks folder. Copilot gets its own Copilot
+  home there (without your personal MCP servers and plugins); it still signs in with `gh`, and falls back to your
+  normal Copilot settings if that sign-in fails.
+* If the agent crashes while starting, Todo Tracker tries again and then says what happened (with the exit code).
+
+## Adding a plugin (developers)
+
+A plugin is a class that implements `ITodoPlugin` (`src/TodoTracker.Server/Plugins/Plugins.cs`) and is listed in
+`PluginHost.BuiltIn`:
+
+```csharp
+public sealed class MyPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("my-plugin", "My plugin", "What it does, in one line.");
+    public string? WebModule => "/js/plugins/my-plugin.js";              // optional UI in the dashboard
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options) { /* services */ }
+    public void MapEndpoints(RouteGroupBuilder group) { /* routes under /api/plugins/my-plugin */ }
+}
+```
+
+* Endpoints live under `/api/plugins/{id}` and share the API's security (token or session, loopback only). They are
+  not part of the OpenAPI description for AI tools.
+* The web module exports `activate(host)`; `host` offers `api`, `post`, `h`, `icon`, `toast`, `openPanel`,
+  `closePanel`, `refresh`, and `addHeaderButton`. See `wwwroot/js/plugins/agent-chat.js`.
+* Plugins are built in and reviewed with the app. Code from elsewhere is never loaded.

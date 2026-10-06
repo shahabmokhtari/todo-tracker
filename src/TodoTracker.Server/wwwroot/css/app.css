@@ -748,3 +748,10 @@ button.focus-title:hover { color: var(--accent); }
 .chat-compose { display: grid; gap: 6px; }
 .chat-input { width: 100%; resize: vertical; min-height: 44px; }
 .chat-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ---------- plugins ---------- */
+.plugin-buttons { display: inline-flex; gap: 2px; align-items: center; }
+.plugins { display: grid; gap: 10px; }
+.plugin-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-solid); cursor: pointer; }
+.plugin-row input { margin-top: 3px; }
+.plugin-row > span { display: grid; gap: 2px; }

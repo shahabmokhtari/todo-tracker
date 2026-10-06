@@ -16,6 +16,8 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
 | **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |
 | **Teams** | Reminder cards through a Teams Workflows webhook |
+| **Ask AI** | Chat with Copilot or Claude Code in the app: "add: call the bank tomorrow, renew passport !!" |
+| **Plugins** | Every extra can be switched off ([`docs/plugins.md`](docs/plugins.md)) |
 | **Files** | An Obsidian-compatible markdown vault (`Documents/Todo Tracker` by default), with version history |
 
 The full plan, design, rules, and requirement traceability are in [`docs/product-spec.md`](docs/product-spec.md). The original request is in [`docs/request.md`](docs/request.md).
@@ -85,6 +87,12 @@ claude mcp add todo-tracker --scope user -- tt mcp
 Claude Desktop extension (`.mcpb`), a plugin with a skill for Claude Code and Copilot CLI
 (`/plugin marketplace add shahabmokhtari/todo-tracker`), and OpenAPI descriptions for cloud tools. See
 [`docs/ai-connectors.md`](docs/ai-connectors.md), including ChatGPT and Copilot Studio.
+
+### Ask AI and plugins
+
+Type in the **Ask AI** box at the bottom of the sidebar (or the chat button in the dashboard): Copilot or Claude Code
+adds, finds and organizes tasks for you, asking before it changes anything. Turn any extra off under **⋯ › Plugins**.
+See [`docs/plugins.md`](docs/plugins.md).
 
 ### Browser extension
 
