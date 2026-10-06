@@ -15,11 +15,17 @@ internal sealed class FakeModel : HttpMessageHandler
     public static ApiModel Model { get; } = ApiModel.Create("openai", "Fake GPT", "https://models.example/v1", "fake-1", "fakemodel01");
 
     /// <summary>Answers with text (streamed in two pieces).</summary>
-    public FakeModel Says(string text)
+    public FakeModel Says(string text) => SaysAndEnds(text, "stop");
+
+    /// <summary>Answers with text that ends for <paramref name="finish"/> (stop, length, content_filter…).</summary>
+    public FakeModel SaysAndEnds(string text, string finish)
     {
         var half = text.Length / 2;
-        return Streams(Chunk(new JsonObject { ["content"] = text[..half] }), Chunk(new JsonObject { ["content"] = text[half..] }), Finish("stop"));
+        return Streams(Chunk(new JsonObject { ["content"] = text[..half] }), Chunk(new JsonObject { ["content"] = text[half..] }), Finish(finish));
     }
+
+    /// <summary>Answers with nothing at all.</summary>
+    public FakeModel Ends(string finish) => Streams(Finish(finish));
 
     /// <summary>Answers by calling tools.</summary>
     public FakeModel Calls(params (string Id, string Name, string Arguments)[] calls) =>

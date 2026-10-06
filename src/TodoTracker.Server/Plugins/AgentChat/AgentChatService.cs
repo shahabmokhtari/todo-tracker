@@ -125,6 +125,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
     private long _chatsVersion;
     private int _resetting;
     private Task _turn = Task.CompletedTask;
+    private bool _turnIsApi;
     private CancellationTokenSource? _apiTurn;
     private bool _apiStopped;
     private (string Model, IChatTools Tools)? _apiTools;
@@ -267,6 +268,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
             _chat.UpdatedAt = _options.Time.GetUtcNow();
             _messageId = null;
             _turn = done.Task;
+            _turnIsApi = IsApi(_chat.Agent);
             chat = _chat;
             generation = _generation;
         }
@@ -279,7 +281,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// <summary>Stops the answer being written (and refuses any question waiting for you).</summary>
     public async Task CancelAsync()
     {
-        AnswerAll("cancelled");
+        // The API answer is cancelled first: a question it waits on then ends as "stopped", not as a "no".
         CancellationTokenSource? api;
         lock (_lock)
         {
@@ -289,8 +291,17 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
         if (api is not null)
         {
-            await api.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await api.CancelAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The answer ended in the meantime.
+            }
         }
+
+        AnswerAll("cancelled");
 
         if (_agent is { } agent && _sessionId is { } session)
         {
@@ -304,13 +315,15 @@ public sealed partial class AgentChatService : IAsyncDisposable
         }
     }
 
-    /// <summary>Starts over: a new chat with the same (warm) agent or model. The one before is kept.</summary>
+    /// <summary>Starts over: a new chat (the one before is kept), with your usual agent or model if it's available.</summary>
     public async Task NewChatAsync()
     {
         await ResetAsync(() =>
         {
             lock (_lock)
             {
+                // Opening an older chat (say with Claude) doesn't change who new chats are with.
+                _choice = AgentCatalog.DefaultChoice(_agents, LoadChoice() ?? _choice);
                 ShowChatLocked(ChatRecord.New(_choice ?? string.Empty, _options.Time.GetUtcNow()));
                 _problem = null;
                 _status = IdleStatus();
@@ -325,9 +338,19 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// <exception cref="KeyNotFoundException">There's no such chat.</exception>
     public async Task OpenChatAsync(string chatId)
     {
-        var chat = _options.History?.Load(chatId) ?? throw new KeyNotFoundException("That chat isn't there any more.");
+        var history = _options.History ?? throw new KeyNotFoundException("That chat isn't there any more.");
         await ResetAsync(() =>
         {
+            // Read once any answer has ended (and been kept); the open chat itself is already here, as it is.
+            lock (_lock)
+            {
+                if (_chat.Id == chatId)
+                {
+                    return Task.CompletedTask;
+                }
+            }
+
+            var chat = history.Load(chatId) ?? throw new KeyNotFoundException("That chat isn't there any more.");
             lock (_lock)
             {
                 ShowChatLocked(chat);
@@ -450,8 +473,15 @@ public sealed partial class AgentChatService : IAsyncDisposable
             models.Changed -= OnModelsChanged;
         }
 
+        try
+        {
+            _apiTurn?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
         AnswerAll("cancelled");
-        _apiTurn?.Cancel();
         await StopAgentAsync().ConfigureAwait(false);
         if (_apiTools is { } tools)
         {
@@ -603,7 +633,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         ChatRecord copy;
         lock (_lock)
         {
-            copy = chat.Snapshot();
+            copy = chat.TakeSaveCopy();
         }
 
         try
@@ -624,18 +654,20 @@ public sealed partial class AgentChatService : IAsyncDisposable
     {
         await CancelAsync().ConfigureAwait(false);
         Task turn;
+        bool api;
         lock (_lock)
         {
             turn = _turn;
+            api = _turnIsApi;
         }
 
         try
         {
             await turn.WaitAsync(_options.StopTimeout).ConfigureAwait(false);
         }
-        catch (TimeoutException)
+        catch (TimeoutException) when (!api)
         {
-            // The agent ignores the cancel: stopping it ends the turn.
+            // The agent ignores the cancel: stopping it ends the turn. (An API answer ends once its request is cancelled.)
             await _startGate.WaitAsync().ConfigureAwait(false);
             try
             {
@@ -714,10 +746,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
         {
             AnswerAll("cancelled");
             Save(chat);
+            Notify();
             done.TrySetResult();
         }
-
-        Notify();
     }
 
     private static string? StopNote(string? stop) => stop switch
@@ -725,6 +756,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         "cancelled" => "Stopped.",
         "max_tokens" or "max_turn_requests" => "The answer was cut short. Ask it to continue.",
         "refusal" => "The agent declined to answer that.",
+        "empty" => "The model didn't say anything. Try asking again, or in other words.",
         _ => null,
     };
 
@@ -755,8 +787,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 }
             }
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ApiChatException or HttpRequestException or InvalidOperationException or IOException or System.Security.Cryptography.CryptographicException or ModelContextProtocol.McpException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Whatever went wrong, the answer ends and says so (the chat must never stay "Thinking…").
             lock (_lock)
             {
                 if (generation == _generation)
@@ -766,8 +799,10 @@ public sealed partial class AgentChatService : IAsyncDisposable
                         OperationCanceledException when _apiStopped => "Stopped.",
                         OperationCanceledException => "The model didn't finish in time.",
                         HttpRequestException => $"Couldn't reach the model's service: {ex.Message}",
-                        System.Security.Cryptography.CryptographicException => "Couldn't read this model's API key; add the model again.",
-                        _ => ex.Message,
+                        System.Security.Cryptography.CryptographicException or UnauthorizedAccessException => "Couldn't read this model's API key; add the model again.",
+                        FormatException => "The API key or address has characters that can't be sent; add the model again.",
+                        ApiChatException or InvalidOperationException => ex.Message,
+                        _ => $"Something went wrong: {ex.Message}",
                     };
                     chat.Entries.Add(new ChatEntry(NextId(), "note", note, ex is OperationCanceledException && _apiStopped ? null : "error"));
                 }
@@ -789,10 +824,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
             AnswerAll("cancelled");
             Save(chat);
+            Notify();
             done.TrySetResult();
         }
-
-        Notify();
     }
 
     private IChatTools ToolsFor(ApiModel model)
@@ -834,7 +868,6 @@ public sealed partial class AgentChatService : IAsyncDisposable
                     _useSignInFallback = true;
                     lock (_lock)
                     {
-                        _chat.SignInFallback = true;
                         _chat.Entries.Add(new ChatEntry(NextId(), "note", "Using your own Copilot settings to sign in."));
                     }
 
@@ -1006,11 +1039,20 @@ public sealed partial class AgentChatService : IAsyncDisposable
             return;
         }
 
+        lock (_lock)
+        {
+            // An API chat doesn't use the (warm) agent: its questions aren't the agent's to end.
+            if (IsApi(_choice))
+            {
+                return;
+            }
+        }
+
         AnswerAll("cancelled");
         lock (_lock)
         {
-            // While starting, a crash is retried (EnsureSessionAsync) and reported there. An API chat doesn't need it.
-            if (_status == "starting" || IsApi(_choice))
+            // While starting, a crash is retried (EnsureSessionAsync) and reported there.
+            if (_status == "starting")
             {
                 return;
             }
@@ -1406,7 +1448,8 @@ public sealed partial class AgentChatService : IAsyncDisposable
             var choice = await chat.AskAsync(ChangeQuestion(name, arguments), ["allow", "allow-chat", "reject"], generation, cancellationToken).ConfigureAwait(false);
             if (choice == "cancelled")
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Stopped (or the chat was left): never told to the model as a "no".
+                throw new OperationCanceledException(cancellationToken);
             }
 
             return choice is "allow" or "allow-chat";

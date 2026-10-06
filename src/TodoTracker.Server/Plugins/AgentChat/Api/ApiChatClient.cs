@@ -137,6 +137,8 @@ public sealed class ApiChatClient(HttpClient http)
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "The model's service didn't accept the API key (check it in Ask AI › models).",
             HttpStatusCode.TooManyRequests => "The model's service is busy or you've hit its limit; try again in a moment.",
             HttpStatusCode.NotFound => "The model's service doesn't know that model or address (check the model name and address).",
+            HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge when message is not null && (message.Contains("context", StringComparison.OrdinalIgnoreCase) || message.Contains("too long", StringComparison.OrdinalIgnoreCase) || message.Contains("maximum", StringComparison.OrdinalIgnoreCase))
+                => "This chat has grown too long for the model. Start a new chat (this one is kept).",
             _ => $"The model's service answered {(int)status}.",
         };
         return new ApiChatException(message is { Length: > 0 } ? $"{text} ({message[..Math.Min(200, message.Length)]})" : text, (int)status);
@@ -150,7 +152,7 @@ public sealed class ApiChatClient(HttpClient http)
             switch (m.Role)
             {
                 case "assistant":
-                    var assistant = new JsonObject { ["role"] = "assistant", ["content"] = m.Text };
+                    var assistant = new JsonObject { ["role"] = "assistant", ["content"] = m.Text ?? (m.ToolCalls is { Count: > 0 } ? null : string.Empty) };
                     if (m.ToolCalls is { Count: > 0 } calls)
                     {
                         assistant["tool_calls"] = new JsonArray([.. calls.Select(c => (JsonNode)new JsonObject

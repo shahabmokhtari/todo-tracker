@@ -41,6 +41,22 @@ public sealed class ApiModelStoreTests : IDisposable
     }
 
     [Fact]
+    public void Removing_a_model_without_a_key_works()
+    {
+        // Review finding: with no keys folder (only local models), removing one failed half-way.
+        var store = new ApiModelStore(_dir);
+        var changed = 0;
+        store.Changed += (_, _) => changed++;
+        var model = ApiModel.Create("ollama", "Llama", "http://127.0.0.1:11434/v1", "llama3.2");
+        store.Add(model, null);
+
+        Assert.True(store.Remove(model.Id));
+
+        Assert.Empty(new ApiModelStore(_dir).List());
+        Assert.Equal(2, changed);
+    }
+
+    [Fact]
     public void Removing_a_model_removes_its_key()
     {
         var store = new ApiModelStore(_dir);

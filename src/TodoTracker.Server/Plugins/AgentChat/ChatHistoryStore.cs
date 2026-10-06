@@ -34,9 +34,6 @@ public sealed class ChatRecord
     /// <summary>The agent's session, to pick the chat up where it was (agents that can load sessions).</summary>
     public string? AcpSessionId { get; set; }
 
-    /// <summary>The chat signed in with the person's own agent settings.</summary>
-    public bool SignInFallback { get; set; }
-
     /// <summary>The conversation sent to an API model (text, tool calls and their results).</summary>
     public List<ApiMessage> Messages { get; init; } = [];
 
@@ -44,12 +41,12 @@ public sealed class ChatRecord
         new() { Id = Guid.NewGuid().ToString("N")[..12], Agent = agent, CreatedAt = now, UpdatedAt = now };
 
     /// <summary>A copy to save (taken while the chat can't change), newer than every copy taken before it.</summary>
-    public ChatRecord Snapshot()
+    public ChatRecord TakeSaveCopy()
     {
         var copy = new ChatRecord
         {
             Id = Id, Title = Title, Renamed = Renamed, Agent = Agent, CreatedAt = CreatedAt, UpdatedAt = UpdatedAt, Revision = Revision,
-            Entries = [.. Entries], AcpSessionId = AcpSessionId, SignInFallback = SignInFallback, Messages = [.. Messages],
+            Entries = [.. Entries], AcpSessionId = AcpSessionId, Messages = [.. Messages],
         };
         Revision++;
         return copy;
@@ -287,7 +284,7 @@ public sealed partial class ChatHistoryStore
             ? new ChatRecord
             {
                 Id = chat.Id, Title = chat.Title, Renamed = chat.Renamed, Agent = chat.Agent, CreatedAt = chat.CreatedAt, UpdatedAt = chat.UpdatedAt,
-                Revision = chat.Revision, AcpSessionId = chat.AcpSessionId, SignInFallback = chat.SignInFallback, Messages = chat.Messages,
+                Revision = chat.Revision, AcpSessionId = chat.AcpSessionId, Messages = chat.Messages,
                 Entries = [.. chat.Entries.Select(e => Unfinished(e) ? e with { Status = "cancelled", Choices = null } : e)],
             }
             : chat;

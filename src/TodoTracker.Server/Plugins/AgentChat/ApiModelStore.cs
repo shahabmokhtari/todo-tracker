@@ -75,7 +75,11 @@ public sealed class ApiModelStore
 
             Save(next);
             _models = next;
-            File.Delete(KeyPath(id));
+            var key = KeyPath(id);
+            if (File.Exists(key))
+            {
+                File.Delete(key);
+            }
         }
 
         Changed?.Invoke(this, EventArgs.Empty);

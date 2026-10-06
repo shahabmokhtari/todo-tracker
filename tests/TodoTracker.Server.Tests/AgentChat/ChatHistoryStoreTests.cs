@@ -105,7 +105,7 @@ public sealed class ChatHistoryStoreTests : IDisposable
         // Saves happen from several threads (answers stream in while the person types): the last revision wins.
         var store = Store();
         var chat = Chat("hello");
-        var stale = chat.Snapshot();
+        var stale = chat.TakeSaveCopy();
         chat.Entries.Add(new ChatEntry("e3", "user", "newer"));
         store.Save(chat);
 

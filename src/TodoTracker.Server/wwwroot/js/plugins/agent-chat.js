@@ -18,7 +18,7 @@ const ADD_MODEL = '__add-model';
 export const presets = [
   { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4.1', key: true },
   { id: 'anthropic', name: 'Anthropic (Claude)', baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-4-5', key: true },
-  { id: 'azure', name: 'Azure OpenAI', baseUrl: 'https://YOUR-RESOURCE.openai.azure.com', model: '', modelHint: 'Deployment name', key: true },
+  { id: 'azure', name: 'Azure OpenAI', baseUrl: '', baseUrlHint: 'https://YOUR-RESOURCE.openai.azure.com', model: '', modelHint: 'Deployment name', key: true },
   { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4.1-mini', key: true },
   { id: 'ollama', name: 'Ollama (on this computer)', baseUrl: 'http://127.0.0.1:11434/v1', model: 'llama3.2', key: false },
   { id: 'lmstudio', name: 'LM Studio (on this computer)', baseUrl: 'http://127.0.0.1:1234/v1', model: '', modelHint: 'Model id shown in LM Studio', key: false },
@@ -94,7 +94,14 @@ export function activate(host) {
   const compose = h('div', { class: 'chat-compose' }, input, h('div', { class: 'chat-actions' }, stopButton, sendButton));
 
   // The list of chats: search, open, rename, delete (with undo).
-  const search = h('input', { type: 'search', class: 'chat-search', placeholder: 'Search chats', 'aria-label': 'Search chats', oninput: () => loadChats() });
+  const search = h('input', {
+    type: 'search', class: 'chat-search', placeholder: 'Search chats', 'aria-label': 'Search chats',
+    oninput: () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadChats, 200); },
+  });
+  let searchTimer = null;
+  let undoTimer = null;
+  // Each list load gets a number: a slower answer for an earlier search never replaces a newer one.
+  let listRequest = 0;
   const chatList = h('ul', { class: 'chat-list' });
   const undo = h('div', { class: 'chat-undo', role: 'status', hidden: true });
   const chatsPane = h('div', { class: 'chat-pane', hidden: true }, search, undo, chatList);
@@ -150,6 +157,7 @@ export function activate(host) {
 
   async function loadChats() {
     const q = search.value.trim();
+    const mine = ++listRequest;
     let chats;
     try {
       chats = await host.api(`${base}/chats${q ? `?q=${encodeURIComponent(q)}` : ''}`);
@@ -157,13 +165,15 @@ export function activate(host) {
       host.toast(err.message, 'error');
       return;
     }
+    if (mine !== listRequest) return;
     const names = new Map((current?.agents ?? []).map((a) => [a.id, a.name]));
     chatList.replaceChildren(...(chats.length ? chats.map((c) => chatItem(c, names)) : [h('li', { class: 'muted small' }, q ? 'No chat mentions that.' : 'No chats yet.')]));
   }
 
   function chatItem(c, names) {
     const open = h('button', {
-      class: `chat-item${c.id === current?.chatId ? ' current' : ''}`, type: 'button',
+      class: `chat-item${c.id === current?.chatId ? ' current' : ''}`, type: 'button', disabled: busy,
+      title: busy ? 'Stop the answer first' : null,
       onclick: async () => { await run(host.post(`${base}/chats/${c.id}/open`)); show('chat'); },
     },
     h('span', { class: 'chat-title' }, c.title),
@@ -194,6 +204,8 @@ export function activate(host) {
       onclick: async () => {
         await run(host.del(`${base}/chats/${c.id}`));
         undo.hidden = false;
+        clearTimeout(undoTimer);
+        undoTimer = setTimeout(() => { undo.hidden = true; }, 10000);
         undo.replaceChildren(h('span', null, `Deleted “${c.title}”.`), h('button', {
           class: 'btn ghost', type: 'button',
           onclick: async () => { undo.hidden = true; await run(host.post(`${base}/chats/${c.id}/restore`)); loadChats(); },
@@ -224,7 +236,7 @@ export function activate(host) {
       baseUrl.value = p.baseUrl;
       model.value = p.model;
       model.placeholder = p.modelHint ?? 'Model';
-      baseUrl.placeholder = p.baseUrl || 'https://…';
+      baseUrl.placeholder = p.baseUrlHint ?? (p.baseUrl || 'https://…');
       keyRow.hidden = !p.key;
     };
     kind.addEventListener('change', apply);
@@ -237,6 +249,7 @@ export function activate(host) {
           const added = await host.post(`${base}/models`, { preset: kind.value, name: name.value, baseUrl: baseUrl.value, model: model.value, key: keyRow.hidden ? null : key.value });
           key.value = '';
           host.toast(`Added ${added.name}`);
+          await loadModels();
           await run(host.post(`${base}/select`, { agent: `api:${added.id}` }));
           show('chat');
         } catch (err) {

@@ -152,6 +152,69 @@ public sealed class ApiTurnRunnerTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task An_empty_reply_is_not_kept_so_the_chat_can_go_on()
+    {
+        // Review finding: {"role":"assistant","content":null} was kept, and OpenAI refused every later request.
+        _model.Ends("content_filter");
+
+        Assert.Equal("refusal", await Run());
+
+        Assert.Equal(["user"], _messages.Select(m => m.Role));
+    }
+
+    [Theory]
+    [InlineData("length", "max_tokens")]
+    [InlineData("max_tokens", "max_tokens")]
+    [InlineData("content_filter", "refusal")]
+    [InlineData("stop", "end_turn")]
+    public async Task How_the_answer_ended_is_reported(string finish, string expected)
+    {
+        _model.SaysAndEnds("Partial answer", finish);
+
+        Assert.Equal(expected, await Run());
+    }
+
+    [Fact]
+    public async Task Only_recent_turns_are_sent_when_the_chat_gets_long_and_tool_calls_stay_with_their_results()
+    {
+        // Review finding: every turn sent the whole chat, so long chats hit the model's limit and never recovered.
+        _messages.Clear();
+        for (var i = 0; i < 30; i++)
+        {
+            _messages.Add(new ApiMessage("user", $"question {i} " + new string('q', 400)));
+            _messages.Add(new ApiMessage("assistant", null, [new ApiToolCall($"c{i}", "get_dashboard", "{}")]));
+            _messages.Add(new ApiMessage("tool", new string('t', 2000), ToolCallId: $"c{i}", ToolName: "get_dashboard"));
+            _messages.Add(new ApiMessage("assistant", $"answer {i}"));
+        }
+
+        _messages.Add(new ApiMessage("user", "latest"));
+        _model.Says("ok");
+
+        await Run(new ApiTurnLimits(MaxContextChars: 20_000));
+
+        var sent = _model.Requests[0]["messages"]!.AsArray();
+        Assert.True(sent.ToJsonString().Length < 30_000);
+        Assert.Equal("system", sent[0]!["role"]!.GetValue<string>());
+        Assert.Equal("user", sent[1]!["role"]!.GetValue<string>());
+        Assert.Equal("latest", sent[^1]!["content"]!.GetValue<string>());
+        var calls = sent.Where(m => m!["tool_calls"] is not null).SelectMany(m => m!["tool_calls"]!.AsArray()).Select(c => c!["id"]!.GetValue<string>()).ToList();
+        var results = sent.Where(m => m!["role"]!.GetValue<string>() == "tool").Select(m => m!["tool_call_id"]!.GetValue<string>()).ToList();
+        Assert.Equal(calls, results);
+        Assert.Equal(122, _messages.Count); // everything is still kept
+    }
+
+    [Fact]
+    public async Task A_model_that_cannot_use_tools_is_asked_again_without_them()
+    {
+        _model.Fails(HttpStatusCode.BadRequest, "registry.ollama.ai/library/gemma does not support tools").Says("Plain answer.");
+
+        Assert.Equal("end_turn", await Run());
+
+        Assert.Null(_model.Requests[1]["tools"]);
+        Assert.Equal("Plain answer.", _events.Text);
+    }
+
+    [Fact]
     public async Task Service_errors_say_what_to_check()
     {
         _model.Fails(HttpStatusCode.Unauthorized, "bad key");

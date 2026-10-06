@@ -32,8 +32,28 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
             return known;
         }
 
-        var client = await ClientAsync(cancellationToken).ConfigureAwait(false);
-        var tools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        McpClient client;
+        IList<McpClientTool> tools;
+        try
+        {
+            client = await ClientAsync(cancellationToken).ConfigureAwait(false);
+            tools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            // Connect again once (the session may have been let go of).
+            await ResetAsync().ConfigureAwait(false);
+            try
+            {
+                client = await ClientAsync(cancellationToken).ConfigureAwait(false);
+                tools = await client.ListToolsAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new InvalidOperationException($"Couldn't reach Todo Tracker's own tools: {ex.Message}", ex);
+            }
+        }
+
         _tools = [.. tools.Select(t => new ApiToolSpec(
             t.Name,
             t.Description ?? string.Empty,
@@ -56,6 +76,31 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
             return new ChatToolResult("The arguments weren't valid JSON; call the tool again with a JSON object.", true);
         }
 
+        try
+        {
+            return await CallOnceAsync(name, args, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // The app let go of this MCP session (idle for long): connect again. The call never ran, so it's safe.
+            await ResetAsync().ConfigureAwait(false);
+            try
+            {
+                return await CallOnceAsync(name, args, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException again)
+            {
+                return new ChatToolResult($"Todo Tracker's tools couldn't be reached: {again.Message}", true);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ChatToolResult($"Todo Tracker's tools couldn't be reached: {ex.Message}", true);
+        }
+    }
+
+    private async Task<ChatToolResult> CallOnceAsync(string name, Dictionary<string, object?> args, CancellationToken cancellationToken)
+    {
         var client = await ClientAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -65,6 +110,23 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
         catch (ModelContextProtocol.McpException ex)
         {
             return new ChatToolResult(ex.Message, true);
+        }
+    }
+
+    private async Task ResetAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_client is { } stale)
+            {
+                _client = null;
+                await stale.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _gate.Release();
         }
     }
 

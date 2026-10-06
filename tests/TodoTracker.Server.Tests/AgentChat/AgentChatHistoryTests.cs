@@ -15,6 +15,7 @@ public sealed class AgentChatHistoryTests : IAsyncLifetime
     private readonly FakeTools _tools = new();
     private readonly List<AgentChatService> _services = [];
     private AgentChatService _chat = null!;
+    private ApiModelStore _models = null!;
 
     private string Log => Path.Combine(_dir, "agent.log");
 
@@ -38,7 +39,7 @@ public sealed class AgentChatHistoryTests : IAsyncLifetime
     }
 
     /// <summary>A chat service like the app's, on the same data folder each time (as after a restart).</summary>
-    private AgentChatService Create(string? load = null)
+    private AgentChatService Create(string? load = null, IChatTools? tools = null)
     {
         var catalog = new AgentCatalog(searchPath: _dir);
         var fake = AcpConnectionTests.FakeAgent();
@@ -53,8 +54,8 @@ public sealed class AgentChatHistoryTests : IAsyncLifetime
             WorkDirectory = Path.Combine(data, "work"),
             SettingsPath = Path.Combine(data, "settings.json"),
             History = new ChatHistoryStore(Path.Combine(data, "chats"), TimeProvider.System),
-            Models = new ApiModelStore(data),
-            ToolsFor = _ => _tools,
+            Models = _models = new ApiModelStore(data),
+            ToolsFor = _ => tools ?? _tools,
             ApiHttp = new HttpClient(_model, disposeHandler: false),
         });
         _services.Add(service);
@@ -249,6 +250,78 @@ public sealed class AgentChatHistoryTests : IAsyncLifetime
         Assert.Empty(_chat.State.Entries);
         await _chat.OpenChatAsync(first);
         Assert.Equal("Stopped.", _chat.State.Entries[^1].Text);
+    }
+
+    [Fact]
+    public async Task Stopping_while_an_API_model_waits_for_permission_is_not_taken_as_a_no()
+    {
+        // Review finding: the model was told "the person declined" and the next tool call could still run.
+        _model.Calls(("c1", "create_task", """{"title":"A"}"""), ("c2", "get_dashboard", "{}"));
+        await _chat.SelectAsync("api:" + FakeModel.Model.Id);
+        var turn = _chat.SendAsync("add A");
+        await WaitForQuestion();
+
+        await _chat.CancelAsync();
+        await turn.WaitAsync(Timeout);
+
+        Assert.Empty(_tools.Calls);
+        Assert.Equal("Stopped.", _chat.State.Entries[^1].Text);
+        Assert.DoesNotContain(_chat.State.Entries, e => e.Kind == "tool" && e.Status == "rejected");
+    }
+
+    [Fact]
+    public async Task An_unexpected_failure_ends_the_answer_and_says_so()
+    {
+        // Review finding: an exception type that wasn't listed left the chat "Thinking…".
+        var states = new List<ChatState>();
+        _chat = Create(tools: new ThrowingTools());
+        _chat.Changed += (_, s) => { lock (states) { states.Add(s); } };
+        await _chat.SelectAsync("api:" + FakeModel.Model.Id);
+
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        Assert.Equal("ready", _chat.State.Status);
+        Assert.Equal("error", _chat.State.Entries[^1].Status);
+        lock (states)
+        {
+            Assert.Equal("ready", states[^1].Status);
+        }
+    }
+
+    [Fact]
+    public async Task Opening_the_chat_that_is_answering_keeps_the_answer()
+    {
+        _model.Hangs();
+        await _chat.SelectAsync("api:" + FakeModel.Model.Id);
+        var turn = _chat.SendAsync("slow");
+        await WaitFor(() => _chat.State.Status == "busy");
+
+        await _chat.OpenChatAsync(_chat.State.ChatId).WaitAsync(Timeout);
+
+        Assert.True(turn.IsCompleted);
+        Assert.Equal(["slow", "Stopped."], _chat.State.Entries.Select(e => e.Text));
+    }
+
+    [Fact]
+    public async Task A_new_chat_after_the_model_in_use_was_removed_goes_to_someone_available()
+    {
+        await _chat.SelectAsync("api:" + FakeModel.Model.Id);
+        _model.Says("hi");
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+        _models.Remove(FakeModel.Model.Id);
+
+        await _chat.NewChatAsync();
+
+        Assert.Equal("fake", _chat.State.Agent);
+    }
+
+    private sealed class ThrowingTools : IChatTools
+    {
+        public Task<IReadOnlyList<ApiToolSpec>> ListAsync(CancellationToken cancellationToken) => throw new FormatException("bad header");
+
+        public Task<ChatToolResult> CallAsync(string name, string arguments, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     [Fact]

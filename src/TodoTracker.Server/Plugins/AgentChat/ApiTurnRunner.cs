@@ -1,9 +1,10 @@
 namespace TodoTracker.Server.Plugins.AgentChat;
 
 /// <summary>
-/// How far one answer may go: model requests (rounds), tool calls, and how much of each tool result the model sees.
+/// How far one answer may go: model requests (rounds), tool calls, how much of each tool result the model sees, and how
+/// much of the conversation is sent (the oldest turns are left out beyond it; everything is still kept).
 /// </summary>
-public sealed record ApiTurnLimits(int MaxRounds = 12, int MaxToolCalls = 24, int MaxResultChars = 16_000);
+public sealed record ApiTurnLimits(int MaxRounds = 12, int MaxToolCalls = 24, int MaxResultChars = 16_000, int MaxContextChars = 120_000);
 
 /// <summary>What an answer does as it happens, for the chat to show (and to ask before changes).</summary>
 public interface IApiTurnEvents
@@ -36,11 +37,28 @@ public sealed class ApiTurnRunner(ApiChatClient client, ApiTurnLimits limits)
         var calls = 0;
         for (var round = 1; round <= limits.MaxRounds; round++)
         {
-            var turn = await client.CompleteAsync(model, key, system, messages, offered, events.Text, cancellationToken).ConfigureAwait(false);
+            ApiTurn turn;
+            try
+            {
+                turn = await client.CompleteAsync(model, key, system, Window(messages), offered, events.Text, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ApiChatException ex) when (offered.Count > 0 && ex.Status == 400 && ex.Message.Contains("tools", StringComparison.OrdinalIgnoreCase) && ex.Message.Contains("support", StringComparison.OrdinalIgnoreCase))
+            {
+                // Some local models can't use tools at all: they can still talk.
+                offered = [];
+                turn = await client.CompleteAsync(model, key, system, Window(messages), offered, events.Text, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (turn.Text.Length == 0 && turn.ToolCalls.Count == 0)
+            {
+                // Nothing said: an empty message would make the API refuse every later request in this chat.
+                return Ended(turn.StopReason) is "end_turn" ? "empty" : Ended(turn.StopReason);
+            }
+
             messages.Add(new ApiMessage("assistant", turn.Text.Length > 0 ? turn.Text : null, turn.ToolCalls.Count > 0 ? turn.ToolCalls : null));
             if (turn.ToolCalls.Count == 0)
             {
-                return "end_turn";
+                return Ended(turn.StopReason);
             }
 
             var answered = 0;
@@ -66,6 +84,42 @@ public sealed class ApiTurnRunner(ApiChatClient client, ApiTurnLimits limits)
         }
 
         return "max_turn_requests";
+    }
+
+    /// <summary>The stop reasons of both APIs, as the chat words them (like ACP's).</summary>
+    private static string Ended(string? reason) => reason switch
+    {
+        "length" or "max_tokens" => "max_tokens",
+        "content_filter" or "refusal" => "refusal",
+        _ => "end_turn",
+    };
+
+    /// <summary>
+    /// The recent part of the conversation that fits the budget: whole turns only (from a person's message on), so a
+    /// tool call always travels with its result. The latest message always goes.
+    /// </summary>
+    private List<ApiMessage> Window(List<ApiMessage> messages)
+    {
+        static int Size(ApiMessage m) => (m.Text?.Length ?? 0) + (m.ToolCalls?.Sum(c => c.Arguments.Length + c.Name.Length) ?? 0) + 20;
+        var total = 0;
+        var start = messages.Count;
+        for (var i = messages.Count - 1; i >= 0; i--)
+        {
+            total += Size(messages[i]);
+            if (messages[i].Role != "user")
+            {
+                continue;
+            }
+
+            if (total > limits.MaxContextChars && start < messages.Count)
+            {
+                break;
+            }
+
+            start = i;
+        }
+
+        return start == 0 || start == messages.Count ? messages : messages[start..];
     }
 
     private async Task<string> RunToolAsync(ApiToolCall call, IReadOnlyList<ApiToolSpec> offered, IChatTools tools, IApiTurnEvents events, CancellationToken cancellationToken)
