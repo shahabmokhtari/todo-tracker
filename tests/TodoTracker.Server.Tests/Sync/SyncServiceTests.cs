@@ -196,6 +196,28 @@ public sealed class SyncApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Keeping_theirs_or_both_and_an_unknown_merge_tool()
+    {
+        var task = await _laptop.Store.UpdateAsync(b => b.AddTask(new NewTask("Plan trip"), Actor.User, ServerFixture.T0));
+        await Sync(_laptop);
+        await Sync(_desktop);
+        await Sync(_laptop);
+        await _laptop.Store.UpdateAsync(b => b.Update(task.Id, new TaskChanges { Details = "By train" }, Actor.User, ServerFixture.T0));
+        await _desktop.Store.UpdateAsync(b => b.Update(task.Id, new TaskChanges { Details = "By plane" }, Actor.User, ServerFixture.T0));
+        await Sync(_laptop);
+        var key = (await Sync(_desktop))["conflicts"]![0]!["key"]!.GetValue<string>();
+        using var client = _desktop.Client();
+
+        var compare = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/compare", UriKind.Relative), new { key, tool = "no-such-tool" }, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, compare.StatusCode);
+
+        (await client.PostAsJsonAsync(new Uri("/api/plugins/sync/resolve", UriKind.Relative), new { key, choice = "theirs" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        Assert.Equal("By train", await ((VaultBoardStore)_desktop.Store).ReadAsync(b => b.Get(task.Id).Details));
+        var again = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/resolve", UriKind.Relative), new { key, choice = "merged" }, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    [Fact]
     public async Task The_sync_plugins_are_listed_and_the_gist_starts_off()
     {
         using var client = _laptop.Client();
@@ -277,6 +299,30 @@ public sealed class SyncRobustnessTests
 
         Assert.Equal("error", view.State);
         Assert.NotNull(view.Problem);
+    }
+
+    [Fact]
+    public async Task The_background_loop_syncs_without_being_asked()
+    {
+        var cloud = Directory.CreateTempSubdirectory("tt-onedrive-").FullName;
+        try
+        {
+            await using var app = await ServerFixture.StartAsync(
+                o => o.EnableBackgroundLoop = true,
+                s => s.AddSingleton(new CloudEnvironment(name => name == "OneDriveCommercial" ? cloud : null, Path.GetTempPath(), Directory.Exists, _ => [], IsWindows: true, IsMac: false)));
+            var devices = Path.Combine(cloud, "Apps", "TodoTrackerSync", "vault", "devices");
+
+            for (var i = 0; i < 100 && !(Directory.Exists(devices) && Directory.EnumerateFiles(devices).Any()); i++)
+            {
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            Assert.Single(Directory.EnumerateFiles(devices));
+        }
+        finally
+        {
+            Directory.Delete(cloud, recursive: true);
+        }
     }
 
     [Fact]
