@@ -6,6 +6,9 @@ using ModelContextProtocol.Server;
 
 namespace TodoTracker.Server.Plugins.AgentChat;
 
+/// <summary>The running app's MCP endpoint (for agents that only take MCP servers over HTTP, like Copilot).</summary>
+public sealed record McpHttpServer(string Url, string Token);
+
 public sealed class AgentChatOptions
 {
     /// <summary>The agent's working folder (its own, never the tasks folder: its file and shell tools start there).</summary>
@@ -14,8 +17,11 @@ public sealed class AgentChatOptions
     /// <summary>Where the chosen agent is remembered.</summary>
     public string? SettingsPath { get; init; }
 
-    /// <summary>The Todo Tracker MCP server the agent gets (<c>tt mcp</c>); null when tt isn't available.</summary>
+    /// <summary>The Todo Tracker MCP server over stdio (<c>tt mcp</c>); null when tt isn't available.</summary>
     public AgentLaunch? Mcp { get; init; }
+
+    /// <summary>The app's own MCP endpoint, preferred when the agent supports HTTP MCP servers.</summary>
+    public McpHttpServer? McpHttp { get; init; }
 
     public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(120);
 
@@ -46,6 +52,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         "Use the todo-tracker tools to look at and change their tasks (never edit files or run commands for that). " +
         "Capture what they ask for in their words, make big things small, keep replies short: what you did and the one next step.";
 
+    private const int StartAttempts = 3;
     private static readonly (HashSet<string> All, HashSet<string> ReadOnly) TodoTools = FindTools();
 
     private readonly AgentCatalog _catalog;
@@ -58,6 +65,8 @@ public sealed partial class AgentChatService : IAsyncDisposable
     private string? _sessionId;
     private bool _contextSent;
     private bool _changesAllowed;
+    private bool _agentTakesHttp;
+    private bool _useSignInFallback;
     private string _status = "idle";
     private string? _problem;
     private string? _choice;
@@ -98,6 +107,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         await StopAgentAsync().ConfigureAwait(false);
         lock (_lock)
         {
+            _useSignInFallback = false;
             _choice = agentId;
             _status = "idle";
             _problem = null;
@@ -221,6 +231,10 @@ public sealed partial class AgentChatService : IAsyncDisposable
         return null;
     }
 
+    private static bool LooksLikeSignIn(string message) =>
+        message.Contains("auth", StringComparison.OrdinalIgnoreCase) || message.Contains("login", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("log in", StringComparison.OrdinalIgnoreCase) || message.Contains("sign in", StringComparison.OrdinalIgnoreCase);
+
     [GeneratedRegex("[a-z]+(?:_[a-z]+)+")]
     private static partial Regex ToolName();
 
@@ -276,6 +290,50 @@ public sealed partial class AgentChatService : IAsyncDisposable
         await _startGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Agents sometimes crash while starting (e.g. while they load their own MCP servers): try a few times.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await StartSessionAsync().ConfigureAwait(false);
+                    break;
+                }
+                catch (AcpException ex) when (!_useSignInFallback && LooksLikeSignIn(ex.Message) && _catalog.LaunchFor(_choice!, _options.WorkDirectory).SignInFallback is not null)
+                {
+                    // Not signed in with the chat's own settings: use the person's own (their usual sign-in).
+                    _useSignInFallback = true;
+                    await StopAgentAsync().ConfigureAwait(false);
+                }
+                catch (AcpException ex) when (_agent is null || _agent.Exited.IsCompleted)
+                {
+                    await StopAgentAsync().ConfigureAwait(false);
+                    if (attempt == StartAttempts)
+                    {
+                        throw new AcpException($"{ex.Message} It keeps stopping while it starts; updating it may help (copilot update, or update Claude Code).", ex);
+                    }
+
+                    await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt)).ConfigureAwait(false);
+                }
+            }
+
+            lock (_lock)
+            {
+                _status = "busy";
+            }
+
+            var sendContext = !_contextSent;
+            _contextSent = true;
+            return (_agent!, _sessionId!, sendContext);
+        }
+        finally
+        {
+            _startGate.Release();
+        }
+    }
+
+    private async Task StartSessionAsync()
+    {
+        {
             if (_agent is null || _agent.Exited.IsCompleted)
             {
                 await StopAgentAsync().ConfigureAwait(false);
@@ -286,22 +344,37 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
                 Notify();
                 Directory.CreateDirectory(_options.WorkDirectory);
-                var agent = AcpConnection.Start(_catalog.LaunchFor(_choice!, _options.WorkDirectory));
+                var launch = _catalog.LaunchFor(_choice!, _options.WorkDirectory);
+                var agent = AcpConnection.Start(_useSignInFallback && launch.SignInFallback is { } fallback ? fallback : launch);
                 agent.Notification += OnNotification;
                 agent.RequestHandler = OnRequestAsync;
                 _ = agent.Exited.ContinueWith(_ => OnAgentExited(agent), TaskScheduler.Default);
                 _agent = agent;
-                await agent.RequestAsync(
+                var init = await agent.RequestAsync(
                     "initialize",
                     new { protocolVersion = 1, clientCapabilities = new { fs = new { readTextFile = false, writeTextFile = false }, terminal = false }, clientInfo = new { name = "todo-tracker", title = "Todo Tracker", version = McpInfo.Version } },
                     _options.StartTimeout).ConfigureAwait(false);
+                _agentTakesHttp = init.ValueKind == JsonValueKind.Object
+                    && init.TryGetProperty("agentCapabilities", out var caps) && caps.TryGetProperty("mcpCapabilities", out var mcpCaps)
+                    && mcpCaps.TryGetProperty("http", out var http) && http.ValueKind == JsonValueKind.True;
                 _sessionId = null;
             }
 
             if (_sessionId is null)
             {
                 var servers = new JsonArray();
-                if (_options.Mcp is { } mcp)
+                if (_agentTakesHttp && _options.McpHttp is { } endpoint)
+                {
+                    // The live board through the app's own endpoint (Copilot only accepts HTTP MCP servers from clients).
+                    servers.Add(new JsonObject
+                    {
+                        ["type"] = "http",
+                        ["name"] = "todo-tracker",
+                        ["url"] = endpoint.Url,
+                        ["headers"] = new JsonArray(new JsonObject { ["name"] = "Authorization", ["value"] = "Bearer " + endpoint.Token }),
+                    });
+                }
+                else if (_options.Mcp is { } mcp)
                 {
                     servers.Add(new JsonObject
                     {
@@ -312,23 +385,10 @@ public sealed partial class AgentChatService : IAsyncDisposable
                     });
                 }
 
-                var created = await _agent.RequestAsync("session/new", new JsonObject { ["cwd"] = _options.WorkDirectory, ["mcpServers"] = servers }, _options.StartTimeout).ConfigureAwait(false);
+                var created = await _agent!.RequestAsync("session/new", new JsonObject { ["cwd"] = _options.WorkDirectory, ["mcpServers"] = servers }, _options.StartTimeout).ConfigureAwait(false);
                 _sessionId = created.GetProperty("sessionId").GetString() ?? throw new AcpException("The agent didn't start a session.");
                 _contextSent = false;
             }
-
-            lock (_lock)
-            {
-                _status = "busy";
-            }
-
-            var sendContext = !_contextSent;
-            _contextSent = true;
-            return (_agent, _sessionId, sendContext);
-        }
-        finally
-        {
-            _startGate.Release();
         }
     }
 
@@ -342,8 +402,15 @@ public sealed partial class AgentChatService : IAsyncDisposable
         AnswerAll("cancelled");
         lock (_lock)
         {
+            // While starting, a crash is retried (EnsureSessionAsync) and reported there.
+            if (_status == "starting")
+            {
+                return;
+            }
+
             _status = "error";
-            _problem = "The agent stopped. Send a message to start it again.";
+            var code = agent.ExitCode is { } c ? (c < 0 ? $" (exit code 0x{unchecked((uint)c):X8})" : $" (exit code {c})") : string.Empty;
+            _problem = $"The agent stopped{code}. Send a message to start it again.";
         }
 
         Notify();

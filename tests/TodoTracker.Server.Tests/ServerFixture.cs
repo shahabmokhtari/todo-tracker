@@ -40,7 +40,7 @@ public sealed class ServerFixture : IAsyncDisposable
 
     public IBoardStore Store => App.Services.GetRequiredService<IBoardStore>();
 
-    public static async Task<ServerFixture> StartAsync(Action<TodoTrackerServerOptions>? configure = null)
+    public static async Task<ServerFixture> StartAsync(Action<TodoTrackerServerOptions>? configure = null, Action<IServiceCollection>? services = null)
     {
         var dir = Path.Combine(Path.GetTempPath(), "tt-server-" + Guid.NewGuid().ToString("N"));
         var options = new TodoTrackerServerOptions
@@ -62,6 +62,7 @@ public sealed class ServerFixture : IAsyncDisposable
         builder.Services.AddSingleton<TimeProvider>(time);
         builder.Services.AddSingleton<IReminderNotifier>(notifier);
         builder.Services.AddHttpClient(TeamsWebhookNotifier.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => teams);
+        services?.Invoke(builder.Services);
         var app = TodoTrackerHost.Build(builder);
         await app.StartAsync();
         return new ServerFixture(app, dir, time, notifier, teams);

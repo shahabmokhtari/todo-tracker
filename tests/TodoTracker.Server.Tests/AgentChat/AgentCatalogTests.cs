@@ -37,7 +37,10 @@ public sealed class AgentCatalogTests : IDisposable
         var launch = catalog.LaunchFor("copilot", _bin);
 
         Assert.EndsWith(OperatingSystem.IsWindows() ? "copilot.exe" : "copilot", launch.Command, StringComparison.Ordinal);
-        Assert.Equal(["--acp", "--stdio"], launch.Arguments);
+        // Its own home and logs (the person's own MCP servers made Copilot 1.0.93 crash); their home if sign-in fails.
+        Assert.Equal(["--acp", "--stdio", "--log-dir", Path.Combine(_bin, "logs")], launch.Arguments);
+        Assert.Equal(Path.Combine(_bin, "copilot-home"), launch.Environment["COPILOT_HOME"]);
+        Assert.Empty(launch.SignInFallback!.Environment);
         Assert.Equal("copilot", AgentCatalog.DefaultChoice(catalog.Detect(), saved: null));
     }
 

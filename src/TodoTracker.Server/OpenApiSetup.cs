@@ -73,7 +73,7 @@ internal static partial class OpenApiSetup
     /// <summary><c>/api</c> routes that are neither described nor deliberately hidden.</summary>
     internal static List<string> UnclassifiedRoutes(IEndpointRouteBuilder app) =>
         app.DataSources.SelectMany(d => d.Endpoints).OfType<RouteEndpoint>()
-            .Where(e => e.RoutePattern.RawText?.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) == true)
+            .Where(e => e.RoutePattern.RawText?.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) == true && !IsPlugin(e.RoutePattern.RawText))
             .SelectMany(e => (e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? ["ANY"]).Select(m => Key(m, e.RoutePattern.RawText)))
             .Where(k => !Described.ContainsKey(k) && !Hidden.Contains(k))
             .Distinct()
@@ -120,6 +120,9 @@ internal static partial class OpenApiSetup
             return Task.CompletedTask;
         });
     }
+
+    // Plugins (Ask AI, Teams…) are app features with their own UI, not part of the API described for AI tools.
+    private static bool IsPlugin(string? route) => (route ?? string.Empty).TrimStart('/').StartsWith("api/plugins", StringComparison.OrdinalIgnoreCase);
 
     private static string Key(string? method, string? route) =>
         $"{method?.ToUpperInvariant()} {RouteConstraint().Replace(route ?? string.Empty, "{$1}").TrimStart('/')}";

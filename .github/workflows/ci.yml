@@ -65,8 +65,10 @@ jobs:
           node-version: 22
       - name: JavaScript unit tests
         run: node --test tests/web/*.test.mjs extension/tests/*.test.mjs
-      - name: Build web host
-        run: dotnet build src/TodoTracker.Web --configuration Release -warnaserror
+      - name: Build web host (and the scripted agent the Ask AI test talks to)
+        run: |
+          dotnet build src/TodoTracker.Web --configuration Release -warnaserror
+          dotnet build tests/FakeAcpAgent --configuration Release -warnaserror
       - name: Install Playwright
         working-directory: tests/e2e
         run: |

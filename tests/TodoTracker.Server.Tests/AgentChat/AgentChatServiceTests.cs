@@ -24,7 +24,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         Directory.Delete(_dir, recursive: true);
     }
 
-    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true)
+    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true, bool httpOnly = false, string? crashOnce = null)
     {
         var catalog = new AgentCatalog(searchPath: _dir);
         if (withAgent)
@@ -33,7 +33,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
             catalog.Extra.Add((new AgentOption("fake", "Fake agent", true, null), work => fake with
             {
                 WorkingDirectory = work,
-                Environment = new Dictionary<string, string?> { ["FAKE_ACP_LOG"] = Log },
+                Environment = new Dictionary<string, string?> { ["FAKE_ACP_LOG"] = Log, ["FAKE_ACP_HTTP"] = httpOnly ? "1" : null, ["FAKE_ACP_CRASH_ONCE"] = crashOnce },
             }));
         }
 
@@ -42,6 +42,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
             WorkDirectory = Path.Combine(_dir, "work"),
             SettingsPath = Path.Combine(_dir, "agent-chat.json"),
             Mcp = new AgentLaunch("todo-tracker", "C:\\Tools\\tt.exe", ["mcp"], _dir, new Dictionary<string, string?> { ["TODOTRACKER_VAULT"] = "C:\\Tasks" }),
+            McpHttp = new McpHttpServer("http://127.0.0.1:5317/mcp", "secret-token"),
             PermissionTimeout = permissionTimeout ?? TimeSpan.FromMinutes(5),
         });
     }
@@ -95,6 +96,22 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         Assert.Contains("hi", prompts[0], StringComparison.Ordinal);
         Assert.DoesNotContain("Todo Tracker", prompts[1], StringComparison.Ordinal);
         Assert.Equal("hello again", _chat.State.Entries[2].Text);
+    }
+
+    [Fact]
+    public async Task Agents_that_only_take_http_mcp_servers_get_the_apps_own_endpoint()
+    {
+        // Copilot's ACP server rejects stdio MCP servers from clients; it gets the running app's /mcp instead.
+        await _chat.DisposeAsync();
+        _chat = Create(httpOnly: true);
+
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        var server = Received().Single(m => m["method"]?.GetValue<string>() == "session/new")["params"]!["mcpServers"]![0]!;
+        Assert.Equal("http", server["type"]!.GetValue<string>());
+        Assert.Equal("todo-tracker", server["name"]!.GetValue<string>());
+        Assert.Equal("http://127.0.0.1:5317/mcp", server["url"]!.GetValue<string>());
+        Assert.Equal("Bearer secret-token", server["headers"]![0]!["value"]!.GetValue<string>());
     }
 
     [Fact]
@@ -188,6 +205,26 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         await _chat.SendAsync("hi").WaitAsync(Timeout);
         Assert.Equal("ready", _chat.State.Status);
         Assert.Equal("Hello, there.", LastAgentText());
+    }
+
+    [Fact]
+    public async Task An_agent_that_crashes_while_starting_is_started_again()
+    {
+        await _chat.DisposeAsync();
+        _chat = Create(crashOnce: Path.Combine(_dir, "crashed"));
+
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        Assert.Equal("ready", _chat.State.Status);
+        Assert.Equal("Hello, there.", LastAgentText());
+    }
+
+    [Fact]
+    public async Task A_crash_names_the_exit_code()
+    {
+        await _chat.SendAsync("crash").WaitAsync(Timeout);
+
+        Assert.Contains("exit code 3", _chat.State.Problem, StringComparison.Ordinal);
     }
 
     [Fact]

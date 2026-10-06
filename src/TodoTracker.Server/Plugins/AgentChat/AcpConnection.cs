@@ -7,7 +7,11 @@ using System.Text.Json.Nodes;
 namespace TodoTracker.Server.Plugins.AgentChat;
 
 /// <summary>How to start an agent: the command, its arguments, the working folder, and extra environment variables.</summary>
-public sealed record AgentLaunch(string Id, string Command, IReadOnlyList<string> Arguments, string WorkingDirectory, IReadOnlyDictionary<string, string?> Environment);
+public sealed record AgentLaunch(string Id, string Command, IReadOnlyList<string> Arguments, string WorkingDirectory, IReadOnlyDictionary<string, string?> Environment)
+{
+    /// <summary>Another way to start the same agent if this one can't sign in (e.g. with the person's own settings).</summary>
+    public AgentLaunch? SignInFallback { get; init; }
+}
 
 /// <summary>The agent stopped, returned an error, or broke the protocol.</summary>
 public sealed class AcpException(string message, Exception? inner = null) : Exception(message, inner);
@@ -22,7 +26,12 @@ public sealed class AcpConnection : IAsyncDisposable
     private const int StderrLimit = 64 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private readonly Process _process;
+    private static readonly UTF8Encoding Utf8 = new(false);
+
+    private readonly IAgentProcess _process;
+    private readonly StreamWriter _input;
+    private readonly StreamReader _output;
+    private readonly StreamReader _diagnostics;
     private readonly SemaphoreSlim _write = new(1, 1);
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly StringBuilder _stderr = new();
@@ -31,9 +40,12 @@ public sealed class AcpConnection : IAsyncDisposable
     private long _nextId;
     private int _disposed;
 
-    private AcpConnection(Process process)
+    private AcpConnection(IAgentProcess process)
     {
         _process = process;
+        _input = new StreamWriter(process.Input, Utf8) { AutoFlush = false };
+        _output = new StreamReader(process.Output, Utf8);
+        _diagnostics = new StreamReader(process.Diagnostics, Utf8);
     }
 
     /// <summary>Raised for notifications (e.g. <c>session/update</c>), on a background thread.</summary>
@@ -61,32 +73,10 @@ public sealed class AcpConnection : IAsyncDisposable
     public static AcpConnection Start(AgentLaunch launch)
     {
         ArgumentNullException.ThrowIfNull(launch);
-        var start = new ProcessStartInfo(launch.Command)
-        {
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = launch.WorkingDirectory,
-            StandardInputEncoding = new UTF8Encoding(false),
-            StandardOutputEncoding = new UTF8Encoding(false),
-            StandardErrorEncoding = new UTF8Encoding(false),
-        };
-        foreach (var argument in launch.Arguments)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        foreach (var (name, value) in launch.Environment)
-        {
-            start.Environment[name] = value;
-        }
-
-        Process process;
+        IAgentProcess process;
         try
         {
-            process = Process.Start(start) ?? throw new AcpException($"Couldn't start {launch.Command}.");
+            process = AgentProcess.Start(launch);
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
@@ -134,23 +124,22 @@ public sealed class AcpConnection : IAsyncDisposable
         await _stop.CancelAsync().ConfigureAwait(false);
         try
         {
-            _process.StandardInput.Close();
+            _input.Close();
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
         {
         }
 
-        // Stop the agent and everything it started (MCP servers, npx's node) while it is still alive: once it exits,
-        // its children are orphans that a tree kill can no longer find.
+        // Stop the agent and everything it started (MCP servers, npx's node).
+        _process.KillTree();
         try
         {
-            _process.Kill(entireProcessTree: true);
+            await _exited.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (TimeoutException)
         {
         }
 
-        await _exited.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
         _process.Dispose();
         _write.Dispose();
         _stop.Dispose();
@@ -164,11 +153,20 @@ public sealed class AcpConnection : IAsyncDisposable
         _ => JsonSerializer.SerializeToNode(value, value.GetType(), Json),
     };
 
+    /// <summary>How the agent ended (null while it runs).</summary>
+    public int? ExitCode { get; private set; }
+
     private AcpException Stopped()
     {
         var tail = StderrTail.Trim();
         var last = tail.Length > 400 ? "…" + tail[^400..] : tail;
-        return new AcpException(string.IsNullOrEmpty(last) ? "The agent stopped." : $"The agent stopped: {last}");
+        var code = ExitCode switch
+        {
+            null => string.Empty,
+            var c when c < 0 => $" (exit code 0x{unchecked((uint)c):X8})",
+            var c => $" (exit code {c})",
+        };
+        return new AcpException(string.IsNullOrEmpty(last) ? $"The agent stopped{code}." : $"The agent stopped{code}: {last}");
     }
 
     private async Task WriteAsync(JsonObject message)
@@ -181,8 +179,8 @@ public sealed class AcpConnection : IAsyncDisposable
         await _write.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _process.StandardInput.WriteAsync(message.ToJsonString() + "\n").ConfigureAwait(false);
-            await _process.StandardInput.FlushAsync().ConfigureAwait(false);
+            await _input.WriteAsync(message.ToJsonString() + "\n").ConfigureAwait(false);
+            await _input.FlushAsync().ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
         {
@@ -198,7 +196,7 @@ public sealed class AcpConnection : IAsyncDisposable
     {
         try
         {
-            while (await _process.StandardOutput.ReadLineAsync(_stop.Token).ConfigureAwait(false) is { } line)
+            while (await _output.ReadLineAsync(_stop.Token).ConfigureAwait(false) is { } line)
             {
                 if (line.Length > 0)
                 {
@@ -216,7 +214,7 @@ public sealed class AcpConnection : IAsyncDisposable
         var buffer = new char[4096];
         try
         {
-            while (await _process.StandardError.ReadAsync(buffer, _stop.Token).ConfigureAwait(false) is var read and > 0)
+            while (await _diagnostics.ReadAsync(buffer, _stop.Token).ConfigureAwait(false) is var read and > 0)
             {
                 lock (_stderr)
                 {
@@ -235,14 +233,7 @@ public sealed class AcpConnection : IAsyncDisposable
 
     private async Task WatchExitAsync()
     {
-        try
-        {
-            await _process.WaitForExitAsync().ConfigureAwait(false);
-        }
-        catch (InvalidOperationException)
-        {
-        }
-
+        ExitCode = await _process.Exited.ConfigureAwait(false);
         _exited.TrySetResult();
         var error = Stopped();
         foreach (var pending in _pending.Values)

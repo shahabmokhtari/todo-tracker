@@ -191,13 +191,23 @@ while (await stdin.ReadLineAsync() is { } line)
                 ["result"] = new JsonObject
                 {
                     ["protocolVersion"] = 1,
-                    ["agentCapabilities"] = new JsonObject { ["loadSession"] = false },
+                    // FAKE_ACP_HTTP=1 behaves like Copilot: MCP servers over HTTP only.
+                    ["agentCapabilities"] = Environment.GetEnvironmentVariable("FAKE_ACP_HTTP") == "1"
+                        ? new JsonObject { ["loadSession"] = false, ["mcpCapabilities"] = new JsonObject { ["http"] = true, ["sse"] = true } }
+                        : new JsonObject { ["loadSession"] = false },
                     ["agentInfo"] = new JsonObject { ["name"] = "fake-agent", ["version"] = "1.0" },
                     ["authMethods"] = new JsonArray(),
                 },
             });
             break;
         case "session/new":
+            // FAKE_ACP_CRASH_ONCE=<file>: crash while starting the first session (like Copilot sometimes does).
+            if (Environment.GetEnvironmentVariable("FAKE_ACP_CRASH_ONCE") is { } marker && !File.Exists(marker))
+            {
+                await File.WriteAllTextAsync(marker, "crashed");
+                Environment.Exit(unchecked((int)0xC0000005));
+            }
+
             await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject { ["sessionId"] = $"sess-{++sessions}" } });
             break;
         case "session/prompt":

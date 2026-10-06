@@ -603,6 +603,8 @@ async function flushDrawer(keepKey = null) {
 async function closeDrawer() {
   // Everything typed is saved before the panel closes; if that fails the panel stays open with the text in it.
   if (!(await flushDrawer())) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+  state.panelClosed?.();
+  state.panelClosed = null;
   state.drawerId = null;
   state.drawerAutosave = null;
   state.drawerNote = null;
@@ -814,6 +816,64 @@ function restoreDrawerDraft(drawer, draft, noteInput) {
       if (typeof draft.focused.start === 'number' && typeof el.setSelectionRange === 'function') {
         try { el.setSelectionRange(draft.focused.start, draft.focused.end); } catch { /* not a text field */ }
       }
+    }
+  }
+}
+
+// ---------- plugins ----------
+
+/**
+ * Opens the side panel with a plugin's content (the same panel as task details). `onClose` runs when it closes.
+ * Returns false if what was typed in the panel couldn't be saved first.
+ */
+async function openPanel(title, content, { iconName = null, onClose = null } = {}) {
+  if (!(await flushDrawer())) {
+    toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+    return false;
+  }
+  state.panelClosed?.();
+  state.panelClosed = onClose;
+  state.drawerId = null;
+  state.drawerAutosave = null;
+  state.drawerNote = null;
+  const drawer = $('#drawer');
+  drawer.style.removeProperty('--prio');
+  delete drawer.dataset.itemId;
+  drawer.replaceChildren(
+    h('div', { class: 'drawer-head' },
+      h('span', { class: 'connect-title' }, iconName ? icon(iconName, { size: 18 }) : null, title),
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
+    content);
+  $('#scrim').hidden = false;
+  drawer.hidden = false;
+  return true;
+}
+
+/** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
+const pluginHost = {
+  api, post, h, icon, toast, openPanel, closePanel: closeDrawer,
+  refresh: () => refresh({ background: true }),
+  addHeaderButton({ iconName, label, onClick }) {
+    const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
+    $('#connect-ai').before(button);
+    return button;
+  },
+};
+
+/** Loads the UI of each enabled plugin (built-in modules served by the app). One failing never breaks the board. */
+async function loadPlugins() {
+  let plugins = [];
+  try {
+    plugins = await api('/api/plugins');
+  } catch {
+    return;
+  }
+  for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
+    try {
+      const module = await import(p.webModule);
+      await module.activate?.(pluginHost);
+    } catch (err) {
+      console.warn(`Plugin ${p.id} failed to load`, err);
     }
   }
 }
@@ -1043,6 +1103,7 @@ document.addEventListener('visibilitychange', () => document.visibilityState ===
 setInterval(() => document.visibilityState === 'visible' && refresh({ background: true }), 15000);
 refresh().then(() => {
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
+  loadPlugins();
   const params = new URLSearchParams(location.search);
   const item = params.get('item');
   if (item && state.dashboard) openDrawer(item);

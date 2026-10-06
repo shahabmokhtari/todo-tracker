@@ -55,8 +55,7 @@ public static class TodoTrackerHost
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();
-        services.AddSingleton<IReminderNotifier, TeamsWebhookNotifier>();
-        services.AddHttpClient(TeamsWebhookNotifier.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(10));
+        Plugins.PluginHost.AddServices(services, options);
         services.AddSingleton<ReminderLoop>();
         services.AddHostedService(sp => sp.GetRequiredService<ReminderLoop>());
         services.AddProblemDetails();
@@ -131,6 +130,7 @@ public static class TodoTrackerHost
 
         ApiEndpoints.Map(app);
         OpenApiSetup.Map(app);
+        Plugins.PluginHost.Map(app);
         app.MapMcp("/mcp");
     }
 

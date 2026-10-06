@@ -48,7 +48,15 @@ public sealed class AgentCatalog
         switch (id)
         {
             case "copilot":
-                return new AgentLaunch(id, Find("copilot") ?? throw Missing("GitHub Copilot CLI"), ["--acp", "--stdio"], workingDirectory, empty);
+                // Its own Copilot home and log folder: the chat only needs Todo Tracker's tools, and with the person's
+                // own home (their MCP servers, plugins, shared logs) Copilot 1.0.93 crashes most of the time while
+                // starting a session. Sign-in still comes from gh; if it can't, fall back to the person's own home.
+                var copilot = Find("copilot") ?? throw Missing("GitHub Copilot CLI");
+                string[] arguments = ["--acp", "--stdio", "--log-dir", Path.Combine(workingDirectory, "logs")];
+                return new AgentLaunch(id, copilot, arguments, workingDirectory, new Dictionary<string, string?> { ["COPILOT_HOME"] = Path.Combine(workingDirectory, "copilot-home") })
+                {
+                    SignInFallback = new AgentLaunch(id, copilot, arguments, workingDirectory, empty),
+                };
             case "claude":
                 if (Find("claude-agent-acp") is { } adapter)
                 {
