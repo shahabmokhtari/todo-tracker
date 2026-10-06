@@ -21,7 +21,8 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
     private readonly Lock _lock = new();
-    private (string? Token, DateTime At) _token;
+    private Task<string?>? _lookup;
+    private DateTime _lookedUp;
 
     public string Id => "gist";
 
@@ -39,15 +40,23 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
 
     private string IdPath => Path.Combine(options.DataDirectory, "sync", "gist.json");
 
-    public SyncAvailability Check(string vaultRoot) =>
-        Token() is null
+    public SyncAvailability Check(string vaultRoot)
+    {
+        if (!TokenLookup().IsCompleted)
+        {
+            // Asking gh can take a moment: never on the caller's thread (the sidebar menu asks from the UI thread).
+            return new SyncAvailability(false, "Checking your GitHub sign-in…");
+        }
+
+        return Token() is null
             ? new SyncAvailability(false, "Sign in to GitHub first: install the GitHub CLI and run gh auth login (or set GH_TOKEN).")
             : new SyncAvailability(true, LoadId() is { } id ? $"Your private gist {id} on GitHub" : "A new private gist on your GitHub account");
+    }
 
     public ISyncRemote CreateRemote(string vaultRoot) =>
         new GistRemote(
             Client,
-            _ => Task.FromResult(Token() ?? throw new InvalidOperationException("Sign in to GitHub first (gh auth login).")),
+            async ct => await TokenLookup().WaitAsync(ct).ConfigureAwait(false) ?? throw new InvalidOperationException("Sign in to GitHub first (gh auth login)."),
             LoadId,
             id =>
             {
@@ -67,17 +76,22 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
         }
     }
 
-    private string? Token()
+    private string? Token() => TokenLookup() is { IsCompletedSuccessfully: true } done ? done.Result : null;
+
+    /// <summary>The token, looked up in the background and remembered for a few minutes.</summary>
+    private Task<string?> TokenLookup()
     {
         lock (_lock)
         {
-            // Asking gh takes a moment: remembered for a few minutes.
-            if (_token.Token is null || DateTime.UtcNow - _token.At > TimeSpan.FromMinutes(10))
+            var age = DateTime.UtcNow - _lookedUp;
+            var stale = _lookup is { IsCompleted: true } done && age > (done.Result is null ? TimeSpan.FromMinutes(1) : TimeSpan.FromMinutes(10));
+            if (_lookup is null || stale)
             {
-                _token = (FindToken(), DateTime.UtcNow);
+                _lookedUp = DateTime.UtcNow;
+                _lookup = Task.Run(FindToken);
             }
 
-            return _token.Token;
+            return _lookup;
         }
     }
 

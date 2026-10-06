@@ -39,16 +39,17 @@ public sealed class CloudDetectionTests
     [Fact]
     public void A_tasks_folder_already_in_onedrive_is_not_synced_again_through_it()
     {
-        var env = Windows(new() { ["OneDriveCommercial"] = @"C:\Users\me\OneDrive - Contoso" }, @"C:\Users\me\OneDrive - Contoso");
+        var root = Path.Combine(Path.GetTempPath(), "me", "OneDrive - Contoso");
+        var env = new CloudEnvironment(name => name == "OneDriveCommercial" ? root : null, Path.GetTempPath(), d => d == root, _ => [], IsWindows: true, IsMac: false);
         var provider = new OneDriveSyncProvider(env);
 
-        var inside = provider.Check(@"C:\Users\me\OneDrive - Contoso\Documents\Todo Tracker");
-        var outside = provider.Check(@"C:\Users\me\Todo Tracker");
+        var inside = provider.Check(Path.Combine(root, "Documents", "Todo Tracker"));
+        var outside = provider.Check(Path.Combine(Path.GetTempPath(), "me", "Todo Tracker"));
 
         Assert.False(inside.Available);
         Assert.Contains("already in OneDrive", inside.Detail, StringComparison.Ordinal);
         Assert.True(outside.Available);
-        Assert.Equal(@"C:\Users\me\OneDrive - Contoso\Apps\TodoTrackerSync", outside.Detail);
+        Assert.Equal(Path.Combine(root, "Apps", "TodoTrackerSync"), outside.Detail);
     }
 
     [Fact]
@@ -61,19 +62,37 @@ public sealed class CloudDetectionTests
     }
 
     [Fact]
-    public void The_gist_needs_a_github_sign_in()
+    public async Task The_gist_needs_a_github_sign_in_which_is_looked_up_in_the_background()
     {
         var dir = Directory.CreateTempSubdirectory("tt-gist-").FullName;
         try
         {
             var options = new TodoTrackerServerOptions { DataDirectory = dir };
-            Assert.False(new GistSyncProvider(options) { FindToken = () => null }.Check(dir).Available);
-            Assert.True(new GistSyncProvider(options) { FindToken = () => "token" }.Check(dir).Available);
+            using var slow = new ManualResetEventSlim();
+            var signedIn = new GistSyncProvider(options) { FindToken = () => { slow.Wait(TimeSpan.FromSeconds(10)); return "token"; } };
+
+            // Asking gh never blocks the caller (the sidebar menu asks from the UI thread).
+            Assert.Contains("Checking", signedIn.Check(dir).Detail, StringComparison.Ordinal);
+            slow.Set();
+            Assert.True(await Eventually(() => signedIn.Check(dir).Available));
+
+            var signedOut = new GistSyncProvider(options) { FindToken = () => null };
+            Assert.True(await Eventually(() => signedOut.Check(dir).Detail.Contains("gh auth login", StringComparison.Ordinal)));
         }
         finally
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    private static async Task<bool> Eventually(Func<bool> condition)
+    {
+        for (var i = 0; i < 100 && !condition(); i++)
+        {
+            await Task.Delay(20);
+        }
+
+        return condition();
     }
 }
 
