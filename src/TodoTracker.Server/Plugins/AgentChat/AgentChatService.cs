@@ -665,6 +665,10 @@ public sealed partial class AgentChatService : IAsyncDisposable
         {
             await turn.WaitAsync(_options.StopTimeout).ConfigureAwait(false);
         }
+        catch (TimeoutException) when (api)
+        {
+            throw new InvalidOperationException("The answer is still stopping; try again in a moment.");
+        }
         catch (TimeoutException) when (!api)
         {
             // The agent ignores the cancel: stopping it ends the turn. (An API answer ends once its request is cancelled.)

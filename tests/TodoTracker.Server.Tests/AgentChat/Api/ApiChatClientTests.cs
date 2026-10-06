@@ -119,4 +119,22 @@ public sealed class ApiChatClientTests
         Assert.Contains(hint, error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal((int)status, error.Status);
     }
+
+    [Theory]
+    [InlineData("This model's maximum context length is 128000 tokens. However, your messages resulted in 130000 tokens.", true)]
+    [InlineData("prompt is too long: 210000 tokens > 200000 maximum", true)]
+    [InlineData("max_tokens is too large: 50000. This model supports at most 16384 completion tokens, maximum allowed.", false)]
+    [InlineData("tools: maximum of 128 tools exceeded", false)]
+    public async Task Only_a_conversation_that_is_too_long_suggests_a_new_chat(string message, bool tooLong)
+    {
+        var error = await Assert.ThrowsAsync<ApiChatException>(() => Send(ApiModel.Create("openai", "GPT", "https://api.openai.com/v1", "gpt-5"), status: HttpStatusCode.BadRequest, body: new JsonObject { ["error"] = new JsonObject { ["message"] = message } }.ToJsonString()));
+
+        Assert.Equal(tooLong, error.Message.Contains("new chat", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("registry.ollama.ai/library/gemma3 does not support tools", true)]
+    [InlineData("tools.0.custom.input_schema: JSON schema is invalid. Format 'uri' is not supported", false)]
+    public void Only_a_model_without_tools_is_asked_again_without_them(string message, bool noTools) =>
+        Assert.Equal(noTools, ApiChatClient.NoTools().IsMatch(message));
 }

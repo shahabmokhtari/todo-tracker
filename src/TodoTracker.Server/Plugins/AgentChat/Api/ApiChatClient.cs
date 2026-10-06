@@ -72,7 +72,7 @@ public sealed record ApiModel(string Id, string Preset, string Name, string Base
 }
 
 /// <summary>Sends a conversation to a model and streams its answer (text, and the tools it wants to call).</summary>
-public sealed class ApiChatClient(HttpClient http)
+public sealed partial class ApiChatClient(HttpClient http)
 {
     private const int MaxOutputTokens = 4096;
 
@@ -137,12 +137,20 @@ public sealed class ApiChatClient(HttpClient http)
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => "The model's service didn't accept the API key (check it in Ask AI › models).",
             HttpStatusCode.TooManyRequests => "The model's service is busy or you've hit its limit; try again in a moment.",
             HttpStatusCode.NotFound => "The model's service doesn't know that model or address (check the model name and address).",
-            HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge when message is not null && (message.Contains("context", StringComparison.OrdinalIgnoreCase) || message.Contains("too long", StringComparison.OrdinalIgnoreCase) || message.Contains("maximum", StringComparison.OrdinalIgnoreCase))
+            HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge when message is not null && TooLong().IsMatch(message)
                 => "This chat has grown too long for the model. Start a new chat (this one is kept).",
             _ => $"The model's service answered {(int)status}.",
         };
         return new ApiChatException(message is { Length: > 0 } ? $"{text} ({message[..Math.Min(200, message.Length)]})" : text, (int)status);
     }
+
+    /// <summary>How services say the conversation is longer than the model takes (not other limits).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex("context[ _](length|window)|prompt is too long|too many tokens|maximum context|reduce the length", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex TooLong();
+
+    /// <summary>How local servers say a model can't use tools at all.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex("does not support tools|tools are not supported|does not support (function|tool) calling|tool (use|calling) is not supported", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    internal static partial System.Text.RegularExpressions.Regex NoTools();
 
     private static JsonObject OpenAIBody(ApiModel model, string system, IReadOnlyList<ApiMessage> messages, IReadOnlyList<ApiToolSpec> tools)
     {

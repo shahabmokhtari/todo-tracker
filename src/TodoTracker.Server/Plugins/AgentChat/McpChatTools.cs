@@ -80,15 +80,16 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
         {
             return await CallOnceAsync(name, args, cancellationToken).ConfigureAwait(false);
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (Exception ex) when (NeverSent(ex, cancellationToken))
         {
-            // The app let go of this MCP session (idle for long): connect again. The call never ran, so it's safe.
+            // The app let go of this MCP session (idle for long): connect again. The call never reached the tool
+            // (the session was gone), so trying once more is safe.
             await ResetAsync().ConfigureAwait(false);
             try
             {
                 return await CallOnceAsync(name, args, cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException again)
+            catch (Exception again) when (again is HttpRequestException || (again is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 return new ChatToolResult($"Todo Tracker's tools couldn't be reached: {again.Message}", true);
             }
@@ -112,6 +113,15 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
             return new ChatToolResult(ex.Message, true);
         }
     }
+
+    /// <summary>
+    /// The session was gone before the call went out (so it never reached the tool, and one more try can't run a change
+    /// twice): the app no longer knows the session (404), the client's connection was already closed, or it was disposed.
+    /// A response that broke part-way isn't one of these.
+    /// </summary>
+    private static bool NeverSent(Exception ex, CancellationToken cancellationToken) =>
+        ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound } or ObjectDisposedException
+        || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested);
 
     private async Task ResetAsync()
     {
@@ -142,7 +152,8 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
 
     private async Task<McpClient> ClientAsync(CancellationToken cancellationToken)
     {
-        if (_client is { } ready)
+        // A client whose session ended (the app let go of it while the chat was idle) is replaced.
+        if (_client is { Completion.IsCompleted: false } ready)
         {
             return ready;
         }
@@ -150,6 +161,12 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_client is { Completion.IsCompleted: true } ended)
+            {
+                _client = null;
+                await ended.DisposeAsync().ConfigureAwait(false);
+            }
+
             if (_client is null)
             {
                 var httpClient = http();

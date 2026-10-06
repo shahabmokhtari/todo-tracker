@@ -47,6 +47,38 @@ public sealed class McpChatToolsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tools_connect_again_when_the_app_let_go_of_the_session()
+    {
+        // Review finding: an MCP session ended while the chat was idle, and every later tool call failed until a restart.
+        var current = await ServerFixture.StartAsync();
+        await using var tools = new McpChatTools(() => current.Client(), "GPT test");
+        Assert.False((await tools.CallAsync("get_dashboard", "{}", TestContext.Current.CancellationToken)).IsError);
+
+        await current.DisposeAsync();
+        current = await ServerFixture.StartAsync();
+        try
+        {
+            ChatToolResult result = null!;
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                result = await tools.CallAsync("get_dashboard", "{}", TestContext.Current.CancellationToken);
+                if (!result.IsError)
+                {
+                    break;
+                }
+
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            Assert.False(result.IsError, result.Text);
+        }
+        finally
+        {
+            await current.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task Tool_errors_and_bad_arguments_come_back_as_errors_for_the_model()
     {
         var missing = await _tools.CallAsync("complete_task", new JsonObject { ["taskId"] = Guid.NewGuid().ToString() }.ToJsonString(), TestContext.Current.CancellationToken);

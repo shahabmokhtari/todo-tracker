@@ -42,7 +42,7 @@ public sealed class ApiTurnRunner(ApiChatClient client, ApiTurnLimits limits)
             {
                 turn = await client.CompleteAsync(model, key, system, Window(messages), offered, events.Text, cancellationToken).ConfigureAwait(false);
             }
-            catch (ApiChatException ex) when (offered.Count > 0 && ex.Status == 400 && ex.Message.Contains("tools", StringComparison.OrdinalIgnoreCase) && ex.Message.Contains("support", StringComparison.OrdinalIgnoreCase))
+            catch (ApiChatException ex) when (offered.Count > 0 && ex.Status == 400 && ApiChatClient.NoTools().IsMatch(ex.Message))
             {
                 // Some local models can't use tools at all: they can still talk.
                 offered = [];
