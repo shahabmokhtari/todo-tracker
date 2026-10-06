@@ -69,12 +69,14 @@ struct BoardDocument: Codable {
     var items: [ItemDocument]?
     var activity: [ActivityDocument]?
     var pomodoro: PomodoroDocument?
+    var nowOrder: [UUID]?
 
     init(_ board: TaskBoard) {
         schemaVersion = TaskBoard.currentSchemaVersion
         groups = board.groups.map { GroupDocument(id: $0.id, name: $0.name, color: $0.color) }
         items = board.items.map(ItemDocument.init)
         activity = board.activity.map { ActivityDocument(at: $0.at, itemId: $0.itemId, kind: $0.kind, summary: $0.summary, actor: $0.actor) }
+        nowOrder = board.nowOrder.isEmpty ? nil : board.nowOrder
         let p = board.pomodoro
         pomodoro = PomodoroDocument(
             settings: p.settings,
@@ -95,6 +97,8 @@ struct BoardDocument: Codable {
         for a in activity ?? [] {
             board.appendLoaded(activity: ActivityEntry(at: a.at, itemId: a.itemId, kind: a.kind, summary: a.summary ?? "", actor: a.actor ?? .user))
         }
+        var seen = Set<UUID>()
+        board.nowOrder = (nowOrder ?? []).filter { board.find($0) != nil && seen.insert($0).inserted }
         if let p = pomodoro {
             var timer = PomodoroTimer(settings: p.settings ?? PomodoroSettings())
             timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0)
