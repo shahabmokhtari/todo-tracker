@@ -122,6 +122,10 @@ public sealed class AcpConnection : IAsyncDisposable
         }
 
         await _stop.CancelAsync().ConfigureAwait(false);
+
+        // Stop the agent and everything it started (MCP servers, npx's node) while it still runs: on Linux and macOS
+        // its children can only be found through it (closing its input first lets it exit and orphan them).
+        _process.KillTree();
         try
         {
             _input.Close();
@@ -129,9 +133,6 @@ public sealed class AcpConnection : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException)
         {
         }
-
-        // Stop the agent and everything it started (MCP servers, npx's node).
-        _process.KillTree();
         try
         {
             await _exited.Task.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
