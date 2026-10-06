@@ -36,9 +36,10 @@ public sealed record ChatEntry(string Id, string Kind, string Text, string? Stat
 
 /// <summary>
 /// What the chat shows. Status: <c>idle</c> (agent not started), <c>starting</c>, <c>ready</c>, <c>busy</c> (answering),
-/// <c>error</c> (it stopped; the next message starts it again).
+/// <c>error</c> (it stopped; the next message starts it again). <paramref name="Version"/> grows with every state handed
+/// out, so a screen can drop a state that arrives after a newer one.
 /// </summary>
-public sealed record ChatState(string Status, string? Agent, IReadOnlyList<AgentOption> Agents, IReadOnlyList<ChatEntry> Entries, string? Problem);
+public sealed record ChatState(string Status, string? Agent, IReadOnlyList<AgentOption> Agents, IReadOnlyList<ChatEntry> Entries, string? Problem, long Version = 0);
 
 /// <summary>
 /// Chat with Copilot or Claude about your tasks. The agent starts on the first message and then stays warm; every
@@ -60,7 +61,11 @@ public sealed partial class AgentChatService : IAsyncDisposable
     private readonly Lock _lock = new();
     private readonly List<ChatEntry> _entries = [];
     private readonly Dictionary<string, TaskCompletionSource<string>> _questions = [];
+
+    // What each tool call was announced as (session/update), by toolCallId: permission requests may carry less.
+    private readonly Dictionary<string, (string Title, string? Kind)> _announced = [];
     private readonly SemaphoreSlim _startGate = new(1, 1);
+    private IReadOnlyList<AgentOption> _agents;
     private AcpConnection? _agent;
     private string? _sessionId;
     private bool _contextSent;
@@ -72,12 +77,15 @@ public sealed partial class AgentChatService : IAsyncDisposable
     private string? _choice;
     private string? _messageId;
     private int _nextEntry;
+    private long _version;
+    private Task _turn = Task.CompletedTask;
 
     public AgentChatService(AgentCatalog catalog, AgentChatOptions options)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _options = options ?? throw new ArgumentNullException(nameof(options));
-        _choice = AgentCatalog.DefaultChoice(catalog.Detect(), LoadChoice());
+        _agents = catalog.Detect();
+        _choice = AgentCatalog.DefaultChoice(_agents, LoadChoice());
     }
 
     /// <summary>Raised (on a background thread) whenever something the chat shows changed.</summary>
@@ -89,9 +97,22 @@ public sealed partial class AgentChatService : IAsyncDisposable
         {
             lock (_lock)
             {
-                return new ChatState(_status, _choice, _catalog.Detect(), [.. _entries], _problem);
+                return new ChatState(_status, _choice, _agents, [.. _entries], _problem, ++_version);
             }
         }
+    }
+
+    /// <summary>Looks for installed agents again (searching the PATH is slow: only when the chat is opened).</summary>
+    public void RefreshAgents()
+    {
+        var agents = _catalog.Detect();
+        lock (_lock)
+        {
+            _agents = agents;
+            _choice = AgentCatalog.DefaultChoice(agents, _choice);
+        }
+
+        Notify();
     }
 
     /// <summary>Switches agents (the next message starts the chosen one) and remembers the choice.</summary>
@@ -104,13 +125,23 @@ public sealed partial class AgentChatService : IAsyncDisposable
             throw new InvalidOperationException(agent.Hint ?? $"{agent.Name} isn't installed.");
         }
 
-        await StopAgentAsync().ConfigureAwait(false);
-        lock (_lock)
+        await StopTurnAsync().ConfigureAwait(false);
+        await _startGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _useSignInFallback = false;
-            _choice = agentId;
-            _status = "idle";
-            _problem = null;
+            await StopAgentAsync().ConfigureAwait(false);
+            lock (_lock)
+            {
+                _agents = agents;
+                _useSignInFallback = false;
+                _choice = agentId;
+                _status = "idle";
+                _problem = null;
+            }
+        }
+        finally
+        {
+            _startGate.Release();
         }
 
         SaveChoice(agentId);
@@ -122,6 +153,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
     public Task SendAsync(string text)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
         {
             if (_status is "busy" or "starting")
@@ -131,7 +163,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
             if (_choice is null)
             {
-                var hint = _catalog.Detect().Select(a => a.Hint).FirstOrDefault(h => h is not null);
+                var hint = _agents.Select(a => a.Hint).FirstOrDefault(h => h is not null);
                 throw new InvalidOperationException(hint ?? "Install GitHub Copilot CLI or Claude Code to chat.");
             }
 
@@ -139,10 +171,11 @@ public sealed partial class AgentChatService : IAsyncDisposable
             _problem = null;
             _entries.Add(new ChatEntry(NextId(), "user", text.Trim()));
             _messageId = null;
+            _turn = done.Task;
         }
 
         Notify();
-        return RunTurnAsync(text.Trim());
+        return RunTurnAsync(text.Trim(), done);
     }
 
     /// <summary>Stops the answer being written (and refuses any question waiting for you).</summary>
@@ -164,16 +197,25 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// <summary>Starts over: a new conversation with the same (warm) agent.</summary>
     public async Task NewChatAsync()
     {
-        await CancelAsync().ConfigureAwait(false);
-        lock (_lock)
+        await StopTurnAsync().ConfigureAwait(false);
+        await _startGate.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _entries.Clear();
-            _sessionId = null;
-            _changesAllowed = false;
-            if (_status != "error")
+            lock (_lock)
             {
-                _status = _agent is null ? "idle" : "ready";
+                _entries.Clear();
+                _announced.Clear();
+                _sessionId = null;
+                _changesAllowed = false;
+                if (_status != "error")
+                {
+                    _status = _agent is null ? "idle" : "ready";
+                }
             }
+        }
+        finally
+        {
+            _startGate.Release();
         }
 
         Notify();
@@ -191,6 +233,11 @@ public sealed partial class AgentChatService : IAsyncDisposable
         lock (_lock)
         {
             _questions.Remove(entryId, out question);
+            if (question is not null)
+            {
+                // Shown at once: the state handed back now already has the answer.
+                Settle(entryId, choice);
+            }
         }
 
         if (question is null)
@@ -199,6 +246,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         }
 
         question.TrySetResult(choice);
+        Notify();
         return Task.CompletedTask;
     }
 
@@ -215,32 +263,82 @@ public sealed partial class AgentChatService : IAsyncDisposable
         return (tools.Select(t => t.Name!).ToHashSet(StringComparer.Ordinal), tools.Where(t => t.ReadOnly).Select(t => t.Name!).ToHashSet(StringComparer.Ordinal));
     }
 
-    private static string? OptionOfKind(JsonElement options, params string[] kinds)
+    private static string? OptionOfKind(JsonElement options, string kind)
     {
-        foreach (var kind in kinds)
+        foreach (var option in options.EnumerateArray())
         {
-            foreach (var option in options.EnumerateArray())
+            if (Str(option, "kind") == kind && Str(option, "optionId") is { } id)
             {
-                if (option.TryGetProperty("kind", out var k) && k.GetString() == kind && option.TryGetProperty("optionId", out var id))
-                {
-                    return id.GetString();
-                }
+                return id;
             }
         }
 
         return null;
     }
 
+    /// <summary>A string property, or null when it's missing or not a string (agents don't always send what the spec says).</summary>
+    private static string? Str(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
     private static bool LooksLikeSignIn(string message) =>
         message.Contains("auth", StringComparison.OrdinalIgnoreCase) || message.Contains("login", StringComparison.OrdinalIgnoreCase)
         || message.Contains("log in", StringComparison.OrdinalIgnoreCase) || message.Contains("sign in", StringComparison.OrdinalIgnoreCase);
 
-    [GeneratedRegex("[a-z]+(?:_[a-z]+)+")]
-    private static partial Regex ToolName();
+    /// <summary>
+    /// The Todo Tracker tool a permission request is for, or null when it's anything else. Decided by the tool's name as
+    /// the agent names our server's tools (Copilot: <c>todo-tracker-create_task</c> when announced, then the bare name in
+    /// the request; Claude: <c>mcp__todo-tracker__create_task</c>), never by words found elsewhere (a command can
+    /// mention a tool), and never for commands, deletes or moves.
+    /// </summary>
+    private static string? OurTool(string title, string? kind, (string Title, string? Kind)? announced)
+    {
+        static bool Risky(string? k) => k is "execute" or "delete" or "move";
+        if (Risky(kind) || Risky(announced?.Kind))
+        {
+            return null;
+        }
+
+        static string? Named(string text) => OurToolTitle().Match(text.Trim()) is { Success: true } m && TodoTools.All.Contains(m.Groups[1].Value) ? m.Groups[1].Value : null;
+        return Named(title) ?? (announced is { } a && Named(a.Title) is { } name && (title.Trim() == name || title.Trim() == a.Title.Trim()) ? name : null);
+    }
+
+    [GeneratedRegex("^(?:todo-tracker-|todo-tracker: ?|todo-tracker/|mcp__todo-tracker__)([a-z]+(?:_[a-z]+)+)$")]
+    private static partial Regex OurToolTitle();
 
     private string NextId() => $"e{++_nextEntry}";
 
-    private async Task RunTurnAsync(string text)
+    /// <summary>Stops the answer being written and waits for it to end (so a new chat never mixes with the old one).</summary>
+    private async Task StopTurnAsync()
+    {
+        await CancelAsync().ConfigureAwait(false);
+        Task turn;
+        lock (_lock)
+        {
+            turn = _turn;
+        }
+
+        try
+        {
+            await turn.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // The agent ignores the cancel: stopping it ends the turn.
+            await _startGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await StopAgentAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _startGate.Release();
+            }
+
+            await turn.ConfigureAwait(false);
+        }
+    }
+
+    private async Task RunTurnAsync(string text, TaskCompletionSource done)
     {
         try
         {
@@ -249,7 +347,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 ? [new JsonObject { ["type"] = "text", ["text"] = Context }, new JsonObject { ["type"] = "text", ["text"] = text }]
                 : [new JsonObject { ["type"] = "text", ["text"] = text }];
             var result = await agent.RequestAsync("session/prompt", new JsonObject { ["sessionId"] = session, ["prompt"] = prompt }, _options.TurnTimeout).ConfigureAwait(false);
-            var stop = result.ValueKind == JsonValueKind.Object && result.TryGetProperty("stopReason", out var s) ? s.GetString() : null;
+            var stop = Str(result, "stopReason");
             lock (_lock)
             {
                 _status = "ready";
@@ -266,8 +364,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 }
             }
         }
-        catch (Exception ex) when (ex is AcpException or TimeoutException or InvalidOperationException or IOException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Whatever went wrong, the chat must not stay "busy" or "starting": say so, and start fresh next time.
             lock (_lock)
             {
                 _status = "error";
@@ -275,11 +374,20 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 _entries.Add(new ChatEntry(NextId(), "note", ex is TimeoutException ? "The agent didn't answer in time." : ex.Message, "error"));
             }
 
-            await StopAgentAsync().ConfigureAwait(false);
+            await _startGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await StopAgentAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _startGate.Release();
+            }
         }
         finally
         {
             AnswerAll("cancelled");
+            done.TrySetResult();
         }
 
         Notify();
@@ -298,10 +406,17 @@ public sealed partial class AgentChatService : IAsyncDisposable
                     await StartSessionAsync().ConfigureAwait(false);
                     break;
                 }
-                catch (AcpException ex) when (!_useSignInFallback && LooksLikeSignIn(ex.Message) && _catalog.LaunchFor(_choice!, _options.WorkDirectory).SignInFallback is not null)
+                catch (AcpException ex) when (!_useSignInFallback && _agent is { Exited.IsCompleted: false } && LooksLikeSignIn(ex.Message)
+                    && _catalog.LaunchFor(_choice!, _options.WorkDirectory).SignInFallback is not null)
                 {
-                    // Not signed in with the chat's own settings: use the person's own (their usual sign-in).
+                    // The agent answered (it didn't crash) that it isn't signed in with the chat's own settings: use the
+                    // person's own settings, where they signed in. Say so: their own MCP servers load there too.
                     _useSignInFallback = true;
+                    lock (_lock)
+                    {
+                        _entries.Add(new ChatEntry(NextId(), "note", "Using your own Copilot settings to sign in."));
+                    }
+
                     await StopAgentAsync().ConfigureAwait(false);
                 }
                 catch (AcpException ex) when (_agent is null || _agent.Exited.IsCompleted)
@@ -386,8 +501,12 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 }
 
                 var created = await _agent!.RequestAsync("session/new", new JsonObject { ["cwd"] = _options.WorkDirectory, ["mcpServers"] = servers }, _options.StartTimeout).ConfigureAwait(false);
-                _sessionId = created.GetProperty("sessionId").GetString() ?? throw new AcpException("The agent didn't start a session.");
+                _sessionId = Str(created, "sessionId") ?? throw new AcpException("The agent didn't start a session.");
                 _contextSent = false;
+                lock (_lock)
+                {
+                    _announced.Clear();
+                }
             }
         }
     }
@@ -418,24 +537,31 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
     private void OnNotification(string method, JsonElement parameters)
     {
-        if (method != "session/update" || !parameters.TryGetProperty("update", out var update) || !update.TryGetProperty("sessionUpdate", out var kind))
+        var update = parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("update", out var u) ? u : default;
+        if (method != "session/update" || Str(update, "sessionUpdate") is not { } kind)
         {
             return;
         }
 
         lock (_lock)
         {
-            switch (kind.GetString())
+            // Only the current conversation (a stopped turn of an older one may still be talking).
+            if (Str(parameters, "sessionId") != _sessionId)
+            {
+                return;
+            }
+
+            switch (kind)
             {
                 case "agent_message_chunk":
-                    var text = update.TryGetProperty("content", out var content) && content.TryGetProperty("text", out var t) ? t.GetString() ?? string.Empty : string.Empty;
-                    var messageId = update.TryGetProperty("messageId", out var m) ? m.GetString() : null;
+                    var text = update.TryGetProperty("content", out var content) ? Str(content, "text") ?? string.Empty : string.Empty;
+                    var messageId = Str(update, "messageId");
                     var last = _entries.Count > 0 ? _entries[^1] : null;
                     if (last is { Kind: "agent" } && (messageId is null || messageId == _messageId))
                     {
                         _entries[^1] = last with { Text = last.Text + text };
                     }
-                    else
+                    else if (text.Length > 0)
                     {
                         _entries.Add(new ChatEntry(NextId(), "agent", text));
                     }
@@ -443,18 +569,23 @@ public sealed partial class AgentChatService : IAsyncDisposable
                     _messageId = messageId;
                     break;
                 case "tool_call":
-                    var id = update.TryGetProperty("toolCallId", out var callId) ? callId.GetString() : null;
-                    var title = update.TryGetProperty("title", out var ti) ? ti.GetString() ?? "Tool" : "Tool";
-                    _entries.Add(new ChatEntry(id is null ? NextId() : "tool:" + id, "tool", title, update.TryGetProperty("status", out var st) ? st.GetString() : "pending"));
+                    var id = Str(update, "toolCallId");
+                    var title = Str(update, "title") ?? "Tool";
+                    if (id is not null)
+                    {
+                        _announced[id] = (title, Str(update, "kind"));
+                    }
+
+                    _entries.Add(new ChatEntry(id is null ? NextId() : "tool:" + id, "tool", title, Str(update, "status") ?? "pending"));
                     break;
                 case "tool_call_update":
-                    if (update.TryGetProperty("toolCallId", out var updated) && _entries.FindIndex(e => e.Id == "tool:" + updated.GetString()) is var index and >= 0)
+                    if (Str(update, "toolCallId") is { } updated && _entries.FindIndex(e => e.Id == "tool:" + updated) is var index and >= 0)
                     {
                         var entry = _entries[index];
                         _entries[index] = entry with
                         {
-                            Status = update.TryGetProperty("status", out var status) ? status.GetString() : entry.Status,
-                            Text = update.TryGetProperty("title", out var newTitle) && newTitle.GetString() is { Length: > 0 } better ? better : entry.Text,
+                            Status = Str(update, "status") ?? entry.Status,
+                            Text = Str(update, "title") is { Length: > 0 } better ? better : entry.Text,
                         };
                     }
 
@@ -474,13 +605,25 @@ public sealed partial class AgentChatService : IAsyncDisposable
             throw new NotSupportedException();
         }
 
-        var options = parameters.GetProperty("options");
+        if (parameters.ValueKind != JsonValueKind.Object || !parameters.TryGetProperty("options", out var options) || options.ValueKind != JsonValueKind.Array)
+        {
+            throw new ArgumentException("The request offered no choices.");
+        }
+
         var toolCall = parameters.TryGetProperty("toolCall", out var call) ? call : default;
-        var title = toolCall.ValueKind == JsonValueKind.Object && toolCall.TryGetProperty("title", out var t) ? t.GetString() ?? "An action" : "An action";
-        var described = toolCall.ValueKind == JsonValueKind.Object ? toolCall.GetRawText() : title;
-        var names = ToolName().Matches(described).Select(m => m.Value).Where(TodoTools.All.Contains).ToHashSet();
-        var ours = names.Count > 0;
-        var readOnly = ours && names.All(TodoTools.ReadOnly.Contains);
+        var title = Str(toolCall, "title") ?? "An action";
+        (string Title, string? Kind)? announced = null;
+        lock (_lock)
+        {
+            if (Str(toolCall, "toolCallId") is { } callId && _announced.TryGetValue(callId, out var a))
+            {
+                announced = a;
+            }
+        }
+
+        var tool = OurTool(title, Str(toolCall, "kind"), announced);
+        var ours = tool is not null;
+        var readOnly = ours && TodoTools.ReadOnly.Contains(tool!);
 
         string choice;
         if (readOnly || (ours && _changesAllowed))
@@ -494,7 +637,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
             lock (_lock)
             {
                 entryId = NextId();
-                _entries.Add(new ChatEntry(entryId, "permission", ours ? $"Change your tasks: {title}" : title, "waiting", ours ? ["allow", "allow-chat", "reject"] : ["allow", "reject"]));
+                _entries.Add(new ChatEntry(entryId, "permission", ours ? $"Change your tasks: {tool!.Replace('_', ' ')}" : title, "waiting", ours ? ["allow", "allow-chat", "reject"] : ["allow", "reject"]));
                 _questions[entryId] = question;
             }
 
@@ -515,19 +658,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
             lock (_lock)
             {
                 _questions.Remove(entryId);
-                if (choice == "allow-chat")
-                {
-                    _changesAllowed = true;
-                }
-
-                if (_entries.FindIndex(e => e.Id == entryId) is var index and >= 0)
-                {
-                    _entries[index] = _entries[index] with
-                    {
-                        Status = choice switch { "allow" or "allow-chat" => "allowed", "reject" => "rejected", _ => choice },
-                        Choices = null,
-                    };
-                }
+                Settle(entryId, choice);
             }
 
             Notify();
@@ -538,9 +669,28 @@ public sealed partial class AgentChatService : IAsyncDisposable
             return new { outcome = new { outcome = "cancelled" } };
         }
 
-        // Never the agent's own "always": what is allowed is decided here, per chat.
-        var optionId = choice is "allow" or "allow-chat" ? OptionOfKind(options, "allow_once", "allow_always") : OptionOfKind(options, "reject_once", "reject_always");
+        // Only "once" options: what is allowed is decided here, per chat, never remembered by the agent. An agent that
+        // only offers "always" gets "cancelled".
+        var optionId = OptionOfKind(options, choice is "allow" or "allow-chat" ? "allow_once" : "reject_once");
         return optionId is null ? new { outcome = new { outcome = "cancelled" } } : new { outcome = new { outcome = "selected", optionId } };
+    }
+
+    /// <summary>Records the answer on the question's entry (caller holds the lock).</summary>
+    private void Settle(string entryId, string choice)
+    {
+        if (choice == "allow-chat")
+        {
+            _changesAllowed = true;
+        }
+
+        if (_entries.FindIndex(e => e.Id == entryId) is var index and >= 0 && _entries[index].Status == "waiting")
+        {
+            _entries[index] = _entries[index] with
+            {
+                Status = choice switch { "allow" or "allow-chat" => "allowed", "reject" => "rejected", _ => choice },
+                Choices = null,
+            };
+        }
     }
 
     private void AnswerAll(string answer)

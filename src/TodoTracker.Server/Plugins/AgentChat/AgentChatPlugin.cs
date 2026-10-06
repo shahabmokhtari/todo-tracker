@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using TodoTracker.Core.Vault;
 
 namespace TodoTracker.Server.Plugins.AgentChat;
@@ -65,7 +66,12 @@ public sealed class AgentChatPlugin : ITodoPlugin
     public void MapEndpoints(RouteGroupBuilder group)
     {
         ArgumentNullException.ThrowIfNull(group);
-        group.MapGet("/", (AgentChatService chat) => chat.State);
+        group.MapGet("/", (AgentChatService chat) =>
+        {
+            // The panel was opened: look for newly installed agents (slow, so not on every update).
+            chat.RefreshAgents();
+            return chat.State;
+        });
         group.MapPost("/select", async (ChatSelectRequest request, AgentChatService chat) =>
         {
             await chat.SelectAsync(request.Agent ?? string.Empty).ConfigureAwait(false);
@@ -92,8 +98,13 @@ public sealed class AgentChatPlugin : ITodoPlugin
             await chat.AnswerAsync(request.EntryId ?? string.Empty, request.Choice ?? string.Empty).ConfigureAwait(false);
             return chat.State;
         });
-        group.MapGet("/stream", (AgentChatService chat, HttpContext http) =>
-            TypedResults.ServerSentEvents(Stream(chat, http.RequestAborted), eventType: "state"));
+        group.MapGet("/stream", (AgentChatService chat, HttpContext http, IHostApplicationLifetime lifetime) =>
+        {
+            // Ends when the page goes away or the app shuts down (an open stream would hold up a restart).
+            var stop = CancellationTokenSource.CreateLinkedTokenSource(http.RequestAborted, lifetime.ApplicationStopping);
+            http.Response.RegisterForDispose(stop);
+            return TypedResults.ServerSentEvents(Stream(chat, stop.Token), eventType: "state");
+        });
     }
 
     /// <summary>The chat state now and after every change; only the latest state is kept, so a slow reader never lags.</summary>

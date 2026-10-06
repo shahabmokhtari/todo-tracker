@@ -127,6 +127,19 @@ public sealed class AskViewModelTests
     }
 
     [Fact]
+    public void Thinking_or_an_old_reply_goes_away_when_there_is_no_reply()
+    {
+        // Review finding: a turn with only tool calls (or a new chat in the dashboard) left "Thinking…" up for good.
+        using var vm = Create();
+        _agent.Set(new AskState("busy", true, "GitHub Copilot", null, null, null, null));
+        Assert.Equal("Thinking…", vm.Message);
+
+        _agent.Set(new AskState("ready", true, "GitHub Copilot", null, null, null, null));
+
+        Assert.Null(vm.Message);
+    }
+
+    [Fact]
     public void Send_needs_text()
     {
         using var vm = Create();

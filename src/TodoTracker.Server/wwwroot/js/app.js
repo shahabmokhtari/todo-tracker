@@ -152,6 +152,8 @@ function setGroup(id) {
 
 function render() {
   const d = state.dashboard;
+  // Any redraw (a live update, a plugin loading) keeps the keyboard on the task that had it.
+  const focused = state.refocus ?? document.activeElement?.closest?.('[data-order-id]')?.dataset.orderId;
   $('#greeting').textContent = greeting();
   $('#summary').textContent = summaryLine(d);
   renderTabs(d);
@@ -166,7 +168,7 @@ function render() {
   renderProblems(d.problems ?? []);
   renderFilter();
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
-  if (state.refocus) focusOrderControl(state.refocus);
+  if (focused) focusOrderControl(focused);
 }
 
 /** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
@@ -633,6 +635,9 @@ async function openDrawer(id) {
   const draft = same ? drawerDraft() : null;
   const saved = await flushDrawer(same ? `drawer:${id}` : null);
   if (!saved && !same && !$('#drawer').hidden) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+  // A plugin panel (e.g. Ask AI) gives way to the task: it stops its live updates.
+  state.panelClosed?.();
+  state.panelClosed = null;
   state.drawerId = id;
   let item;
   try {

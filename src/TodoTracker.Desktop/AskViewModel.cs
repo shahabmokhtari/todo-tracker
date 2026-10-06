@@ -151,6 +151,11 @@ public sealed partial class AskViewModel : ObservableObject, IDisposable
             Message = "Thinking…";
             IsProblem = false;
         }
+        else
+        {
+            Message = null;
+            IsProblem = false;
+        }
 
         QuestionId = state.Question?.Id;
         QuestionText = state.Question?.Text;

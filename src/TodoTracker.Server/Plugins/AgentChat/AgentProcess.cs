@@ -140,19 +140,14 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
     public static WindowsAgentProcess Start(AgentLaunch launch)
     {
         var executable = Resolve(launch.Command);
-        var command = string.Join(' ', new[] { executable }.Concat(launch.Arguments).Select(Quote));
-        var extension = Path.GetExtension(executable);
-        var script = extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase) || extension.Equals(".bat", StringComparison.OrdinalIgnoreCase);
-
-        // Scripts (e.g. npx.cmd) run through cmd.exe: /s /c "<whole command>" keeps their quoting intact.
-        var application = script ? Path.Combine(Environment.SystemDirectory, "cmd.exe") : executable;
-        var commandLine = script ? $"cmd.exe /d /s /c \"{command}\"" : command;
+        var (application, commandLine) = CommandLine(executable, launch.Arguments);
 
         CreatePipe(out var stdinRead, out var stdinWrite, inheritRead: true);
         CreatePipe(out var stdoutRead, out var stdoutWrite, inheritRead: false);
         CreatePipe(out var stderrRead, out var stderrWrite, inheritRead: false);
         var attributes = IntPtr.Zero;
         var handles = IntPtr.Zero;
+        var started = false;
         try
         {
             var size = IntPtr.Zero;
@@ -196,11 +191,23 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
             var processHandle = new SafeProcessHandle(process.hProcess, ownsHandle: true);
             using var thread = new SafeProcessHandle(process.hThread, ownsHandle: true);
             var job = CreateJobObjectW(IntPtr.Zero, null);
-            var limits = new JobObjectExtendedLimitInformation { BasicLimitInformation = new JobObjectBasicLimitInformation { LimitFlags = 0x2000 } }; // kill on close
-            Check(!job.IsInvalid && SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobObjectExtendedLimitInformation>()));
-            Check(AssignProcessToJobObject(job, processHandle));
-            ResumeThread(thread);
+            try
+            {
+                var limits = new JobObjectExtendedLimitInformation { BasicLimitInformation = new JobObjectBasicLimitInformation { LimitFlags = 0x2000 } }; // kill on close
+                Check(!job.IsInvalid && SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobObjectExtendedLimitInformation>()));
+                Check(AssignProcessToJobObject(job, processHandle));
+            }
+            catch
+            {
+                // Never leave a suspended child (or its handles) behind.
+                TerminateProcess(processHandle, 1);
+                processHandle.Dispose();
+                job.Dispose();
+                throw;
+            }
 
+            ResumeThread(thread);
+            started = true;
             return new WindowsAgentProcess(
                 process.dwProcessId,
                 processHandle,
@@ -215,6 +222,13 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
             stdinRead.Dispose();
             stdoutWrite.Dispose();
             stderrWrite.Dispose();
+            if (!started)
+            {
+                stdinWrite.Dispose();
+                stdoutRead.Dispose();
+                stderrRead.Dispose();
+            }
+
             if (attributes != IntPtr.Zero)
             {
                 DeleteProcThreadAttributeList(attributes);
@@ -244,6 +258,8 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
         _job.Dispose();
         _process.Dispose();
     }
+
+    private static readonly char[] CmdSpecial = [' ', '\t', '"', '&', '|', '<', '>', '^', '(', ')', ',', ';', '=', '!'];
 
     /// <summary>A bare name ("dotnet") is looked up on the PATH, like the shell (and Process.Start) would.</summary>
     private static string Resolve(string command)
@@ -309,10 +325,25 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
         return block.Append('\0').ToString();
     }
 
-    /// <summary>Quotes one argument the way the C runtime parses command lines.</summary>
-    private static string Quote(string argument)
+    /// <summary>
+    /// The program to start and its command line. Scripts (e.g. npx.cmd, copilot.cmd) run through cmd.exe:
+    /// /s /c "&lt;whole command&gt;" keeps their quoting intact, and every argument with a character cmd.exe treats
+    /// specially (&amp; | &lt; &gt; ^ ( ) and so on) is quoted so it stays one plain argument.
+    /// </summary>
+    internal static (string Application, string CommandLine) CommandLine(string executable, IEnumerable<string> arguments)
     {
-        if (argument.Length > 0 && argument.IndexOfAny([' ', '\t', '"']) < 0)
+        var extension = Path.GetExtension(executable);
+        var script = extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase) || extension.Equals(".bat", StringComparison.OrdinalIgnoreCase);
+        var command = string.Join(' ', new[] { executable }.Concat(arguments).Select(a => Quote(a, script)));
+        return script
+            ? (Path.Combine(Environment.SystemDirectory, "cmd.exe"), $"cmd.exe /d /s /c \"{command}\"")
+            : (executable, command);
+    }
+
+    /// <summary>Quotes one argument the way the C runtime parses command lines.</summary>
+    private static string Quote(string argument, bool forCmd)
+    {
+        if (argument.Length > 0 && argument.IndexOfAny(forCmd ? CmdSpecial : [' ', '\t', '"']) < 0)
         {
             return argument;
         }
@@ -464,6 +495,10 @@ internal sealed partial class WindowsAgentProcess : IAgentProcess
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetInformationJobObject(SafeFileHandle job, int infoClass, ref JobObjectExtendedLimitInformation info, int length);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateProcess(SafeProcessHandle process, uint exitCode);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

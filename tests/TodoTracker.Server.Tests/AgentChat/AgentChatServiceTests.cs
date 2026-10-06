@@ -24,7 +24,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         Directory.Delete(_dir, recursive: true);
     }
 
-    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true, bool httpOnly = false, string? crashOnce = null)
+    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true, bool httpOnly = false, string? crashOnce = null, bool noSession = false)
     {
         var catalog = new AgentCatalog(searchPath: _dir);
         if (withAgent)
@@ -33,7 +33,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
             catalog.Extra.Add((new AgentOption("fake", "Fake agent", true, null), work => fake with
             {
                 WorkingDirectory = work,
-                Environment = new Dictionary<string, string?> { ["FAKE_ACP_LOG"] = Log, ["FAKE_ACP_HTTP"] = httpOnly ? "1" : null, ["FAKE_ACP_CRASH_ONCE"] = crashOnce },
+                Environment = new Dictionary<string, string?> { ["FAKE_ACP_LOG"] = Log, ["FAKE_ACP_HTTP"] = httpOnly ? "1" : null, ["FAKE_ACP_CRASH_ONCE"] = crashOnce, ["FAKE_ACP_NO_SESSION"] = noSession ? "1" : null },
             }));
         }
 
@@ -270,6 +270,165 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         await _chat.SendAsync("hi").WaitAsync(Timeout);
 
         Assert.True(updates >= 3, $"{updates} updates");
+    }
+
+    [Fact]
+    public async Task A_shell_command_that_mentions_a_todo_tracker_tool_still_asks()
+    {
+        // Review finding: tool names were found anywhere in the request (even in the command), so this was allowed.
+        var turn = _chat.SendAsync("sneaky");
+        var ask = await WaitForPermission();
+
+        Assert.Equal(["allow", "reject"], ask.Choices);
+        await _chat.AnswerAsync(ask.Id, "reject");
+        await turn.WaitAsync(Timeout);
+        Assert.Equal("reject-once", LastAgentText());
+    }
+
+    [Fact]
+    public async Task A_tool_with_our_name_from_another_server_is_not_ours()
+    {
+        var turn = _chat.SendAsync("imposter");
+        var ask = await WaitForPermission();
+
+        Assert.Equal(["allow", "reject"], ask.Choices);
+        await _chat.AnswerAsync(ask.Id, "reject");
+        await turn.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task Claude_style_names_for_our_read_only_tools_need_no_permission()
+    {
+        await _chat.SendAsync("claude").WaitAsync(Timeout);
+
+        Assert.Equal("allow-once", LastAgentText());
+        Assert.DoesNotContain(_chat.State.Entries, e => e.Kind == "permission");
+    }
+
+    [Fact]
+    public async Task Allowing_changes_for_the_chat_never_allows_shell_commands()
+    {
+        var turn = _chat.SendAsync("add Milk");
+        await _chat.AnswerAsync((await WaitForPermission()).Id, "allow-chat");
+        await turn.WaitAsync(Timeout);
+
+        turn = _chat.SendAsync("sneaky");
+        var ask = await WaitForPermission();
+        await _chat.AnswerAsync(ask.Id, "reject");
+        await turn.WaitAsync(Timeout);
+
+        Assert.Equal("reject-once", LastAgentText());
+    }
+
+    [Fact]
+    public async Task An_answer_is_shown_as_soon_as_it_is_given()
+    {
+        // Review finding: the POST's state could still show the question waiting and overwrite the newer one.
+        var turn = _chat.SendAsync("add Milk");
+        var ask = await WaitForPermission();
+
+        await _chat.AnswerAsync(ask.Id, "reject");
+
+        Assert.Equal("rejected", _chat.State.Entries.Single(e => e.Id == ask.Id).Status);
+        await turn.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task Every_state_has_a_newer_version_so_screens_can_drop_late_ones()
+    {
+        var first = _chat.State.Version;
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        Assert.True(_chat.State.Version > first);
+    }
+
+    [Fact]
+    public async Task A_request_without_choices_is_refused_and_the_chat_goes_on()
+    {
+        await _chat.SendAsync("badask").WaitAsync(Timeout);
+
+        Assert.Equal("refused", LastAgentText());
+        Assert.Equal("ready", _chat.State.Status);
+    }
+
+    [Fact]
+    public async Task Odd_messages_from_the_agent_do_not_stop_the_chat()
+    {
+        // Review finding: one numeric messageId stopped all reading until the 15-minute turn timeout.
+        await _chat.SendAsync("garbage").WaitAsync(Timeout);
+
+        Assert.EndsWith("still here", LastAgentText(), StringComparison.Ordinal);
+        Assert.Equal("ready", _chat.State.Status);
+    }
+
+    [Fact]
+    public async Task Updates_for_another_session_are_ignored()
+    {
+        await _chat.SendAsync("elsewhere").WaitAsync(Timeout);
+
+        Assert.DoesNotContain(_chat.State.Entries, e => e.Text.Contains("LEAK", StringComparison.Ordinal));
+        Assert.Equal("ok", LastAgentText());
+    }
+
+    [Fact]
+    public async Task A_new_chat_while_answering_stops_the_answer_first()
+    {
+        // Review finding: the old turn kept running into the new chat and both answers were mixed.
+        var turn = _chat.SendAsync("slow");
+        await WaitFor(() => _chat.State.Status == "busy" && _chat.State.Entries.Any(e => e.Kind == "agent"));
+
+        await _chat.NewChatAsync().WaitAsync(Timeout);
+        Assert.True(turn.IsCompleted);
+        Assert.Empty(_chat.State.Entries);
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        Assert.Equal(["user", "agent"], _chat.State.Entries.Select(e => e.Kind));
+        Assert.Equal("Hello, there.", LastAgentText());
+        Assert.Equal("ready", _chat.State.Status);
+    }
+
+    [Fact]
+    public async Task Switching_agents_while_answering_stops_the_answer_first()
+    {
+        var turn = _chat.SendAsync("slow");
+        await WaitFor(() => _chat.State.Status == "busy" && _chat.State.Entries.Any(e => e.Kind == "agent"));
+
+        await _chat.SelectAsync("fake").WaitAsync(Timeout);
+
+        Assert.True(turn.IsCompleted);
+        Assert.Equal("idle", _chat.State.Status);
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+        Assert.Equal("Hello, there.", LastAgentText());
+    }
+
+    [Fact]
+    public async Task A_session_the_agent_could_not_start_is_an_error_not_stuck_starting()
+    {
+        // Review finding: an unexpected exception left the chat "starting" for good.
+        await _chat.DisposeAsync();
+        _chat = Create(noSession: true);
+
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+
+        Assert.Equal("error", _chat.State.Status);
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+        Assert.Equal("error", _chat.State.Status);
+    }
+
+    [Fact]
+    public async Task Installed_agents_are_looked_up_once_not_for_every_update()
+    {
+        // Review finding: every streamed chunk searched the whole PATH (70 ms each) while holding the chat's lock.
+        var catalog = new AgentCatalog(searchPath: _dir);
+        await using var chat = new AgentChatService(catalog, new AgentChatOptions { WorkDirectory = Path.Combine(_dir, "work") });
+        Assert.Null(chat.State.Agent);
+
+        catalog.Extra.Add((new AgentOption("late", "Late agent", true, null), work => AcpConnectionTests.FakeAgent()));
+        Assert.DoesNotContain(chat.State.Agents, a => a.Id == "late");
+
+        chat.RefreshAgents();
+        Assert.Contains(chat.State.Agents, a => a.Id == "late");
+        Assert.Equal("late", chat.State.Agent);
     }
 
     private static async Task WaitFor(Func<bool> condition)

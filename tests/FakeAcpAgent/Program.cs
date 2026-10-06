@@ -1,8 +1,11 @@
 // A scripted ACP agent for tests. It speaks JSON-RPC over stdio like `copilot --acp --stdio` and reacts to words in
-// the prompt: "crash", "slow" (waits for session/cancel), "add <title>" (asks permission to edit), "read" (asks
-// permission for a read-only tool), "shell" (asks to run a command), "spawn" (starts a child process), "stderr"
-// (floods stderr), anything else (a two-part greeting). Every message is written in two pieces to test framing.
-// FAKE_ACP_LOG=<file> appends every message it receives.
+// the prompt: "crash", "slow" (waits for session/cancel), "add <title>" (asks permission to edit, named the way
+// Copilot names our tools), "read" (a read-only tool), "shell" (asks to run a command), "sneaky" (a command that
+// mentions our tool names), "imposter" (another server's tool with our tool's name), "claude" (Claude's tool naming),
+// "badask" (a request without choices), "garbage" (odd message shapes), "elsewhere" (an update for another session),
+// "spawn" (starts a child process), "stderr" (floods stderr), anything else (a two-part greeting). Every message is
+// written in two pieces to test framing. FAKE_ACP_LOG=<file> appends every message it receives;
+// FAKE_ACP_NO_SESSION=1 answers session/new without a session id.
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -41,7 +44,7 @@ Task Update(string sessionId, JsonObject update) =>
 Task Chunk(string sessionId, string text, string messageId = "m1") =>
     Update(sessionId, new JsonObject { ["sessionUpdate"] = "agent_message_chunk", ["messageId"] = messageId, ["content"] = new JsonObject { ["type"] = "text", ["text"] = text } });
 
-async Task<JsonNode?> Ask(string sessionId, string title, string kind, JsonObject? rawInput = null)
+async Task<JsonNode?> Ask(string sessionId, string title, string kind, JsonObject? rawInput = null, string? announced = null, string? announcedKind = null, bool withOptions = true)
 {
     var id = Interlocked.Increment(ref nextId);
     var answer = new TaskCompletionSource<JsonNode?>();
@@ -50,28 +53,25 @@ async Task<JsonNode?> Ask(string sessionId, string title, string kind, JsonObjec
         pending[id] = answer;
     }
 
+    // Like Copilot: the tool_call update names the tool with its server ("todo-tracker-create_task"); the permission
+    // request for the same toolCallId carries only the bare tool name and kind "other".
     var toolCall = new JsonObject { ["toolCallId"] = $"call{id}", ["title"] = title, ["kind"] = kind, ["status"] = "pending" };
     if (rawInput is not null)
     {
         toolCall["rawInput"] = rawInput.DeepClone();
     }
 
-    await Update(sessionId, new JsonObject { ["sessionUpdate"] = "tool_call", ["toolCallId"] = $"call{id}", ["title"] = title, ["kind"] = kind, ["status"] = "pending" });
-    await Send(new JsonObject
+    await Update(sessionId, new JsonObject { ["sessionUpdate"] = "tool_call", ["toolCallId"] = $"call{id}", ["title"] = announced ?? title, ["kind"] = announcedKind ?? kind, ["status"] = "pending" });
+    var request = new JsonObject { ["sessionId"] = sessionId, ["toolCall"] = toolCall };
+    if (withOptions)
     {
-        ["jsonrpc"] = "2.0",
-        ["id"] = id,
-        ["method"] = "session/request_permission",
-        ["params"] = new JsonObject
-        {
-            ["sessionId"] = sessionId,
-            ["toolCall"] = toolCall,
-            ["options"] = new JsonArray(
-                new JsonObject { ["optionId"] = "allow-once", ["name"] = "Allow once", ["kind"] = "allow_once" },
-                new JsonObject { ["optionId"] = "allow-always", ["name"] = "Always allow", ["kind"] = "allow_always" },
-                new JsonObject { ["optionId"] = "reject-once", ["name"] = "Reject", ["kind"] = "reject_once" }),
-        },
-    });
+        request["options"] = new JsonArray(
+            new JsonObject { ["optionId"] = "allow-once", ["name"] = "Allow once", ["kind"] = "allow_once" },
+            new JsonObject { ["optionId"] = "allow-always", ["name"] = "Always allow", ["kind"] = "allow_always" },
+            new JsonObject { ["optionId"] = "reject-once", ["name"] = "Reject", ["kind"] = "reject_once" });
+    }
+
+    await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["method"] = "session/request_permission", ["params"] = request });
     var result = await answer.Task;
     var outcome = result?["outcome"];
     var allowed = outcome?["outcome"]?.GetValue<string>() == "selected" && outcome["optionId"]?.GetValue<string>()?.StartsWith("allow", StringComparison.Ordinal) == true;
@@ -102,10 +102,58 @@ async Task<string> Prompt(string sessionId, string text)
         return "cancelled";
     }
 
+    if (text.Contains("sneaky", StringComparison.OrdinalIgnoreCase))
+    {
+        // A shell command that mentions one of Todo Tracker's tool names must still ask.
+        var answer = await Ask(sessionId, "Run shell command", "execute", new JsonObject { ["command"] = "Remove-Item -Recurse $HOME\\Documents  # list_tasks get_dashboard" });
+        await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
+        return "end_turn";
+    }
+
+    if (text.Contains("imposter", StringComparison.OrdinalIgnoreCase))
+    {
+        // Another MCP server's tool with the same name as ours is not ours.
+        var answer = await Ask(sessionId, "create_task", "other", announced: "other-server-create_task", announcedKind: "edit");
+        await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
+        return "end_turn";
+    }
+
+    if (text.Contains("claude", StringComparison.OrdinalIgnoreCase))
+    {
+        // Claude Code names MCP tools mcp__<server>__<tool>.
+        var answer = await Ask(sessionId, "mcp__todo-tracker__get_dashboard", "other");
+        await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
+        return "end_turn";
+    }
+
+    if (text.Contains("badask", StringComparison.OrdinalIgnoreCase))
+    {
+        var answer = await Ask(sessionId, "create_task", "other", announced: "todo-tracker-create_task", withOptions: false);
+        await Chunk(sessionId, answer is null ? "refused" : "answered");
+        return "end_turn";
+    }
+
+    if (text.Contains("garbage", StringComparison.OrdinalIgnoreCase))
+    {
+        // Odd shapes must not stop the client from reading the rest.
+        await Update(sessionId, new JsonObject { ["sessionUpdate"] = "agent_message_chunk", ["messageId"] = 42, ["content"] = new JsonObject { ["type"] = "text", ["text"] = 7 } });
+        await Send(new JsonObject { ["jsonrpc"] = "2.0", ["method"] = "session/update", ["params"] = new JsonObject { ["sessionId"] = sessionId, ["update"] = "nope" } });
+        await Send(new JsonObject { ["jsonrpc"] = "2.0", ["method"] = "session/update", ["params"] = 5 });
+        await Chunk(sessionId, "still here");
+        return "end_turn";
+    }
+
+    if (text.Contains("elsewhere", StringComparison.OrdinalIgnoreCase))
+    {
+        await Chunk("another-session", "LEAK");
+        await Chunk(sessionId, "ok");
+        return "end_turn";
+    }
+
     if (text.IndexOf("add ", StringComparison.OrdinalIgnoreCase) is var at and >= 0)
     {
         var title = text[(at + 4)..].Trim();
-        var answer = await Ask(sessionId, "todo-tracker: create_task", "edit", new JsonObject { ["title"] = title });
+        var answer = await Ask(sessionId, "create_task", "other", new JsonObject { ["title"] = title }, announced: "todo-tracker-create_task", announcedKind: "edit");
         var outcome = answer?["outcome"];
         if (outcome?["outcome"]?.GetValue<string>() == "cancelled")
         {
@@ -119,7 +167,7 @@ async Task<string> Prompt(string sessionId, string text)
 
     if (text.Contains("read", StringComparison.OrdinalIgnoreCase))
     {
-        await Ask(sessionId, "todo-tracker: get_dashboard", "read");
+        await Ask(sessionId, "get_dashboard", "other", announced: "todo-tracker-get_dashboard", announcedKind: "read");
         await Chunk(sessionId, "You have 3 things to do.");
         return "end_turn";
     }
@@ -206,6 +254,12 @@ while (await stdin.ReadLineAsync() is { } line)
             {
                 await File.WriteAllTextAsync(marker, "crashed");
                 Environment.Exit(unchecked((int)0xC0000005));
+            }
+
+            if (Environment.GetEnvironmentVariable("FAKE_ACP_NO_SESSION") == "1")
+            {
+                await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject() });
+                break;
             }
 
             await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject { ["sessionId"] = $"sess-{++sessions}" } });

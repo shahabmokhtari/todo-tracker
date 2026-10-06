@@ -16,13 +16,16 @@ export function activate(host) {
   const { h, icon } = host;
   let source = null;
   let lastStatus = null;
+  // States can arrive out of order (a POST's reply after a newer streamed one): only newer ones are shown.
+  let shown = 0;
+  let busy = false;
 
   const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
   const status = h('div', { class: 'chat-status muted small' });
   const picker = h('select', { class: 'chat-picker', 'aria-label': 'Agent', onchange: () => run(host.post(`${base}/select`, { agent: picker.value })) });
   const input = h('textarea', {
     rows: 2, maxlength: 8000, class: 'chat-input', 'aria-label': 'Message', placeholder: 'Ask anything – e.g. “add: call the bank tomorrow, renew passport !!”',
-    onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } },
+    onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!busy) send(); } },
   });
   const sendButton = h('button', { class: 'btn primary', type: 'button', title: 'Send (Enter)', onclick: () => send() }, icon('send', { size: 16 }), 'Send');
   const stopButton = h('button', { class: 'btn', type: 'button', hidden: true, title: 'Stop the answer', onclick: () => run(host.post(`${base}/cancel`)) }, icon('stop', { size: 14 }), 'Stop');
@@ -75,7 +78,8 @@ export function activate(host) {
   }
 
   function render(state) {
-    if (!state) return;
+    if (!state || (state.version ?? 0) <= shown) return;
+    shown = state.version ?? 0;
     const installed = state.agents.filter((a) => a.installed);
     picker.replaceChildren(...installed.map((a) => h('option', { value: a.id, selected: a.id === state.agent }, a.name)));
     picker.hidden = installed.length < 2;
@@ -90,11 +94,14 @@ export function activate(host) {
       log.replaceChildren(...state.entries.map(entry));
     }
     if (atBottom) log.scrollTop = log.scrollHeight;
-    const busy = state.status === 'busy' || state.status === 'starting';
+    busy = state.status === 'busy' || state.status === 'starting';
     status.textContent = state.status === 'error' ? (state.problem ?? 'The agent stopped.') : statusText[state.status] ?? '';
     status.classList.toggle('error', state.status === 'error');
     stopButton.hidden = !busy;
     sendButton.disabled = busy || !installed.length;
+    // Starting over or switching agents waits for the answer: stop it first.
+    newButton.disabled = busy;
+    picker.disabled = busy;
     input.disabled = !installed.length;
     // When an answer finishes, the board may have new or changed tasks.
     if (lastStatus === 'busy' && state.status !== 'busy') host.refresh();
@@ -108,6 +115,8 @@ export function activate(host) {
     });
     if (!opened) return;
     source?.close();
+    shown = 0;
+    run(host.api(base)); // also looks for newly installed agents
     source = new EventSource(`${base}/stream`);
     source.addEventListener('state', (e) => render(JSON.parse(e.data)));
     input.focus();

@@ -32,9 +32,13 @@ What the agent can do:
   endpoint; agents that only support stdio get `tt mcp`.
 * **Reading your tasks needs no permission. Changing them asks first:** *Allow*, *Allow for this chat*, or
   *Don't allow*. Anything else (commands, files) always asks, and an unanswered question is refused after 5 minutes.
+  A request counts as Todo Tracker's only when the tool is named the way agents name this server's tools
+  (`todo-tracker-<tool>` for Copilot, `mcp__todo-tracker__<tool>` for Claude) and it isn't a command, delete or move;
+  a tool name mentioned anywhere else (say, inside a command) never counts. Only "once" choices are sent to the agent,
+  so nothing is remembered beyond the chat.
 * It runs in its own working folder (`<data>/agent-chat/work`), not in your tasks folder. Copilot gets its own Copilot
-  home there (without your personal MCP servers and plugins); it still signs in with `gh`, and falls back to your
-  normal Copilot settings if that sign-in fails.
+  home there (without your personal MCP servers and plugins); it still signs in with `gh`. If Copilot answers that it
+  isn't signed in that way, the chat switches to your normal Copilot settings and says so.
 * If the agent crashes while starting, Todo Tracker tries again and then says what happened (with the exit code).
 
 ## Adding a plugin (developers)

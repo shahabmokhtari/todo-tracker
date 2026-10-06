@@ -289,7 +289,15 @@ public sealed class AcpConnection : IAsyncDisposable
         var method = methodElement.GetString()!;
         if (!hasId)
         {
-            Notification?.Invoke(method, parameters);
+            try
+            {
+                Notification?.Invoke(method, parameters);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // A message the handler couldn't take must never stop us reading the ones after it.
+            }
+
             return;
         }
 
@@ -314,8 +322,9 @@ public sealed class AcpConnection : IAsyncDisposable
         {
             reply["error"] = new JsonObject { ["code"] = -32601, ["message"] = $"{method} isn't supported." };
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OperationCanceledException or JsonException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            // Every request gets an answer, or the agent waits for it forever.
             reply["error"] = new JsonObject { ["code"] = -32603, ["message"] = ex.Message };
         }
 

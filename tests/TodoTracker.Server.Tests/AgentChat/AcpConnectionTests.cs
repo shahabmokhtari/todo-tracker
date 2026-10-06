@@ -52,7 +52,7 @@ public sealed class AcpConnectionTests : IAsyncLifetime
         _agent.RequestHandler = (method, p, _) =>
         {
             Assert.Equal("session/request_permission", method);
-            Assert.Equal("edit", p.GetProperty("toolCall").GetProperty("kind").GetString());
+            Assert.Equal("other", p.GetProperty("toolCall").GetProperty("kind").GetString());
             return Task.FromResult<object?>(new { outcome = new { outcome = "selected", optionId = "allow-once" } });
         };
         var session = await NewSession();
@@ -148,6 +148,20 @@ public sealed class AcpConnectionTests : IAsyncLifetime
         {
             return false;
         }
+    }
+
+    [Fact]
+    public void Script_arguments_with_cmd_characters_stay_one_plain_argument()
+    {
+        // Review finding: copilot.cmd runs through cmd.exe, where an unquoted "&" in a path (C:\Users\R&D) splits the command.
+        var (application, line) = WindowsAgentProcess.CommandLine(@"C:\npm\copilot.cmd", ["--log-dir", @"C:\Users\R&D\logs", "--acp"]);
+
+        Assert.EndsWith("cmd.exe", application, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("cmd.exe /d /s /c \"C:\\npm\\copilot.cmd --log-dir \"C:\\Users\\R&D\\logs\" --acp\"", line);
+
+        var (exe, direct) = WindowsAgentProcess.CommandLine(@"C:\bin\agent.exe", [@"C:\R&D", "a b"]);
+        Assert.Equal(@"C:\bin\agent.exe", exe);
+        Assert.Equal("C:\\bin\\agent.exe C:\\R&D \"a b\"", direct);
     }
 
     private static async Task WaitFor(Func<bool> condition)
