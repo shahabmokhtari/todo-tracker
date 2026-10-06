@@ -12,6 +12,8 @@ public final class TaskBoard {
     public internal(set) var activity: [ActivityEntry] = []
     public internal(set) var groups: [TaskGroup] = []
     public internal(set) var pomodoro = PomodoroTimer()
+    /// The Do now order the person arranged (tasks not listed slot in by the automatic rules).
+    public internal(set) var nowOrder: [UUID] = []
     private var index: [UUID: WorkItem] = [:]
 
     public init(seedDefaultGroups: Bool = true) {

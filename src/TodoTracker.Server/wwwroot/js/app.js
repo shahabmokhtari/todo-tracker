@@ -2,6 +2,7 @@ import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } f
 import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
+import { step, drop, beforeOf, changed } from './order.js';
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
@@ -154,7 +155,7 @@ function render() {
   $('#summary').textContent = summaryLine(d);
   renderTabs(d);
   renderFocus(d);
-  renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c)), d.now.length, 'Nothing else right now. Nice.');
+  renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c, { orderable: true })), d.now.length, 'Nothing else right now. Nice.');
   renderSection('#sec-waiting', d.waiting.map((c) => card(c, { waiting: true })), d.waiting.length, 'Nothing is parked.');
   // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
   const streams = d.overview.filter((o) => o.hasChildren);
@@ -164,6 +165,7 @@ function render() {
   renderProblems(d.problems ?? []);
   renderFilter();
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
+  if (state.refocus) focusOrderControl(state.refocus);
 }
 
 /** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
@@ -259,7 +261,145 @@ function renderFocus(d) {
     f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
     actions(f, { big: true }));
   el.style.setProperty('--prio', meta.color);
+  // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
+  sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
+  if (blockIds(f.id).length > 1) {
+    el.querySelector('.focus-top').append(h('button', {
+      class: 'icon-btn order-btn', type: 'button', 'aria-label': 'Do something else first', title: 'Do something else first (Alt+↓)',
+      onclick: () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id),
+    }, icon('down', { size: 16 })));
+  }
   $('#focus').replaceChildren(el);
+}
+
+// ---------- manual order (drag, arrows, Alt+↑/↓) ----------
+
+const nowIds = () => state.dashboard?.now.map((c) => c.id) ?? [];
+
+/**
+ * Tasks with a due reminder always come first, so moves stay within a block: the reminder block or the rest.
+ * (Moving a task above a reminder would just snap back.)
+ */
+function blockIds(id) {
+  const now = state.dashboard?.now ?? [];
+  const attention = now.find((c) => c.id === id)?.needsAttention ?? false;
+  return now.filter((c) => !!c.needsAttention === attention).map((c) => c.id);
+}
+
+/** Shows the new order of one block right away, then saves the whole Do now order (one save at a time). */
+function arrangeNow(blockOrder, movedId) {
+  const d = state.dashboard;
+  if (!d || !blockOrder.length) return;
+  const attention = d.now.find((c) => c.id === blockOrder[0])?.needsAttention ?? false;
+  const other = d.now.filter((c) => !!c.needsAttention !== attention).map((c) => c.id);
+  const ids = attention ? [...blockOrder, ...other] : [...other, ...blockOrder];
+  if (!changed(nowIds(), ids)) return;
+  const byId = new Map(d.now.map((c) => [c.id, c]));
+  d.now = ids.map((id) => byId.get(id)).filter(Boolean);
+  d.focus = d.now[0] ?? null;
+  state.refocus = movedId;
+  const drafts = collectNoteDrafts();
+  render();
+  restoreNoteDrafts(drafts);
+  saveOrder(ids);
+}
+
+let orderSaving = Promise.resolve();
+let pendingOrder = null;
+
+/** Saves the latest order; quick moves never race (the newest order is always the one saved last). */
+function saveOrder(ids) {
+  pendingOrder = ids;
+  orderSaving = orderSaving.then(async () => {
+    if (!pendingOrder) return;
+    const send = pendingOrder;
+    pendingOrder = null;
+    try {
+      await post('/api/now/order', { ids: send });
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    if (!pendingOrder) {
+      await refresh({ background: true });
+      state.refocus = null;
+    }
+  });
+}
+
+/** Keeps the keyboard on the moved task after a redraw, so Alt+↑ can be pressed again. */
+function focusOrderControl(id) {
+  if (!id) return;
+  const el = document.querySelector(`[data-order-id="${CSS.escape(id)}"]`);
+  (el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: true });
+}
+
+let dragging = null; // { id, scope }
+const DRAG_TYPE = 'application/x-todo-tracker-task';
+
+/**
+ * Makes `el` reorderable within its `scope`: drag it (or drop others on it), ↑/↓ buttons, and Alt+↑/Alt+↓.
+ * `ids()` is the current order; `onOrder(newIds, movedId)` applies a new one.
+ */
+function sortable(el, id, { scope, ids, onOrder, buttons = false, alwaysBefore = false }) {
+  el.dataset.orderId = id;
+  el.draggable = true;
+  el.classList.add('sortable');
+  const clear = () => el.classList.remove('drop-before', 'drop-after');
+  el.addEventListener('dragstart', (e) => {
+    if (e.target !== el) return;
+    dragging = { id, scope };
+    e.dataTransfer.effectAllowed = 'move';
+    // A private type: dropping a card on a text box must not paste its id.
+    e.dataTransfer.setData(DRAG_TYPE, id);
+    el.classList.add('dragging');
+  });
+  el.addEventListener('dragend', () => {
+    dragging = null;
+    el.classList.remove('dragging');
+    document.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+  });
+  const after = (e) => {
+    if (alwaysBefore) return false;
+    const r = el.getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2;
+  };
+  const accepts = () => dragging && dragging.scope === scope && dragging.id !== id && ids().includes(dragging.id);
+  el.addEventListener('dragover', (e) => {
+    if (!accepts()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    clear();
+    el.classList.add(after(e) ? 'drop-after' : 'drop-before');
+  });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) clear(); });
+  el.addEventListener('drop', (e) => {
+    if (!accepts()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clear();
+    const moved = dragging.id;
+    onOrder(drop(ids(), moved, id, after(e)), moved);
+  });
+  el.addEventListener('keydown', (e) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    // Typing in a note keeps Alt/Option+arrows for the text.
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onOrder(step(ids(), id, e.key === 'ArrowUp' ? -1 : 1), id);
+  });
+  if (!buttons) return null;
+  const current = ids();
+  const index = current.indexOf(id);
+  const arrow = (delta, iconName, name) => h('button', {
+    class: 'icon-btn order-btn', type: 'button', 'aria-label': name, title: `${name} (Alt+${delta < 0 ? '↑' : '↓'})`, disabled: index + delta < 0 || index + delta >= current.length,
+    onclick: (e) => { e.stopPropagation(); onOrder(step(ids(), id, delta), id); },
+  }, icon(iconName, { size: 14 }));
+  return h('span', { class: 'order' },
+    h('span', { class: 'grip', title: 'Drag to reorder', 'aria-hidden': 'true' }, icon('grip', { size: 14 })),
+    arrow(-1, 'up', 'Move up'),
+    arrow(1, 'down', 'Move down'));
 }
 
 function renderSection(selector, rows, count, emptyText) {
@@ -277,7 +417,7 @@ function renderSection(selector, rows, count, emptyText) {
 
 const chip = (c) => h('span', { class: `chip ${c.tone}` }, c.text);
 
-function card(c, { waiting = false } = {}) {
+function card(c, { waiting = false, orderable = false } = {}) {
   const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
@@ -287,6 +427,10 @@ function card(c, { waiting = false } = {}) {
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
+  if (orderable) {
+    const controls = sortable(li, c.id, { scope: 'now', ids: () => blockIds(c.id), onOrder: arrangeNow, buttons: true });
+    li.insertBefore(controls, li.lastElementChild); // before the actions
+  }
   return li;
 }
 
@@ -615,7 +759,7 @@ async function openDrawer(id) {
       h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks? (It goes to the vault's trash.)`)) { autosave.cancel(); closeDrawer(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
 
     section(`Subtasks${item.sequential ? ' · in order' : ''}`,
-      subtaskTree(item.children),
+      subtaskTree(item.children, id),
       h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (t) => post('/api/items', { title: t, parentId: id })); } }, subtaskInput, h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add')),
       h('details', null, h('summary', null, 'Steps in order & rollout steps'),
         h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
@@ -646,6 +790,7 @@ async function openDrawer(id) {
   drawer.dataset.itemId = id;
   drawer.hidden = false;
   restoreDrawerDraft(drawer, draft, noteInput);
+  if (state.refocus) focusOrderControl(state.refocus);
 
   // Drop files anywhere on the panel to attach them.
   drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
@@ -715,15 +860,29 @@ async function openConnect() {
   drawer.hidden = false;
 }
 
-function subtaskTree(children) {
+function subtaskTree(children, parentId) {
   if (!children.length) return h('p', { class: 'muted small' }, 'No subtasks yet.');
-  return h('ul', { class: 'subtasks' }, ...children.map((c) => h('li', { class: `sub ${c.state}` },
-    h('div', { class: 'sub-row' },
-      h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
-      h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
-      ...c.tags.map(tagChip),
-      h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c))),
-    c.children.length ? subtaskTree(c.children) : null)));
+  const order = () => children.map((c) => c.id);
+  // Reordering keeps each subtask under the same parent; the panel then refreshes (keeping what is being typed).
+  const reorder = async (ids, movedId) => {
+    if (!changed(order(), ids)) return;
+    state.refocus = movedId;
+    await act(post(`/api/items/${movedId}/reorder`, { before: beforeOf(ids, movedId) }));
+    state.refocus = null;
+  };
+  return h('ul', { class: 'subtasks' }, ...children.map((c) => {
+    const li = h('li', { class: `sub ${c.state}` });
+    const controls = sortable(li, c.id, { scope: `sub:${parentId}`, ids: order, onOrder: reorder, buttons: true });
+    li.append(
+      h('div', { class: 'sub-row' },
+        h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
+        h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
+        ...c.tags.map(tagChip),
+        h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c)),
+        controls),
+      c.children.length ? subtaskTree(c.children, c.id) : null);
+    return li;
+  }));
 }
 
 /** "Belongs to": move the task under another task or back to the top level. Options load on first use. */

@@ -116,6 +116,77 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Cards_move_up_and_down_and_the_top_one_becomes_the_focus()
+    {
+        await Seed("Alpha");
+        await Seed("Bravo");
+        await Seed("Charlie");
+        await _vm.RefreshAsync();
+        string[] Visible() => [_vm.Focus!.Title, .. _vm.Now.Select(c => c.Title)];
+
+        await _vm.MoveUpCommand.ExecuteAsync(_vm.Now.Single(c => c.Title == "Charlie"));
+        Assert.Equal(["Alpha", "Charlie", "Bravo"], Visible());
+
+        await _vm.MoveUpCommand.ExecuteAsync(_vm.Now.Single(c => c.Title == "Charlie"));
+        Assert.Equal(["Charlie", "Alpha", "Bravo"], Visible());
+
+        await _vm.MoveDownCommand.ExecuteAsync(_vm.Focus);
+        Assert.Equal(["Alpha", "Charlie", "Bravo"], Visible());
+        Assert.Equal(["Alpha", "Charlie", "Bravo"], await _store.ReadAsync(b => Agenda.Build(b, T0).Now.Select(e => e.Item.Title).ToList()));
+    }
+
+    [Fact]
+    public async Task A_dragged_card_lands_before_or_after_the_card_it_is_dropped_on()
+    {
+        await Seed("Alpha");
+        await Seed("Bravo");
+        await Seed("Charlie");
+        await _vm.RefreshAsync();
+        var charlie = _vm.Now.Single(c => c.Title == "Charlie");
+
+        await _vm.MoveCardAsync(charlie, _vm.Focus!, after: false);
+        Assert.Equal("Charlie", _vm.Focus!.Title);
+
+        await _vm.MoveCardAsync(_vm.Focus!, _vm.Now.Single(c => c.Title == "Bravo"), after: true);
+        Assert.Equal(["Alpha", "Bravo", "Charlie"], [_vm.Focus!.Title, .. _vm.Now.Select(c => c.Title)]);
+    }
+
+    [Fact]
+    public async Task Moves_stay_below_tasks_whose_reminder_is_due()
+    {
+        var urgent = await Seed("Reminder due");
+        await Seed("Plain");
+        await _store.UpdateAsync(b => b.AddReminder(urgent.Id, T0.AddMinutes(-1), "now", Actor.User, T0.AddMinutes(-2)));
+        await _vm.RefreshAsync();
+        var plain = _vm.Now.Single(c => c.Title == "Plain");
+
+        await _vm.MoveUpCommand.ExecuteAsync(plain);
+        await _vm.MoveCardAsync(plain, _vm.Focus!, after: false);
+
+        Assert.Equal("Reminder due", _vm.Focus!.Title);
+        Assert.False(_vm.CanMove(plain, -1));
+        Assert.False(_vm.CanMove(_vm.Focus!, 1));
+    }
+
+    [Fact]
+    public async Task Waiting_cards_cant_be_reordered()
+    {
+        await Seed("Now thing");
+        var later = await Seed("Later thing");
+        await _store.UpdateAsync(b =>
+        {
+            b.ScheduleNextAction(later.Id, T0.AddHours(2), Actor.User, T0);
+            return true;
+        });
+        await _vm.RefreshAsync();
+
+        Assert.False(_vm.Waiting.Single().CanReorder);
+        Assert.True(_vm.Focus!.CanReorder);
+        await _vm.MoveUpCommand.ExecuteAsync(_vm.Waiting.Single());
+        Assert.Equal("Now thing", _vm.Focus!.Title);
+    }
+
+    [Fact]
     public async Task Nothing_is_saved_while_still_typing()
     {
         var task = await Seed("Ship");

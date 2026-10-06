@@ -49,6 +49,12 @@ public sealed record GroupRequest(string? Name, string? Color = null);
 /// <summary>Move to another group (top-level tasks), under <c>ParentId</c>, or back to the top level, at <c>Index</c>.</summary>
 public sealed record MoveRequest(Guid? GroupId = null, Guid? ParentId = null, int? Index = null, bool ToTopLevel = false);
 
+/// <summary>Task ids in the order wanted (first = top of Do now).</summary>
+public sealed record OrderRequest(IReadOnlyList<Guid>? Ids);
+
+/// <summary>Put the task before this sibling (null: last).</summary>
+public sealed record ReorderRequest(Guid? Before = null);
+
 public sealed record LabelRequest(string? Name, string? Color = null);
 
 public sealed record RichRequest(string? Html);
@@ -262,6 +268,34 @@ internal static class ApiEndpoints
             Mutate(store, time, http, (b, now, actor) =>
             {
                 b.DismissReminder(id, reminderId, actor, now);
+                return b.Get(id);
+            }));
+
+        // Manual order: the Do now list as someone arranged it (drag, arrows), "put first", and sibling order.
+        api.MapPost("/now/order", async (OrderRequest request, IBoardStore store) =>
+        {
+            await store.UpdateAsync(b =>
+            {
+                b.ArrangeNow(request.Ids ?? []);
+                return true;
+            }).ConfigureAwait(false);
+            return Results.NoContent();
+        });
+
+        api.MapPost("/now/first", async (OrderRequest request, IBoardStore store, TimeProvider time) =>
+        {
+            await store.UpdateAsync(b =>
+            {
+                b.PutFirst(request.Ids ?? [], time.GetUtcNow());
+                return true;
+            }).ConfigureAwait(false);
+            return Results.NoContent();
+        });
+
+        api.MapPost("/items/{id:guid}/reorder", (Guid id, ReorderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+            Mutate(store, time, http, (b, _, _) =>
+            {
+                b.Reorder(id, request.Before);
                 return b.Get(id);
             }));
 

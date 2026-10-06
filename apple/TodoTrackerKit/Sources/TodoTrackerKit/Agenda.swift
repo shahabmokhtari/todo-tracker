@@ -81,16 +81,12 @@ public enum Agenda {
 
         func inScope(_ item: WorkItem) -> Bool { groupId == nil || item.groupId == groupId }
 
-        let nowList = nowAll.filter { inScope($0.entry.item) }.sorted { a, b in
-            let x = a.entry, y = b.entry
-            if x.needsAttention != y.needsAttention { return x.needsAttention }
-            if x.effectivePriority != y.effectivePriority { return x.effectivePriority > y.effectivePriority }
-            if x.isOverdue != y.isOverdue { return x.isOverdue }
-            let dx = x.item.deadline ?? .distantFuture, dy = y.item.deadline ?? .distantFuture
-            if dx != dy { return dx < dy }
-            if x.item.createdAt != y.item.createdAt { return x.item.createdAt < y.item.createdAt }
-            return a.offset < b.offset
-        }.map(\.entry)
+        // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
+        // (priority, overdue, deadline, age). Same rules as TodoTracker.Core.Agenda.
+        var rank: [UUID: Int] = [:]
+        for (i, id) in board.nowOrder.enumerated() where rank[id] == nil { rank[id] = i }
+        let scoped = nowAll.filter { inScope($0.entry.item) }
+        let nowList = arrange(scoped.filter { $0.entry.needsAttention }, rank: rank) + arrange(scoped.filter { !$0.entry.needsAttention }, rank: rank)
 
         let waitingList = waitingAll.filter { inScope($0.entry.item) }.sorted { a, b in
             let x = a.entry, y = b.entry
@@ -112,6 +108,26 @@ public enum Agenda {
                 .prefix(recentNoteCount))
 
         return Dashboard(focus: nowList.first, now: nowList, waiting: waitingList, overview: overview, recentNotes: notes, groupCounts: counts)
+    }
+
+    /// Negative when `x` comes first by the automatic rules, zero when they tie.
+    private static func compareAutomatic(_ x: AgendaEntry, _ y: AgendaEntry) -> Int {
+        if x.effectivePriority != y.effectivePriority { return x.effectivePriority > y.effectivePriority ? -1 : 1 }
+        if x.isOverdue != y.isOverdue { return x.isOverdue ? -1 : 1 }
+        let dx = x.item.deadline ?? .distantFuture, dy = y.item.deadline ?? .distantFuture
+        if dx != dy { return dx < dy ? -1 : 1 }
+        if x.item.createdAt != y.item.createdAt { return x.item.createdAt < y.item.createdAt ? -1 : 1 }
+        return 0
+    }
+
+    /// Placed tasks in the person's order, then the others in the automatic order.
+    private static func arrange(_ entries: [(offset: Int, entry: AgendaEntry)], rank: [UUID: Int]) -> [AgendaEntry] {
+        let placed = entries.filter { rank[$0.entry.item.id] != nil }.sorted { (rank[$0.entry.item.id] ?? 0) < (rank[$1.entry.item.id] ?? 0) }
+        let others = entries.filter { rank[$0.entry.item.id] == nil }.sorted { a, b in
+            let c = compareAutomatic(a.entry, b.entry)
+            return c != 0 ? c < 0 : a.offset < b.offset
+        }
+        return placed.map(\.entry) + others.map(\.entry)
     }
 
     private static func isAfter(_ date: Date?, _ now: Date) -> Bool {

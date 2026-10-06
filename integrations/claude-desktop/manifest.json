@@ -50,6 +50,7 @@
     { "name": "reopen_task", "description": "Undo a completion" },
     { "name": "update_task", "description": "Change title, details, priority, deadline, tags or labels" },
     { "name": "move_task", "description": "Reorganize tasks" },
+    { "name": "put_first", "description": "Put tasks at the top of Do now" },
     { "name": "list_labels", "description": "The curated labels" },
     { "name": "attach_text", "description": "Attach a text file to a task" },
     { "name": "get_rich_html", "description": "Read a task's rich HTML version" },

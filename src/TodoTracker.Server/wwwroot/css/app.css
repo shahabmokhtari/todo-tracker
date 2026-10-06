@@ -717,3 +717,16 @@ button.focus-title:hover { color: var(--accent); }
 .connect summary { cursor: pointer; font-weight: 600; }
 .connect[open] summary { margin-bottom: 6px; }
 .snippet { margin: 8px 0; padding: 10px 12px; border-radius: 8px; background: rgba(127, 127, 127, .12); overflow-x: auto; white-space: pre-wrap; word-break: break-all; user-select: all; }
+
+/* ---------- manual order: drag, arrows, Alt+↑/↓ ---------- */
+.sortable { position: relative; }
+.sortable.dragging { opacity: .45; }
+.sortable.drop-before { box-shadow: inset 0 3px 0 var(--accent, #6366f1); }
+.sortable.drop-after { box-shadow: inset 0 -3px 0 var(--accent, #6366f1); }
+.order { display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity .15s; }
+.sortable:hover > .order, .sortable:focus-within > .order, .sortable:hover > .sub-row > .order, .sortable:focus-within > .sub-row > .order { opacity: 1; }
+.order .grip { cursor: grab; color: var(--text-3, #94a3b8); display: inline-flex; padding: 2px; }
+.order .order-btn { width: 26px; height: 26px; }
+.order .order-btn:disabled { opacity: .3; cursor: default; }
+.sub-row .order { margin-left: auto; }
+@media (hover: none) { .order { opacity: 1; } }

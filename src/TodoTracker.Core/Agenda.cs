@@ -82,13 +82,11 @@ public static class Agenda
         // Group tabs keep their totals; the filter narrows only what is listed.
         bool InScope(WorkItem item) => (groupId is null || item.GroupId == groupId) && (filter is null || filter.IsEmpty || filter.Matches(item, board));
 
-        var nowList = nowAll.Where(e => InScope(e.Item))
-            .OrderByDescending(e => e.NeedsAttention)
-            .ThenByDescending(e => e.EffectivePriority)
-            .ThenByDescending(e => e.IsOverdue)
-            .ThenBy(e => e.Item.Deadline ?? DateTimeOffset.MaxValue)
-            .ThenBy(e => e.Item.CreatedAt)
-            .ToList();
+        // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
+        // (priority, overdue, deadline, age). New tasks never jump above what someone arranged.
+        var rank = board.NowOrder.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+        var scoped = nowAll.Where(e => InScope(e.Item)).ToList();
+        var nowList = Arrange(scoped.Where(e => e.NeedsAttention), rank).Concat(Arrange(scoped.Where(e => !e.NeedsAttention), rank)).ToList();
 
         var waitingList = waitingAll.Where(e => InScope(e.Item))
             .OrderBy(e => e.WakeAt)
@@ -107,6 +105,30 @@ public static class Agenda
                 .ToList();
 
         return new DashboardSnapshot(nowList.FirstOrDefault(), nowList, waitingList, overview, notes, counts);
+    }
+
+    private static int CompareAutomatic(AgendaEntry x, AgendaEntry y)
+    {
+        var c = y.EffectivePriority.CompareTo(x.EffectivePriority);
+        if (c == 0)
+        {
+            c = y.IsOverdue.CompareTo(x.IsOverdue);
+        }
+
+        if (c == 0)
+        {
+            c = (x.Item.Deadline ?? DateTimeOffset.MaxValue).CompareTo(y.Item.Deadline ?? DateTimeOffset.MaxValue);
+        }
+
+        return c != 0 ? c : x.Item.CreatedAt.CompareTo(y.Item.CreatedAt);
+    }
+
+    /// <summary>Placed tasks in the person's order, then the others in the automatic order.</summary>
+    private static IEnumerable<AgendaEntry> Arrange(IEnumerable<AgendaEntry> entries, Dictionary<Guid, int> rank)
+    {
+        var list = entries.ToList();
+        return list.Where(e => rank.ContainsKey(e.Item.Id)).OrderBy(e => rank[e.Item.Id])
+            .Concat(list.Where(e => !rank.ContainsKey(e.Item.Id)).Order(Comparer<AgendaEntry>.Create(CompareAutomatic)));
     }
 
     private static AgendaEntry Describe(WorkItem item, DateTimeOffset now)

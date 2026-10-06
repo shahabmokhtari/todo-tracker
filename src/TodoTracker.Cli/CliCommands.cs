@@ -23,6 +23,7 @@ internal static class CliCommands
         new CliCommand("show", "tt show <task>", "A task with its subtasks, notes and file", null, Show),
         new CliCommand("done", "tt done <task> | tt done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as tt prints them); words are one task's title.", Done),
         new CliCommand("reopen", "tt reopen <task>", "Undo done", null, Reopen),
+        new CliCommand("first", "tt first <task> | tt first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
         new CliCommand("note", "tt note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
         new CliCommand("snooze", "tt snooze <task> <when>", "Defer a task until later (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30", Snooze),
         new CliCommand("edit", "tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none]", "Change a task", null, Edit),
@@ -164,6 +165,20 @@ internal static class CliCommands
         {
             await s.Print(done, (o, items) => items.ForEach(i => o.Changed("Done", i))).ConfigureAwait(false);
         }
+    }
+
+    private static async Task First(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        _ = a.Word(0, "which task");
+        IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
+        await s.Store.UpdateAsync(b =>
+        {
+            b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Now);
+            return true;
+        }).ConfigureAwait(false);
+        var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, null, 5, s.Links)).ConfigureAwait(false);
+        await s.Print(dashboard, (o, d) => o.Dashboard(d)).ConfigureAwait(false);
     }
 
     private static async Task Reopen(CliSession s, CliArgs a)

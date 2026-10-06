@@ -678,6 +678,25 @@ public sealed class VaultStoreTests : IDisposable
         Assert.Single(await store.ReadAsync(b => b.Activity.Where(e => e.ItemId == flights && e.Kind == ActivityKind.Completed).ToList()));
     }
 
+    [Fact]
+    public async Task The_do_now_order_is_shared_and_survives_reopening()
+    {
+        var a = Open();
+        var b = Open();
+        var first = await Add(a, "First");
+        var second = await Add(a, "Second");
+
+        await a.UpdateAsync(x =>
+        {
+            x.ArrangeNow([second.Id, first.Id]);
+            return true;
+        });
+
+        Assert.Equal([second.Id, first.Id], await b.ReadAsync(x => x.NowOrder.ToList()));
+        a.Dispose();
+        Assert.Equal("Second", await Open().ReadAsync(x => Agenda.Build(x, T0).Focus!.Item.Title));
+    }
+
     // ---- Files and folders --------------------------------------------------------------
 
     [Fact]

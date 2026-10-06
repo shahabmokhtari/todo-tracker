@@ -131,6 +131,7 @@ tt show passport                    a task with subtasks, notes and its markdown
 tt note passport 'Booked appointment for Tuesday'   (or tt note passport - to read it from stdin)
 tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30
 tt done Renew passport              finish (several at once by id: tt done a1b2c3 d4e5f6)
+tt first call the bank              put it at the top of Do now (it becomes the focus)
 tt steps rollout "Ring 0" "Ring 1" --delay 24
 tt edit passport --priority high --due none
 tt tag passport +travel -admin      tt label passport "+Deep work"
@@ -157,6 +158,7 @@ make big things small, log progress, defer instead of piling up, never delete). 
 | `add_note`, `attach_text`, `set_rich_html` | Log progress; attach text; a rich HTML version for tables and layouts |
 | `schedule_next_action`, `add_reminder` | Defer and remind |
 | `complete_task`, `reopen_task`, `update_task`, `move_task` | Finish, undo, change, reorganize |
+| `put_first` | Put tasks at the top of Do now (when the user says what matters most) |
 | `list_labels`, `vault_info`, `get_report` | Labels, where the files are (and their format), the timeline |
 | `task_history`, `restore_task_version` | Every change is a version; put a task back |
 

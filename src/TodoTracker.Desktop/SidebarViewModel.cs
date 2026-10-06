@@ -180,6 +180,73 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return $"Snoozed: {request.Option.Label.ToLowerInvariant()}";
     });
 
+    /// <summary>The Do now order as shown: the focus card, then the rest.</summary>
+    private List<CardViewModel> VisibleNow() => (Focus is null ? Now : Now.Prepend(Focus)).DistinctBy(c => c.Id).ToList();
+
+    /// <summary>Cards whose reminder is due always come first, so a card moves only within its block.</summary>
+    private List<Guid> BlockOf(CardViewModel card) => VisibleNow().Where(c => c.NeedsAttention == card.NeedsAttention).Select(c => c.Id).ToList();
+
+    /// <summary>Whether <paramref name="card"/> can move up (-1) or down (+1).</summary>
+    public bool CanMove(CardViewModel card, int delta)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        var block = BlockOf(card);
+        var to = block.IndexOf(card.Id) + delta;
+        return card.CanReorder && block.Contains(card.Id) && to >= 0 && to < block.Count;
+    }
+
+    [RelayCommand]
+    private Task MoveUp(CardViewModel? card) => Step(card, -1);
+
+    [RelayCommand]
+    private Task MoveDown(CardViewModel? card) => Step(card, 1);
+
+    /// <summary>Drag and drop: puts <paramref name="card"/> before (or after) <paramref name="target"/>.</summary>
+    public Task MoveCardAsync(CardViewModel card, CardViewModel target, bool after)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(target);
+        var block = BlockOf(card);
+        if (!card.CanReorder || !target.CanReorder || card.Id == target.Id || !block.Contains(target.Id))
+        {
+            return Task.CompletedTask;
+        }
+
+        block.Remove(card.Id);
+        block.Insert(block.IndexOf(target.Id) + (after ? 1 : 0), card.Id);
+        return Arrange(card, block);
+    }
+
+    private Task Step(CardViewModel? card, int delta)
+    {
+        if (card is null || !CanMove(card, delta))
+        {
+            return Task.CompletedTask;
+        }
+
+        var block = BlockOf(card);
+        var from = block.IndexOf(card.Id);
+        block.RemoveAt(from);
+        block.Insert(from + delta, card.Id);
+        return Arrange(card, block);
+    }
+
+    private Task Arrange(CardViewModel moved, List<Guid> block)
+    {
+        var other = VisibleNow().Where(c => c.NeedsAttention != moved.NeedsAttention).Select(c => c.Id);
+        return Arrange(moved.NeedsAttention ? [.. block, .. other] : [.. other, .. block]);
+    }
+
+    private Task Arrange(List<Guid> ids) => Run(async () =>
+    {
+        await _store.UpdateAsync(b =>
+        {
+            b.ArrangeNow(ids);
+            return true;
+        }).ConfigureAwait(true);
+        return null;
+    });
+
     [RelayCommand]
     private Task BringBack(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
     {
