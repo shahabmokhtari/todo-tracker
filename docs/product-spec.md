@@ -99,12 +99,14 @@ Tags and labels are inherited, so `#release` also finds the steps of a tagged pr
 **Needs attention.** The item has a due, undismissed reminder and is not locked or done. This surfaces waiting and
 container items in *Do now*.
 
-**Do now** holds actionable items plus attention items. Attention items (a due reminder) come first. After that,
-**the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or Alt+↑/↓ (agents use
-`put_first`, the CLI `tt first`). Tasks they never placed slot in by the automatic order: effective priority (the
-maximum of the item and its ancestors), then overdue, then deadline, then age. The first one is the **focus**. The
-order is shared by every app and process (`.todo-tracker/state.json`); arranging one group's tab keeps the other
-groups' places. Subtasks and top-level tasks are reordered among their siblings the same way (never changing parent).
+**Do now** holds actionable items plus attention items. Attention items (a due reminder) come first, as their own
+block. After that, **the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or
+Alt+↑/↓ (agents use `put_first`, the CLI `tt first`); moves stay within a block. Tasks they never placed come after
+the ones they did, in the automatic order: effective priority (the maximum of the item and its ancestors), then
+overdue, then deadline, then age, so capturing something new never takes over the chosen focus. The first one is the
+**focus**. The order is shared by every app and process (`.todo-tracker/state.json`); arranging one group's tab keeps
+the other groups' places. In the web task panel, subtasks are reordered the same way among their siblings (never
+changing parent); the API also reorders top-level tasks.
 
 **Waiting** lists only the top-most deferred item, so a snoozed project shows once, not once per subtask. It is
 ordered by wake time, then priority.
@@ -344,7 +346,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Sidebar placement: dock left/right on any monitor, float with always-on-top, monitor hot-plug | ✅ follow-up requests |
 | AI-native: data as markdown in folders, HTML version when needed | ✅ vault format v2, rich HTML companion |
 | Obsidian (must) | ✅ the vault *is* Obsidian markdown; open in Obsidian; keep tasks in an Obsidian vault |
-| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now and subtasks: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); `put_first` for agents, `tt first` |
+| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); subtasks in the web task panel; `put_first` for agents, `tt first` |
 | Hierarchy, notes, attachments, tags, labels; intuitive and minimal | ✅ any depth with moves, notes, attachments, tags, colored labels, one filter box |
 | Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |

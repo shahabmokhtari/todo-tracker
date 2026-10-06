@@ -50,10 +50,18 @@ public sealed partial class TaskBoard
         NowOrderList.AddRange(result.Where(id => Find(id) is { IsDone: false }));
     }
 
-    /// <summary>Puts <paramref name="ids"/> at the top of Do now, in that order; the first becomes the focus.</summary>
+    /// <summary>
+    /// Puts <paramref name="ids"/> at the top of Do now, in that order (below any task whose reminder is due, which
+    /// always comes first); the first becomes the focus.
+    /// </summary>
     public void PutFirst(IReadOnlyList<Guid> ids, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        if (ids.Select(Get).FirstOrDefault(i => i.IsDone) is { } done)
+        {
+            throw new InvalidOperationException($"\"{done.Title}\" is already done.");
+        }
+
         var current = Agenda.Build(this, now, recentNoteCount: 0).Now.Select(e => e.Item.Id).Where(id => !ids.Contains(id));
         ArrangeNow([.. ids, .. current]);
     }

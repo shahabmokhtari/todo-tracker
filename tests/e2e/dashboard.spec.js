@@ -197,10 +197,23 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
   await page.keyboard.press('Alt+ArrowUp');
   await expect(focus).toHaveText('Order charlie');
 
-  // Drag and drop: bravo dropped on the focus card becomes the focus.
-  await page.locator('#sec-now .item', { hasText: 'Order bravo' }).dragTo(page.locator('.focus-card'), { targetPosition: { x: 20, y: 5 } });
+  // The keyboard stays on the moved task, so it can keep moving (even after the save redraws the board).
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(rows).toHaveText(['Order charlie', 'Order bravo']);
+  await expect.poll(nowTitles).toEqual(['Order alpha', 'Order charlie', 'Order bravo']);
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(rows).toHaveText(['Order bravo', 'Order charlie']);
+  await expect.poll(nowTitles).toEqual(['Order alpha', 'Order bravo', 'Order charlie']);
+
+  // Drag and drop: bravo dropped on the focus card (anywhere on it) becomes the focus.
+  await page.locator('#sec-now .item', { hasText: 'Order bravo' }).dragTo(page.locator('.focus-card'), { targetPosition: { x: 20, y: 60 } });
   await expect(focus).toHaveText('Order bravo');
-  await expect.poll(nowTitles).toEqual(['Order bravo', 'Order charlie', 'Order alpha']);
+  await expect.poll(nowTitles).toEqual(['Order bravo', 'Order alpha', 'Order charlie']);
+
+  // The focus card has its own way down.
+  await page.getByRole('button', { name: 'Do something else first' }).click();
+  await expect(focus).toHaveText('Order alpha');
+  await expect.poll(nowTitles).toEqual(['Order alpha', 'Order bravo', 'Order charlie']);
 
   // Subtasks keep their parent and can be reordered in the panel.
   const parent = await (await request.post('/api/items', { headers: auth, data: { title: 'Order trip' } })).json();

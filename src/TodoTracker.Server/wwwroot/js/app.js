@@ -165,6 +165,7 @@ function render() {
   renderProblems(d.problems ?? []);
   renderFilter();
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
+  if (state.refocus) focusOrderControl(state.refocus);
 }
 
 /** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
@@ -261,7 +262,13 @@ function renderFocus(d) {
     actions(f, { big: true }));
   el.style.setProperty('--prio', meta.color);
   // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
-  sortable(el, f.id, { scope: 'now', ids: nowIds, onOrder: arrangeNow });
+  sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
+  if (blockIds(f.id).length > 1) {
+    el.querySelector('.focus-top').append(h('button', {
+      class: 'icon-btn order-btn', type: 'button', 'aria-label': 'Do something else first', title: 'Do something else first (Alt+↓)',
+      onclick: () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id),
+    }, icon('down', { size: 16 })));
+  }
   $('#focus').replaceChildren(el);
 }
 
@@ -269,37 +276,71 @@ function renderFocus(d) {
 
 const nowIds = () => state.dashboard?.now.map((c) => c.id) ?? [];
 
-/** Shows the new Do now order right away, then saves it (the server keeps other groups' places). */
-async function arrangeNow(ids, movedId) {
+/**
+ * Tasks with a due reminder always come first, so moves stay within a block: the reminder block or the rest.
+ * (Moving a task above a reminder would just snap back.)
+ */
+function blockIds(id) {
+  const now = state.dashboard?.now ?? [];
+  const attention = now.find((c) => c.id === id)?.needsAttention ?? false;
+  return now.filter((c) => !!c.needsAttention === attention).map((c) => c.id);
+}
+
+/** Shows the new order of one block right away, then saves the whole Do now order (one save at a time). */
+function arrangeNow(blockOrder, movedId) {
   const d = state.dashboard;
-  if (!d || !changed(nowIds(), ids)) return;
+  if (!d || !blockOrder.length) return;
+  const attention = d.now.find((c) => c.id === blockOrder[0])?.needsAttention ?? false;
+  const other = d.now.filter((c) => !!c.needsAttention !== attention).map((c) => c.id);
+  const ids = attention ? [...blockOrder, ...other] : [...other, ...blockOrder];
+  if (!changed(nowIds(), ids)) return;
   const byId = new Map(d.now.map((c) => [c.id, c]));
   d.now = ids.map((id) => byId.get(id)).filter(Boolean);
   d.focus = d.now[0] ?? null;
+  state.refocus = movedId;
+  const drafts = collectNoteDrafts();
   render();
-  focusOrderControl(movedId);
-  try {
-    await post('/api/now/order', { ids });
-  } catch (err) {
-    toast(err.message, 'error');
-  }
-  refresh({ background: true });
+  restoreNoteDrafts(drafts);
+  saveOrder(ids);
 }
 
-/** Keeps the keyboard where it was after a move, so Alt+↑ can be pressed again. */
+let orderSaving = Promise.resolve();
+let pendingOrder = null;
+
+/** Saves the latest order; quick moves never race (the newest order is always the one saved last). */
+function saveOrder(ids) {
+  pendingOrder = ids;
+  orderSaving = orderSaving.then(async () => {
+    if (!pendingOrder) return;
+    const send = pendingOrder;
+    pendingOrder = null;
+    try {
+      await post('/api/now/order', { ids: send });
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    if (!pendingOrder) {
+      await refresh({ background: true });
+      state.refocus = null;
+    }
+  });
+}
+
+/** Keeps the keyboard on the moved task after a redraw, so Alt+↑ can be pressed again. */
 function focusOrderControl(id) {
   if (!id) return;
   const el = document.querySelector(`[data-order-id="${CSS.escape(id)}"]`);
-  (el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: false });
+  (el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: true });
 }
 
 let dragging = null; // { id, scope }
+const DRAG_TYPE = 'application/x-todo-tracker-task';
 
 /**
  * Makes `el` reorderable within its `scope`: drag it (or drop others on it), ↑/↓ buttons, and Alt+↑/Alt+↓.
  * `ids()` is the current order; `onOrder(newIds, movedId)` applies a new one.
  */
-function sortable(el, id, { scope, ids, onOrder, buttons = false }) {
+function sortable(el, id, { scope, ids, onOrder, buttons = false, alwaysBefore = false }) {
   el.dataset.orderId = id;
   el.draggable = true;
   el.classList.add('sortable');
@@ -308,7 +349,8 @@ function sortable(el, id, { scope, ids, onOrder, buttons = false }) {
     if (e.target !== el) return;
     dragging = { id, scope };
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', id);
+    // A private type: dropping a card on a text box must not paste its id.
+    e.dataTransfer.setData(DRAG_TYPE, id);
     el.classList.add('dragging');
   });
   el.addEventListener('dragend', () => {
@@ -317,11 +359,13 @@ function sortable(el, id, { scope, ids, onOrder, buttons = false }) {
     document.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
   });
   const after = (e) => {
+    if (alwaysBefore) return false;
     const r = el.getBoundingClientRect();
     return e.clientY > r.top + r.height / 2;
   };
+  const accepts = () => dragging && dragging.scope === scope && dragging.id !== id && ids().includes(dragging.id);
   el.addEventListener('dragover', (e) => {
-    if (!dragging || dragging.scope !== scope || dragging.id === id) return;
+    if (!accepts()) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -330,7 +374,7 @@ function sortable(el, id, { scope, ids, onOrder, buttons = false }) {
   });
   el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) clear(); });
   el.addEventListener('drop', (e) => {
-    if (!dragging || dragging.scope !== scope || dragging.id === id) return;
+    if (!accepts()) return;
     e.preventDefault();
     e.stopPropagation();
     clear();
@@ -339,6 +383,8 @@ function sortable(el, id, { scope, ids, onOrder, buttons = false }) {
   });
   el.addEventListener('keydown', (e) => {
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    // Typing in a note keeps Alt/Option+arrows for the text.
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     e.preventDefault();
     e.stopPropagation();
     onOrder(step(ids(), id, e.key === 'ArrowUp' ? -1 : 1), id);
@@ -382,7 +428,7 @@ function card(c, { waiting = false, orderable = false } = {}) {
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
   if (orderable) {
-    const controls = sortable(li, c.id, { scope: 'now', ids: nowIds, onOrder: arrangeNow, buttons: true });
+    const controls = sortable(li, c.id, { scope: 'now', ids: () => blockIds(c.id), onOrder: arrangeNow, buttons: true });
     li.insertBefore(controls, li.lastElementChild); // before the actions
   }
   return li;
@@ -744,6 +790,7 @@ async function openDrawer(id) {
   drawer.dataset.itemId = id;
   drawer.hidden = false;
   restoreDrawerDraft(drawer, draft, noteInput);
+  if (state.refocus) focusOrderControl(state.refocus);
 
   // Drop files anywhere on the panel to attach them.
   drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
@@ -817,8 +864,11 @@ function subtaskTree(children, parentId) {
   if (!children.length) return h('p', { class: 'muted small' }, 'No subtasks yet.');
   const order = () => children.map((c) => c.id);
   // Reordering keeps each subtask under the same parent; the panel then refreshes (keeping what is being typed).
-  const reorder = (ids, movedId) => {
-    if (changed(order(), ids)) act(post(`/api/items/${movedId}/reorder`, { before: beforeOf(ids, movedId) }));
+  const reorder = async (ids, movedId) => {
+    if (!changed(order(), ids)) return;
+    state.refocus = movedId;
+    await act(post(`/api/items/${movedId}/reorder`, { before: beforeOf(ids, movedId) }));
+    state.refocus = null;
   };
   return h('ul', { class: 'subtasks' }, ...children.map((c) => {
     const li = h('li', { class: `sub ${c.state}` });

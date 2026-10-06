@@ -33,6 +33,9 @@ public partial class MainWindow
     private void OnCardMouseDown(object sender, MouseButtonEventArgs e) =>
         _dragStart = e.OriginalSource is DependencyObject source && IsInteractive(source, sender as DependencyObject) ? null : e.GetPosition(this);
 
+    /// <summary>A press that ended without a drag must not start one later from its old position.</summary>
+    private void OnWindowPreviewMouseUp(object sender, MouseButtonEventArgs e) => _dragStart = null;
+
     private void OnCardMouseMove(object sender, MouseEventArgs e)
     {
         if (_dragStart is not { } start || e.LeftButton != MouseButtonState.Pressed || sender is not FrameworkElement { DataContext: CardViewModel { CanReorder: true } card } element)
@@ -84,17 +87,40 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Alt+↑ / Alt+↓ on a focused card moves it (the top one is the focus).</summary>
-    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>Alt+↑ / Alt+↓ on a focused card moves it (the top one is the focus); typing in a note is left alone.</summary>
+    private async void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.System || e.SystemKey is not (Key.Up or Key.Down) || Keyboard.FocusedElement is not FrameworkElement { DataContext: CardViewModel { CanReorder: true } card })
+        if (e.Key != Key.System || e.SystemKey is not (Key.Up or Key.Down) || Keyboard.FocusedElement is TextBox
+            || Keyboard.FocusedElement is not FrameworkElement { DataContext: CardViewModel { CanReorder: true } card })
         {
             return;
         }
 
         e.Handled = true;
         var command = e.SystemKey == Key.Up ? _vm.MoveUpCommand : _vm.MoveDownCommand;
-        command.Execute(card);
+        await command.ExecuteAsync(card).ConfigureAwait(true);
+
+        // The card may now live in another list (focus ↔ Do now): put the keyboard back on it to keep moving.
+        _ = Dispatcher.BeginInvoke(() => FocusCard(card), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void FocusCard(CardViewModel card)
+    {
+        var stack = new Stack<DependencyObject>([this]);
+        while (stack.Count > 0)
+        {
+            var node = stack.Pop();
+            if (node is ButtonBase { IsVisible: true, Focusable: true } button && ReferenceEquals(button.DataContext, card))
+            {
+                button.Focus();
+                return;
+            }
+
+            for (var i = VisualTreeHelper.GetChildrenCount(node) - 1; i >= 0; i--)
+            {
+                stack.Push(VisualTreeHelper.GetChild(node, i));
+            }
+        }
     }
 
     private (CardViewModel Card, CardViewModel Target, Border Border, bool After)? DropOn(object sender, DragEventArgs e)

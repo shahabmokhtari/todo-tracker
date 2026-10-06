@@ -188,7 +188,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "put_first"), Description("Put tasks at the top of Do now, in this order; the first becomes the focus. Use it when the user says what matters most (\"do X first\").")]
+    [McpServerTool(Name = "put_first"), Description("Put tasks at the top of Do now, in this order; the first becomes the focus (only a task whose reminder is due stays above it). Use it when the user says what matters most (\"do X first\").")]
     public Task<DashboardDto> PutFirst(string[] taskIds) =>
         Guard(async () =>
         {

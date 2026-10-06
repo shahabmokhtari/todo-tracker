@@ -4,7 +4,8 @@ namespace TodoTracker.Core.Tests;
 
 /// <summary>
 /// People decide what comes first: once they arrange Do now, their order wins (only a due reminder jumps ahead).
-/// Tasks they never placed slot in by the automatic rules (priority, overdue, deadline, age).
+/// Tasks they never placed come after the ones they did, in the automatic order (priority, overdue, deadline, age),
+/// so capturing a new thought never takes over the focus they chose.
 /// </summary>
 public class ManualOrderTests
 {
@@ -31,17 +32,38 @@ public class ManualOrderTests
     }
 
     [Fact]
-    public void Tasks_never_placed_slot_in_by_priority()
+    public void Tasks_never_placed_come_after_the_arranged_ones_in_automatic_order()
     {
         var a = Add("A");
         var b = Add("B", Priority.High);
         var c = Add("C", Priority.Low);
         _board.ArrangeNow([a.Id, b.Id, c.Id]);
 
-        Add("Urgent", Priority.Critical);
         Add("Normal later");
+        Add("Urgent", Priority.Critical);
 
-        Assert.Equal(["Urgent", "A", "B", "Normal later", "C"], Now());
+        Assert.Equal(["A", "B", "C", "Urgent", "Normal later"], Now());
+    }
+
+    [Fact]
+    public void Capturing_something_new_never_takes_over_the_chosen_focus()
+    {
+        var low = Add("Low chosen", Priority.Low);
+        Add("Other");
+        _board.PutFirst([low.Id], T0);
+
+        Add("Just captured");
+
+        Assert.Equal("Low chosen", Agenda.Build(_board, T0).Focus!.Item.Title);
+    }
+
+    [Fact]
+    public void Put_first_refuses_finished_tasks()
+    {
+        var a = Add("A");
+        _board.Complete(a.Id, Actor.User, T0);
+
+        Assert.Throws<InvalidOperationException>(() => _board.PutFirst([a.Id], T0));
     }
 
     [Fact]

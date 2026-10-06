@@ -152,6 +152,23 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Moves_stay_below_tasks_whose_reminder_is_due()
+    {
+        var urgent = await Seed("Reminder due");
+        await Seed("Plain");
+        await _store.UpdateAsync(b => b.AddReminder(urgent.Id, T0.AddMinutes(-1), "now", Actor.User, T0.AddMinutes(-2)));
+        await _vm.RefreshAsync();
+        var plain = _vm.Now.Single(c => c.Title == "Plain");
+
+        await _vm.MoveUpCommand.ExecuteAsync(plain);
+        await _vm.MoveCardAsync(plain, _vm.Focus!, after: false);
+
+        Assert.Equal("Reminder due", _vm.Focus!.Title);
+        Assert.False(_vm.CanMove(plain, -1));
+        Assert.False(_vm.CanMove(_vm.Focus!, 1));
+    }
+
+    [Fact]
     public async Task Waiting_cards_cant_be_reordered()
     {
         await Seed("Now thing");

@@ -33,9 +33,15 @@ public partial class App : Application
         var args = StartupArgs.Parse(e.Args);
 
         // One sidebar at a time (tests included): a second launch brings the running one to the front instead.
-        _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(10) : TimeSpan.Zero);
+        _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(30) : TimeSpan.Zero);
         if (_instance is null)
         {
+            if (args.Restart)
+            {
+                // The old instance didn't close in time: say so rather than leaving no sidebar at all.
+                MessageBox.Show("Todo Tracker is still closing. Start it again in a moment.", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
             Shutdown(args.SmokeTest ? 3 : 0);
             return;
         }

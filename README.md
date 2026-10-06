@@ -44,7 +44,8 @@ The sidebar docks on the right. To move it, use **⋯ › Position**:
   to stay above other windows.
 
 Your choice is remembered. **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓. Subtasks reorder the same way in the task panel.
+or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put; a task whose
+reminder is due still shows first. Subtasks reorder the same way in the web task panel.
 
 Type a task in the box at the top and press Enter:
 

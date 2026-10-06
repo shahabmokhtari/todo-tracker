@@ -81,8 +81,8 @@ public enum Agenda {
 
         func inScope(_ item: WorkItem) -> Bool { groupId == nil || item.groupId == groupId }
 
-        // A due reminder comes first; then the person's own order, with tasks they never placed slotted in by the
-        // automatic rules (priority, overdue, deadline, age). Same rules as TodoTracker.Core.Agenda.
+        // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
+        // (priority, overdue, deadline, age). Same rules as TodoTracker.Core.Agenda.
         var rank: [UUID: Int] = [:]
         for (i, id) in board.nowOrder.enumerated() where rank[id] == nil { rank[id] = i }
         let scoped = nowAll.filter { inScope($0.entry.item) }
@@ -120,25 +120,14 @@ public enum Agenda {
         return 0
     }
 
-    /// Placed tasks keep their order; the others merge in where the automatic order puts them.
+    /// Placed tasks in the person's order, then the others in the automatic order.
     private static func arrange(_ entries: [(offset: Int, entry: AgendaEntry)], rank: [UUID: Int]) -> [AgendaEntry] {
         let placed = entries.filter { rank[$0.entry.item.id] != nil }.sorted { (rank[$0.entry.item.id] ?? 0) < (rank[$1.entry.item.id] ?? 0) }
         let others = entries.filter { rank[$0.entry.item.id] == nil }.sorted { a, b in
             let c = compareAutomatic(a.entry, b.entry)
             return c != 0 ? c < 0 : a.offset < b.offset
         }
-        var result: [AgendaEntry] = []
-        var p = 0, o = 0
-        while p < placed.count || o < others.count {
-            if o < others.count && (p == placed.count || compareAutomatic(others[o].entry, placed[p].entry) < 0) {
-                result.append(others[o].entry)
-                o += 1
-            } else {
-                result.append(placed[p].entry)
-                p += 1
-            }
-        }
-        return result
+        return placed.map(\.entry) + others.map(\.entry)
     }
 
     private static func isAfter(_ date: Date?, _ now: Date) -> Bool {
