@@ -270,9 +270,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             }
             else if (fresh)
             {
-                // Seed the default tabs in this order (folders alone would sort alphabetically).
+                // Seed the default tabs in this order (folders alone would sort alphabetically). Their ids come from the
+                // folder name, like any folder's: two new vaults that later sync share the same tabs.
                 var seeded = new TaskBoard();
-                var config = new ConfigDocument(2, seeded.Groups.Select(g => new ConfigGroup(g.Id, g.Name, g.Color)).ToList(), [], []);
+                var config = new ConfigDocument(2, seeded.Groups.Select(g => new ConfigGroup(VaultText.StableGuid("group|" + g.Name.ToUpperInvariant()), g.Name, g.Color)).ToList(), [], []);
                 foreach (var group in seeded.Groups)
                 {
                     Directory.CreateDirectory(Path.Combine(_root, group.Name));

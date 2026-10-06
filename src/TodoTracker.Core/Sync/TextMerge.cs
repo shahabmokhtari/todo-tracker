@@ -1,0 +1,211 @@
+namespace TodoTracker.Core.Sync;
+
+public sealed record TextMergeResult(string Text, bool Conflicted);
+
+/// <summary>
+/// Line-based three-way merge (diff3). Changes to different lines are combined; where both sides changed the same
+/// lines differently, both versions' lines are kept (the first side's first), so nothing typed is ever lost and
+/// the result is the same on every device as long as callers order the sides the same way.
+/// </summary>
+public static class TextMerge
+{
+    public static TextMergeResult Merge(string @base, string first, string second, Func<string, string?>? lineKey = null)
+    {
+        var o = Split(@base);
+        var a = Split(first);
+        var b = Split(second);
+        var ma = Match(o, a);
+        var mb = Match(o, b);
+        var output = new List<string>();
+        var conflicted = false;
+        int io = 0, ia = 0, ib = 0;
+        while (true)
+        {
+            while (io < o.Length && ma[io] == ia && mb[io] == ib)
+            {
+                output.Add(o[io]);
+                io++;
+                ia++;
+                ib++;
+            }
+
+            if (io >= o.Length && ia >= a.Length && ib >= b.Length)
+            {
+                break;
+            }
+
+            // The next base line both sides kept ends this unstable chunk.
+            var next = io;
+            while (next < o.Length && (ma[next] < 0 || mb[next] < 0))
+            {
+                next++;
+            }
+
+            var ea = next < o.Length ? ma[next] : a.Length;
+            var eb = next < o.Length ? mb[next] : b.Length;
+            var co = o[io..next];
+            var ca = a[ia..ea];
+            var cb = b[ib..eb];
+            if (co.SequenceEqual(ca))
+            {
+                output.AddRange(cb);
+            }
+            else if (co.SequenceEqual(cb) || ca.SequenceEqual(cb))
+            {
+                output.AddRange(ca);
+            }
+            else if (lineKey is not null && MergeByKey(co, ca, cb, lineKey) is { } keyed)
+            {
+                output.AddRange(keyed.Lines);
+                conflicted |= keyed.Conflicted;
+            }
+            else
+            {
+                conflicted = true;
+                output.AddRange(ca);
+                output.AddRange(cb.Where(line => !ca.Contains(line)));
+            }
+
+            io = next;
+            ia = ea;
+            ib = eb;
+        }
+
+        return new TextMergeResult(Join(output), conflicted);
+    }
+
+    /// <summary>
+    /// Lines that carry their own identity (a subtask's block id, a frontmatter key) are merged one by one when the
+    /// clashing stretch has the same keys in the same order on all three sides: checking off one step while renaming
+    /// the next is not a conflict.
+    /// </summary>
+    private static (List<string> Lines, bool Conflicted)? MergeByKey(string[] o, string[] a, string[] b, Func<string, string?> lineKey)
+    {
+        if (o.Length != a.Length || o.Length != b.Length || o.Length == 0)
+        {
+            return null;
+        }
+
+        var lines = new List<string>();
+        var conflicted = false;
+        for (var i = 0; i < o.Length; i++)
+        {
+            var key = lineKey(o[i]);
+            if (key is null || lineKey(a[i]) != key || lineKey(b[i]) != key)
+            {
+                return null;
+            }
+
+            if (a[i] == o[i] || a[i] == b[i])
+            {
+                lines.Add(b[i] == o[i] ? a[i] : b[i]);
+            }
+            else if (b[i] == o[i])
+            {
+                lines.Add(a[i]);
+            }
+            else
+            {
+                // The same step changed on both sides: the first side's version (a step can't be two lines).
+                conflicted = true;
+                lines.Add(a[i]);
+            }
+        }
+
+        return (lines, conflicted);
+    }
+
+    /// <summary>Lines with their line endings (the last may have none).</summary>
+    private static string[] Split(string text)
+    {
+        var lines = new List<string>();
+        var start = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                lines.Add(text[start..(i + 1)]);
+                start = i + 1;
+            }
+        }
+
+        if (start < text.Length)
+        {
+            lines.Add(text[start..]);
+        }
+
+        return [.. lines];
+    }
+
+    private static string Join(List<string> lines)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var line in lines)
+        {
+            // A last line without its newline that ends up in the middle gets one.
+            if (sb.Length > 0 && sb[^1] != '\n')
+            {
+                sb.Append('\n');
+            }
+
+            sb.Append(line);
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>For each base line, the index of the line it matches in <paramref name="other"/> (longest common subsequence), or -1.</summary>
+    private static int[] Match(string[] o, string[] other)
+    {
+        var map = Enumerable.Repeat(-1, o.Length).ToArray();
+        var prefix = 0;
+        while (prefix < o.Length && prefix < other.Length && o[prefix] == other[prefix])
+        {
+            map[prefix] = prefix;
+            prefix++;
+        }
+
+        var suffix = 0;
+        while (suffix < o.Length - prefix && suffix < other.Length - prefix && o[o.Length - 1 - suffix] == other[other.Length - 1 - suffix])
+        {
+            map[o.Length - 1 - suffix] = other.Length - 1 - suffix;
+            suffix++;
+        }
+
+        var n = o.Length - prefix - suffix;
+        var m = other.Length - prefix - suffix;
+        if (n == 0 || m == 0)
+        {
+            return map;
+        }
+
+        var lcs = new int[n + 1, m + 1];
+        for (var i = n - 1; i >= 0; i--)
+        {
+            for (var j = m - 1; j >= 0; j--)
+            {
+                lcs[i, j] = o[prefix + i] == other[prefix + j] ? lcs[i + 1, j + 1] + 1 : Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
+            }
+        }
+
+        for (int i = 0, j = 0; i < n && j < m;)
+        {
+            if (o[prefix + i] == other[prefix + j])
+            {
+                map[prefix + i] = prefix + j;
+                i++;
+                j++;
+            }
+            else if (lcs[i + 1, j] >= lcs[i, j + 1])
+            {
+                i++;
+            }
+            else
+            {
+                j++;
+            }
+        }
+
+        return map;
+    }
+}
