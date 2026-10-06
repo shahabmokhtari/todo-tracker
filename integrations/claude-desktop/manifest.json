@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.3",
+  "name": "todo-tracker",
+  "display_name": "Todo Tracker",
+  "version": "1.0.0",
+  "description": "Your ADHD-friendly task list: see what to do now, capture and organize tasks, log progress, defer work.",
+  "long_description": "Todo Tracker keeps your tasks as markdown files (an Obsidian vault works) and helps you focus on one next action. This extension lets Claude read your dashboard, capture tasks you mention, break work into steps, log progress, defer what can wait, and finish what is done. Every change is attributed to Claude and versioned, so it can be undone. It uses the same tasks as the Todo Tracker app, whether or not the app is running.",
+  "author": {
+    "name": "Todo Tracker",
+    "url": "https://github.com/shahabmokhtari/todo-tracker"
+  },
+  "homepage": "https://github.com/shahabmokhtari/todo-tracker",
+  "documentation": "https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/ai-connectors.md",
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/tt",
+    "mcp_config": {
+      "command": "${__dirname}/server/tt",
+      "args": ["mcp"],
+      "env": {
+        "TODOTRACKER_VAULT": "${user_config.tasks_folder}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/tt.exe"
+        }
+      }
+    }
+  },
+  "user_config": {
+    "tasks_folder": {
+      "type": "directory",
+      "title": "Tasks folder",
+      "description": "Leave empty to use the folder the Todo Tracker app uses (Documents/Todo Tracker by default).",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "get_dashboard", "description": "What to do now, what is waiting, and an overview per group" },
+    { "name": "search_tasks", "description": "Find tasks by words, #tag, label, group, or state" },
+    { "name": "list_tasks", "description": "The full task tree" },
+    { "name": "get_task", "description": "One task with subtasks, notes, tags, labels and attachments" },
+    { "name": "create_task", "description": "Capture a task or a subtask" },
+    { "name": "add_steps", "description": "Add ordered steps under a task" },
+    { "name": "add_note", "description": "Log progress on a task" },
+    { "name": "schedule_next_action", "description": "Defer a task and remind later" },
+    { "name": "add_reminder", "description": "Add a reminder" },
+    { "name": "complete_task", "description": "Mark a task done" },
+    { "name": "reopen_task", "description": "Undo a completion" },
+    { "name": "update_task", "description": "Change title, details, priority, deadline, tags or labels" },
+    { "name": "move_task", "description": "Reorganize tasks" },
+    { "name": "list_labels", "description": "The curated labels" },
+    { "name": "attach_text", "description": "Attach a text file to a task" },
+    { "name": "get_rich_html", "description": "Read a task's rich HTML version" },
+    { "name": "set_rich_html", "description": "Save a rich HTML version of a task" },
+    { "name": "vault_info", "description": "Where the markdown files live and their format" },
+    { "name": "task_history", "description": "Saved versions of a task" },
+    { "name": "restore_task_version", "description": "Put a task back the way it was" },
+    { "name": "get_report", "description": "Timeline of what happened" }
+  ],
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"]
+  },
+  "keywords": ["tasks", "todo", "adhd", "obsidian", "productivity"]
+}

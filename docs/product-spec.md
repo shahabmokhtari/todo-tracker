@@ -150,7 +150,7 @@ blocks the others.
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional
   *Start with Windows*.
-* The menu has: Position, Always on top, copy the MCP config, copy the API token (for the extension), connect Teams,
+* The menu has: Position, Always on top, Connect an AI app, copy the MCP config, copy the API token (for the extension), connect Teams,
   and start with Windows.
 * **System test:** `tests/system/placement.system-test.ps1` drives the real app with UI Automation through every
   placement, checks the live work area, window bounds, and topmost state, and verifies placement persists across a
@@ -205,9 +205,24 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 
 ## 7. Integrations
 
-### MCP (Copilot and agents)
-The streamable HTTP endpoint is `http://127.0.0.1:5317/mcp` with `Authorization: Bearer <token>`. The sidebar
-menu option *Copy MCP config* copies a ready `mcpServers` block. Tools:
+### AI apps (MCP, CLI, OpenAPI)
+AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-connectors.md)):
+
+* **`tt mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
+  on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, as a
+  `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
+* **`tt`**: the same operations from a terminal (`tt now`, `tt add …`, `tt done …`); `--json` returns the API shapes and
+  `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
+* **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
+* **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
+  subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test
+  enforces it).
+
+**Connect an AI app** (sidebar menu, ✨ in the web header) lists a ready snippet per app with the real `tt` path.
+A plugin marketplace in this repository (`.claude-plugin/`, `.github/plugin/`) installs the MCP server plus a skill
+that teaches agents how to help (capture in the user's words, make big things small, log progress, defer, never
+delete) in Claude Code and Copilot CLI. Cloud apps (ChatGPT, Claude.ai, Copilot Studio) need a public HTTPS tunnel;
+the docs explain the options and risks. The server sends the same short instructions to every MCP client. Tools:
 
 | Tool | Purpose |
 |---|---|
@@ -301,7 +316,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Apple stack | Native SwiftUI + Swift core port | Native feel and reliable CI. Parity with C# is enforced by the shared fixtures. |
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
-| MCP transport | Streamable HTTP inside the running app | One writer, the same live board as the UI, and no second process |
+| MCP transport | Streamable HTTP inside the running app, plus `tt mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
 
 ## 12. Requirement traceability
 
@@ -328,5 +343,6 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Hierarchy, notes, attachments, tags, labels; intuitive and minimal | ✅ any depth with moves, notes, attachments, tags, colored labels, one filter box |
 | Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
-| Available to AI tools (CLI, API, Claude/ChatGPT/Copilot connectors), in-app agent chat, plugins | ⏳ next PRs (CLI + stdio MCP + connector packages; plugins + ACP chat) |
+| Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
+| In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ⏳ next PR (plugins + ACP chat) |
 | Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |

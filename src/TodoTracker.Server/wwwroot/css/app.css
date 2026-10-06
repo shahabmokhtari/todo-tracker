@@ -709,3 +709,11 @@ button.focus-title:hover { color: var(--accent); }
 .history .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-preview { max-height: 280px; overflow: auto; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-solid); font-size: 12.5px; white-space: pre-wrap; }
 @media (max-width: 720px) { .search { flex-basis: 100%; order: 3; } }
+
+/* ---------- connect an AI app ---------- */
+.connect-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+.connect { border-radius: 12px; background: var(--surface-solid); padding: 10px 14px; }
+.connect + .connect { margin-top: 8px; }
+.connect summary { cursor: pointer; font-weight: 600; }
+.connect[open] summary { margin-bottom: 6px; }
+.snippet { margin: 8px 0; padding: 10px 12px; border-radius: 8px; background: rgba(127, 127, 127, .12); overflow-x: auto; white-space: pre-wrap; word-break: break-all; user-select: all; }

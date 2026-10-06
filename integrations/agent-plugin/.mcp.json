@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "todo-tracker": {
+      "command": "tt",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

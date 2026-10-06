@@ -154,5 +154,14 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   // Where the files live is always visible.
   await expect(page.locator('#vault')).toContainText('Saved as markdown in');
 
+  // Connecting an AI app is one click and one copy.
+  await page.getByRole('button', { name: 'Connect an AI app' }).click();
+  await expect(drawer.locator('details.connect[open]')).toContainText('Claude Code');
+  await expect(drawer.locator('details.connect[open] pre')).toContainText('claude mcp add todo-tracker');
+  await drawer.locator('details.connect', { hasText: 'VS Code' }).locator('summary').click();
+  await expect(drawer.locator('details.connect', { hasText: 'VS Code' }).locator('pre')).toContainText('"servers"');
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+
   expect(errors).toEqual([]);
 });

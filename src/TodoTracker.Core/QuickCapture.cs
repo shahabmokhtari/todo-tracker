@@ -3,11 +3,15 @@ using System.Text.RegularExpressions;
 
 namespace TodoTracker.Core;
 
-public sealed record QuickCapture(string Title, Priority Priority, DateTimeOffset? NextActionAt, DateTimeOffset? Deadline);
+public sealed record QuickCapture(string Title, Priority Priority, DateTimeOffset? NextActionAt, DateTimeOffset? Deadline)
+{
+    public IReadOnlyList<string> Tags { get; init; } = [];
+}
 
 /// <summary>
 /// Parses one-line quick capture so a task can be added without opening a form:
-/// <c>!</c>/<c>!!</c>/<c>!low</c> set priority, <c>@2h</c>/<c>@tomorrow</c> defer, <c>due:3d</c>/<c>due:2026-02-01</c> set a deadline.
+/// <c>!</c>/<c>!!</c>/<c>!low</c> set priority, <c>@2h</c>/<c>@tomorrow</c> defer, <c>due:3d</c>/<c>due:2026-02-01</c> set a deadline,
+/// <c>#tag</c> adds a tag (words like <c>#123</c> that can't be tags stay in the title, as in Obsidian).
 /// </summary>
 public static partial class QuickCaptureParser
 {
@@ -22,6 +26,7 @@ public static partial class QuickCaptureParser
         DateTimeOffset? nextAction = null;
         DateTimeOffset? deadline = null;
         var words = new List<string>();
+        var tags = new List<string>();
 
         foreach (var token in (input ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -37,6 +42,13 @@ public static partial class QuickCaptureParser
             {
                 deadline = due;
             }
+            else if (token.Length > 1 && token[0] == '#' && token[1] != '#' && TaskBoard.IsValidTag(token[1..]))
+            {
+                if (!tags.Exists(t => string.Equals(t, token[1..], StringComparison.OrdinalIgnoreCase)))
+                {
+                    tags.Add(token[1..]);
+                }
+            }
             else
             {
                 words.Add(token);
@@ -48,7 +60,7 @@ public static partial class QuickCaptureParser
             throw new ArgumentException("Type a task title.", nameof(input));
         }
 
-        return new QuickCapture(string.Join(' ', words), priority, nextAction, deadline);
+        return new QuickCapture(string.Join(' ', words), priority, nextAction, deadline) { Tags = tags };
     }
 
     private static Priority? ParsePriority(string token) => token.ToLowerInvariant() switch

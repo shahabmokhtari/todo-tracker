@@ -196,10 +196,11 @@ public sealed class ApiTests : IAsyncLifetime
     [Fact]
     public async Task Quick_capture_parses_priority_and_defer()
     {
-        var item = await _client.PostJson("/api/capture", new { text = "Check canary !! @2h" });
+        var item = await _client.PostJson("/api/capture", new { text = "Check canary !! @2h #release" });
 
         Assert.Equal("Check canary", item["title"]!.GetValue<string>());
         Assert.Equal("critical", item["priority"]!.GetValue<string>());
+        Assert.Equal(["release"], item["tags"]!.AsArray().Select(t => t!.GetValue<string>()));
         Assert.Equal(ServerFixture.T0.AddHours(2), item["nextActionAt"]!.GetValue<DateTimeOffset>());
         Assert.Single(item["reminders"]!.AsArray());
     }
@@ -302,6 +303,52 @@ public sealed class ApiTests : IAsyncLifetime
 
         Assert.EndsWith("/mcp", info["mcpUrl"]!.GetValue<string>(), StringComparison.Ordinal);
         Assert.Contains(ServerFixture.Token, info["mcpConfig"]!.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Connect_lists_ready_made_setups_for_ai_apps()
+    {
+        await using var server = await ServerFixture.StartAsync(o => o.TtPath = @"C:\Program Files\Todo Tracker\tt.exe");
+        using var client = server.Client();
+
+        var connect = await client.GetJson("/api/connect");
+
+        var setups = connect["setups"]!.AsArray().ToDictionary(s => s!["id"]!.GetValue<string>(), s => s!);
+        Assert.Contains("claude-code", setups.Keys);
+        Assert.Equal("claude mcp add todo-tracker --scope user -- \"C:\\Program Files\\Todo Tracker\\tt.exe\" mcp", setups["claude-code"]["snippet"]!.GetValue<string>());
+
+        // JSON snippets are valid JSON with the path escaped.
+        foreach (var id in new[] { "copilot-cli", "claude-desktop", "vscode" })
+        {
+            var snippet = System.Text.Json.Nodes.JsonNode.Parse(setups[id]["snippet"]!.GetValue<string>())!;
+            Assert.Contains("tt.exe", snippet.ToJsonString(), StringComparison.Ordinal);
+        }
+
+        Assert.Contains(ServerFixture.Token, setups["http"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+        var terminal = setups["terminal"]["snippet"]!.GetValue<string>();
+        Assert.Contains("add 'Renew passport !! due:7d #admin'", terminal, StringComparison.Ordinal);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.StartsWith("& \"C:\\Program Files", terminal, StringComparison.Ordinal);
+        }
+        Assert.Contains("/openapi/swagger2.json", setups["cloud"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Tt_next_to_the_app_is_preferred_over_the_path()
+    {
+        var dir = Directory.CreateTempSubdirectory("tt-find-").FullName;
+        try
+        {
+            Assert.Equal("tt", AiSetups.FindTt(dir));
+            var exe = Path.Combine(dir, OperatingSystem.IsWindows() ? "tt.exe" : "tt");
+            File.WriteAllText(exe, string.Empty);
+            Assert.Equal(exe, AiSetups.FindTt(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]

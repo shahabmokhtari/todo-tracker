@@ -1,0 +1,27 @@
+{
+  "name": "todo-tracker",
+  "owner": {
+    "name": "Todo Tracker",
+    "url": "https://github.com/shahabmokhtari/todo-tracker"
+  },
+  "metadata": {
+    "description": "Todo Tracker plugins for Claude Code and GitHub Copilot CLI.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "todo-tracker",
+      "source": "./integrations/agent-plugin",
+      "description": "Your ADHD-friendly task list for AI agents: see what to do now, capture and organize tasks, log progress, defer work. Tasks are markdown files you can also open in Obsidian.",
+      "version": "1.0.0",
+      "category": "productivity",
+      "tags": [
+        "tasks",
+        "todo",
+        "adhd",
+        "obsidian",
+        "mcp"
+      ]
+    }
+  ]
+}

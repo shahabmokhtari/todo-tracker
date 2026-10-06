@@ -152,7 +152,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         {
             var now = _time.GetUtcNow();
             var capture = QuickCaptureParser.Parse(text, now, _options.TimeZone);
-            var item = b.AddTask(new NewTask(capture.Title) { GroupId = _selectedGroupId, Priority = capture.Priority, Deadline = capture.Deadline }, Actor.User, now);
+            var item = b.AddTask(new NewTask(capture.Title) { GroupId = _selectedGroupId, Priority = capture.Priority, Deadline = capture.Deadline, Tags = capture.Tags }, Actor.User, now);
             if (capture.NextActionAt is { } at)
             {
                 b.ScheduleNextAction(item.Id, at, Actor.User, now, notify: true);
@@ -350,6 +350,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             _shell.OpenUrl(Launch($"/?item={card.Id}"));
         }
     }
+
+    /// <summary>Opens "Connect an AI app" (Claude, Copilot, VS Code, ChatGPT…) in the browser.</summary>
+    [RelayCommand]
+    private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));
 
     [RelayCommand]
     private void CopyMcpConfig()

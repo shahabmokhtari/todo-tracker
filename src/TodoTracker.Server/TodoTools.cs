@@ -261,7 +261,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     private static Guid ParseId(string id) =>
         Guid.TryParse(id, out var guid) ? guid : throw new ArgumentException($"\"{id}\" is not a task id. Use search_tasks or list_tasks to find ids.", nameof(id));
 
-    private static Guid? ResolveGroup(TaskBoard board, string? group)
+    internal static Guid? ResolveGroup(TaskBoard board, string? group)
     {
         if (string.IsNullOrWhiteSpace(group))
         {

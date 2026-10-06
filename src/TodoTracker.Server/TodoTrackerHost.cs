@@ -48,23 +48,10 @@ public static class TodoTrackerHost
     public static void AddServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        Directory.CreateDirectory(options.DataDirectory);
-        services.AddSingleton(options);
+        AddVaultServices(services, options);
         services.AddSingleton(ApiToken.LoadOrCreate(options));
-        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton(_ => InstanceLock.Acquire(options.DataDirectory));
-        services.TryAddSingleton(sp => VaultBoardStore.Open(new VaultOptions(options.ResolveVaultPath(sp.GetRequiredService<SettingsStore>().Current.VaultPath))
-        {
-            TimeZone = options.TimeZone,
-            Time = sp.GetRequiredService<TimeProvider>(),
-            LegacyBoardPath = Path.Combine(options.DataDirectory, "board.json"),
-            Watch = options.WatchVault,
-        }));
-        services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
-        services.AddSingleton<VaultLinks>();
-        services.AddSingleton<HistoryService>();
         services.AddHostedService<HistoryLoop>();
-        services.AddSingleton<SettingsStore>();
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();
@@ -78,9 +65,44 @@ public static class TodoTrackerHost
             json.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
             json.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
         });
-        services.AddMcpServer(o => o.ServerInfo = new() { Name = "todo-tracker", Version = typeof(TodoTrackerHost).Assembly.GetName().Version?.ToString() ?? "1.0" })
+        OpenApiSetup.AddServices(services);
+        services.AddMcpServer(McpInfo.Configure)
             .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateful)
             .WithTools<TodoTools>();
+    }
+
+    /// <summary>
+    /// The task store and what the tools need, shared by the web host, <c>tt mcp</c> and the <c>tt</c> CLI. Several of
+    /// them can use the same vault at once (changes run under a per-vault lock).
+    /// </summary>
+    public static void AddVaultServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        Directory.CreateDirectory(options.DataDirectory);
+        services.AddSingleton(options);
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<SettingsStore>();
+        services.TryAddSingleton(sp => OpenVault(options, sp.GetRequiredService<SettingsStore>(), sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
+        services.AddSingleton<VaultLinks>();
+        services.AddSingleton<HistoryService>();
+    }
+
+    /// <summary>Opens the vault the app uses (see <see cref="TodoTrackerServerOptions.ResolveVaultPath"/>).</summary>
+    public static VaultBoardStore OpenVault(TodoTrackerServerOptions options, SettingsStore settings, TimeProvider time)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(settings);
+        return VaultBoardStore.Open(new VaultOptions(options.ResolveVaultPath(settings.Current.VaultPath))
+        {
+            TimeZone = options.TimeZone,
+            Time = time ?? TimeProvider.System,
+
+            // An old board.json moves into the app's own folder only, never into a folder named for one command.
+            LegacyBoardPath = options.IsVaultOverridden ? null : Path.Combine(options.DataDirectory, "board.json"),
+            Watch = options.WatchVault,
+            LockDirectory = options.LockDirectory,
+        });
     }
 
     public static WebApplication Build(WebApplicationBuilder builder)
@@ -108,6 +130,7 @@ public static class TodoTrackerHost
         app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
         ApiEndpoints.Map(app);
+        OpenApiSetup.Map(app);
         app.MapMcp("/mcp");
     }
 

@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "todo-tracker": {
+      "type": "stdio",
+      "command": "tt",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
