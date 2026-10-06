@@ -27,17 +27,26 @@ export function pageSource(tab) {
   return { url: tab.url, title: tab.title || tab.url };
 }
 
+/** What Todo Tracker lists this browser as, e.g. "Edge on Windows". */
+export function browserName(userAgent = globalThis.navigator?.userAgent ?? '') {
+  const ua = String(userAgent);
+  if (!ua) return 'Browser';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const system = /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : '';
+  return system ? `${browser} on ${system}` : browser;
+}
+
 /**
- * Pairs with Todo Tracker: the 6-digit code shown there (Browser extension › Get a code) is traded for the token, so
- * nothing secret has to be copied by hand. The custom header means web pages can't do this from the browser.
+ * Pairs with Todo Tracker: the 6-digit code shown there (Browser extension › Get a code) is traded for this browser's
+ * own token, so nothing secret has to be copied by hand. The custom header means web pages can't do this.
  */
-export async function pair({ serverUrl, code, fetch = globalThis.fetch }) {
+export async function pair({ serverUrl, code, name = browserName(), fetch = globalThis.fetch }) {
   const digits = String(code ?? '').replace(/\D/g, '');
   if (digits.length !== 6) throw new Error('The pairing code has 6 digits.');
   const response = await fetch(`${normalizeServerUrl(serverUrl)}/api/plugins/browser-extension/claim`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-TodoTracker-Client': 'browser-extension' },
-    body: JSON.stringify({ code: digits }),
+    body: JSON.stringify({ code: digits, name }),
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
@@ -77,7 +86,15 @@ export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
       body: { text, sourceUrl: source?.url ?? null, sourceTitle: source?.title ?? null },
     }),
     snooze: (id, minutes) => call(`/api/items/${id}/schedule`, { method: 'POST', body: { inMinutes: minutes, notify: true } }),
-    // Single-use sign-in link for opening the dashboard in a tab; the API token never goes into a URL.
-    launchUrl: async (path = '/') => (await call('/api/launch', { method: 'POST', body: { return: path } })).url,
+    // Single-use sign-in link for opening the dashboard in a tab; the API token never goes into a URL. A paired
+    // browser's own token can't make those (it only reaches tasks), so it opens the dashboard as it is.
+    launchUrl: async (path = '/') => {
+      try {
+        return (await call('/api/launch', { method: 'POST', body: { return: path } })).url;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 403) return `${base}${path}`;
+        throw error;
+      }
+    },
   };
 }

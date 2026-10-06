@@ -149,6 +149,7 @@ $('setup-form').addEventListener('submit', async (e) => {
     $('token').value = '';
     client = createClient({ serverUrl, token });
     await refresh();
+    $('status').textContent = typed ? 'Connected' : 'Paired ✓ – this browser now has its own access to your tasks';
   } catch (err) {
     $('setup-error').textContent = err.message;
   }

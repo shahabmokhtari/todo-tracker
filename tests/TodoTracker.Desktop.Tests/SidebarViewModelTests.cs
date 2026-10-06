@@ -103,6 +103,20 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_picture_pasted_into_a_task_deleted_meanwhile_says_so()
+    {
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc)
+        {
+            Attach = (_, _, _) => throw new KeyNotFoundException("That task is gone."),
+        });
+        await Seed("Ship");
+        await vm.RefreshAsync();
+
+        Assert.Null(await vm.AttachPastedImageAsync(vm.Focus!, [1]));
+        Assert.Contains("gone", vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Enter_finishes_the_note_so_the_next_one_is_new()
     {
         var task = await Seed("Ship");

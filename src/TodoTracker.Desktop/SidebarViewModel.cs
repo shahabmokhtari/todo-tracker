@@ -300,7 +300,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             var stored = await attach(card.Id, name, png).ConfigureAwait(true);
             return $"![[{stored}]]";
         }
-        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException)
         {
             StatusMessage = $"Couldn't attach the picture: {ex.Message}";
             return null;

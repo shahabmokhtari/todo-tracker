@@ -8,10 +8,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace TodoTracker.Server.Plugins;
 
-public sealed record PairingClaim(string? Code);
+public sealed record PairingClaim(string? Code, string? Name = null);
 
 /// <summary>
-/// Short-lived pairing codes: Todo Tracker shows 6 digits, the browser extension trades them for the API token, so no
+/// Short-lived pairing codes: Todo Tracker shows 6 digits, the browser extension trades them for its own token, so no
 /// secret is copied by hand. One code at a time, single use, 5 minutes, and 5 wrong guesses void it.
 /// </summary>
 public sealed class PairingCodes(TimeProvider time)
@@ -21,6 +21,29 @@ public sealed class PairingCodes(TimeProvider time)
     private readonly Lock _lock = new();
     private (string Code, DateTimeOffset Expires)? _current;
     private int _failures;
+    private string? _pairedName;
+
+    /// <summary>What the dashboard shows while it waits: "waiting", "paired" (with the browser's name), or "none".</summary>
+    public (string State, string? Browser) Status()
+    {
+        lock (_lock)
+        {
+            if (_pairedName is not null)
+            {
+                return ("paired", _pairedName);
+            }
+
+            return _current is { } current && current.Expires > time.GetUtcNow() ? ("waiting", null) : ("none", null);
+        }
+    }
+
+    public void Paired(string name)
+    {
+        lock (_lock)
+        {
+            _pairedName = name;
+        }
+    }
 
     public (string Code, DateTimeOffset Expires) Create()
     {
@@ -29,6 +52,7 @@ public sealed class PairingCodes(TimeProvider time)
             var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
             _current = (code, time.GetUtcNow() + Lifetime);
             _failures = 0;
+            _pairedName = null;
             return _current.Value;
         }
     }
@@ -71,8 +95,11 @@ public sealed class BrowserExtensionPlugin : ITodoPlugin
 
     public string? WebModule => "/js/plugins/browser-extension.js";
 
-    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options) =>
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
         services.AddSingleton<PairingCodes>();
+        services.AddSingleton<PairedBrowsers>();
+    }
 
     public void MapEndpoints(RouteGroupBuilder group)
     {
@@ -83,12 +110,28 @@ public sealed class BrowserExtensionPlugin : ITodoPlugin
             var (code, expires) = codes.Create();
             return new { code, expiresAt = expires };
         });
+        group.MapGet("/pair", (PairingCodes codes) =>
+        {
+            var (state, browser) = codes.Status();
+            return new { state, browser };
+        });
 
         // Anonymous (the extension has no token yet), but only with the extension's header: see Security.Guard.
-        group.MapPost("/claim", (PairingClaim claim, PairingCodes codes, ApiToken token) =>
-            codes.TryRedeem(claim.Code?.Trim())
-                ? Results.Ok(new { token = token.Value })
-                : Results.Problem("That code didn’t work (codes last 5 minutes and work once). Get a new one in Todo Tracker.", statusCode: StatusCodes.Status400BadRequest));
+        group.MapPost("/claim", (PairingClaim claim, PairingCodes codes, PairedBrowsers browsers) =>
+        {
+            if (!codes.TryRedeem(claim.Code?.Trim()))
+            {
+                return Results.Problem("That code didn’t work (codes last 5 minutes and work once). Get a new one in Todo Tracker.", statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var (token, browser) = browsers.Pair(claim.Name);
+            codes.Paired(browser.Name);
+            return Results.Ok(new { token });
+        });
+
+        group.MapGet("/devices", (PairedBrowsers browsers) => browsers.List());
+        group.MapDelete("/devices/{id}", (string id, PairedBrowsers browsers) =>
+            browsers.Revoke(id) ? Results.NoContent() : Results.NotFound());
 
         group.MapGet("/download/{browser}", (string browser) =>
         {

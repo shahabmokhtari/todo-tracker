@@ -2,13 +2,15 @@ import { test, expect, chromium } from '@playwright/test';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const token = 'e2e-token-0123456789abcdefghijklmnop';
-const extensionDir = path.resolve('../../extension');
+const extensionDir = fileURLToPath(new URL('../../extension', import.meta.url));
 
 // The real, unpacked extension in Chromium (extensions only load in a persistent profile, and branded Edge/Chrome
 // builds ignore --load-extension, so this always uses Playwright's Chromium).
 test('Browser extension: loads unpacked, pairs with a code, and shows what to do now', async ({ request, baseURL }) => {
+  test.skip(!fs.existsSync(chromium.executablePath()), 'Needs Playwright’s Chromium: npx playwright install chromium');
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-ext-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
@@ -36,8 +38,11 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
 
     await expect(panel.locator('#main')).toBeVisible();
     await expect(panel.locator('body')).toContainText('Seen from the extension');
-    // The token never had to be typed, and the code is used up.
-    await expect(panel.locator('#token')).toHaveValue('');
+    // The token never had to be typed: the browser got its own (not the app's), and the code is used up.
+    await expect(panel.locator('#status')).toContainText('Paired');
+    const stored = await worker.evaluate(() => chrome.storage.local.get('token'));
+    expect(stored.token).toMatch(/^ttb_/);
+    expect(stored.token).not.toBe(token);
     const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code } });
     expect(reuse.status()).toBe(400);
     expect(errors).toEqual([]);
@@ -56,9 +61,20 @@ test('Browser extension: the setup guide walks through the steps for this browse
   await drawer.getByRole('link', { name: 'Download the extension' }).click();
   expect((await download).suggestedFilename()).toBe('todo-tracker-extension.zip');
 
-  await drawer.getByRole('tab', { name: 'Safari (Mac)' }).click();
+  await drawer.getByRole('button', { name: 'Safari (Mac)' }).click();
+  await expect(drawer.getByRole('button', { name: 'Safari (Mac)' })).toHaveAttribute('aria-pressed', 'true');
   await expect(drawer).toContainText('Allow Unsigned Extensions');
+  await expect(drawer).toContainText('com.apple.quarantine');
 
   await drawer.getByRole('button', { name: 'Get a pairing code' }).click();
-  await expect(drawer.getByLabel('Pairing code')).toHaveText(/^\d{3} \d{3}$/);
+  const shown = drawer.getByLabel('Type this code in the extension:');
+  await expect(shown).toHaveText(/^\d{3} \d{3}$/);
+
+  // When the extension uses the code, the guide says so and lists the browser, which can be removed.
+  const code = (await shown.textContent()).replace(' ', '');
+  const claim = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code, name: 'Test browser' } });
+  expect(claim.ok()).toBeTruthy();
+  await expect(drawer).toContainText('Paired with Test browser');
+  await drawer.getByRole('button', { name: 'Remove Test browser' }).click();
+  await expect(drawer.getByRole('button', { name: 'Remove Test browser' })).toHaveCount(0);
 });

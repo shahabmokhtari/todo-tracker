@@ -785,8 +785,13 @@ a.embed img { display: block; max-width: min(100%, 360px); max-height: 220px; ob
 /* ---------- browser extension setup ---------- */
 .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(127, 127, 127, .12); margin: 6px 0 10px; }
 .seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 13px; cursor: pointer; color: inherit; }
-.seg button[aria-selected="true"] { background: var(--surface-solid); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-weight: 600; }
+.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface-solid); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); font-weight: 600; }
 .setup-steps { display: grid; gap: 12px; padding-left: 22px; margin: 0; }
 .setup-steps li > p { margin: 2px 0 6px; }
 .pairing { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .pair-code { font-size: 30px; font-weight: 700; letter-spacing: .12em; font-variant-numeric: tabular-nums; padding: 6px 14px; border-radius: 12px; background: var(--surface-solid); }
+.embed-file, .embed-missing { display: inline-flex; gap: 4px; align-items: center; padding: 2px 8px; border-radius: 999px; background: rgba(127,127,127,.12); font-size: 13px; vertical-align: middle; }
+.embed-missing { opacity: .7; }
+.paired { display: flex; gap: 6px; align-items: center; color: var(--ok); font-weight: 600; }
+.paired-browsers { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.paired-browsers li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

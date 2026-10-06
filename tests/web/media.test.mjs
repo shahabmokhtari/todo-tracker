@@ -8,13 +8,20 @@ test('embeds are found in Obsidian and markdown form', () => {
 });
 
 test('text splits into plain parts and embeds, in order', () => {
-  assert.deepEqual(splitEmbeds('a ![[x.png]] b'), [{ text: 'a ' }, { embed: 'x.png' }, { text: ' b' }]);
+  assert.deepEqual(splitEmbeds('a ![[x.png]] b'), [{ text: 'a ' }, { embed: 'x.png', image: true }, { text: ' b' }]);
   assert.deepEqual(splitEmbeds('no images'), [{ text: 'no images' }]);
-  assert.deepEqual(splitEmbeds('![[only.png]]'), [{ embed: 'only.png' }]);
+  assert.deepEqual(splitEmbeds('![[only.png]]'), [{ embed: 'only.png', image: true }]);
 });
 
-test('links that are not embeds stay text', () => {
-  assert.deepEqual(embedNames('[[Another task]] and [a link](https://example.com) and ![[]]'), []);
+test('only this task\'s files are embeds; web images and other notes stay text', () => {
+  // Review finding: these all showed as broken images.
+  assert.deepEqual(splitEmbeds('see ![logo](https://example.com/logo.png) ok'), [{ text: 'see ![logo](https://example.com/logo.png) ok' }]);
+  assert.deepEqual(embedNames('![[Another task]] and ![x](//cdn.example.com/a.png) and [[Link]] and ![[]]'), []);
+  assert.deepEqual(splitEmbeds('![[Plan.pdf]]'), [{ embed: 'Plan.pdf', image: false }]);
+});
+
+test('Obsidian links with a folder or a section point to the file itself', () => {
+  assert.deepEqual(embedNames('![[_attachments/ab12/Pasted image 1.png]] ![[shot.png#^top|200]]'), ['Pasted image 1.png', 'shot.png']);
 });
 
 test('pasted files get a stable, readable name like Obsidian gives them', () => {
@@ -22,7 +29,7 @@ test('pasted files get a stable, readable name like Obsidian gives them', () => 
   assert.equal(pastedName({ name: 'image.png', type: 'image/png' }, at), 'Pasted image 20261006132517.png');
   assert.equal(pastedName({ name: '', type: 'image/jpeg' }, at), 'Pasted image 20261006132517.jpg');
   assert.equal(pastedName({ name: 'Quarterly plan.pdf', type: 'application/pdf' }, at), 'Quarterly plan.pdf');
-  assert.equal(pastedName({ name: '', type: 'application/octet-stream' }, at), 'Pasted file 20261006132517');
+  assert.equal(pastedName({ name: '', type: 'application/octet-stream' }, at), 'Pasted file 20261006132517.bin');
 });
 
 test('only files are taken from a paste; text-only pastes stay text', () => {

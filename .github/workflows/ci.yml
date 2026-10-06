@@ -224,7 +224,10 @@ jobs:
           xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Todo Tracker Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
           project=$(find safari-build -name '*.xcodeproj' -maxdepth 3 | head -1)
           xcodebuild -list -project "$project"
-          xcodebuild -project "$project" -scheme "Todo Tracker Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGNING_ALLOWED=NO build
+          # Ad-hoc signed ("-"): Safari won't load an extension app with no signature at all, even with "Allow
+          # Unsigned Extensions" on. Users still clear the download quarantine (docs/browser-extension.md).
+          xcodebuild -project "$project" -scheme "Todo Tracker Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+          codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/Todo Tracker Extension.app"
           ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/Todo Tracker Extension.app" TodoTracker-Safari-Extension.zip
       - uses: actions/upload-artifact@v4
         with:

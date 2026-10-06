@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using TodoTracker.Core;
 
 namespace TodoTracker.Server;
@@ -105,9 +106,22 @@ internal static class Security
         }
 
         var authorization = context.Request.Headers.Authorization.ToString();
-        if (authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && token.Matches(authorization["Bearer ".Length..].Trim()))
+        var bearer = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? authorization["Bearer ".Length..].Trim() : null;
+        if (bearer is not null && token.Matches(bearer))
         {
             context.Items[ActorKey] = ParseActor(context.Request.Headers[ActorHeader].ToString());
+        }
+        else if (bearer is not null && context.RequestServices.GetService<PairedBrowsers>()?.Match(bearer) is not null)
+        {
+            // A paired browser reaches the task API only (not MCP, the app's own token, sign-in links or settings),
+            // always as the browser.
+            if (isMcp || !BrowserMayReach(path, mutating))
+            {
+                response.StatusCode = StatusCodes.Status403Forbidden;
+                return;
+            }
+
+            context.Items[ActorKey] = new Actor(ActorKind.Browser);
         }
         else if (token.Matches(context.Request.Cookies[CookieName]))
         {
@@ -127,6 +141,12 @@ internal static class Security
 
         await next(context).ConfigureAwait(false);
     }
+
+    private static bool BrowserMayReach(PathString path, bool mutating) =>
+        !path.StartsWithSegments("/api/connection", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWithSegments("/api/launch", StringComparison.OrdinalIgnoreCase)
+        && !path.StartsWithSegments("/api/plugins", StringComparison.OrdinalIgnoreCase)
+        && !(mutating && path.StartsWithSegments("/api/settings", StringComparison.OrdinalIgnoreCase));
 
     public static void SetSessionCookie(HttpResponse response, ApiToken token) =>
         response.Cookies.Append(CookieName, token.Value, new CookieOptions

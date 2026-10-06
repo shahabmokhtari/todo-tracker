@@ -3,11 +3,16 @@
 // name through /api/items/{id}/embed/{name}.
 
 const EMBED = /!\[\[([^\]|]+)(?:\|[^\]]*)?\]\]|!\[[^\]]*\]\(([^)\s]+)\)/g;
+const IMAGE = /\.(png|jpe?g|gif|webp|bmp|avif)$/i;
 
-/** The file name an embed points to (the last part of a path, decoded). */
-function nameOf(wiki, path) {
-  if (wiki) return wiki.trim();
-  const last = path.split('/').pop();
+/** The attachment an embed points to (its file name), or null when it isn't one (a web address, another note). */
+function targetOf(wiki, path) {
+  const raw = (wiki ?? path ?? '').trim();
+  // Remote images and other notes' sections are not this task's attachments.
+  if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw) || raw.startsWith('//')) return null;
+  const last = raw.split('#')[0].split('/').pop();
+  if (!last) return null;
+  if (wiki) return last;
   try {
     return decodeURIComponent(last);
   } catch {
@@ -15,19 +20,29 @@ function nameOf(wiki, path) {
   }
 }
 
-/** Text as plain parts and embeds, in order: [{ text } | { embed: name }]. */
+/**
+ * Text as plain parts and embeds, in order: [{ text } | { embed: name, image }]. Embeds that aren't attachments of
+ * the task (web images, ![[Another note]]) stay text.
+ */
 export function splitEmbeds(text) {
+  const value = String(text ?? '');
   const parts = [];
   let at = 0;
-  for (const match of String(text ?? '').matchAll(EMBED)) {
-    const name = nameOf(match[1], match[2] ?? '');
-    if (!name) continue;
-    if (match.index > at) parts.push({ text: text.slice(at, match.index) });
-    parts.push({ embed: name });
+  const push = (t) => {
+    if (!t) return;
+    if (parts.length && parts[parts.length - 1].text !== undefined) parts[parts.length - 1].text += t;
+    else parts.push({ text: t });
+  };
+  for (const match of value.matchAll(EMBED)) {
+    const name = targetOf(match[1], match[2]);
+    // ![[Another note]] (no extension) is Obsidian embedding a note: not a file of this task.
+    if (!name || (match[1] && !/\.[a-z0-9]{1,8}$/i.test(name))) continue;
+    push(value.slice(at, match.index));
+    parts.push({ embed: name, image: IMAGE.test(name) });
     at = match.index + match[0].length;
   }
-  if (at < String(text ?? '').length || parts.length === 0) parts.push({ text: String(text ?? '').slice(at) });
-  return parts;
+  push(value.slice(at));
+  return parts.length ? parts : [{ text: '' }];
 }
 
 export function embedNames(text) {
@@ -43,7 +58,7 @@ export function pastedName(file, now = new Date()) {
   const generic = !file.name || /^image\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(file.name);
   if (!generic) return file.name;
   const ext = extensions[file.type];
-  return ext ? `Pasted image ${stamp(now)}.${ext}` : `Pasted file ${stamp(now)}`;
+  return ext ? `Pasted image ${stamp(now)}.${ext}` : `Pasted file ${stamp(now)}.bin`;
 }
 
 /** The files in a paste, unless it also holds text (copying from an office app adds a picture of the text). */
@@ -56,29 +71,50 @@ export function imageFiles(clipboard) {
 /** The URL showing an embed of the task's (or its parents') attachment. */
 export const embedUrl = (itemId, name) => `/api/items/${encodeURIComponent(itemId)}/embed/${encodeURIComponent(name)}`;
 
+/** The same limit the app has for attachments. */
+export const MAX_PASTE_BYTES = 25 * 1024 * 1024;
+
+const pending = new Set();
+
+/** Resolves when every paste still uploading is done (finishing a note waits, so its picture is in it). */
+export function pastesDone() {
+  return Promise.allSettled([...pending]);
+}
+
 /**
  * Pasting a file (a screenshot) into a text box attaches it to the task and puts its embed where the caret is.
- * `upload(file, name)` stores it and resolves to the attachment (its final file name may differ).
+ * `upload(file, name)` stores it and resolves to the attachment (its stored file name may differ); `onUploaded`
+ * runs after each one; `onError` reports a file that couldn't be stored (the others still go in).
  */
-export function acceptPastedMedia(box, { upload, onError }) {
-  box.addEventListener('paste', async (e) => {
+export function acceptPastedMedia(box, { upload, onError, onUploaded }) {
+  box.addEventListener('paste', (e) => {
     const files = imageFiles(e.clipboardData);
     if (!files.length) return;
     e.preventDefault();
-    const start = box.selectionStart ?? box.value.length;
-    const end = box.selectionEnd ?? start;
-    try {
-      const embeds = [];
+    let caret = box.selectionEnd ?? box.value.length;
+    const work = (async () => {
       for (const file of files) {
-        const attachment = await upload(file, pastedName(file));
-        embeds.push(`![[${attachment.storedName ?? attachment.fileName}]]`);
+        if (file.size > MAX_PASTE_BYTES) {
+          onError?.(new Error(`${file.name || 'That file'} is too big to attach (at most 25 MB).`));
+          continue;
+        }
+
+        try {
+          const attachment = await upload(file, pastedName(file));
+          const embed = `![[${attachment.storedName ?? attachment.fileName}]]`;
+          // Where the caret is now if the box is still being typed in; else where the paste was.
+          const at = document.activeElement === box ? box.selectionStart : Math.min(caret, box.value.length);
+          const before = at > 0 && !/\s$/.test(box.value.slice(0, at)) ? ' ' : '';
+          box.setRangeText(before + embed, at, document.activeElement === box ? box.selectionEnd : at, 'end');
+          caret = at + before.length + embed.length;
+          box.dispatchEvent(new Event('input', { bubbles: true }));
+          onUploaded?.(attachment);
+        } catch (err) {
+          onError?.(err);
+        }
       }
-      const text = embeds.join(' ');
-      box.focus();
-      box.setRangeText(text, start, end, 'end');
-      box.dispatchEvent(new Event('input', { bubbles: true }));
-    } catch (err) {
-      onError?.(err);
-    }
+    })();
+    pending.add(work);
+    work.finally(() => pending.delete(work));
   });
 }

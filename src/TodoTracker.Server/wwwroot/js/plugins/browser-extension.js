@@ -36,6 +36,8 @@ export function activate(host) {
       return h('ol', { class: 'setup-steps' },
         step('Get the Safari extension', 'Safari extensions come inside a small Mac app. Until it is in the App Store: use “Todo Tracker Extension.app” from the Mac build, or make it from the download below with Xcode installed:',
           download, h('pre', { class: 'snippet' }, h('code', null, 'xcrun safari-web-extension-converter todo-tracker-extension-safari --macos-only --app-name "Todo Tracker Extension"'))),
+        step('Let the Mac open it', 'A downloaded app that isn’t notarized is blocked the first time: right-click it › Open › Open (or System Settings › Privacy & Security › Open Anyway). In Terminal this does the same:',
+          h('pre', { class: 'snippet' }, h('code', null, 'xattr -dr com.apple.quarantine "Todo Tracker Extension.app"'))),
         step('Allow extensions that aren’t from the App Store', 'Safari › Settings › Advanced: turn on “Show features for web developers”. Then Develop › “Allow Unsigned Extensions” (Safari asks again after it restarts until the extension is signed).'),
         step('Turn it on', 'Open “Todo Tracker Extension.app” once, then Safari › Settings › Extensions: tick Todo Tracker and allow it on 127.0.0.1.'),
         step('Pair it', 'Click the Todo Tracker button in the toolbar and type the code below.'));
@@ -50,28 +52,82 @@ export function activate(host) {
       step('Pair it', `Type the code below in the panel (it connects to ${serverUrl}).`));
   }
 
-  function pairing() {
+  function pairing(onPaired) {
     const out = h('div', { class: 'pairing' });
-    const show = async () => {
+    // Announces "Paired with …" (and expiry) to screen readers as well as showing it.
+    const status = h('p', { class: 'muted small', role: 'status', 'aria-live': 'polite' });
+    let polling = null;
+    const stop = () => {
       clearInterval(timer);
+      clearInterval(polling);
+    };
+    const show = async () => {
+      stop();
       try {
         const { code, expiresAt } = await host.post('/api/plugins/browser-extension/pair');
         const left = h('span', { class: 'muted small' });
         const tick = () => {
           const seconds = Math.max(0, Math.round((new Date(expiresAt) - Date.now()) / 1000));
-          left.textContent = seconds ? `works once, for ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : 'expired – get a new one';
-          if (!seconds) clearInterval(timer);
+          left.textContent = seconds ? `works once, for ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '';
+          if (!seconds) {
+            stop();
+            status.textContent = 'That code expired – get a new one.';
+          }
         };
         tick();
         timer = setInterval(tick, 1000);
-        out.replaceChildren(h('div', { class: 'pair-code', 'aria-label': 'Pairing code' }, `${code.slice(0, 3)} ${code.slice(3)}`), left,
+        polling = setInterval(async () => {
+          try {
+            const { state, browser } = await host.api('/api/plugins/browser-extension/pair');
+            if (state !== 'paired') return;
+            stop();
+            out.replaceChildren(h('p', { class: 'paired' }, icon('check', { size: 16 }), ` Paired with ${browser}.`), status,
+              h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'Pair another browser'));
+            status.textContent = `Paired with ${browser}.`;
+            onPaired();
+          } catch {
+            // The next poll tries again.
+          }
+        }, 2000);
+        status.textContent = '';
+        out.replaceChildren(h('p', { class: 'muted small', id: 'pair-code-label' }, 'Type this code in the extension:'),
+          h('div', { class: 'pair-code', 'aria-labelledby': 'pair-code-label' }, `${code.slice(0, 3)} ${code.slice(3)}`), left, status,
           h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'New code'));
       } catch (err) {
         host.toast(err.message, 'error');
       }
     };
-    out.append(h('button', { class: 'btn primary', type: 'button', onclick: show }, 'Get a pairing code'));
-    return out;
+    out.append(h('button', { class: 'btn primary', type: 'button', onclick: show }, 'Get a pairing code'), status);
+    return { node: out, stop };
+  }
+
+  /** Browsers paired so far, each with its own access that can be taken back here. */
+  function devices() {
+    const list = h('ul', { class: 'paired-browsers' });
+    const load = async () => {
+      let paired = [];
+      try {
+        paired = await host.api('/api/plugins/browser-extension/devices');
+      } catch (err) {
+        host.toast(err.message, 'error');
+      }
+      list.replaceChildren(...(paired.length ? paired.map((d) => h('li', null,
+        h('span', null, d.name, h('span', { class: 'muted small' }, ` · paired ${new Date(d.pairedAt).toLocaleDateString()}`)),
+        h('button', {
+          class: 'btn ghost', type: 'button', 'aria-label': `Remove ${d.name}`,
+          onclick: async () => {
+            try {
+              await host.del(`/api/plugins/browser-extension/devices/${encodeURIComponent(d.id)}`);
+              host.toast(`${d.name} can’t reach Todo Tracker any more`);
+              load();
+            } catch (err) {
+              host.toast(err.message, 'error');
+            }
+          },
+        }, 'Remove'))) : [h('li', { class: 'muted small' }, 'None yet.')]));
+    };
+    load();
+    return { node: list, load };
   }
 
   async function open() {
@@ -84,20 +140,25 @@ export function activate(host) {
     }
     const detected = detectBrowser();
     const body = h('div', { class: 'browser-setup' });
-    const tabs = h('div', { class: 'seg', role: 'tablist' });
+    const tabs = h('div', { class: 'seg', role: 'group', 'aria-label': 'Your browser' });
     const select = (id) => {
-      tabs.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.id === id)));
+      tabs.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === id)));
       body.replaceChildren(steps(id, info.serverUrl));
     };
-    tabs.append(...Object.entries(browsers).map(([id, b]) => h('button', { type: 'button', role: 'tab', dataset: { id }, onclick: () => select(id) }, b.name)));
+    tabs.append(...Object.entries(browsers).map(([id, b]) => h('button', { type: 'button', dataset: { id }, onclick: () => select(id) }, b.name)));
     select(detected);
+    const paired = devices();
+    const code = pairing(paired.load);
     await host.openPanel('Browser extension', h('div', null,
       h('p', { class: 'muted' }, 'See what to do now, add tasks, and save notes about the page you’re on, right from the browser. ',
         'The extension isn’t in the browser stores yet, so it’s set up by hand once – it takes about two minutes.'),
       tabs,
       body,
-      h('section', { class: 'drawer-section' }, h('h3', null, 'Pairing code'), pairing())),
-    { iconName: 'puzzle', onClose: () => clearInterval(timer) });
+      h('section', { class: 'drawer-section' }, h('h3', null, 'Pairing code'), code.node),
+      h('section', { class: 'drawer-section' }, h('h3', null, 'Paired browsers'),
+        h('p', { class: 'muted small' }, 'Each browser gets its own access to your tasks only (not settings or AI tools). Remove one you no longer use.'),
+        paired.node)),
+    { iconName: 'puzzle', onClose: code.stop });
   }
 
   host.addHeaderButton({ iconName: 'puzzle', label: 'Browser extension', onClick: open });

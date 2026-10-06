@@ -29,23 +29,32 @@ Safari extensions come inside a small Mac app.
    yourself (needs Xcode), download the Safari version from the setup panel, unzip it, and run
    `xcrun safari-web-extension-converter todo-tracker-extension-safari --macos-only --app-name "Todo Tracker Extension"`,
    then build and run the project Xcode opens.
-2. Safari › Settings › Advanced: turn on **Show features for web developers**. Then **Develop › Allow Unsigned
+2. A downloaded app that isn't notarized is blocked the first time it opens. Right-click it › **Open** › **Open** (or
+   System Settings › Privacy & Security › **Open Anyway**), or in Terminal:
+   `xattr -dr com.apple.quarantine "Todo Tracker Extension.app"`.
+3. Safari › Settings › Advanced: turn on **Show features for web developers**. Then **Develop › Allow Unsigned
    Extensions** (until the extension is signed, Safari asks for this again after it restarts).
-3. Open **Todo Tracker Extension.app** once, then Safari › Settings › Extensions: tick **Todo Tracker** and allow it on
+4. Open **Todo Tracker Extension.app** once, then Safari › Settings › Extensions: tick **Todo Tracker** and allow it on
    `127.0.0.1`.
-4. Click the Todo Tracker button in the toolbar and type the pairing code.
+5. Click the Todo Tracker button in the toolbar and type the pairing code.
 
 ## Pairing
 
-The setup panel shows a **6-digit code**. The extension trades it for the app's access token, so there's nothing secret
-to copy. A code works once, for 5 minutes, and five wrong tries void it. Only the extension can use a code: the
-request needs a header that web pages can't send to the app. Pasting the token (**⋯ › Copy API token**, under
-*Other server, or paste a token instead*) still works.
+The setup panel shows a **6-digit code**. The extension trades it for **its own access token**, so there's nothing
+secret to copy, and the panel says **Paired with Edge on Windows** (or whichever browser) as soon as it's used. A code
+works once, for 5 minutes, and five wrong tries void it. Only the extension can use a code: the request needs a header
+that web pages can't send to the app.
+
+A paired browser's token reaches your tasks and nothing else: not the AI tools (MCP), settings, plugins or sign-in
+links, and whatever it does is recorded as the browser. **Paired browsers** in the setup panel lists them; **Remove**
+takes one's access away at once (the extension then asks for a new code). Switching the plugin off (it applies after a restart, like every plugin) stops them all.
+Pasting the app's own token (**⋯ › Copy API token**, under *Other server, or paste a token instead*) still works and
+has full access.
 
 ## For developers
 
 * One source in `extension/`: `manifest.json` (Edge/Chrome, side panel) and `safari/manifest.json` (Safari, popup).
   The code uses `browser` when it exists (Safari) and `chrome` otherwise. A test keeps the two manifests in step.
 * The app serves the extension ready to load: `GET /api/plugins/browser-extension/download/chromium` or `/safari`.
-* CI zips both, and builds the unsigned Safari app with `safari-web-extension-converter` on macOS.
+* CI zips both, and builds the Safari app (ad-hoc signed, not notarized) with `safari-web-extension-converter` on macOS.
 * An end-to-end test loads the unpacked extension in Chromium, pairs it with a code and checks it shows the tasks.
