@@ -4,6 +4,9 @@ An ADHD-friendly task sidebar that always tells you **what to do now**. Deferred
 back on time with a reminder. Rollout steps unlock themselves 24 hours apart, and Copilot and other agents can add
 notes and tasks through MCP.
 
+Your tasks are **plain markdown files in a folder you own**, ready for Obsidian, git, sync services, and AI agents
+that work with files. Every change is versioned, and nothing needs a Save button.
+
 | | |
 |---|---|
 | **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture |
@@ -12,6 +15,7 @@ notes and tasks through MCP.
 | **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
 | **Agents** | MCP endpoint (`/mcp`) with task tools; changes are attributed to the agent |
 | **Teams** | Reminder cards through a Teams Workflows webhook |
+| **Files** | An Obsidian-compatible markdown vault (`Documents/Todo Tracker` by default), with version history |
 
 The full plan, design, rules, and requirement traceability are in [`docs/product-spec.md`](docs/product-spec.md). The original request is in [`docs/request.md`](docs/request.md).
 
@@ -47,6 +51,21 @@ Deploy ring 2 !! @2h due:tomorrow      →  critical, back in 2h with a reminder
 To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add rollout steps*), enter one step per line,
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
 waits 24 hours and then comes back with a reminder.
+
+### Where your tasks live
+
+Tasks are markdown files in **Documents/Todo Tracker**: one folder per group (tab), one file per task, with subtasks
+as checkboxes (Obsidian Tasks syntax), notes as callouts, and attachments next to them. Edit them anywhere: in the
+app, in Obsidian, in an editor, or with an AI agent. The app picks the changes up. See
+[`docs/vault-format.md`](docs/vault-format.md).
+
+- **Use Obsidian:** **⋯ › Tasks folder › Keep tasks in an Obsidian vault** lists your vaults. The app then uses
+  `<vault>/Todo Tracker` (restart to switch). Any task opens in Obsidian from its menu or the web drawer.
+- **Pointing the app at existing notes is safe.** It reads them without rewriting anything until you change a task.
+- **History:** every change is saved as a version (needs `git`). Open a task in the web drawer › *History* to view or
+  restore a version.
+- **Tags, labels, search:** add `#tags` and colored labels to tasks; click one (or press `/`) to filter. The same
+  syntax works everywhere: `#release label:"Deep work" group:work is:done words`.
 
 ### Connect Copilot (MCP)
 
@@ -99,7 +118,7 @@ System tests drive the real sidebar with UI Automation on the live Windows shell
 
 | Path | What |
 |---|---|
-| `src/TodoTracker.Core` | Domain model, agenda rules, quick capture, focus timer, JSON store, reminder dispatcher |
+| `src/TodoTracker.Core` | Domain model, agenda rules, search, quick capture, focus timer, markdown vault store and history, reminder dispatcher |
 | `src/TodoTracker.Server` | REST API, MCP tools, security, Teams notifier, reminder loop, embedded web UI (`wwwroot`) |
 | `src/TodoTracker.Web` | Standalone server host |
 | `src/TodoTracker.Desktop` | Platform-neutral view models for the sidebar |

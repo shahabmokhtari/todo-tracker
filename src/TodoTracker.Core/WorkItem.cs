@@ -6,6 +6,9 @@ public sealed class WorkItem
     internal readonly List<WorkItem> ChildList = [];
     internal readonly List<Reminder> ReminderList = [];
     internal readonly List<Note> NoteList = [];
+    internal readonly List<string> TagList = [];
+    internal readonly List<string> LabelList = [];
+    internal readonly List<Attachment> AttachmentList = [];
 
     internal WorkItem(Guid id, string title, Priority priority, DateTimeOffset createdAt)
     {
@@ -15,7 +18,7 @@ public sealed class WorkItem
         CreatedAt = createdAt;
     }
 
-    public Guid Id { get; }
+    public Guid Id { get; internal set; }
 
     public string Title { get; internal set; }
 
@@ -50,6 +53,14 @@ public sealed class WorkItem
     public IReadOnlyList<Reminder> Reminders => ReminderList;
 
     public IReadOnlyList<Note> Notes => NoteList;
+
+    /// <summary>Free-form tags without the leading <c>#</c> (nested tags use <c>/</c>, e.g. <c>infra/k8s</c>).</summary>
+    public IReadOnlyList<string> Tags => TagList;
+
+    /// <summary>Names of <see cref="LabelDefinition"/>s on the board.</summary>
+    public IReadOnlyList<string> Labels => LabelList;
+
+    public IReadOnlyList<Attachment> Attachments => AttachmentList;
 
     public bool IsDone => CompletedAt is not null;
 
@@ -96,6 +107,10 @@ public sealed record NewTask(string Title)
     public bool Sequential { get; init; }
 
     public TimeSpan? StepDelay { get; init; }
+
+    public IReadOnlyList<string>? Tags { get; init; }
+
+    public IReadOnlyList<string>? Labels { get; init; }
 }
 
 public sealed record TaskChanges

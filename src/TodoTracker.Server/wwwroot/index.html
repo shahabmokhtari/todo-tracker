@@ -17,6 +17,11 @@
       <span class="brand-name">Todo Tracker</span>
     </a>
     <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups"></nav>
+    <div class="search" role="search">
+      <span class="search-icon" id="search-icon" aria-hidden="true"></span>
+      <input id="filter" type="search" autocomplete="off" spellcheck="false" placeholder="Filter  #tag  label:x" aria-label="Filter tasks (press /)" title="Words, #tag, label:name, group:name, is:done — press / to focus">
+      <button id="filter-clear" class="icon-btn small" type="button" aria-label="Clear filter" hidden>×</button>
+    </div>
     <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
   </header>
 
@@ -52,6 +57,8 @@
         <span class="hint"><code>due:3d</code> deadline</span>
       </div>
 
+      <div id="problems" class="notice warn" role="status" hidden></div>
+
       <section id="focus" class="focus" aria-label="Do this now"></section>
 
       <div class="columns">
@@ -77,6 +84,7 @@
           </details>
         </div>
       </div>
+      <footer id="vault" class="vault-footer"></footer>
     </div>
   </main>
 

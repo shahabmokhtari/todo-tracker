@@ -45,6 +45,9 @@ public sealed record SnoozeOption(string Label, Func<DateTimeOffset, TimeZoneInf
 
 public sealed record SnoozeRequest(CardViewModel Card, SnoozeOption Option);
 
+/// <summary>A label shown on a card: its name and <c>#rrggbb</c> color.</summary>
+public sealed record LabelChip(string Name, string Color);
+
 public sealed partial class CardViewModel : ObservableObject
 {
     [ObservableProperty]
@@ -90,7 +93,34 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial IReadOnlyList<ChipViewModel> Chips { get; set; } = [];
 
+    /// <summary>Tags as shown (<c>#release</c>).</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> Tags { get; set; } = [];
+
+    [ObservableProperty]
+    public partial IReadOnlyList<LabelChip> Labels { get; set; } = [];
+
+    public bool HasTagsOrLabels => Tags.Count > 0 || Labels.Count > 0;
+
     public Guid Id { get; init; }
+
+    /// <summary>The note this draft is autosaving into (null until the first save).</summary>
+    internal Guid? DraftNoteId { get; set; }
+
+    internal string? SavedDraft { get; set; }
+
+    internal ITimer? DraftTimer { get; set; }
+
+    /// <summary>The draft save in flight; saves run one after another so two can't both create a note.</summary>
+    internal Task DraftSaving { get; set; } = Task.CompletedTask;
+
+    internal Action<CardViewModel>? DraftEdited { get; set; }
+
+    partial void OnNoteDraftChanged(string value) => DraftEdited?.Invoke(this);
+
+    partial void OnTagsChanged(IReadOnlyList<string> value) => OnPropertyChanged(nameof(HasTagsOrLabels));
+
+    partial void OnLabelsChanged(IReadOnlyList<LabelChip> value) => OnPropertyChanged(nameof(HasTagsOrLabels));
 
     public bool HasBreadcrumb => Breadcrumb.Length > 0;
 
@@ -108,6 +138,8 @@ public sealed partial class CardViewModel : ObservableObject
         CanComplete = other.CanComplete;
         LastNote = other.LastNote;
         Chips = other.Chips;
+        Tags = other.Tags;
+        Labels = other.Labels;
         OnPropertyChanged(nameof(HasBreadcrumb));
     }
 }

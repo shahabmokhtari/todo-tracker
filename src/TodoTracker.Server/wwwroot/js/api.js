@@ -8,9 +8,17 @@ export class ApiError extends Error {
   }
 }
 
+let keepalive = false;
+
+/** While the page is going away, requests must outlive it (the browser would abort a plain fetch). */
+export function setKeepalive(on) {
+  keepalive = on;
+}
+
 export async function api(path, { method = 'GET', body } = {}) {
   const response = await fetch(path, {
     method,
+    keepalive,
     credentials: 'same-origin',
     headers: {
       'X-TodoTracker-Client': 'web',
@@ -31,6 +39,23 @@ export const post = (path, body = {}) => api(path, { method: 'POST', body });
 export const patch = (path, body) => api(path, { method: 'PATCH', body });
 export const put = (path, body) => api(path, { method: 'PUT', body });
 export const del = (path) => api(path, { method: 'DELETE' });
+
+/** Uploads one file as multipart form data (the browser sets the boundary). */
+export async function upload(path, file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { 'X-TodoTracker-Client': 'web' }, body: form });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new ApiError(response.status, data?.detail || data?.title || `Upload failed (${response.status})`);
+  return data;
+}
+
+/** GET returning plain text (e.g. a markdown version from the history). */
+export async function text(path) {
+  const response = await fetch(path, { credentials: 'same-origin', headers: { 'X-TodoTracker-Client': 'web' } });
+  if (!response.ok) throw new ApiError(response.status, `Request failed (${response.status})`);
+  return response.text();
+}
 
 // Minimal DOM builder: text is always set via textContent, never innerHTML.
 export function h(tag, attrs = {}, ...children) {

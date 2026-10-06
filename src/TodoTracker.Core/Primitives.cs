@@ -15,6 +15,9 @@ public enum ActorKind
     Browser,
     Teams,
     System,
+
+    /// <summary>Someone edited the markdown files directly (Obsidian, an editor, or an agent with file tools).</summary>
+    Vault,
 }
 
 /// <summary>Who made a change. Used for attribution in notes and the activity timeline.</summary>
@@ -28,6 +31,7 @@ public sealed record Actor(ActorKind Kind, string? Name = null)
     public string DisplayName => Kind switch
     {
         ActorKind.User => "You",
+        ActorKind.Vault => "Edited in files",
         _ when !string.IsNullOrWhiteSpace(Name) => $"{Kind}: {Name}",
         _ => Kind.ToString(),
     };
@@ -59,6 +63,9 @@ public enum ActivityKind
     FocusStarted,
     FocusCompleted,
     GroupChanged,
+    AttachmentAdded,
+    AttachmentRemoved,
+    LabelChanged,
 }
 
 public enum ReminderKind

@@ -31,7 +31,7 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await page.click('.focus-title');
   const drawer = page.locator('#drawer');
   await expect(drawer).toBeVisible();
-  await drawer.locator('summary', { hasText: 'Add rollout steps' }).click();
+  await drawer.locator('summary', { hasText: 'rollout steps' }).click();
   await drawer.locator('textarea[placeholder^="Rollout steps"]').fill('Ring 0\nRing 1');
   await drawer.getByRole('button', { name: 'Add steps' }).click();
   await expect(drawer.locator('.subtasks li')).toHaveCount(2);
@@ -91,3 +91,68 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   expect(errors).toEqual([]);
 });
 
+test('details autosave, tags and labels filter, notes save as you type, files attach', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await expect(page.locator('#board')).toBeVisible();
+
+  await page.fill('#capture-input', 'Write the launch plan');
+  await page.press('#capture-input', 'Enter');
+  await page.locator('.focus-title', { hasText: 'Write the launch plan' }).click();
+  const drawer = page.locator('#drawer');
+
+  // No save button: edits save themselves.
+  await expect(drawer.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
+  await drawer.locator('.title-input').fill('Write the launch plan v2');
+  await drawer.getByLabel('Tags').fill('#launch #docs');
+  await drawer.locator('.label-input').fill('Deep work');
+  await drawer.locator('.label-input').press('Enter');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  // Notes save while typing and stay one note.
+  await drawer.locator('textarea[placeholder^="Note"]').fill('Outline done');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+  await drawer.locator('textarea[placeholder^="Note"]').fill('Outline done, next: review');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  // Attach a file: the panel refreshes, but the note being written stays in the box (and stays the same note).
+  await drawer.locator('input[type=file]').setInputFiles({ name: 'plan.md', mimeType: 'text/markdown', buffer: Buffer.from('# Plan') });
+  await expect(drawer.locator('.attachments')).toContainText('plan.md');
+  const noteBox = drawer.locator('textarea[placeholder^="Note"]');
+  await expect(noteBox).toHaveValue('Outline done, next: review');
+  await noteBox.fill('Outline done, next: review, sent to Bob');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  // Someone else renames the task meanwhile; typing details here must not put the old title back.
+  const id = await drawer.getAttribute('data-item-id');
+  await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Launch plan (renamed elsewhere)' } });
+  await drawer.getByPlaceholder(/^Details/).fill('Audience: partners');
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+  const saved = await (await request.get(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` } })).json();
+  expect(saved.title).toBe('Launch plan (renamed elsewhere)');
+  expect(saved.details).toBe('Audience: partners');
+  await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Write the launch plan v2' } });
+
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await page.locator('#sec-notes > summary').click();
+  await expect(page.locator('#sec-notes .note').filter({ hasText: 'Outline done' })).toHaveCount(1);
+  await expect(page.locator('#sec-notes .note').first()).toContainText('sent to Bob');
+
+  // Clicking a tag filters everything to it; Escape-clearing brings the rest back.
+  const card = page.locator('.item, .focus-card').filter({ hasText: 'Write the launch plan v2' }).first();
+  await expect(card.locator('.chip.label')).toContainText('Deep work');
+  await card.locator('.chip.tag', { hasText: '#launch' }).click();
+  await expect(page.locator('#filter')).toHaveValue('#launch');
+  await expect(page.locator('.focus-title')).toHaveText('Write the launch plan v2');
+  await page.locator('#filter-clear').click();
+  await expect(page.locator('#filter')).toHaveValue('');
+
+  // Where the files live is always visible.
+  await expect(page.locator('#vault')).toContainText('Saved as markdown in');
+
+  expect(errors).toEqual([]);
+});

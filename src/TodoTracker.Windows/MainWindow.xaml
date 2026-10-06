@@ -20,6 +20,18 @@
         <ItemsPanelTemplate x:Key="WrapPanelTemplate">
             <WrapPanel />
         </ItemsPanelTemplate>
+        <!-- Labels: a colored dot and the name. Tags: quiet accent text. -->
+        <DataTemplate x:Key="LabelChipTemplate" DataType="{x:Type d:LabelChip}">
+            <Border CornerRadius="9" Padding="6,1,7,1" Margin="0,2,4,0" Background="{Binding Color, Converter={StaticResource SoftBrush}}" ToolTip="Label">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{Binding Color, Converter={StaticResource HexBrush}}" />
+                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="TagChipTemplate">
+            <TextBlock Text="{Binding}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,2,6,0" ToolTip="Tag" />
+        </DataTemplate>
 
         <!-- A list row: priority dot, text, quiet icon actions that brighten on hover. -->
         <DataTemplate x:Key="CardTemplate" DataType="{x:Type d:CardViewModel}">
@@ -38,6 +50,10 @@
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,1,0,0"
                                    Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
                         <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        <WrapPanel Margin="0,2,0,0" Visibility="{Binding HasTagsOrLabels, Converter={StaticResource VisibleWhen}}">
+                            <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource LabelChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                            <ItemsControl ItemsSource="{Binding Tags}" ItemTemplate="{StaticResource TagChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        </WrapPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
                             <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource AttentionText}" Margin="0,0,5,0" />
                             <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -65,8 +81,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="False" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" />
-                            <Button Grid.Column="1" Content="Save" Margin="6,0,0,0" Style="{StaticResource PrimaryButton}"
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note." />
+                            <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>
                     </StackPanel>
@@ -107,6 +123,10 @@
                         <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" />
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" Margin="0,2,0,0" Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
                         <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" Margin="0,2,0,0" />
+                        <WrapPanel Margin="0,2,0,0" Visibility="{Binding HasTagsOrLabels, Converter={StaticResource VisibleWhen}}">
+                            <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource LabelChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                            <ItemsControl ItemsSource="{Binding Tags}" ItemTemplate="{StaticResource TagChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        </WrapPanel>
                         <Border CornerRadius="10" Padding="10,7" Margin="0,8,0,0" Background="{StaticResource AttentionSoft}"
                                 Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
                             <StackPanel Orientation="Horizontal">
@@ -163,8 +183,8 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" />
-                            <Button Grid.Column="1" Content="Save" Margin="6,0,0,0" Style="{StaticResource PrimaryButton}"
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note." />
+                            <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>
                     </StackPanel>

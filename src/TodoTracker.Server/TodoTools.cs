@@ -1,34 +1,47 @@
 using System.ComponentModel;
+using System.Text;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using TodoTracker.Core;
+using TodoTracker.Core.Vault;
 
 namespace TodoTracker.Server;
 
 /// <summary>
-/// MCP tool surface for Copilot and other agents. Every change is attributed to the calling agent and shows up in the
-/// sidebar and timeline. There is intentionally no delete tool: agents can complete/reopen but not destroy data.
+/// MCP tool surface for Copilot, Claude, ChatGPT and other agents. Every change is attributed to the calling agent and
+/// shows up in the sidebar and timeline. There is intentionally no delete tool: agents can complete/reopen but not
+/// destroy data. Tasks also live as markdown files (see <c>vault_info</c>), so agents with file tools can work there.
 /// </summary>
 [McpServerToolType]
-public sealed class TodoTools(IBoardStore store, TimeProvider time)
+public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history)
 {
+    private const int MaxTextAttachmentBytes = 1024 * 1024;
+
     [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, and focus timer state.")]
-    public Task<DashboardDto> GetDashboard([Description("Optional group (tab) name or id, e.g. 'work' or 'personal'.")] string? group = null) =>
-        Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), ResolveGroup(b, group))));
+    public Task<DashboardDto> GetDashboard(
+        [Description("Optional group (tab) name or id, e.g. 'work' or 'personal'.")] string? group = null,
+        [Description("Optional filter in search syntax, e.g. '#release' or 'label:\"deep work\"'.")] string? query = null) =>
+        Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), ResolveGroup(b, group), 5, links, query)));
 
     [McpServerTool(Name = "list_tasks", ReadOnly = true), Description("Full task tree (optionally for one group), including ids needed by the other tools.")]
     public Task<List<ItemDto>> ListTasks(string? group = null, bool includeDone = false) =>
         Guard(() => store.ReadAsync(b =>
         {
             var groupId = ResolveGroup(b, group);
-            return b.Items.Where(i => (includeDone || !i.IsDone) && (groupId is null || i.GroupId == groupId)).Select(i => Wire.Item(i, time.GetUtcNow())).ToList();
+            return b.Items.Where(i => (includeDone || !i.IsDone) && (groupId is null || i.GroupId == groupId)).Select(i => Wire.Item(i, time.GetUtcNow(), b, links)).ToList();
         }));
 
-    [McpServerTool(Name = "get_task", ReadOnly = true), Description("One task with its subtasks, reminders, and notes.")]
-    public Task<ItemDto> GetTask(string taskId) =>
-        Guard(() => store.ReadAsync(b => Wire.Item(b.Get(ParseId(taskId)), time.GetUtcNow())));
+    [McpServerTool(Name = "search_tasks", ReadOnly = true), Description(
+        "Find tasks and subtasks. Words match title or details; #tag (nested tags too), label:name, group:name, is:open|is:done narrow it. " +
+        "Tags and labels are inherited by subtasks. Quote multi-word values: label:\"deep work\". Open tasks only unless the query has is:.")]
+    public Task<List<SearchHitDto>> SearchTasks(string query) =>
+        Guard(() => store.ReadAsync(b => ApiEndpoints.Search(b, query, time.GetUtcNow(), links)));
 
-    [McpServerTool(Name = "create_task"), Description("Create a task (or a subtask when parentId is set). Use add_steps for gated rollout steps.")]
+    [McpServerTool(Name = "get_task", ReadOnly = true), Description("One task with its subtasks, reminders, notes, tags, labels, attachments, and its markdown file.")]
+    public Task<ItemDto> GetTask(string taskId) =>
+        Guard(() => store.ReadAsync(b => Wire.Item(b.Get(ParseId(taskId)), time.GetUtcNow(), b, links)));
+
+    [McpServerTool(Name = "create_task"), Description("Create a task (or a subtask when parentId is set). Use add_steps for ordered rollout steps.")]
     public Task<ItemDto> CreateTask(
         McpServer server,
         string title,
@@ -37,7 +50,9 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
         [Description("low | normal | high | critical")] string? priority = null,
         string? details = null,
         [Description("ISO-8601 deadline.")] DateTimeOffset? deadline = null,
-        [Description("Defer the task (and remind) this many minutes from now.")] int? deferMinutes = null) =>
+        [Description("Defer the task (and remind) this many minutes from now.")] int? deferMinutes = null,
+        [Description("Free-form tags without '#', e.g. ['release', 'infra/k8s'].")] string[]? tags = null,
+        [Description("Curated labels, e.g. ['Deep work']. Unknown labels are created.")] string[]? labels = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var item = b.AddTask(
@@ -48,6 +63,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
                     Priority = Wire.ParsePriority(priority),
                     Details = details,
                     Deadline = deadline,
+                    Tags = tags,
+                    Labels = labels,
                 },
                 actor,
                 now);
@@ -64,7 +81,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
-            return b.AddSteps(ParseId(parentId), steps, stepDelayHours is { } h ? TimeSpan.FromHours(h) : null, ActorOf(server), now).Select(s => Wire.Item(s, now)).ToList();
+            return b.AddSteps(ParseId(parentId), steps, stepDelayHours is { } h ? TimeSpan.FromHours(h) : null, ActorOf(server), now).Select(s => Wire.Item(s, now, b)).ToList();
         }));
 
     [McpServerTool(Name = "add_note"), Description("Log progress on a task (\"did X, next Y\"). Shows in recent notes and the report timeline.")]
@@ -118,13 +135,110 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, or deadline.")]
-    public Task<ItemDto> UpdateTask(McpServer server, string taskId, string? title = null, string? details = null, string? priority = null, DateTimeOffset? deadline = null) =>
+    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, or labels (tags/labels replace the current ones when given).")]
+    public Task<ItemDto> UpdateTask(
+        McpServer server,
+        string taskId,
+        string? title = null,
+        string? details = null,
+        string? priority = null,
+        DateTimeOffset? deadline = null,
+        string[]? tags = null,
+        string[]? labels = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
             b.Update(id, new TaskChanges { Title = title, Details = details, Priority = priority is null ? null : Wire.ParsePriority(priority), Deadline = deadline }, actor, now);
+            if (tags is not null)
+            {
+                b.SetTags(id, tags, actor, now);
+            }
+
+            if (labels is not null)
+            {
+                b.SetLabels(id, labels, actor, now);
+            }
+
             return b.Get(id);
+        });
+
+    [McpServerTool(Name = "move_task"), Description("Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index sets the position among siblings.")]
+    public Task<ItemDto> MoveTask(McpServer server, string taskId, string? parentId = null, string? group = null, int? index = null, bool toTopLevel = false) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            var groupId = ResolveGroup(b, group);
+            if (parentId is not null)
+            {
+                b.Move(id, ParseId(parentId), index, null, actor, now);
+            }
+            else if (toTopLevel || b.Get(id).Parent is not null)
+            {
+                b.Move(id, null, index, groupId, actor, now);
+            }
+            else if (groupId is { } g)
+            {
+                b.MoveToGroup(id, g, actor, now);
+            }
+            else
+            {
+                throw new ArgumentException("Say where to move the task: parentId, group, or toTopLevel.", nameof(taskId));
+            }
+
+            return b.Get(id);
+        });
+
+    [McpServerTool(Name = "list_labels", ReadOnly = true), Description("The curated labels (name and color) the user picks from.")]
+    public Task<IReadOnlyList<LabelDto>> ListLabels() => Guard(() => store.ReadAsync(Wire.Labels));
+
+    [McpServerTool(Name = "attach_text"), Description("Attach a text file (log excerpt, plan, summary…) to a task. It is saved in the vault and linked from the task.")]
+    public Task<AttachmentDto> AttachText(McpServer server, string taskId, [Description("File name with extension, e.g. 'timeline.md'.")] string fileName, string text) =>
+        Guard(async () =>
+        {
+            var bytes = Encoding.UTF8.GetBytes(text ?? string.Empty);
+            if (bytes.Length > MaxTextAttachmentBytes)
+            {
+                throw new ArgumentException("Text attachments can be at most 1 MB.", nameof(text));
+            }
+
+            var id = ParseId(taskId);
+            using var stream = new MemoryStream(bytes);
+            var attachment = await links.Vault.AddAttachmentAsync(id, fileName, stream, ActorOf(server)).ConfigureAwait(false);
+            var item = await store.ReadAsync(b => b.Get(id)).ConfigureAwait(false);
+            return Wire.Attachment(item, attachment);
+        });
+
+    [McpServerTool(Name = "get_rich_html", ReadOnly = true), Description("The task's rich HTML version (tables, layouts, colors), if it has one. Only top-level tasks have one.")]
+    public Task<string> GetRichHtml(string taskId) =>
+        Guard(async () => await links.Vault.ReadRichAsync(ParseId(taskId)).ConfigureAwait(false) ?? "(this task has no rich version)");
+
+    [McpServerTool(Name = "set_rich_html"), Description("Save a rich HTML version of a top-level task when markdown isn't enough (tables, dashboards, colors). Scripts never run. Empty html removes it.")]
+    public Task<RichDto> SetRichHtml(McpServer server, string taskId, string html) =>
+        Guard(async () =>
+        {
+            var clean = string.IsNullOrWhiteSpace(html) ? null : html;
+            await links.Vault.WriteRichAsync(ParseId(taskId), clean, ActorOf(server)).ConfigureAwait(false);
+            return new RichDto(clean is not null);
+        });
+
+    [McpServerTool(Name = "vault_info", ReadOnly = true), Description("Where the markdown files live, files that need fixing, and the file format guide (for agents that edit the files directly).")]
+    public async Task<VaultDto> VaultInfo()
+    {
+        await store.ReadAsync(_ => 0).ConfigureAwait(false);
+        return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath));
+    }
+
+    [McpServerTool(Name = "task_history", ReadOnly = true), Description("Saved versions of a task's file, newest first (every change is versioned). Use restore_task_version to go back.")]
+    public Task<IReadOnlyList<VaultVersion>> TaskHistory(string taskId) =>
+        Guard(() => history.Required.TaskHistoryAsync(ParseId(taskId)));
+
+    [McpServerTool(Name = "restore_task_version"), Description("Put a task back the way it was in an earlier version (from task_history). The current state stays in the history, so this can be undone.")]
+    public Task<ItemDto> RestoreTaskVersion(McpServer server, string taskId, string versionId) =>
+        Guard(async () =>
+        {
+            var id = ParseId(taskId);
+            await history.Required.RestoreTaskAsync(id, versionId, ActorOf(server)).ConfigureAwait(false);
+            return await store.ReadAsync(b => Wire.Item(b.Get(id), time.GetUtcNow(), b, links)).ConfigureAwait(false);
         });
 
     [McpServerTool(Name = "get_report", ReadOnly = true), Description("Timeline report (newest first) for one task or the whole board.")]
@@ -132,20 +246,20 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
         Guard(() => store.ReadAsync(b =>
         {
             var id = taskId is null ? (Guid?)null : ParseId(taskId);
-            return new ReportDto(id is { } i ? Wire.Item(b.Get(i), time.GetUtcNow()) : null, Wire.Timeline(b, id, limit));
+            return new ReportDto(id is { } i ? Wire.Item(b.Get(i), time.GetUtcNow(), b, links) : null, Wire.Timeline(b, id, limit));
         }));
 
     private Task<ItemDto> Mutate(McpServer server, Func<TaskBoard, DateTimeOffset, Actor, WorkItem> mutate) =>
-        Guard(() => store.UpdateAsync(b =>
+        Guard(async () =>
         {
-            var now = time.GetUtcNow();
-            return Wire.Item(mutate(b, now, ActorOf(server)), now);
-        }));
+            var id = await store.UpdateAsync(b => mutate(b, time.GetUtcNow(), ActorOf(server)).Id).ConfigureAwait(false);
+            return await store.ReadAsync(b => Wire.Item(b.Get(id), time.GetUtcNow(), b, links)).ConfigureAwait(false);
+        });
 
     private static Actor ActorOf(McpServer server) => Actor.Agent(server.ClientInfo?.Name ?? "mcp");
 
     private static Guid ParseId(string id) =>
-        Guid.TryParse(id, out var guid) ? guid : throw new ArgumentException($"\"{id}\" is not a task id. Use list_tasks to find ids.", nameof(id));
+        Guid.TryParse(id, out var guid) ? guid : throw new ArgumentException($"\"{id}\" is not a task id. Use search_tasks or list_tasks to find ids.", nameof(id));
 
     private static Guid? ResolveGroup(TaskBoard board, string? group)
     {
@@ -165,10 +279,9 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time)
         {
             return await action().ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException)
         {
             throw new McpException(ErrorText.Friendly(ex), ex);
         }
     }
 }
-

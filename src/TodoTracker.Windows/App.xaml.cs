@@ -37,7 +37,19 @@ public partial class App : Application
                 return;
             }
 
-            await StartAsync(args).ConfigureAwait(true);
+            // After "switch tasks folder" the previous instance may still be shutting down: wait for it briefly.
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    await StartAsync(args).ConfigureAwait(true);
+                    break;
+                }
+                catch (Exception ex) when (args.Restart && attempt < 20 && ex is StoreLockedException or IOException)
+                {
+                    await Task.Delay(500).ConfigureAwait(true);
+                }
+            }
         }
         catch (StoreLockedException)
         {
@@ -133,6 +145,7 @@ public partial class App : Application
         }
 
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);
+        window.Vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
         MainWindow = window;
 
         var events = services.GetRequiredService<ServerEvents>();
@@ -372,7 +385,7 @@ public partial class App : Application
     }
 }
 
-internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null)
+internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null, bool Restart = false)
 {
     public static StartupArgs Parse(string[] args)
     {
@@ -386,6 +399,7 @@ internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? Dat
                 "--data" when i + 1 < args.Length => result with { DataDirectory = args[++i] },
                 "--port" when i + 1 < args.Length => result with { Port = int.Parse(args[++i], CultureInfo.InvariantCulture) },
                 "--no-dock" => result with { NoDock = true },
+                "--restart" => result with { Restart = true },
                 "--screenshot" when i + 1 < args.Length => result with { Screenshot = args[++i] },
                 "--theme" when i + 1 < args.Length => result with { Theme = args[++i] },
                 _ => result,

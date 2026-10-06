@@ -27,6 +27,43 @@ public sealed class TodoTrackerServerOptions
 
     public string BaseUrl => (PublicBaseUrl ?? $"http://127.0.0.1:{Port}").TrimEnd('/');
 
+    /// <summary>
+    /// Markdown vault folder. When null: <c>TODOTRACKER_VAULT</c>, then the folder chosen in the app, then
+    /// <c>Documents/Todo Tracker</c> (or <c>&lt;data&gt;/vault</c> when a custom data folder is used, e.g. tests).
+    /// </summary>
+    public string? VaultPath { get; set; }
+
+    /// <summary>Watch the vault for edits made outside the app (Obsidian, editors, agents).</summary>
+    public bool WatchVault { get; set; } = true;
+
+    /// <summary>Keep version history of the vault in a private git repository (needs git on the PATH).</summary>
+    public bool EnableHistory { get; set; } = true;
+
+    public string ResolveVaultPath(string? chosenInApp)
+    {
+        if (!string.IsNullOrWhiteSpace(VaultPath))
+        {
+            return Path.GetFullPath(VaultPath);
+        }
+
+        if (Environment.GetEnvironmentVariable("TODOTRACKER_VAULT") is { Length: > 0 } fromEnvironment)
+        {
+            return Path.GetFullPath(fromEnvironment);
+        }
+
+        if (!string.IsNullOrWhiteSpace(chosenInApp))
+        {
+            return Path.GetFullPath(chosenInApp);
+        }
+
+        var usesDefaultData = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TODOTRACKER_DATA"))
+            && string.Equals(Path.GetFullPath(DataDirectory), Path.GetFullPath(DefaultDataDirectory()), StringComparison.OrdinalIgnoreCase);
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return usesDefaultData && !string.IsNullOrEmpty(documents)
+            ? Path.Combine(documents, "Todo Tracker")
+            : Path.Combine(DataDirectory, "vault");
+    }
+
     public static string DefaultDataDirectory()
     {
         var overridePath = Environment.GetEnvironmentVariable("TODOTRACKER_DATA");

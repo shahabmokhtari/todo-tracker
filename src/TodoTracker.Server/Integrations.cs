@@ -4,9 +4,13 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server;
 
-public sealed record ServerSettings(string? TeamsWebhookUrl);
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost);
+
+public sealed record VaultSettingRequest(string? Path);
+
+public sealed record VaultSettingDto(string Path, bool RestartRequired);
 
 /// <summary>Small JSON settings file in the data directory (kept separate from the board so it is never exported).</summary>
 public sealed class SettingsStore
@@ -44,14 +48,35 @@ public sealed class SettingsStore
         lock (_lock)
         {
             _current = _current with { TeamsWebhookUrl = clean };
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(_current, JsonSerializerOptions.Web));
-            if (!OperatingSystem.IsWindows())
-            {
-                File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
-
+            Save();
             return _current;
+        }
+    }
+
+    /// <summary>Remembers the vault folder chosen in the app (used from the next start).</summary>
+    public ServerSettings SetVaultPath(string? path)
+    {
+        var clean = string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        if (clean is not null && !System.IO.Path.IsPathFullyQualified(clean))
+        {
+            throw new ArgumentException("Choose a full folder path for the vault.", nameof(path));
+        }
+
+        lock (_lock)
+        {
+            _current = _current with { VaultPath = clean is null ? null : System.IO.Path.GetFullPath(clean) };
+            Save();
+            return _current;
+        }
+    }
+
+    private void Save()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        File.WriteAllText(_path, JsonSerializer.Serialize(_current, JsonSerializerOptions.Web));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
     }
 

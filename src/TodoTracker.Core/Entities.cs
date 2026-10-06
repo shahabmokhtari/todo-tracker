@@ -43,7 +43,7 @@ public sealed class Note
 
     public DateTimeOffset At { get; }
 
-    public string Text { get; }
+    public string Text { get; internal set; }
 
     public Actor Author { get; }
 
@@ -53,6 +53,48 @@ public sealed class Note
 }
 
 public sealed record ActivityEntry(DateTimeOffset At, Guid ItemId, ActivityKind Kind, string Summary, Actor Actor);
+
+/// <summary>A file attached to a task. The bytes live in the store; <see cref="Path"/> is relative to the store root.</summary>
+public sealed class Attachment
+{
+    internal Attachment(Guid id, string fileName, string path, long size, DateTimeOffset addedAt, Actor addedBy)
+    {
+        Id = id;
+        FileName = fileName;
+        Path = path;
+        Size = size;
+        AddedAt = addedAt;
+        AddedBy = addedBy;
+    }
+
+    public Guid Id { get; }
+
+    public string FileName { get; }
+
+    /// <summary>Location relative to the store root, with forward slashes (e.g. <c>_attachments/7b0c2f9e/plan.pdf</c>).</summary>
+    public string Path { get; internal set; }
+
+    public long Size { get; }
+
+    public DateTimeOffset AddedAt { get; }
+
+    public Actor AddedBy { get; }
+}
+
+/// <summary>A curated, colored label (tags are free-form; labels are the few the user picks from).</summary>
+public sealed class LabelDefinition
+{
+    internal LabelDefinition(string name, string color)
+    {
+        Name = name;
+        Color = color;
+    }
+
+    public string Name { get; internal set; }
+
+    /// <summary><c>#rrggbb</c>.</summary>
+    public string Color { get; internal set; }
+}
 
 public sealed class TaskGroup
 {

@@ -29,6 +29,9 @@ public sealed class ServerFixture : IAsyncDisposable
 
     public string DataDirectory { get; }
 
+    /// <summary>With an explicit data folder, the vault defaults to <c>&lt;data&gt;/vault</c>.</summary>
+    public string VaultDirectory => Path.Combine(DataDirectory, "vault");
+
     public FakeTimeProvider Time { get; }
 
     public RecordingNotifier Notifier { get; }
@@ -47,6 +50,8 @@ public sealed class ServerFixture : IAsyncDisposable
             TimeZone = TimeZoneInfo.Utc,
             TickInterval = TimeSpan.FromHours(1),
             EnableBackgroundLoop = false,
+            WatchVault = false,
+            EnableHistory = false,
         };
         configure?.Invoke(options);
         var time = new FakeTimeProvider(T0);
@@ -84,9 +89,15 @@ public sealed class ServerFixture : IAsyncDisposable
         await App.DisposeAsync();
         try
         {
+            // Git object files are read-only on Windows.
+            foreach (var file in Directory.EnumerateFiles(DataDirectory, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
             Directory.Delete(DataDirectory, recursive: true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
     }
@@ -111,6 +122,21 @@ public sealed class FakeHttpHandler : HttpMessageHandler
     {
         Requests.Add((request.RequestUri!, await request.Content!.ReadAsStringAsync(cancellationToken)));
         return new HttpResponseMessage(System.Net.HttpStatusCode.Accepted);
+    }
+}
+
+public static class McpHelpers
+{
+    public static async Task<List<string>> ToolNamesAsync(ServerFixture server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        var http = server.Client();
+        var transport = new ModelContextProtocol.Client.HttpClientTransport(
+            new ModelContextProtocol.Client.HttpClientTransportOptions { Endpoint = new Uri(http.BaseAddress!, "/mcp"), TransportMode = ModelContextProtocol.Client.HttpTransportMode.StreamableHttp },
+            http,
+            ownsHttpClient: true);
+        await using var mcp = await ModelContextProtocol.Client.McpClient.CreateAsync(transport);
+        return (await mcp.ListToolsAsync()).Select(t => t.Name).ToList();
     }
 }
 

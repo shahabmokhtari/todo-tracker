@@ -13,6 +13,8 @@ namespace TodoTracker.Desktop;
 public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 {
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan NoteSaveDelay = TimeSpan.FromSeconds(1.2);
+    private Task _noteSaves = Task.CompletedTask;
     private readonly IBoardStore _store;
     private readonly TimeProvider _time;
     private readonly IDesktopShell _shell;
@@ -118,6 +120,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
 
         Focus = snapshot.Focus is null ? null : Reuse(snapshot.Focus);
+        foreach (var card in snapshot.Now.Concat(snapshot.Waiting).Append(Focus).OfType<CardViewModel>())
+        {
+            card.DraftEdited ??= OnNoteDraftEdited;
+        }
         CollectionSync.Sync(Now, snapshot.Now.Select(Reuse).ToList());
         CollectionSync.Sync(Waiting, snapshot.Waiting.Select(Reuse).ToList());
         CollectionSync.Sync(Workstreams, snapshot.Workstreams);
@@ -181,15 +187,94 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return "Back in Do now";
     });
 
+    /// <summary>Enter: saves what was typed right away and finishes the note (the next keystrokes start a new one).</summary>
     [RelayCommand]
-    private Task AddNote(CardViewModel? card) => card is null || string.IsNullOrWhiteSpace(card.NoteDraft) ? Task.CompletedTask : Run(async () =>
+    private Task AddNote(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
     {
-        var text = card.NoteDraft;
-        await _store.UpdateAsync(b => b.AddNote(card.Id, text, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        card.DraftTimer?.Dispose();
+        card.DraftTimer = null;
+        var saved = await SaveDraftAsync(card).ConfigureAwait(true);
+        card.DraftNoteId = null;
         card.NoteDraft = string.Empty;
         card.IsNoteOpen = false;
-        return "Note saved";
+        return saved || card.DraftNoteId is not null ? "Note saved" : null;
     });
+
+    /// <summary>Completes when note drafts that are due to be saved have been saved (used by tests).</summary>
+    public Task WhenNotesSavedAsync() => _noteSaves;
+
+    /// <summary>Notes save themselves: once typing pauses, the draft is saved (first as a new note, then in place).</summary>
+    private void OnNoteDraftEdited(CardViewModel card)
+    {
+        card.DraftTimer?.Dispose();
+        card.DraftTimer = string.IsNullOrWhiteSpace(card.NoteDraft)
+            ? null
+            : _time.CreateTimer(_ => _shell.RunOnUi(() => _noteSaves = SaveDraftInBackgroundAsync(card)), null, NoteSaveDelay, Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task SaveDraftInBackgroundAsync(CardViewModel card)
+    {
+        try
+        {
+            if (await SaveDraftAsync(card).ConfigureAwait(true))
+            {
+                StatusMessage = "Note saved";
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "Couldn't save the note yet (" + ErrorText.Friendly(ex) + "). It's still here; it will be saved when you keep typing or press Enter.";
+        }
+    }
+
+    /// <summary>Whether a note was typed that isn't saved yet.</summary>
+    public bool HasUnsavedNotes => Cards().Any(c => c.DraftTimer is not null || !c.DraftSaving.IsCompleted
+        || (!string.IsNullOrWhiteSpace(c.NoteDraft) && c.NoteDraft != c.SavedDraft));
+
+    private IEnumerable<CardViewModel> Cards() => Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>().Distinct();
+
+    /// <summary>Saves everything typed but not saved yet (before the app closes or restarts).</summary>
+    public async Task FlushNotesAsync()
+    {
+        foreach (var card in Cards().ToList())
+        {
+            card.DraftTimer?.Dispose();
+            card.DraftTimer = null;
+            await SaveDraftInBackgroundAsync(card).ConfigureAwait(true);
+        }
+    }
+
+    private Task<bool> SaveDraftAsync(CardViewModel card)
+    {
+        var saving = SaveDraftAfterAsync(card.DraftSaving, card);
+        card.DraftSaving = saving;
+        return saving;
+    }
+
+    private async Task<bool> SaveDraftAfterAsync(Task previous, CardViewModel card)
+    {
+        try
+        {
+            await previous.ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            // Reported by whoever started that save; this one retries with the latest text.
+        }
+
+        var text = card.NoteDraft;
+        if (string.IsNullOrWhiteSpace(text) || text == card.SavedDraft)
+        {
+            return false;
+        }
+
+        var noteId = card.DraftNoteId;
+        card.DraftNoteId = await _store.UpdateAsync(b => noteId is { } id && b.Get(card.Id).Notes.Any(n => n.Id == id)
+            ? b.UpdateNote(card.Id, id, text, Actor.User, _time.GetUtcNow()).Id
+            : b.AddNote(card.Id, text, Actor.User, _time.GetUtcNow()).Id).ConfigureAwait(true);
+        card.SavedDraft = text;
+        return true;
+    }
 
     [RelayCommand]
     private Task DismissReminder(CardViewModel? card) => card?.ReminderId is not { } reminderId ? Task.CompletedTask : Run(async () =>
@@ -436,13 +521,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             ? Selected(keep, t.IsSelected)
             : t).ToList();
 
-        var cards = d.Now.Select(e => ToCard(e, now)).ToList();
+        var cards = d.Now.Select(e => ToCard(e, now, board)).ToList();
         var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
         return new Snapshot(
             reusedTabs,
             cards.FirstOrDefault(),
             cards.Skip(1).ToList(),
-            d.Waiting.Select(e => ToCard(e, now)).ToList(),
+            d.Waiting.Select(e => ToCard(e, now, board)).ToList(),
             // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
             d.Overview.Where(o => o.Item.Children.Count > 0).Select(o => new WorkstreamViewModel(
                 o.Item.Id,
@@ -466,7 +551,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return tab;
     }
 
-    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now)
+    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board)
     {
         var item = e.Item;
         var meta = new List<string>();
@@ -505,6 +590,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             CanComplete = e.State == ItemState.Actionable,
             LastNote = item.Notes.Count > 0 ? item.Notes[^1].Text : null,
             Chips = ChipsFor(e, now),
+            Tags = item.Tags.Select(t => "#" + t).ToList(),
+            Labels = item.Labels.Select(n => new LabelChip(n, board.FindLabel(n)?.Color ?? "#64748b")).ToList(),
         };
     }
 
