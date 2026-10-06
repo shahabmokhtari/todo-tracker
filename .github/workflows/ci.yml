@@ -217,12 +217,40 @@ jobs:
         with:
           name: macos-app
           path: apple/TodoTracker-macOS.zip
-      - name: Safari extension (an unsigned Mac app that carries the web extension)
+      - name: Safari extension (an ad-hoc signed Mac app that carries the web extension)
         run: |
           mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
           cp extension/safari/manifest.json safari-src/manifest.json
           xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Todo Tracker Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
           project=$(find safari-build -name '*.xcodeproj' -maxdepth 3 | head -1)
+          # The converter names the app and its extension inconsistently; signing requires the extension's bundle id
+          # to start with the app's. Set both (and the id the app's code uses to find its extension).
+          python3 - "$project" <<'PY'
+          import glob, re, sys
+          project = sys.argv[1]
+          path = f"{project}/project.pbxproj"
+          text = open(path).read()
+          old = set()
+          def fix(match):
+              block = match.group(0)
+              found = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = "?([^";]+)"?;', block)
+              if not found:
+                  return block
+              appex = "SKIP_INSTALL = YES" in block or "Extension Extension" in block
+              new = "dev.todotracker.safari.extension" if appex else "dev.todotracker.safari"
+              if appex:
+                  old.add(found.group(1))
+              return block.replace(found.group(0), f"PRODUCT_BUNDLE_IDENTIFIER = {new};")
+          text = re.sub(r"buildSettings = \{.*?\n\t\t\t\};", fix, text, flags=re.S)
+          open(path, "w").write(text)
+          for swift in glob.glob(f"{project}/../**/*.swift", recursive=True):
+              code = open(swift).read()
+              for ext in old:
+                  code = code.replace(f'"{ext}"', '"dev.todotracker.safari.extension"')
+              open(swift, "w").write(code)
+          print("extension ids replaced:", old)
+          PY
+          grep -n "PRODUCT_BUNDLE_IDENTIFIER" "$project/project.pbxproj"
           xcodebuild -list -project "$project"
           # Ad-hoc signed ("-"): Safari won't load an extension app with no signature at all, even with "Allow
           # Unsigned Extensions" on. Users still clear the download quarantine (docs/browser-extension.md).
