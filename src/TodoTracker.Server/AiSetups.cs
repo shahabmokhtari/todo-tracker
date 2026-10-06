@@ -34,10 +34,13 @@ public static class AiSetups
     {
         ArgumentNullException.ThrowIfNull(connection);
         var command = Json(tt);
-        var shell = tt.Contains(' ', StringComparison.Ordinal) ? $"\"{tt}\"" : tt;
+        var quoted = tt.Contains(' ', StringComparison.Ordinal) ? $"\"{tt}\"" : tt;
+
+        // PowerShell needs "&" to run a quoted path; titles are quoted because shells treat # ! @ specially.
+        var run = OperatingSystem.IsWindows() && quoted != tt ? "& " + quoted : quoted;
         var setups = new List<AiSetupDto>
         {
-            new("claude-code", "Claude Code", "Run this once in a terminal:", $"claude mcp add todo-tracker --scope user -- {shell} mcp", "command"),
+            new("claude-code", "Claude Code", "Run this once in a terminal:", $"claude mcp add todo-tracker --scope user -- {quoted} mcp", "command"),
             new("copilot-cli", "GitHub Copilot CLI", "Add this to ~/.copilot/mcp-config.json (or run /mcp add in Copilot):",
                 $$"""{ "mcpServers": { "todo-tracker": { "type": "local", "command": {{command}}, "args": ["mcp"], "tools": ["*"] } } }""", "json"),
             new("claude-desktop", "Claude Desktop", "Settings → Developer → Edit config, add this, then restart Claude:",
@@ -49,7 +52,7 @@ public static class AiSetups
             new("http", "Other MCP apps (HTTP, while Todo Tracker runs)", "Use this server URL and header:",
                 $"URL: {connection.McpUrl}\nHeader: Authorization: Bearer {connection.Token}", "text"),
             new("terminal", "Terminal and scripts", "Every command has --json for scripts and agents:",
-                $"{shell} now\n{shell} add Renew passport !! due:7d #admin\n{shell} done passport", "command"),
+                $"{run} now\n{run} add 'Renew passport !! due:7d #admin'\n{run} done passport", "command"),
             new("cloud", "ChatGPT, Claude.ai, Copilot Studio", "These connect from the cloud, so they need a public HTTPS address (a tunnel). Their API description:",
                 $"{connection.BaseUrl}/openapi/v1.json\n{connection.BaseUrl}/openapi/swagger2.json  (Copilot Studio)", "text", DocsUrl),
         };

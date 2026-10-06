@@ -29,6 +29,11 @@ public sealed class CliHarness : IDisposable
 
     public string WorkingDirectory { get; set; } = Path.GetTempPath();
 
+    /// <summary>Locks and history live here instead of the real local app data.</summary>
+    public string StateDirectory => Path.Combine(DataDirectory, "local");
+
+    public string Git { get; init; } = "git";
+
     public Task<CliResult> Run(params string[] args) => RunWithInput(string.Empty, args);
 
     public async Task<CliResult> RunWithInput(string input, params string[] args)
@@ -47,6 +52,9 @@ public sealed class CliHarness : IDisposable
             VaultPath = VaultDirectory,
             History = History,
             WorkingDirectory = WorkingDirectory,
+            LockDirectory = StateDirectory,
+            Git = Git,
+            Agent = null,
         };
         var code = await CliApp.RunAsync(args, context);
         return new CliResult(code, output.ToString(), error.ToString());
@@ -71,26 +79,6 @@ public sealed class CliHarness : IDisposable
     {
         try
         {
-            // Version history lives outside the vault (local app data); remove what these tests created.
-            if (History && Directory.Exists(VaultDirectory))
-            {
-                string historyPath;
-                using (var store = TodoTracker.Core.Vault.VaultBoardStore.Open(new TodoTracker.Core.Vault.VaultOptions(VaultDirectory) { Watch = false }))
-                {
-                    historyPath = store.HistoryPath;
-                }
-
-                if (Directory.Exists(historyPath))
-                {
-                    foreach (var file in Directory.EnumerateFiles(historyPath, "*", SearchOption.AllDirectories))
-                    {
-                        File.SetAttributes(file, FileAttributes.Normal);
-                    }
-
-                    Directory.Delete(historyPath, recursive: true);
-                }
-            }
-
             if (Directory.Exists(DataDirectory))
             {
                 foreach (var file in Directory.EnumerateFiles(DataDirectory, "*", SearchOption.AllDirectories))

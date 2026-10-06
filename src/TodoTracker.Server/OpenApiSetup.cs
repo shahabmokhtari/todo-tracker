@@ -91,12 +91,21 @@ internal static partial class OpenApiSetup
             };
             document.Components ??= new OpenApiComponents();
             document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
-            document.Components.SecuritySchemes["bearer"] = new OpenApiSecurityScheme
-            {
-                Type = SecuritySchemeType.Http,
-                Scheme = "bearer",
-                Description = "The API token shown in Todo Tracker (Connect AI tools).",
-            };
+            // Swagger 2.0 has no bearer type: there it is an API key in the Authorization header ("Bearer <token>").
+            document.Components.SecuritySchemes["bearer"] = version == OpenApiSpecVersion.OpenApi2_0
+                ? new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.ApiKey,
+                    In = ParameterLocation.Header,
+                    Name = "Authorization",
+                    Description = "\"Bearer \" followed by the API token from Todo Tracker (Connect an AI app).",
+                }
+                : new OpenApiSecurityScheme
+                {
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    Description = "The API token from Todo Tracker (Connect an AI app).",
+                };
             document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("bearer", document)] = [] }];
             return Task.CompletedTask;
         });

@@ -97,8 +97,11 @@ public static class TodoTrackerHost
         {
             TimeZone = options.TimeZone,
             Time = time ?? TimeProvider.System,
-            LegacyBoardPath = Path.Combine(options.DataDirectory, "board.json"),
+
+            // An old board.json moves into the app's own folder only, never into a folder named for one command.
+            LegacyBoardPath = options.IsVaultOverridden ? null : Path.Combine(options.DataDirectory, "board.json"),
             Watch = options.WatchVault,
+            LockDirectory = options.LockDirectory,
         });
     }
 

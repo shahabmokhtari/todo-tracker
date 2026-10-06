@@ -325,6 +325,12 @@ public sealed class ApiTests : IAsyncLifetime
         }
 
         Assert.Contains(ServerFixture.Token, setups["http"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+        var terminal = setups["terminal"]["snippet"]!.GetValue<string>();
+        Assert.Contains("add 'Renew passport !! due:7d #admin'", terminal, StringComparison.Ordinal);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.StartsWith("& \"C:\\Program Files", terminal, StringComparison.Ordinal);
+        }
         Assert.Contains("/openapi/swagger2.json", setups["cloud"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
     }
 

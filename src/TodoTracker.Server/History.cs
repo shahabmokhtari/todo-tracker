@@ -11,7 +11,7 @@ public sealed class HistoryService : IDisposable
     public HistoryService(VaultBoardStore vault, TodoTrackerServerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        History = options.EnableHistory ? VaultHistory.TryCreate(vault) : null;
+        History = options.EnableHistory ? VaultHistory.TryCreate(vault, options.Git) : null;
     }
 
     public VaultHistory? History { get; }

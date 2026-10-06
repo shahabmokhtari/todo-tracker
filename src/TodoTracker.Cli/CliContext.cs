@@ -24,6 +24,12 @@ public sealed class CliContext
 
     public string WorkingDirectory { get; init; } = Environment.CurrentDirectory;
 
+    /// <summary>Per-vault locks and version history (null: local app data).</summary>
+    public string? LockDirectory { get; init; }
+
+    /// <summary>The git used for version history.</summary>
+    public string Git { get; init; } = "git";
+
     /// <summary>Who changes are attributed to when <c>--as</c> isn't given (<c>TT_AGENT</c>).</summary>
     public string? Agent { get; init; } = Environment.GetEnvironmentVariable("TT_AGENT");
 

@@ -55,6 +55,13 @@ internal static class TaskResolver
 
     public static string ShortId(Guid id) => id.ToString("N")[..8];
 
+    /// <summary>A full id, or an id prefix as tt prints them.</summary>
+    public static bool LooksLikeId(string text)
+    {
+        var hex = (text ?? string.Empty).Trim().Replace("-", string.Empty, StringComparison.Ordinal);
+        return Guid.TryParse(text, out _) || (hex.Length >= MinPrefix && hex.All(Uri.IsHexDigit));
+    }
+
     private static WorkItem Single(List<WorkItem> candidates, string text, Func<WorkItem, bool>? prefer)
     {
         var narrowed = Narrow(candidates, prefer);
@@ -86,7 +93,14 @@ internal static class CliTime
     public static DateTimeOffset Defer(string when, DateTimeOffset now, TimeZoneInfo zone)
     {
         var text = (when ?? string.Empty).Trim();
-        if (QuickCaptureParser.Parse($"x @{text}", now, zone).NextActionAt is { } at)
+        var at = Parse(text, now, zone) ?? throw new ArgumentException($"\"{text}\" isn't a time. Use 45m, 2h, 3d, tomorrow, 2026-02-01, or 2026-02-01T14:30.");
+        return at > now ? at : throw new ArgumentException($"{text} is in the past. Snooze to a later time (e.g. 2h or tomorrow).");
+    }
+
+    private static DateTimeOffset? Parse(string text, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        // One token only, so "2h and more words" is an error rather than "2h" with the rest dropped.
+        if (!text.Contains(' ', StringComparison.Ordinal) && QuickCaptureParser.Parse($"x @{text}", now, zone).NextActionAt is { } at)
         {
             return at;
         }
@@ -97,7 +111,7 @@ internal static class CliTime
             return new DateTimeOffset(wall, zone.GetUtcOffset(wall));
         }
 
-        return Exact(text, zone) ?? throw new ArgumentException($"\"{text}\" isn't a time. Use 45m, 2h, 3d, tomorrow, 2026-02-01, or 2026-02-01T14:30.");
+        return Exact(text, zone);
     }
 
     public static DateTimeOffset Deadline(string when, DateTimeOffset now, TimeZoneInfo zone)

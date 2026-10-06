@@ -61,13 +61,14 @@ public sealed class McpStdioTests : IDisposable
     private async Task<McpClient> Connect()
     {
         var tt = Path.Combine(AppContext.BaseDirectory, "tt.dll");
+        Directory.CreateDirectory(_tt.VaultDirectory);
         Assert.True(File.Exists(tt), $"{tt} is missing");
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
             Name = "tt",
             Command = "dotnet",
             Arguments = [tt, "mcp", "--data", _tt.DataDirectory, "--vault", _tt.VaultDirectory, "--no-history"],
-            EnvironmentVariables = new Dictionary<string, string?> { ["TODOTRACKER_VAULT"] = null, ["TODOTRACKER_DATA"] = null },
+            EnvironmentVariables = new Dictionary<string, string?> { ["TODOTRACKER_VAULT"] = null, ["TODOTRACKER_DATA"] = null, ["TT_AGENT"] = null },
         });
         return await McpClient.CreateAsync(
             transport,

@@ -106,6 +106,11 @@ local server, and most require OAuth rather than a fixed token:
 The API description is a curated, safe subset: reading and organizing tasks, logging notes, history and restore.
 Deleting, settings and sign-in are left out.
 
+> **Tunnels must keep the local Host header.** The app only answers requests addressed to `127.0.0.1`/`localhost`
+> (that blocks DNS-rebinding attacks), so tell the tunnel to rewrite the Host header: `ngrok http 5317
+> --host-header=rewrite`, cloudflared `--http-host-header 127.0.0.1:5317`, or Dev Tunnels with a host header of
+> `127.0.0.1:5317`. Don't turn off "local only": that would also open the app to your network.
+>
 > A tunnel makes your tasks reachable from the internet. Keep the token secret, prefer tunnels that add their own
 > sign-in (for example Microsoft Dev Tunnels with Entra ID, or Cloudflare Access), and stop the tunnel when you're done.
 
@@ -118,13 +123,14 @@ MSIX yet; until then, use the Claude Desktop or VS Code setup.
 
 ```
 tt                                  what to do now (and what is waiting)
-tt add Renew passport !! due:7d #admin
-tt add Book flights --under trip    a subtask; <task> is an id prefix or words from the title
+tt add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
+tt add Renew passport --due 7d --tag admin  the same without quick words
+tt add 'Book flights' --under trip  a subtask; <task> is an id prefix or words from the title
 tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
 tt show passport                    a task with subtasks, notes and its markdown file
-tt note passport Booked appointment for Tuesday
+tt note passport 'Booked appointment for Tuesday'   (or tt note passport - to read it from stdin)
 tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30
-tt done passport                    finish (several at once: tt done a1b2c3 d4e5f6)
+tt done Renew passport              finish (several at once by id: tt done a1b2c3 d4e5f6)
 tt steps rollout "Ring 0" "Ring 1" --delay 24
 tt edit passport --priority high --due none
 tt tag passport +travel -admin      tt label passport "+Deep work"

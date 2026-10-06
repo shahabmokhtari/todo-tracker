@@ -15,11 +15,13 @@ internal static class CliCommands
     {
         new CliCommand("now", "tt [now] [filter] [-g group]", "What to do now, and what is waiting", "filter uses the list syntax, e.g. tt now #release", Now),
         new CliCommand("add", "tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when]", "Add a task",
-            "Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.\nExample: tt add Renew passport !! due:7d #admin", Add),
+            "Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.\n" +
+            "Quote the title: shells treat # ! @ specially. Example: tt add 'Renew passport !! due:7d #admin'\n" +
+            "Or use options: tt add Renew passport --due 7d --tag admin", Add),
         new CliCommand("list", "tt list [filter] [-g group] [--all]", "Find tasks",
             "Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.", List),
         new CliCommand("show", "tt show <task>", "A task with its subtasks, notes and file", null, Show),
-        new CliCommand("done", "tt done <task>…", "Mark tasks done", null, Done),
+        new CliCommand("done", "tt done <task> | tt done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as tt prints them); words are one task's title.", Done),
         new CliCommand("reopen", "tt reopen <task>", "Undo done", null, Reopen),
         new CliCommand("note", "tt note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
         new CliCommand("snooze", "tt snooze <task> <when>", "Defer a task until later (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30", Snooze),
@@ -120,7 +122,7 @@ internal static class CliCommands
             filter += group.Contains(' ', StringComparison.Ordinal) ? $" group:\"{group}\"" : $" group:{group}";
         }
 
-        var includeDone = a.Has("all") || filter.Contains("is:", StringComparison.OrdinalIgnoreCase);
+        var includeDone = a.Has("all") || TaskQuery.Parse(filter).HasState;
         var hits = await s.Read(b => TaskQuery.Parse(filter).Apply(b)
             .Where(i => includeDone || !i.IsDone)
             .Select(i => Wire.SearchHit(i, s.Now, b, s.Links))
@@ -140,8 +142,11 @@ internal static class CliCommands
     {
         a.Allow();
         _ = a.Word(0, "which task");
+
+        // Several tasks only when every word is an id; otherwise the words are one title ("tt done Renew passport").
+        IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
         var done = new List<ItemDto>();
-        foreach (var reference in a.Words)
+        foreach (var reference in references)
         {
             done.Add(await s.Change((b, now) =>
             {
@@ -178,7 +183,13 @@ internal static class CliCommands
     {
         a.Allow();
         var reference = a.Word(0, "which task");
-        var text = a.Words.Count == 2 && a.Words[1] == "-"
+        var fromInput = a.Words.Count == 2 && a.Words[1] == "-";
+        if (fromInput && ReferenceEquals(s.Context.In, Console.In) && !Console.IsInputRedirected)
+        {
+            await s.Context.Error.WriteLineAsync(OperatingSystem.IsWindows() ? "Type the note, then Ctrl+Z and Enter:" : "Type the note, then Ctrl+D:").ConfigureAwait(false);
+        }
+
+        var text = fromInput
             ? (await s.Context.In.ReadToEndAsync().ConfigureAwait(false)).Trim().ReplaceLineEndings("\n")
             : a.WordsFrom(1, "the note");
         NoteDto? note = null;
@@ -347,6 +358,11 @@ internal static class CliCommands
     private static async Task History(CliSession s, CliArgs a)
     {
         a.Allow();
+        if (a.Has("no-history"))
+        {
+            throw new CliUsageException("History is off for this command (--no-history); run it without that option.");
+        }
+
         var reference = a.WordsFrom(0, "which task");
         var id = await s.Read(b => TaskResolver.Resolve(b, reference).Id).ConfigureAwait(false);
         var versions = await s.History.Required.TaskHistoryAsync(id).ConfigureAwait(false);

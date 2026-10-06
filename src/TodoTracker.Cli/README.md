@@ -5,7 +5,7 @@ running, and `tt mcp` serves them to AI apps over MCP (stdio).
 
 ```
 tt                                  what to do now
-tt add Renew passport !! due:7d #admin
+tt add 'Renew passport !! due:7d #admin'
 tt done passport
 tt mcp                              MCP server for Claude Desktop, Claude Code, Copilot CLI, VS Code
 ```

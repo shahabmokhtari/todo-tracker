@@ -66,11 +66,22 @@ internal sealed class CliSession : IDisposable
 
     public Task<ItemDto> Item(Guid id) => Store.ReadAsync(b => Wire.Item(b.Get(id), Now, b, Links));
 
+    /// <summary>
+    /// Saves a version right away. The change itself is already saved, so a failure here is only a warning (exit 0):
+    /// an agent that retried would add the task twice. The app's periodic snapshot records it later anyway.
+    /// </summary>
     public async Task SaveVersion()
     {
-        if (_options.EnableHistory && History.History is { } versions)
+        try
         {
-            await versions.CommitAsync().ConfigureAwait(false);
+            if (_options.EnableHistory && History.History is { } versions)
+            {
+                await versions.CommitAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            await _context.Error.WriteLineAsync($"tt: saved, but couldn't save a version yet ({ex.Message}).").ConfigureAwait(false);
         }
     }
 

@@ -42,21 +42,30 @@ public sealed class TodoTrackerServerOptions
     /// <summary>Keep version history of the vault in a private git repository (needs git on the PATH).</summary>
     public bool EnableHistory { get; set; } = true;
 
+    /// <summary>Per-vault locks and version history (default: local app data). Tests point it at a temp folder.</summary>
+    public string? LockDirectory { get; set; }
+
+    /// <summary>The git used for version history.</summary>
+    public string Git { get; set; } = "git";
+
+    /// <summary>Whether the vault was named explicitly (<see cref="VaultPath"/> or <c>TODOTRACKER_VAULT</c>) rather than the app's own.</summary>
+    public bool IsVaultOverridden => Given(VaultPath) is not null || Given(Environment.GetEnvironmentVariable("TODOTRACKER_VAULT")) is not null;
+
     public string ResolveVaultPath(string? chosenInApp)
     {
-        if (!string.IsNullOrWhiteSpace(VaultPath))
+        if (Given(VaultPath) is { } explicitPath)
         {
-            return Path.GetFullPath(VaultPath);
+            return Path.GetFullPath(explicitPath);
         }
 
-        if (Environment.GetEnvironmentVariable("TODOTRACKER_VAULT") is { Length: > 0 } fromEnvironment)
+        if (Given(Environment.GetEnvironmentVariable("TODOTRACKER_VAULT")) is { } fromEnvironment)
         {
             return Path.GetFullPath(fromEnvironment);
         }
 
-        if (!string.IsNullOrWhiteSpace(chosenInApp))
+        if (Given(chosenInApp) is { } chosen)
         {
-            return Path.GetFullPath(chosenInApp);
+            return Path.GetFullPath(chosen);
         }
 
         var usesDefaultData = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TODOTRACKER_DATA"))
@@ -66,6 +75,13 @@ public sealed class TodoTrackerServerOptions
             ? Path.Combine(documents, "Todo Tracker")
             : Path.Combine(DataDirectory, "vault");
     }
+
+    /// <summary>
+    /// A value someone actually set: not blank, and not a placeholder an app left unexpanded (Claude Desktop passes
+    /// <c>${user_config.x}</c> through literally when an optional setting is empty).
+    /// </summary>
+    private static string? Given(string? value) =>
+        string.IsNullOrWhiteSpace(value) || value.Trim().StartsWith("${", StringComparison.Ordinal) ? null : value.Trim();
 
     public static string DefaultDataDirectory()
     {

@@ -5,6 +5,7 @@ Usage: mcp-smoke.py <path-to-tt>
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ def main() -> int:
         return 2
     data = tempfile.mkdtemp(prefix="tt-smoke-")
     vault = os.path.join(data, "vault")
+    os.makedirs(vault)
     proc = subprocess.Popen(
         [sys.argv[1], "mcp", "--data", data, "--vault", vault, "--no-history"],
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
@@ -53,6 +55,8 @@ def main() -> int:
         timer.cancel()
         if proc.poll() is None:
             proc.kill()
+            proc.wait(timeout=10)
+        shutil.rmtree(data, ignore_errors=True)
 
 
 if __name__ == "__main__":

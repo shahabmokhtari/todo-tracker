@@ -77,7 +77,11 @@ public sealed class OpenApiTests : IAsyncLifetime
         Assert.Equal("2.0", doc["swagger"]!.GetValue<string>());
         Assert.Contains(("post", "/api/items", "createTask"), Operations(doc));
         Assert.Contains(("get", "/api/dashboard", "getDashboard"), Operations(doc));
-        Assert.NotNull(doc["securityDefinitions"]!["bearer"]);
+        // Swagger 2.0 has no bearer type: an API key in the Authorization header ("Bearer <token>").
+        var scheme = doc["securityDefinitions"]!["bearer"]!;
+        Assert.Equal("apiKey", scheme["type"]!.GetValue<string>());
+        Assert.Equal("header", scheme["in"]!.GetValue<string>());
+        Assert.Equal("Authorization", scheme["name"]!.GetValue<string>());
     }
 
     [Fact]

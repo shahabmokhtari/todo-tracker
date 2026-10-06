@@ -110,6 +110,77 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Done_with_unquoted_title_words_completes_only_that_task()
+    {
+        await _tt.Ok("add", "Renew passport");
+        await _tt.Ok("add", "passport photo");
+
+        var done = await _tt.Json("done", "Renew", "passport");
+
+        Assert.Equal("Renew passport", done.Str("title"));
+        Assert.Equal(["passport photo"], (await _tt.Json("list")).Titles());
+    }
+
+    [Fact]
+    public async Task Done_with_several_ids_returns_all_of_them()
+    {
+        var a = (await _tt.Json("add", "One")).Id().ToString("N")[..8];
+        var b = (await _tt.Json("add", "Two")).Id().ToString("N")[..8];
+
+        var done = await _tt.Json("done", a, b);
+
+        Assert.Equal(["One", "Two"], done.Titles());
+    }
+
+    [Fact]
+    public async Task A_failed_version_save_doesnt_turn_a_saved_change_into_a_failure()
+    {
+        using var tt = new CliHarness(history: true) { Git = Path.Combine(Path.GetTempPath(), "no-such-git", "git") };
+
+        var result = await tt.Run("add", "Still saved");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(["Still saved"], (await tt.Json("list")).Titles());
+    }
+
+    [Fact]
+    public async Task Snooze_rejects_past_times_and_leftover_words()
+    {
+        var id = (await _tt.Json("add", "Milk")).Id().ToString();
+
+        Assert.Contains("past", (await _tt.Run("snooze", id, "2026-01-01T08:00")).Error, StringComparison.Ordinal);
+        Assert.Equal(1, (await _tt.Run("snooze", id, "2h", "garbage", "words")).ExitCode);
+    }
+
+    [Fact]
+    public async Task A_vault_folder_given_with_dash_dash_vault_must_exist()
+    {
+        var result = await _tt.Run("now", "--vault", Path.Combine(_tt.DataDirectory, "typo"));
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("no folder", result.Error, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(_tt.DataDirectory, "typo")));
+    }
+
+    [Fact]
+    public async Task List_includes_done_tasks_only_for_a_real_is_filter()
+    {
+        var id = (await _tt.Json("add", "Analysis: Q3")).Id().ToString();
+        await _tt.Ok("done", id);
+
+        Assert.Empty((await _tt.Json("list", "analysis:")).AsArray());
+        Assert.Single((await _tt.Json("list", "analysis", "is:done")).AsArray());
+    }
+
+    [Fact]
+    public async Task History_explains_when_it_was_turned_off_for_this_command()
+    {
+        var id = (await _tt.Json("add", "x")).Id().ToString();
+
+        Assert.Contains("--no-history", (await _tt.Run("history", id, "--no-history")).Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Subtasks_are_added_under_a_parent()
     {
         var parent = (await _tt.Json("add", "Plan trip")).Id().ToString("N")[..8];

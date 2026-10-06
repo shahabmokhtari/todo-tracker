@@ -84,14 +84,25 @@ public static class CliApp
         }
     }
 
-    internal static TodoTrackerServerOptions Options(CliArgs args, CliContext context, bool watch) => new()
+    internal static TodoTrackerServerOptions Options(CliArgs args, CliContext context, bool watch)
     {
-        DataDirectory = args.Value("data") ?? context.DataDirectory ?? TodoTrackerServerOptions.DefaultDataDirectory(),
-        VaultPath = args.Value("vault") ?? context.VaultPath,
-        TimeZone = context.TimeZone,
-        WatchVault = watch,
-        EnableHistory = context.History && !args.Has("no-history"),
-    };
+        // A mistyped --vault must not quietly start an empty task list somewhere else.
+        if (args.Value("vault") is { } vault && !Directory.Exists(Path.GetFullPath(vault)))
+        {
+            throw new ArgumentException($"There's no folder {Path.GetFullPath(vault)}. Check the path (or create the folder first).");
+        }
+
+        return new()
+        {
+            DataDirectory = args.Value("data") ?? context.DataDirectory ?? TodoTrackerServerOptions.DefaultDataDirectory(),
+            VaultPath = args.Value("vault") ?? context.VaultPath,
+            TimeZone = context.TimeZone,
+            WatchVault = watch,
+            EnableHistory = context.History && !args.Has("no-history"),
+            LockDirectory = context.LockDirectory,
+            Git = context.Git,
+        };
+    }
 
     private static async Task RunMcpAsync(CliArgs args, CliContext context, CancellationToken cancellationToken)
     {
