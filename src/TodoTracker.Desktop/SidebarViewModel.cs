@@ -180,6 +180,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return $"Snoozed: {request.Option.Label.ToLowerInvariant()}";
     });
 
+    /// <summary>Ask AI in the sidebar (set by the host when the Ask AI plugin is on).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAsk))]
+    public partial AskViewModel? Ask { get; set; }
+
+    public bool HasAsk => Ask is not null;
+
     /// <summary>The Do now order as shown: the focus card, then the rest.</summary>
     private List<CardViewModel> VisibleNow() => (Focus is null ? Now : Now.Prepend(Focus)).DistinctBy(c => c.Id).ToList();
 
