@@ -8,19 +8,35 @@ public sealed class SingleInstanceTests
     public async Task Only_the_first_launch_runs_and_later_ones_ask_it_to_show_itself()
     {
         var name = Unique();
-        using var first = SingleInstance.TryAcquire(name);
-        Assert.NotNull(first);
         var shown = new TaskCompletionSource();
-        first.OnShowRequested(() => shown.TrySetResult());
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
 
-        // A second launch is another thread here (a named mutex is re-entrant on the thread that owns it).
-        var second = await Task.Run(() => SingleInstance.TryAcquire(name));
+        // The running instance owns the lock on its own thread (a named mutex is re-entrant on the owning thread,
+        // so the "second launch" must never run there).
+        var first = Task.Factory.StartNew(
+            () =>
+            {
+                using var instance = SingleInstance.TryAcquire(name)!;
+                instance.OnShowRequested(() => shown.TrySetResult());
+                holding.Set();
+                release.Wait();
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        holding.Wait(TestContext.Current.CancellationToken);
+
+        var second = SingleInstance.TryAcquire(name);
 
         Assert.Null(second);
         if (OperatingSystem.IsWindows())
         {
             await shown.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         }
+
+        release.Set();
+        await first;
     }
 
     [Fact]
