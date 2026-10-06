@@ -294,3 +294,41 @@ test('Sync: the panel says where it syncs and sync can be switched off', async (
   await expect(drawer).toContainText('Nothing to sync with');
   expect(errors).toEqual([]);
 });
+
+test('Paste: a screenshot pasted into details or a note is attached and shown', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const auth = { Authorization: `Bearer ${token}` };
+  const task = await (await request.post('/api/items', { headers: auth, data: { title: 'Paste a screenshot' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: `/?item=${task.id}` } })).json();
+  await page.goto(launch.url);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Paste a screenshot');
+
+  // A real 1x1 PNG on the clipboard, pasted the way the browser does it.
+  const paste = (selector) => page.evaluate(async (sel) => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    const box = document.querySelector(sel);
+    box.focus();
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, selector);
+
+  await paste('#drawer textarea[data-field="details"]');
+  await expect(drawer.locator('textarea[data-field="details"]')).toHaveValue(/!\[\[Pasted image \d{14}\.png\]\]/);
+  const shown = drawer.locator('.embeds img');
+  await expect(shown).toHaveCount(1);
+  await expect.poll(() => shown.evaluate((img) => img.naturalWidth)).toBe(1);
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+  const saved = await (await request.get(`/api/items/${task.id}`, { headers: auth })).json();
+  expect(saved.details).toMatch(/!\[\[Pasted image \d{14}\.png\]\]/);
+  expect(saved.attachments.map((a) => a.fileName)).toEqual([expect.stringMatching(/^Pasted image \d{14}\.png$/)]);
+
+  // In a note too: the note shows the picture once it's saved.
+  await paste('#drawer textarea[placeholder^="Note"]');
+  await expect(drawer.locator('textarea[placeholder^="Note"]')).toHaveValue(/!\[\[Pasted image/);
+  await drawer.getByRole('button', { name: 'New note' }).click();
+  await expect(drawer.locator('.notes .note-text img')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});

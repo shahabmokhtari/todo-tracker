@@ -3,6 +3,24 @@ import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, 
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
+import { splitEmbeds, embedNames, embedUrl, acceptPastedMedia } from './media.js';
+
+/** Text with its embedded images (![[Pasted image.png]]) shown as pictures; the rest stays plain text. */
+function withEmbeds(value, itemId) {
+  return splitEmbeds(value).map((part) => (part.embed
+    ? h('a', { class: 'embed', href: embedUrl(itemId, part.embed), target: '_blank', rel: 'noopener', title: part.embed },
+      h('img', { src: embedUrl(itemId, part.embed), alt: part.embed, loading: 'lazy' }))
+    : part.text));
+}
+
+/** Pasting a screenshot (or any file) into this box attaches it to the task and embeds it at the caret. */
+function acceptMedia(box, itemId) {
+  acceptPastedMedia(box, {
+    upload: (file, name) => upload(`/api/items/${itemId}/attachments`, file, name),
+    onError: (err) => toast(err.message, 'error'),
+  });
+  return box;
+}
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
@@ -484,6 +502,7 @@ function actions(c, { waiting = false, big = false } = {}) {
     // Leaving the box finishes the note, so coming back starts a new one instead of overwriting it.
     onblur: () => { if (noteInput.value.trim()) finish(); },
   });
+  acceptMedia(noteInput, c.id);
   let finishing = false;
   const finish = async () => {
     if (finishing) return;
@@ -552,7 +571,7 @@ function avatar(kind, author) {
 
 function noteRow(n) {
   return h('li', { class: 'note' },
-    h('div', { class: 'note-text' }, n.text),
+    h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
     h('div', { class: 'meta' },
       h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
       h('span', null, '·'),
@@ -686,7 +705,12 @@ async function openDrawer(id) {
   const title = h('input', { value: item.title, maxlength: 300, class: 'title-input', 'aria-label': 'Title', dataset: { field: 'title' } });
   const priority = h('select', { dataset: { field: 'priority' } }, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
   const deadline = h('input', { type: 'datetime-local', value: toLocalInput(item.deadline), dataset: { field: 'deadline' } });
-  const details = h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown)', dataset: { field: 'details' } }, item.details ?? '');
+  const details = acceptMedia(h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown; paste images)', dataset: { field: 'details' } }, item.details ?? ''), id);
+  // Images embedded in the details show under the box (a text box can't show them).
+  const detailImages = h('div', { class: 'embeds' });
+  const showDetailImages = () => detailImages.replaceChildren(...withEmbeds(embedNames(details.value).map((n) => `![[${n}]]`).join(''), id));
+  showDetailImages();
+  details.addEventListener('input', showDetailImages);
   const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
   const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
   const tags = h('input', { value: item.tags.map((t) => `#${t}`).join(' '), placeholder: '#tag #another', 'aria-label': 'Tags', dataset: { field: 'tags' } });
@@ -758,9 +782,9 @@ async function openDrawer(id) {
 
   // ---- Notes: saved as you type ----
   const noteKey = `drawer:${id}`;
-  const noteInput = h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type)',
+  const noteInput = acceptMedia(h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type; paste images)',
     oninput: () => noteSession(id, noteKey).autosave.schedule(noteInput.value),
-    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } });
+    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } }), id);
   state.drawerNote = noteInput;
   const newNote = async () => {
     if (!noteInput.value.trim()) return;
@@ -786,6 +810,7 @@ async function openDrawer(id) {
     field('Tags', tags),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
+    detailImages,
     h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent)),
     h('div', { class: 'row buttons' },
       item.completedAt
@@ -812,7 +837,7 @@ async function openDrawer(id) {
 
     section('Notes',
       h('div', { class: 'note-form' }, noteInput, h('button', { class: 'btn', title: 'Start a new note (Ctrl+Enter)', onclick: newNote }, icon('plus', { size: 16 }), 'New note')),
-      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, n.text), h('div', { class: 'meta' },
+      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, ...withEmbeds(n.text, id)), h('div', { class: 'meta' },
         h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
         isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))),
 

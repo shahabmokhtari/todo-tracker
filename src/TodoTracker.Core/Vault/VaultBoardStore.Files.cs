@@ -63,6 +63,29 @@ public sealed partial class VaultBoardStore
         }
     }
 
+    /// <summary>The attachment an embed (<c>![[name]]</c>) means: the task's, else its nearest parent's, by file name.</summary>
+    public async Task<(string FullPath, string FileName)?> FindEmbedAsync(Guid itemId, string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var wanted = name.Replace('\\', '/').Split('/')[^1];
+        var attachment = await ReadAsync(
+            b =>
+            {
+                for (var item = b.Get(itemId); item is not null; item = item.Parent)
+                {
+                    if (item.Attachments.FirstOrDefault(a => string.Equals(a.FileName, wanted, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(Path.GetFileName(a.Path), wanted, StringComparison.OrdinalIgnoreCase)) is { } found)
+                    {
+                        return found;
+                    }
+                }
+
+                return null;
+            },
+            cancellationToken).ConfigureAwait(false);
+        return attachment is null ? null : (ResolveAttachment(attachment.Path), attachment.FileName);
+    }
+
     /// <summary>The attachment's file on disk. Links that point outside the vault are refused.</summary>
     public async Task<(string FullPath, string FileName)> GetAttachmentFileAsync(Guid itemId, Guid attachmentId, CancellationToken cancellationToken = default)
     {

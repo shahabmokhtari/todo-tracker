@@ -344,6 +344,39 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Ctrl+V (or Shift+Insert) with a picture on the clipboard: attach it to the task and embed it in the note.</summary>
+    private async void OnNotePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var paste = (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
+        if (!paste || sender is not TextBox { DataContext: CardViewModel card } box || Clipboard.ContainsText() || !Clipboard.ContainsImage())
+        {
+            return;
+        }
+
+        e.Handled = true;
+        byte[] png;
+        try
+        {
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(Clipboard.GetImage()));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+            png = stream.ToArray();
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException)
+        {
+            _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
+            return;
+        }
+
+        if (await _vm.AttachPastedImageAsync(card, png).ConfigureAwait(true) is { } embed)
+        {
+            box.SelectedText = embed;
+            box.CaretIndex = box.SelectionStart + box.SelectionLength;
+            box.SelectionLength = 0;
+        }
+    }
+
     private void OnNoteKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && sender is FrameworkElement { DataContext: CardViewModel card })

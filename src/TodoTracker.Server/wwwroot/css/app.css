@@ -773,3 +773,11 @@ button.focus-title:hover { color: var(--accent); }
 .sync-btn.attention::after { content: ''; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface-solid, #fff); }
 .sync-device { justify-content: space-between; align-items: center !important; }
 .sync-library { width: 100%; }
+
+/* ---------- pasted images (embeds) ---------- */
+.embeds:empty { display: none; }
+.embeds { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 4px; }
+a.embed { display: inline-block; vertical-align: middle; line-height: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border, rgba(127,127,127,.25)); background: var(--surface-solid); }
+a.embed img { display: block; max-width: min(100%, 360px); max-height: 220px; object-fit: contain; }
+.note-text a.embed { margin: 4px 4px 4px 0; }
+.note-text a.embed img { max-height: 160px; }

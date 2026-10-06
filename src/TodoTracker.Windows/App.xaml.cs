@@ -154,7 +154,15 @@ public partial class App : Application
             services.GetRequiredService<IBoardStore>(),
             TimeProvider.System,
             new WpfShell(),
-            new SidebarOptions(connection.BaseUrl, path => TodoTrackerHost.CreateLaunchUrl(services, path), mcpConfig, TimeZoneInfo.Local, connection.Token));
+            new SidebarOptions(connection.BaseUrl, path => TodoTrackerHost.CreateLaunchUrl(services, path), mcpConfig, TimeZoneInfo.Local, connection.Token)
+            {
+                Attach = async (taskId, name, bytes) =>
+                {
+                    using var content = new MemoryStream(bytes);
+                    var vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
+                    return Path.GetFileName((await vault.AddAttachmentAsync(taskId, name, content, TodoTracker.Core.Actor.User).ConfigureAwait(false)).Path);
+                },
+            });
 
         // Automated runs start floating and never touch the user's saved placement; --no-dock is a
         // session-only override (floating, nothing saved).
