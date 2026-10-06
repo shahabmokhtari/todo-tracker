@@ -202,7 +202,8 @@ while (await stdin.ReadLineAsync() is { } line)
             break;
         case "session/prompt":
             var sessionId = @params!["sessionId"]!.GetValue<string>();
-            var text = string.Concat(@params["prompt"]!.AsArray().Select(b => b?["text"]?.GetValue<string>() ?? string.Empty));
+            // React to the person's words (the last block), not to context the client put before them.
+            var text = @params["prompt"]!.AsArray().LastOrDefault()?["text"]?.GetValue<string>() ?? string.Empty;
             var requestId = id!.DeepClone();
             cancelled = new TaskCompletionSource();
             _ = Task.Run(async () =>
