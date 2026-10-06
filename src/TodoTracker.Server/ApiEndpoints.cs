@@ -621,6 +621,10 @@ internal static class ApiEndpoints
         {
             return Results.Problem(ex.Message, statusCode: StatusCodes.Status404NotFound);
         }
+        catch (KeyNotFoundException ex)
+        {
+            return Results.Problem(ex.Message, statusCode: StatusCodes.Status404NotFound);
+        }
         catch (UnauthorizedAccessException ex)
         {
             return Results.Problem(ex.Message, statusCode: StatusCodes.Status403Forbidden);

@@ -5,7 +5,7 @@
 // "badask" (a request without choices), "garbage" (odd message shapes), "elsewhere" (an update for another session),
 // "spawn" (starts a child process), "stderr" (floods stderr), anything else (a two-part greeting). Every message is
 // written in two pieces to test framing. FAKE_ACP_LOG=<file> appends every message it receives;
-// FAKE_ACP_NO_SESSION=1 answers session/new without a session id.
+// FAKE_ACP_NO_SESSION=1 answers session/new without a session id; FAKE_ACP_LOAD=1|fail: see initialize.
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -254,10 +254,11 @@ while (await stdin.ReadLineAsync() is { } line)
                 ["result"] = new JsonObject
                 {
                     ["protocolVersion"] = 1,
-                    // FAKE_ACP_HTTP=1 behaves like Copilot: MCP servers over HTTP only.
+                    // FAKE_ACP_HTTP=1 behaves like Copilot: MCP servers over HTTP only. FAKE_ACP_LOAD=1 can load sessions
+                    // (replaying them first); FAKE_ACP_LOAD=fail says it can, then can't.
                     ["agentCapabilities"] = Environment.GetEnvironmentVariable("FAKE_ACP_HTTP") == "1"
-                        ? new JsonObject { ["loadSession"] = false, ["mcpCapabilities"] = new JsonObject { ["http"] = true, ["sse"] = true } }
-                        : new JsonObject { ["loadSession"] = false },
+                        ? new JsonObject { ["loadSession"] = Environment.GetEnvironmentVariable("FAKE_ACP_LOAD") is "1" or "fail", ["mcpCapabilities"] = new JsonObject { ["http"] = true, ["sse"] = true } }
+                        : new JsonObject { ["loadSession"] = Environment.GetEnvironmentVariable("FAKE_ACP_LOAD") is "1" or "fail" },
                     ["agentInfo"] = new JsonObject { ["name"] = "fake-agent", ["version"] = "1.0" },
                     ["authMethods"] = new JsonArray(),
                 },
@@ -277,7 +278,21 @@ while (await stdin.ReadLineAsync() is { } line)
                 break;
             }
 
-            await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject { ["sessionId"] = $"sess-{++sessions}" } });
+            await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject { ["sessionId"] = $"sess-{Environment.ProcessId}-{++sessions}" } });
+            break;
+        case "session/load":
+            var loaded = @params!["sessionId"]!.GetValue<string>();
+            if (Environment.GetEnvironmentVariable("FAKE_ACP_LOAD") != "1")
+            {
+                await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["error"] = new JsonObject { ["code"] = -32002, ["message"] = "Session not found" } });
+                break;
+            }
+
+            // Like Copilot: the conversation so far comes back as updates, then the answer.
+            await Update(loaded, new JsonObject { ["sessionUpdate"] = "user_message_chunk", ["content"] = new JsonObject { ["type"] = "text", ["text"] = "REPLAYED question" } });
+            await Chunk(loaded, "REPLAYED answer", "old");
+            await Send(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id!.DeepClone(), ["result"] = new JsonObject() });
+            await Chunk(loaded, "REPLAYED late", "old2");
             break;
         case "session/prompt":
             var sessionId = @params!["sessionId"]!.GetValue<string>();

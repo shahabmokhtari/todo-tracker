@@ -134,6 +134,73 @@ public sealed class PluginApiTests : IAsyncLifetime
         Assert.Equal("Hello, there.", state["entries"]!.AsArray().Last()!["text"]!.GetValue<string>());
     }
 
+    [Fact]
+    public async Task Chats_are_listed_reopened_renamed_deleted_and_brought_back_over_http()
+    {
+        await _client.PostAsJsonAsync("/api/plugins/agent-chat/message", new { text = "Plan the trip" });
+        var first = await Until(s => s["status"]!.GetValue<string>() == "ready" ? s : null);
+        var id = first["chatId"]!.GetValue<string>();
+        await _client.PostJson("/api/plugins/agent-chat/new", new { });
+
+        var chats = (await _client.GetJson("/api/plugins/agent-chat/chats")).AsArray();
+        Assert.Equal("Plan the trip", Assert.Single(chats)!["title"]!.GetValue<string>());
+        Assert.Single((await _client.GetJson("/api/plugins/agent-chat/chats?q=trip")).AsArray());
+        Assert.Empty((await _client.GetJson("/api/plugins/agent-chat/chats?q=zebra")).AsArray());
+
+        var opened = await _client.PostJson($"/api/plugins/agent-chat/chats/{id}/open", new { });
+        Assert.Equal(id, opened["chatId"]!.GetValue<string>());
+        Assert.Equal(2, opened["entries"]!.AsArray().Count);
+
+        await _client.PutAsJsonAsync($"/api/plugins/agent-chat/chats/{id}", new { title = "Trip" });
+        Assert.Equal("Trip", (await _client.GetJson("/api/plugins/agent-chat/chats")).AsArray()[0]!["title"]!.GetValue<string>());
+
+        (await _client.DeleteAsync(new Uri($"/api/plugins/agent-chat/chats/{id}", UriKind.Relative))).EnsureSuccessStatusCode();
+        Assert.Empty((await _client.GetJson("/api/plugins/agent-chat/chats")).AsArray());
+        await _client.PostJson($"/api/plugins/agent-chat/chats/{id}/restore", new { });
+        Assert.Single((await _client.GetJson("/api/plugins/agent-chat/chats")).AsArray());
+
+        var missing = await _client.PostAsJsonAsync("/api/plugins/agent-chat/chats/0123456789ab/open", new { });
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task API_models_are_added_with_a_key_that_never_comes_back()
+    {
+        var added = await (await _client.PostAsJsonAsync("/api/plugins/agent-chat/models", new { preset = "openai", name = "GPT", baseUrl = "https://api.openai.com/v1", model = "gpt-4.1", key = "sk-very-secret" })).Json();
+
+        Assert.True(added["hasKey"]!.GetValue<bool>());
+        var listed = await _client.GetJson("/api/plugins/agent-chat/models");
+        Assert.DoesNotContain("sk-very-secret", listed.ToJsonString(), StringComparison.Ordinal);
+        var state = await _client.GetJson("/api/plugins/agent-chat");
+        Assert.DoesNotContain("sk-very-secret", state.ToJsonString(), StringComparison.Ordinal);
+        var option = state["agents"]!.AsArray().Single(a => a!["kind"]!.GetValue<string>() == "api")!;
+        Assert.Equal("GPT", option["name"]!.GetValue<string>());
+        Assert.False(option["local"]!.GetValue<bool>());
+
+        (await _client.DeleteAsync(new Uri($"/api/plugins/agent-chat/models/{added["id"]!.GetValue<string>()}", UriKind.Relative))).EnsureSuccessStatusCode();
+        Assert.Empty((await _client.GetJson("/api/plugins/agent-chat/models")).AsArray());
+    }
+
+    [Theory]
+    [InlineData("openai", "http://api.example.com/v1", "sk")]
+    [InlineData("openai", "https://api.openai.com/v1", null)]
+    [InlineData("nope", "https://api.openai.com/v1", "sk")]
+    public async Task A_model_without_https_a_key_or_a_known_kind_is_refused(string preset, string baseUrl, string? key)
+    {
+        var response = await _client.PostAsJsonAsync("/api/plugins/agent-chat/models", new { preset, name = "x", baseUrl, model = "m", key });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_model_on_this_computer_needs_no_key()
+    {
+        var added = await (await _client.PostAsJsonAsync("/api/plugins/agent-chat/models", new { preset = "ollama", name = "Llama", baseUrl = "http://127.0.0.1:11434/v1", model = "llama3.2" })).Json();
+
+        Assert.False(added["hasKey"]!.GetValue<bool>());
+        Assert.True(added["local"]!.GetValue<bool>());
+    }
+
     private static async Task<JsonNode> NextState(StreamReader reader)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);

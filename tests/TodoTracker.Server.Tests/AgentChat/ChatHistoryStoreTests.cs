@@ -22,6 +22,36 @@ public sealed class ChatHistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_late_save_never_brings_back_a_deleted_chat()
+    {
+        var store = Store();
+        var chat = Chat("gone");
+        store.Save(chat);
+        store.Delete(chat.Id);
+
+        chat.Entries.Add(new ChatEntry("e3", "agent", "a late answer"));
+        store.Save(chat);
+
+        Assert.Empty(store.List());
+        Assert.True(store.Restore(chat.Id));
+    }
+
+    [Fact]
+    public void A_question_still_waiting_is_saved_as_no_longer_waiting()
+    {
+        // Reopened later, a chat must not offer buttons for a question nobody is waiting on any more.
+        var chat = Chat("add milk");
+        chat.Entries.Add(new ChatEntry("e3", "permission", "Change your tasks: create task", "waiting", ["allow", "reject"]));
+        Store().Save(chat);
+
+        var question = Store().Load(chat.Id)!.Entries[^1];
+
+        Assert.Equal("cancelled", question.Status);
+        Assert.Null(question.Choices);
+        Assert.Equal("waiting", chat.Entries[^1].Status);
+    }
+
+    [Fact]
     public void A_saved_chat_comes_back_whole_after_a_restart()
     {
         var chat = Chat("Plan my week");

@@ -1,7 +1,11 @@
 namespace TodoTracker.Server.Plugins.AgentChat;
 
-/// <summary>An AI agent the chat can use, whether it is installed, and how to get it if not.</summary>
-public sealed record AgentOption(string Id, string Name, bool Installed, string? Hint);
+/// <summary>
+/// Someone the chat can be with, whether it's available, and how to get it if not. <paramref name="Kind"/>: an
+/// <c>agent</c> (Copilot, Claude) or an <c>api</c> model; <paramref name="Local"/>: it runs on this computer (for an API
+/// model: tasks never leave it).
+/// </summary>
+public sealed record AgentOption(string Id, string Name, bool Installed, string? Hint, string Kind = "agent", bool Local = true);
 
 /// <summary>
 /// Finds the agents installed on this computer: GitHub Copilot CLI (<c>copilot --acp --stdio</c>) and Claude Code

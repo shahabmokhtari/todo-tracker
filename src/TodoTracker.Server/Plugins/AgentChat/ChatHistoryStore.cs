@@ -122,6 +122,12 @@ public sealed partial class ChatHistoryStore
 
         lock (_lock)
         {
+            // Deleted (it can still be brought back): a late save from a turn that was ending doesn't revive it.
+            if (File.Exists(Path.Combine(_deleted, chat.Id + ".json")))
+            {
+                return;
+            }
+
             if (_index.TryGetValue(chat.Id, out var known))
             {
                 if (chat.Revision < known.Revision)
@@ -275,10 +281,22 @@ public sealed partial class ChatHistoryStore
     {
         var path = PathOf(chat.Id);
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(chat, Json));
+
+        // A question can only be answered (and a tool only runs) while the app is at it: as kept, neither is.
+        var kept = chat.Entries.Any(Unfinished)
+            ? new ChatRecord
+            {
+                Id = chat.Id, Title = chat.Title, Renamed = chat.Renamed, Agent = chat.Agent, CreatedAt = chat.CreatedAt, UpdatedAt = chat.UpdatedAt,
+                Revision = chat.Revision, AcpSessionId = chat.AcpSessionId, SignInFallback = chat.SignInFallback, Messages = chat.Messages,
+                Entries = [.. chat.Entries.Select(e => Unfinished(e) ? e with { Status = "cancelled", Choices = null } : e)],
+            }
+            : chat;
+        File.WriteAllText(temp, JsonSerializer.Serialize(kept, Json));
         File.Move(temp, path, overwrite: true);
         _index[chat.Id] = (Summary(chat), chat.Renamed, chat.Revision);
     }
+
+    private static bool Unfinished(ChatEntry entry) => entry.Status is "waiting" or "pending" or "in_progress";
 
     private void PurgeDeleted()
     {
