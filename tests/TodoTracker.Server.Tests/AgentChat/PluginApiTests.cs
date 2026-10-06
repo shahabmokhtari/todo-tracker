@@ -64,7 +64,8 @@ public sealed class PluginApiTests : IAsyncLifetime
     {
         var ids = (await _client.GetJson("/api/plugins")).AsArray().Select(p => p!["id"]!.GetValue<string>()).ToList();
 
-        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "history", "obsidian", "teams"], ids);
+        // This PR added the sync providers (OneDrive, iCloud Drive, gist): each is its own plugin.
+        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "history", "obsidian", "sync-onedrive", "sync-icloud", "sync-gist", "teams"], ids);
     }
 
     [Fact]

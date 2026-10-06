@@ -34,6 +34,8 @@ public partial class MainWindow : Window
     /// <summary>Which features (plugins) are on; null: all.</summary>
     internal TodoTracker.Server.Plugins.PluginHost? Plugins { get; set; }
 
+    internal TodoTracker.Server.Plugins.Sync.SyncService? Sync { get; set; }
+
     private bool On(string plugin) => Plugins?.IsRunning(plugin) ?? true;
     private WindowPlacement? _preferred;
 
@@ -433,6 +435,11 @@ public partial class MainWindow : Window
             menu.Items.Add(StorageMenu());
         }
 
+        if (Sync is not null)
+        {
+            menu.Items.Add(SyncMenu(Sync));
+        }
+
         if (_settings is not null && On("teams"))
         {
             var teams = new MenuItem { Header = _settings.Current.TeamsWebhookUrl is null ? "Connect Teams reminders…" : "Teams reminders: connected (change…)" };
@@ -455,6 +462,31 @@ public partial class MainWindow : Window
         exit.Click += (_, _) => Close();
         menu.Items.Add(exit);
         menu.IsOpen = true;
+    }
+
+    /// <summary>Sync with other computers: where, how it went, sync now, and the Sync panel (conflicts, provider).</summary>
+    private MenuItem SyncMenu(TodoTracker.Server.Plugins.Sync.SyncService sync)
+    {
+        var view = sync.View;
+        var state = view.State switch
+        {
+            "idle" => $"Synced with {view.Provider}",
+            "syncing" => "Syncing…",
+            "error" => "Couldn't sync",
+            "off" => "Off",
+            _ => "Nothing to sync with",
+        };
+        var item = new MenuItem { Header = view.Conflicts.Count > 0 ? $"Sync ({view.Conflicts.Count} to look at)" : "Sync", ToolTip = view.Problem ?? view.Where };
+        item.Items.Add(new MenuItem { Header = state, IsEnabled = false });
+        var now = new MenuItem { Header = "Sync now", IsEnabled = view.State is "idle" or "error" };
+        now.Click += async (_, _) =>
+        {
+            var after = await sync.SyncNowAsync().ConfigureAwait(true);
+            _vm.StatusMessage = after.Problem is { } problem ? $"Couldn't sync: {problem}" : $"Synced with {after.Provider}.";
+        };
+        item.Items.Add(now);
+        item.Items.Add(new MenuItem { Header = "Sync settings and conflicts…", Command = _vm.OpenSyncCommand });
+        return item;
     }
 
     /// <summary>Every optional feature is a plugin: switch it on or off (applies after a restart).</summary>

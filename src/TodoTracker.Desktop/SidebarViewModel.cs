@@ -433,6 +433,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));
 
+    /// <summary>Opens the Sync panel (where it syncs, and anything changed on two computers) in the browser.</summary>
+    [RelayCommand]
+    private void OpenSync() => _shell.OpenUrl(Launch("/?sync=1"));
+
     [RelayCommand]
     private void CopyMcpConfig()
     {

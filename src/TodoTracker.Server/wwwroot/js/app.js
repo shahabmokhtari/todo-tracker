@@ -866,7 +866,7 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
 
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
 const pluginHost = {
-  api, post, h, icon, toast, openPanel, closePanel: closeDrawer,
+  api, post, put, h, icon, toast, openPanel, closePanel: closeDrawer,
   refresh: () => refresh({ background: true }),
   addHeaderButton({ iconName, label, onClick }) {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));

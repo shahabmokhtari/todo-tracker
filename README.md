@@ -18,6 +18,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **Teams** | Reminder cards through a Teams Workflows webhook |
 | **Ask AI** | Chat with Copilot or Claude Code in the app: "add: call the bank tomorrow, renew passport !!" |
 | **Plugins** | Every extra can be switched off ([`docs/plugins.md`](docs/plugins.md)) |
+| **Sync** | Your computers stay in step through OneDrive, iCloud Drive or a private GitHub gist, merging changes made on both ([`docs/sync.md`](docs/sync.md)) |
 | **Files** | An Obsidian-compatible markdown vault (`Documents/Todo Tracker` by default), with version history |
 
 The full plan, design, rules, and requirement traceability are in [`docs/product-spec.md`](docs/product-spec.md). The original request is in [`docs/request.md`](docs/request.md).

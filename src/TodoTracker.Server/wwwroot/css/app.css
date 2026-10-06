@@ -755,3 +755,19 @@ button.focus-title:hover { color: var(--accent); }
 .plugin-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-solid); cursor: pointer; }
 .plugin-row input { margin-top: 3px; }
 .plugin-row > span { display: grid; gap: 2px; }
+
+/* ---------- sync ---------- */
+.sync { display: grid; gap: 12px; }
+.sync .row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.sync .field { flex: 1; min-width: 180px; }
+.sync-status strong { font-size: 15px; }
+.sync-status.idle strong { color: var(--ok); }
+.sync-status.error strong { color: #dc2626; }
+.sync-where { overflow-wrap: anywhere; }
+.sync .note.error { color: #dc2626; font-size: 13px; }
+.sync-conflict { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; background: var(--warn-soft); }
+.sync-conflict .row { gap: 6px; }
+.sync-providers summary { cursor: pointer; font-size: 13px; color: var(--text-3, #64748b); }
+.sync-providers > div { margin-top: 6px; }
+.sync-btn { position: relative; }
+.sync-btn.attention::after { content: ''; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface-solid, #fff); }

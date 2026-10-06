@@ -94,6 +94,9 @@ public sealed class PluginHost
         new FocusTimerPlugin(),
         new HistoryPlugin(),
         new ObsidianPlugin(),
+        new Sync.OneDriveSyncPlugin(),
+        new Sync.ICloudSyncPlugin(),
+        new Sync.GistSyncPlugin(),
         new TeamsPlugin(),
     ];
 
@@ -150,6 +153,9 @@ public sealed class PluginHost
                 plugin.MapEndpoints(app.MapGroup($"/api/plugins/{plugin.Info.Id}").AddEndpointFilter(ApiEndpoints.MapDomainErrors));
             }
         }
+
+        // Shared by every sync provider plugin.
+        Sync.SyncEndpoints.Map(app);
     }
 }
 

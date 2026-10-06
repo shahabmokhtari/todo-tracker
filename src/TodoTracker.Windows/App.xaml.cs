@@ -177,6 +177,7 @@ public partial class App : Application
         window.Vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
         var plugins = services.GetRequiredService<TodoTracker.Server.Plugins.PluginHost>();
         window.Plugins = plugins;
+        window.Sync = services.GetService<TodoTracker.Server.Plugins.Sync.SyncService>();
         _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
         MainWindow = window;
         _window = window;

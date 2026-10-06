@@ -275,3 +275,19 @@ test('Plugins: every extra can be switched off (after a restart)', async ({ page
   expect(plugins.find((p) => p.id === 'teams').enabled).toBe(true); // still running until the restart
   await drawer.getByRole('checkbox', { name: 'Teams reminders' }).check();
 });
+
+test('Sync: the panel says where it syncs and sync can be switched off', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await page.getByRole('button', { name: /^Sync/ }).click();
+  const drawer = page.locator('#drawer');
+  // The test server sees no cloud drives (TODOTRACKER_CLOUD=off).
+  await expect(drawer).toContainText('Nothing to sync with');
+  await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('off');
+  await expect(drawer).toContainText('Sync is off');
+  await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('auto');
+  await expect(drawer).toContainText('Nothing to sync with');
+  expect(errors).toEqual([]);
+});
