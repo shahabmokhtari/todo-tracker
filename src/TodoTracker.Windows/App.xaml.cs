@@ -23,6 +23,7 @@ public partial class App : Application
     private ToastService? _toasts;
     private string _dataDirectory = TodoTrackerServerOptions.DefaultDataDirectory();
     private SingleInstance? _instance;
+    private AgentChatAsk? _ask;
     private MainWindow? _window;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -105,6 +106,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _toasts?.Dispose();
+        _viewModel?.Ask?.Dispose();
+        _ask?.Dispose();
         _viewModel?.Dispose();
         if (_server is not null)
         {
@@ -163,8 +166,18 @@ public partial class App : Application
             placementStore = null;
         }
 
+        if (services.GetService<TodoTracker.Server.Plugins.AgentChat.AgentChatService>() is { } chat)
+        {
+            _ask = new AgentChatAsk(chat);
+            var shell = new WpfShell();
+            _viewModel.Ask = new AskViewModel(_ask, run => Dispatcher.BeginInvoke(run), () => shell.OpenUrl(TodoTrackerHost.CreateLaunchUrl(services, "/?ask=1")));
+        }
+
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);
         window.Vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
+        var plugins = services.GetRequiredService<TodoTracker.Server.Plugins.PluginHost>();
+        window.Plugins = plugins;
+        _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
         MainWindow = window;
         _window = window;
 

@@ -730,3 +730,28 @@ button.focus-title:hover { color: var(--accent); }
 .order .order-btn:disabled { opacity: .3; cursor: default; }
 .sub-row .order { margin-left: auto; }
 @media (hover: none) { .order { opacity: 1; } }
+
+/* ---------- Ask AI (agent chat plugin) ---------- */
+.chat { display: flex; flex-direction: column; gap: 10px; min-height: 60vh; }
+.chat-top { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.chat-picker { margin-right: auto; }
+.chat-log { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 60vh; padding-right: 4px; }
+.chat .msg { padding: 9px 12px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 92%; line-height: 1.45; }
+.chat .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.chat .msg.agent { align-self: flex-start; background: var(--surface-solid); border-bottom-left-radius: 4px; }
+.chat .tool { align-self: flex-start; font-size: 12.5px; color: var(--text-3, #64748b); padding: 2px 8px; border-radius: 999px; background: rgba(127, 127, 127, .1); }
+.chat .tool.failed { color: #dc2626; }
+.chat .ask { border-radius: 12px; padding: 10px 12px; background: rgba(245, 158, 11, .12); display: grid; gap: 8px; }
+.chat .ask .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.chat .note { font-size: 13px; color: var(--text-3, #64748b); }
+.chat .note.error, .chat-status.error { color: #dc2626; }
+.chat-compose { display: grid; gap: 6px; }
+.chat-input { width: 100%; resize: vertical; min-height: 44px; }
+.chat-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+/* ---------- plugins ---------- */
+.plugin-buttons { display: inline-flex; gap: 2px; align-items: center; }
+.plugins { display: grid; gap: 10px; }
+.plugin-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-solid); cursor: pointer; }
+.plugin-row input { margin-top: 3px; }
+.plugin-row > span { display: grid; gap: 2px; }

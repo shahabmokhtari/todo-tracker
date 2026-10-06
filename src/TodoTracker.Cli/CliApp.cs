@@ -98,7 +98,8 @@ public static class CliApp
             VaultPath = args.Value("vault") ?? context.VaultPath,
             TimeZone = context.TimeZone,
             WatchVault = watch,
-            EnableHistory = context.History && !args.Has("no-history"),
+            EnableHistory = context.History && !args.Has("no-history")
+                && Server.Plugins.PluginHost.IsEnabled(args.Value("data") ?? context.DataDirectory ?? TodoTrackerServerOptions.DefaultDataDirectory(), Server.Plugins.HistoryPlugin.Definition.Id),
             LockDirectory = context.LockDirectory,
             Git = context.Git,
         };

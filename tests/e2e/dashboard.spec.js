@@ -230,3 +230,48 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
 
   expect(errors).toEqual([]);
 });
+
+test('Ask AI: chat with the agent, approve a change, and see the answer', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await page.getByRole('button', { name: 'Ask AI' }).click();
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.chat')).toBeVisible();
+  await expect(drawer.locator('.chat-picker')).toBeHidden(); // only one agent: no picker
+
+  const input = drawer.getByRole('textbox', { name: 'Message' });
+  await input.fill('hi');
+  await input.press('Enter');
+  await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');
+
+  await input.fill('add Milk');
+  await input.press('Enter');
+  const ask = drawer.locator('.ask').last();
+  await expect(ask).toContainText('Change your tasks');
+  await ask.getByRole('button', { name: 'Allow', exact: true }).click();
+  await expect(drawer.locator('.msg.agent').last()).toHaveText('Added "Milk".');
+  await expect(ask).toContainText('Allowed');
+
+  await drawer.getByRole('button', { name: 'New chat' }).click();
+  await expect(drawer.locator('.msg')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('Plugins: every extra can be switched off (after a restart)', async ({ page, request }) => {
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await page.getByRole('button', { name: 'Plugins' }).click();
+  const drawer = page.locator('#drawer');
+  for (const name of ['Ask AI', 'Connect AI apps', 'Focus timer', 'Version history', 'Obsidian', 'Teams reminders']) {
+    await expect(drawer.getByRole('checkbox', { name })).toBeChecked();
+  }
+  await drawer.getByRole('checkbox', { name: 'Teams reminders' }).uncheck();
+  await expect(drawer).toContainText('Restart Todo Tracker to apply');
+  const plugins = await (await request.get('/api/plugins', { headers: { Authorization: `Bearer ${token}` } })).json();
+  expect(plugins.find((p) => p.id === 'teams').enabled).toBe(true); // still running until the restart
+  await drawer.getByRole('checkbox', { name: 'Teams reminders' }).check();
+});

@@ -30,6 +30,11 @@ public partial class MainWindow : Window
 
     /// <summary>Where the tasks live (set by the app once the server is up).</summary>
     internal TodoTracker.Core.Vault.VaultBoardStore? Vault { get; set; }
+
+    /// <summary>Which features (plugins) are on; null: all.</summary>
+    internal TodoTracker.Server.Plugins.PluginHost? Plugins { get; set; }
+
+    private bool On(string plugin) => Plugins?.IsRunning(plugin) ?? true;
     private WindowPlacement? _preferred;
 
     /// <param name="placementStore">Where placement is remembered; null keeps it in memory only (smoke tests).</param>
@@ -377,11 +382,15 @@ public partial class MainWindow : Window
         if (Vault?.PathOf(card.Id) is { } rel)
         {
             var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
-            var obsidian = new MenuItem { Header = "Open in Obsidian" };
-            obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(full));
+            if (On("obsidian"))
+            {
+                var obsidian = new MenuItem { Header = "Open in Obsidian" };
+                obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(full));
+                menu.Items.Add(obsidian);
+            }
+
             var show = new MenuItem { Header = "Show the markdown file" };
             show.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{full}\"") { UseShellExecute = false });
-            menu.Items.Add(obsidian);
             menu.Items.Add(show);
             menu.Items.Add(new Separator());
         }
@@ -412,7 +421,11 @@ public partial class MainWindow : Window
         onTop.Unchecked += (_, _) => SetAlwaysOnTop(false);
         menu.Items.Add(onTop);
         menu.Items.Add(new Separator());
-        menu.Items.Add(new MenuItem { Header = "Connect an AI app (Claude, Copilot…)", Command = _vm.ConnectAiCommand });
+        if (On("connect-ai"))
+        {
+            menu.Items.Add(new MenuItem { Header = "Connect an AI app (Claude, Copilot…)", Command = _vm.ConnectAiCommand });
+        }
+
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
         menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
         if (Vault is not null)
@@ -420,11 +433,16 @@ public partial class MainWindow : Window
             menu.Items.Add(StorageMenu());
         }
 
-        if (_settings is not null)
+        if (_settings is not null && On("teams"))
         {
             var teams = new MenuItem { Header = _settings.Current.TeamsWebhookUrl is null ? "Connect Teams reminders…" : "Teams reminders: connected (change…)" };
             teams.Click += (_, _) => ConfigureTeams();
             menu.Items.Add(teams);
+        }
+
+        if (Plugins is not null)
+        {
+            menu.Items.Add(PluginsMenu(Plugins));
         }
 
         menu.Items.Add(new Separator());
@@ -439,6 +457,42 @@ public partial class MainWindow : Window
         menu.IsOpen = true;
     }
 
+    /// <summary>Every optional feature is a plugin: switch it on or off (applies after a restart).</summary>
+    private MenuItem PluginsMenu(TodoTracker.Server.Plugins.PluginHost host)
+    {
+        var plugins = new MenuItem { Header = "Plugins" };
+        foreach (var (plugin, _) in host.Plugins)
+        {
+            var info = plugin.Info;
+            var item = new MenuItem { Header = info.Name, ToolTip = info.Description, IsCheckable = true, IsChecked = host.Settings.IsEnabled(info) };
+            item.Click += (_, _) =>
+            {
+                host.Settings.SetEnabled(info.Id, item.IsChecked);
+                if (host.IsRunning(info.Id) != item.IsChecked
+                    && MessageBox.Show(this, $"{info.Name} is turned {(item.IsChecked ? "on" : "off")} from the next start. Restart Todo Tracker now?", "Plugins", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                {
+                    Restart();
+                }
+            };
+            plugins.Items.Add(item);
+        }
+
+        return plugins;
+    }
+
+    /// <summary>Saves any unsaved note, then starts a new instance (it waits for this one to close) and exits.</summary>
+    private async void Restart()
+    {
+        await _vm.FlushNotesAsync().ConfigureAwait(true);
+        _notesFlushed = true;
+        if (Environment.ProcessPath is { } exe)
+        {
+            ReleaseScreenEdge();
+            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, Arguments = "--restart" });
+            Application.Current.Shutdown();
+        }
+    }
+
     /// <summary>Tasks are markdown files: open them, keep them in an Obsidian vault, or pick another folder.</summary>
     private MenuItem StorageMenu()
     {
@@ -446,14 +500,18 @@ public partial class MainWindow : Window
         var storage = new MenuItem { Header = "Tasks folder", ToolTip = root };
         var open = new MenuItem { Header = "Open the folder" };
         open.Click += (_, _) => Open(root);
-        var obsidian = new MenuItem { Header = "Open in Obsidian" };
-        obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(root));
         storage.Items.Add(new MenuItem { Header = root, IsEnabled = false });
         storage.Items.Add(open);
-        storage.Items.Add(obsidian);
+        if (On("obsidian"))
+        {
+            var obsidian = new MenuItem { Header = "Open in Obsidian" };
+            obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(root));
+            storage.Items.Add(obsidian);
+        }
+
         storage.Items.Add(new Separator());
 
-        var vaults = TodoTracker.Core.Vault.ObsidianVaults.Discover();
+        var vaults = On("obsidian") ? TodoTracker.Core.Vault.ObsidianVaults.Discover() : [];
         if (vaults.Count > 0)
         {
             var use = new MenuItem { Header = "Keep tasks in an Obsidian vault" };
@@ -523,15 +581,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        await _vm.FlushNotesAsync().ConfigureAwait(true);
-        _notesFlushed = true;
         _settings?.SetVaultPath(folder);
-        if (Environment.ProcessPath is { } exe)
-        {
-            ReleaseScreenEdge();
-            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, Arguments = "--restart" });
-            Application.Current.Shutdown();
-        }
+        Restart();
     }
 
     private static void Open(string target)

@@ -254,6 +254,12 @@ The vault is plain Obsidian-flavored markdown: frontmatter properties, Obsidian 
 links, wiki-link attachments. Point the app at a folder inside an Obsidian vault (Menu › *Tasks folder*) and edit
 tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidian://open?path=…`).
 
+### Plugins and Ask AI
+Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, version history, Obsidian, Teams)
+that can be switched off; the choice lives in `plugins.json` and applies after a restart. Ask AI drives GitHub Copilot
+CLI or Claude Code over the Agent Client Protocol with Todo Tracker's MCP tools attached: reading needs no permission,
+changing tasks asks (once or for the chat), anything else always asks. Details: [`docs/plugins.md`](plugins.md).
+
 ### Teams
 Paste a Teams **Workflows** webhook URL (channel › Workflows › "Post to a channel when a webhook request is
 received"). Reminders are posted as Adaptive Cards with the title, path, message, priority, due time, and an
@@ -351,5 +357,5 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
 | Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
-| In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ⏳ next PR (plugins + ACP chat) |
+| In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ✅ Ask AI plugin (dashboard panel + sidebar box; Copilot and Claude Code; permissions; warm agent); every optional feature is a switchable plugin ([`docs/plugins.md`](plugins.md)) |
 | Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |

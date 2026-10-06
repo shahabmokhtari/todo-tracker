@@ -8,6 +8,8 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <Using Include="Microsoft.Extensions.DependencyInjection" />
     <ProjectReference Include="..\..\src\TodoTracker.Server\TodoTracker.Server.csproj" />
+    <!-- A scripted ACP agent the agent chat tests launch as a child process. -->
+    <ProjectReference Include="..\FakeAcpAgent\FakeAcpAgent.csproj" />
   </ItemGroup>
 </Project>
 

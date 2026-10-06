@@ -227,6 +227,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- Brand + summary + window actions -->
@@ -409,6 +410,7 @@
 
             <!-- Focus timer -->
             <Border Grid.Row="5" Margin="0,6,0,0" Padding="10,8" CornerRadius="16" BorderThickness="1"
+                    Visibility="{Binding ShowFocusTimer, Converter={StaticResource VisibleWhen}}"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
                 <DockPanel>
                     <Grid DockPanel.Dock="Left" Width="36" Height="36">
@@ -433,6 +435,54 @@
                         <TextBlock Text="{Binding Pomodoro.Label}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     </StackPanel>
                 </DockPanel>
+            </Border>
+
+            <!-- Ask AI (plugin): one line to ask; the latest answer and the agent's questions under it. -->
+            <Border Grid.Row="6" Margin="0,6,0,0" Padding="10,6" CornerRadius="16" BorderThickness="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Visibility="{Binding DataContext.HasAsk, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}" DataContext="{Binding Ask}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8A7;" ToolTip="Open the whole chat" AutomationProperties.Name="Open the whole chat"
+                                Command="{Binding OpenFullChatCommand}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop" AutomationProperties.Name="Stop answer"
+                                Command="{Binding StopCommand}" Visibility="{Binding IsBusy, Converter={StaticResource VisibleWhen}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE724;" ToolTip="Send (Enter)" AutomationProperties.Name="Send to AI"
+                                Command="{Binding SendCommand}" />
+                        <TextBlock DockPanel.Dock="Left" Text="&#xE8BD;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Grid>
+                            <TextBox x:Name="AskBox" Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}" MaxLength="8000" VerticalAlignment="Center"
+                                     AutomationProperties.Name="Ask AI" IsEnabled="{Binding HasAgent}" BorderThickness="0" Background="Transparent">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <TextBlock Text="{Binding Placeholder}" Style="{StaticResource Muted}" IsHitTestVisible="False" VerticalAlignment="Center" Margin="4,0,0,0"
+                                       TextTrimming="CharacterEllipsis" Visibility="{Binding Text.IsEmpty, ElementName=AskBox, Converter={StaticResource VisibleWhen}}" />
+                        </Grid>
+                    </DockPanel>
+                    <DockPanel Margin="0,6,0,2" Visibility="{Binding Message, Converter={StaticResource VisibleWhen}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Hide" AutomationProperties.Name="Hide answer"
+                                Command="{Binding DismissCommand}" VerticalAlignment="Top" />
+                        <TextBlock x:Name="AskMessage" Text="{Binding Message}" TextWrapping="Wrap" MaxHeight="120" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <StackPanel Margin="0,4,0,2" Visibility="{Binding QuestionText, Converter={StaticResource VisibleWhen}}">
+                        <TextBlock Text="{Binding QuestionText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Choices}" Focusable="False" Margin="0,4,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type d:AskChoice}">
+                                    <Button Content="{Binding Label}" Style="{StaticResource PillButton}" Margin="0,0,6,4" AutomationProperties.Name="{Binding Label}"
+                                            Command="{Binding DataContext.AnswerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Id}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 

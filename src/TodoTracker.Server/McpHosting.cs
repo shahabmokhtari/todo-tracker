@@ -42,6 +42,12 @@ public static class StdioMcpHost
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
+        // The same switches as the app: no versions when version history is turned off.
+        if (!Plugins.PluginHost.IsEnabled(options.DataDirectory, Plugins.HistoryPlugin.Definition.Id))
+        {
+            options.EnableHistory = false;
+        }
+
         TodoTrackerHost.AddVaultServices(builder.Services, options);
         builder.Services.AddHostedService<HistoryLoop>();
         builder.Services.AddMcpServer(McpInfo.Configure)

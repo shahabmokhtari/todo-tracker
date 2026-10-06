@@ -311,7 +311,7 @@ public sealed class ApiTests : IAsyncLifetime
         await using var server = await ServerFixture.StartAsync(o => o.TtPath = @"C:\Program Files\Todo Tracker\tt.exe");
         using var client = server.Client();
 
-        var connect = await client.GetJson("/api/connect");
+        var connect = await client.GetJson("/api/plugins/connect-ai");
 
         var setups = connect["setups"]!.AsArray().ToDictionary(s => s!["id"]!.GetValue<string>(), s => s!);
         Assert.Contains("claude-code", setups.Keys);
