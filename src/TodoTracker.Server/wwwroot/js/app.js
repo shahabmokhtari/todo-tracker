@@ -66,6 +66,7 @@ async function refresh({ background = false } = {}) {
     state.dashboard = await api(`/api/dashboard${query}`);
     if (!state.vault) api('/api/vault').then((v) => { state.vault = v; renderVault(); }).catch(() => {});
     showBoard(true);
+    await dragDone();
     const drafts = collectNoteDrafts();
     render();
     restoreNoteDrafts(drafts);
@@ -346,6 +347,27 @@ function focusOrderControl(id, label = null, scope = $('#board')) {
 
 let dragging = null; // { id, scope }
 const DRAG_TYPE = 'application/x-todo-tracker-task';
+let dragWaiters = [];
+
+/** Resolves once no drag is in progress (at most 10 s): redrawing under a drag would lose the drop. */
+function dragDone() {
+  return dragging
+    ? new Promise((resolve) => {
+      dragWaiters.push(resolve);
+      setTimeout(resolve, 10000);
+    })
+    : Promise.resolve();
+}
+
+function endDrag() {
+  dragging = null;
+  const waiters = dragWaiters;
+  dragWaiters = [];
+  waiters.forEach((resolve) => resolve());
+}
+
+// A drag also ends when its row was replaced meanwhile (the row's own dragend may not come).
+document.addEventListener('dragend', endDrag, true);
 
 /**
  * Makes `el` reorderable within its `scope`: drag it (or drop others on it), ↑/↓ buttons, and Alt+↑/Alt+↓.
@@ -365,9 +387,9 @@ function sortable(el, id, { scope, ids, onOrder, buttons = false, alwaysBefore =
     el.classList.add('dragging');
   });
   el.addEventListener('dragend', () => {
-    dragging = null;
     el.classList.remove('dragging');
     document.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+    endDrag();
   });
   const after = (e) => {
     if (alwaysBefore) return false;
@@ -654,6 +676,7 @@ async function openDrawer(id) {
     closeDrawer();
     return toast(err.message, 'error');
   }
+  await dragDone();
   if (state.drawerId !== id) return;
   const drawer = $('#drawer');
   const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
@@ -866,7 +889,7 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
 
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
 const pluginHost = {
-  api, post, h, icon, toast, openPanel, closePanel: closeDrawer,
+  api, post, put, h, icon, toast, openPanel, closePanel: closeDrawer,
   refresh: () => refresh({ background: true }),
   addHeaderButton({ iconName, label, onClick }) {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
@@ -948,7 +971,8 @@ function subtaskTree(children, parentId) {
         ...c.tags.map(tagChip),
         h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c)),
         controls),
-      c.children.length ? subtaskTree(c.children, c.id) : null);
+      // append() would write "null" for a missing child.
+      ...(c.children.length ? [subtaskTree(c.children, c.id)] : []));
     return li;
   }));
 }

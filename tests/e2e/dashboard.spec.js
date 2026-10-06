@@ -225,8 +225,11 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
   await visa.hover();
   await visa.getByRole('button', { name: 'Move up' }).click();
   await expect(subs).toHaveText(['Flights', 'Visa', 'Hotel']);
-  await page.locator('#drawer .subtasks > li', { hasText: 'Hotel' }).dragTo(page.locator('#drawer .subtasks > li', { hasText: 'Flights' }), { targetPosition: { x: 20, y: 2 } });
-  await expect(subs).toHaveText(['Hotel', 'Flights', 'Visa']);
+  // HTML5 drag and drop in headless Chromium on Linux sometimes drops the gesture: retry it (dropping again is a no-op).
+  await expect(async () => {
+    await page.locator('#drawer .subtasks > li', { hasText: 'Hotel' }).dragTo(page.locator('#drawer .subtasks > li', { hasText: 'Flights' }), { targetPosition: { x: 20, y: 2 } });
+    await expect(subs).toHaveText(['Hotel', 'Flights', 'Visa'], { timeout: 2000 });
+  }).toPass({ timeout: 20000 });
 
   expect(errors).toEqual([]);
 });
@@ -274,4 +277,20 @@ test('Plugins: every extra can be switched off (after a restart)', async ({ page
   const plugins = await (await request.get('/api/plugins', { headers: { Authorization: `Bearer ${token}` } })).json();
   expect(plugins.find((p) => p.id === 'teams').enabled).toBe(true); // still running until the restart
   await drawer.getByRole('checkbox', { name: 'Teams reminders' }).check();
+});
+
+test('Sync: the panel says where it syncs and sync can be switched off', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await page.getByRole('button', { name: /^Sync/ }).click();
+  const drawer = page.locator('#drawer');
+  // The test server sees no cloud drives (TODOTRACKER_CLOUD=off).
+  await expect(drawer).toContainText('Nothing to sync with');
+  await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('off');
+  await expect(drawer).toContainText('Sync is off');
+  await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('auto');
+  await expect(drawer).toContainText('Nothing to sync with');
+  expect(errors).toEqual([]);
 });

@@ -96,6 +96,8 @@ function Mons { [Mon2]::All() }
 function MonByName($n) { Mons | ? { $_.n -eq $n } }
 $initial = Mons
 if ($initial.Count -lt 2) { Write-Host 'SKIPPED: needs at least two monitors'; exit 0 }
+# Never sync into this computer's real OneDrive or iCloud Drive.
+$env:TODOTRACKER_CLOUD = 'off'
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = MainWindow $proc

@@ -16,6 +16,9 @@ public sealed class ServerFixture : IAsyncDisposable
     public const string Token = "test-token-0123456789abcdef";
     public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
 
+    // Tests must never sync into this computer's real OneDrive or iCloud Drive.
+    static ServerFixture() => Environment.SetEnvironmentVariable("TODOTRACKER_CLOUD", "off");
+
     private ServerFixture(WebApplication app, string dataDirectory, FakeTimeProvider time, RecordingNotifier notifier, FakeHttpHandler teams)
     {
         App = app;

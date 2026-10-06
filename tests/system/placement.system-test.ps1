@@ -82,6 +82,8 @@ function Rect($hwnd) { $r = New-Object Native+RECT; [void][Native]::GetWindowRec
 
 $original = WorkArea; $screen = Bounds
 Write-Host "Primary screen $screen, work area $original"
+# Never sync into this computer's real OneDrive or iCloud Drive.
+$env:TODOTRACKER_CLOUD = 'off'
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = MainWindow $proc

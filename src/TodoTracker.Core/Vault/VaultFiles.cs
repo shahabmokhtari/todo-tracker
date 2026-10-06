@@ -157,13 +157,17 @@ internal static partial class VaultFiles
     }
 
     /// <summary>Writes atomically (temp file + replace) so readers and sync clients never see half a file.</summary>
-    public static void WriteAtomic(string path, string text)
+    public static void WriteAtomic(string path, string text) =>
+        WriteAtomic(path, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text));
+
+    /// <summary>Writes atomically (temp file + replace) so readers and sync clients never see half a file.</summary>
+    public static void WriteAtomic(string path, byte[] content)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = Path.Combine(Path.GetDirectoryName(path)!, "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp");
         try
         {
-            File.WriteAllText(temp, text, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllBytes(temp, content);
             File.Move(temp, path, overwrite: true);
         }
         finally
