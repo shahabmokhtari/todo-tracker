@@ -18,6 +18,7 @@ export function activate(host) {
   let lastStatus = null;
   // States can arrive out of order (a POST's reply after a newer streamed one): only newer ones are shown.
   let shown = 0;
+  let epoch = null;
   let busy = false;
 
   const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
@@ -78,7 +79,13 @@ export function activate(host) {
   }
 
   function render(state) {
-    if (!state || (state.version ?? 0) <= shown) return;
+    if (!state) return;
+    // A restarted app counts versions from the start again.
+    if (state.epoch !== epoch) {
+      epoch = state.epoch;
+      shown = 0;
+    }
+    if ((state.version ?? 0) < shown) return;
     shown = state.version ?? 0;
     const installed = state.agents.filter((a) => a.installed);
     picker.replaceChildren(...installed.map((a) => h('option', { value: a.id, selected: a.id === state.agent }, a.name)));

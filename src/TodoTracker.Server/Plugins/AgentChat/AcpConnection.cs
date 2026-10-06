@@ -296,6 +296,7 @@ public sealed class AcpConnection : IAsyncDisposable
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 // A message the handler couldn't take must never stop us reading the ones after it.
+                System.Diagnostics.Trace.TraceWarning($"Agent message {method} wasn't handled: {ex}");
             }
 
             return;

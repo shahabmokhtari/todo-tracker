@@ -152,8 +152,8 @@ function setGroup(id) {
 
 function render() {
   const d = state.dashboard;
-  // Any redraw (a live update, a plugin loading) keeps the keyboard on the task that had it.
-  const focused = state.refocus ?? document.activeElement?.closest?.('[data-order-id]')?.dataset.orderId;
+  // Any redraw (a live update, a plugin loading) keeps the keyboard where it was on the board.
+  const kept = state.refocus ? { id: state.refocus } : boardFocus();
   $('#greeting').textContent = greeting();
   $('#summary').textContent = summaryLine(d);
   renderTabs(d);
@@ -168,7 +168,14 @@ function render() {
   renderProblems(d.problems ?? []);
   renderFilter();
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
-  if (focused) focusOrderControl(focused);
+  if (kept) focusOrderControl(kept.id, kept.label);
+}
+
+/** The board task row (and which of its controls) the keyboard is on; nothing outside the board counts. */
+function boardFocus() {
+  const active = document.activeElement;
+  const row = active && $('#board').contains(active) ? active.closest('[data-order-id]') : null;
+  return row ? { id: row.dataset.orderId, label: active.getAttribute('aria-label') } : null;
 }
 
 /** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
@@ -329,11 +336,12 @@ function saveOrder(ids) {
   });
 }
 
-/** Keeps the keyboard on the moved task after a redraw, so Alt+↑ can be pressed again. */
-function focusOrderControl(id) {
+/** Keeps the keyboard on the moved task (on the same control, if given) after a redraw of `scope`. */
+function focusOrderControl(id, label = null, scope = $('#board')) {
   if (!id) return;
-  const el = document.querySelector(`[data-order-id="${CSS.escape(id)}"]`);
-  (el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: true });
+  const el = scope.querySelector(`[data-order-id="${CSS.escape(id)}"]`);
+  const same = label ? [...(el?.querySelectorAll('[aria-label]') ?? [])].find((c) => c.getAttribute('aria-label') === label) : null;
+  (same ?? el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: true });
 }
 
 let dragging = null; // { id, scope }
@@ -799,7 +807,7 @@ async function openDrawer(id) {
   drawer.dataset.itemId = id;
   drawer.hidden = false;
   restoreDrawerDraft(drawer, draft, noteInput);
-  if (state.refocus) focusOrderControl(state.refocus);
+  if (state.refocus) focusOrderControl(state.refocus, null, drawer);
 
   // Drop files anywhere on the panel to attach them.
   drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };

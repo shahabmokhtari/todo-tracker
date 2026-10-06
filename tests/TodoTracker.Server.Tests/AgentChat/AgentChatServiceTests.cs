@@ -24,7 +24,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         Directory.Delete(_dir, recursive: true);
     }
 
-    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true, bool httpOnly = false, string? crashOnce = null, bool noSession = false)
+    private AgentChatService Create(TimeSpan? permissionTimeout = null, bool withAgent = true, bool httpOnly = false, string? crashOnce = null, bool noSession = false, TimeSpan? stopTimeout = null)
     {
         var catalog = new AgentCatalog(searchPath: _dir);
         if (withAgent)
@@ -44,6 +44,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
             Mcp = new AgentLaunch("todo-tracker", "C:\\Tools\\tt.exe", ["mcp"], _dir, new Dictionary<string, string?> { ["TODOTRACKER_VAULT"] = "C:\\Tasks" }),
             McpHttp = new McpHttpServer("http://127.0.0.1:5317/mcp", "secret-token"),
             PermissionTimeout = permissionTimeout ?? TimeSpan.FromMinutes(5),
+            StopTimeout = stopTimeout ?? TimeSpan.FromSeconds(10),
         });
     }
 
@@ -334,12 +335,53 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Every_state_has_a_newer_version_so_screens_can_drop_late_ones()
+    public async Task Every_announced_state_is_newer_than_the_last()
     {
-        var first = _chat.State.Version;
-        await _chat.SendAsync("hi").WaitAsync(Timeout);
+        // Review finding: a late state could overwrite a newer one; screens drop states older than the one shown.
+        var versions = new System.Collections.Concurrent.ConcurrentBag<long>();
+        _chat.Changed += (_, s) => versions.Add(s.Version);
+        var turn = _chat.SendAsync("add Milk");
+        var ask = await WaitForPermission();
+        var before = _chat.State.Version;
 
-        Assert.True(_chat.State.Version > first);
+        await _chat.AnswerAsync(ask.Id, "allow");
+
+        Assert.True(_chat.State.Version > before);
+        Assert.Equal("allowed", _chat.State.Entries.Single(e => e.Id == ask.Id).Status);
+        await turn.WaitAsync(Timeout);
+        Assert.Equal(versions.Count, versions.Distinct().Count());
+        Assert.Equal(versions.Max(), _chat.State.Version);
+        Assert.Equal(_chat.State.Version, _chat.State.Version);
+    }
+
+    [Fact]
+    public async Task A_request_whose_announcement_names_something_else_asks()
+    {
+        var turn = _chat.SendAsync("mismatch");
+        var ask = await WaitForPermission();
+
+        Assert.Equal(["allow", "reject"], ask.Choices);
+        await _chat.AnswerAsync(ask.Id, "reject");
+        await turn.WaitAsync(Timeout);
+    }
+
+    [Fact]
+    public async Task A_new_chat_stops_an_agent_that_ignores_stop_and_starts_clean()
+    {
+        // Review finding: the forced stop left the new chat showing the old "agent stopped" error.
+        await _chat.DisposeAsync();
+        _chat = Create(stopTimeout: TimeSpan.FromMilliseconds(300));
+        var turn = _chat.SendAsync("stubborn");
+        await WaitFor(() => _chat.State.Entries.Any(e => e.Kind == "agent"));
+
+        await _chat.NewChatAsync().WaitAsync(Timeout);
+
+        Assert.True(turn.IsCompleted);
+        Assert.Empty(_chat.State.Entries);
+        Assert.Null(_chat.State.Problem);
+        Assert.NotEqual("error", _chat.State.Status);
+        await _chat.SendAsync("hi").WaitAsync(Timeout);
+        Assert.Equal("Hello, there.", LastAgentText());
     }
 
     [Fact]

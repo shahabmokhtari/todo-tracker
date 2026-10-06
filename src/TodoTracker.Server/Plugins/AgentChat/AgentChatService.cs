@@ -29,6 +29,9 @@ public sealed class AgentChatOptions
 
     /// <summary>An unanswered permission request is refused after this.</summary>
     public TimeSpan PermissionTimeout { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long a stopped answer may take to end before the agent is stopped.</summary>
+    public TimeSpan StopTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>One line in the chat. Kinds: user, agent, tool, permission, note. Choices are for permission requests.</summary>
@@ -37,9 +40,10 @@ public sealed record ChatEntry(string Id, string Kind, string Text, string? Stat
 /// <summary>
 /// What the chat shows. Status: <c>idle</c> (agent not started), <c>starting</c>, <c>ready</c>, <c>busy</c> (answering),
 /// <c>error</c> (it stopped; the next message starts it again). <paramref name="Version"/> grows with every state handed
-/// out, so a screen can drop a state that arrives after a newer one.
+/// out, so a screen can drop a state that arrives after a newer one; <paramref name="Epoch"/> changes when the app
+/// restarts (versions start over then).
 /// </summary>
-public sealed record ChatState(string Status, string? Agent, IReadOnlyList<AgentOption> Agents, IReadOnlyList<ChatEntry> Entries, string? Problem, long Version = 0);
+public sealed record ChatState(string Status, string? Agent, IReadOnlyList<AgentOption> Agents, IReadOnlyList<ChatEntry> Entries, string? Problem, long Version = 0, string Epoch = "");
 
 /// <summary>
 /// Chat with Copilot or Claude about your tasks. The agent starts on the first message and then stays warm; every
@@ -77,7 +81,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
     private string? _choice;
     private string? _messageId;
     private int _nextEntry;
+    private readonly string _epoch = Guid.NewGuid().ToString("N");
     private long _version;
+    private int _resetting;
     private Task _turn = Task.CompletedTask;
 
     public AgentChatService(AgentCatalog catalog, AgentChatOptions options)
@@ -97,7 +103,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         {
             lock (_lock)
             {
-                return new ChatState(_status, _choice, _agents, [.. _entries], _problem, ++_version);
+                return Snapshot();
             }
         }
     }
@@ -125,9 +131,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
             throw new InvalidOperationException(agent.Hint ?? $"{agent.Name} isn't installed.");
         }
 
-        await StopTurnAsync().ConfigureAwait(false);
-        await _startGate.WaitAsync().ConfigureAwait(false);
-        try
+        await ResetAsync(async () =>
         {
             await StopAgentAsync().ConfigureAwait(false);
             lock (_lock)
@@ -138,12 +142,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 _status = "idle";
                 _problem = null;
             }
-        }
-        finally
-        {
-            _startGate.Release();
-        }
-
+        }).ConfigureAwait(false);
         SaveChoice(agentId);
         Notify();
     }
@@ -156,7 +155,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
         {
-            if (_status is "busy" or "starting")
+            if (_status is "busy" or "starting" || _resetting > 0)
             {
                 throw new InvalidOperationException("Wait for the answer (or stop it) first.");
             }
@@ -197,9 +196,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// <summary>Starts over: a new conversation with the same (warm) agent.</summary>
     public async Task NewChatAsync()
     {
-        await StopTurnAsync().ConfigureAwait(false);
-        await _startGate.WaitAsync().ConfigureAwait(false);
-        try
+        await ResetAsync(() =>
         {
             lock (_lock)
             {
@@ -207,18 +204,46 @@ public sealed partial class AgentChatService : IAsyncDisposable
                 _announced.Clear();
                 _sessionId = null;
                 _changesAllowed = false;
-                if (_status != "error")
-                {
-                    _status = _agent is null ? "idle" : "ready";
-                }
+                _problem = null;
+                _status = _agent is null ? "idle" : "ready";
+            }
+
+            return Task.CompletedTask;
+        }).ConfigureAwait(false);
+        Notify();
+    }
+
+    /// <summary>
+    /// Stops the answer being written, then runs <paramref name="reset"/> while no session can start. No message is
+    /// taken in between (else it could start a turn the reset then cuts off, or run alongside it).
+    /// </summary>
+    private async Task ResetAsync(Func<Task> reset)
+    {
+        lock (_lock)
+        {
+            _resetting++;
+        }
+
+        try
+        {
+            await StopTurnAsync().ConfigureAwait(false);
+            await _startGate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await reset().ConfigureAwait(false);
+            }
+            finally
+            {
+                _startGate.Release();
             }
         }
         finally
         {
-            _startGate.Release();
+            lock (_lock)
+            {
+                _resetting--;
+            }
         }
-
-        Notify();
     }
 
     /// <summary>Answers a permission request: allow, allow-chat (changes to tasks for the rest of this chat), or reject.</summary>
@@ -292,14 +317,23 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// </summary>
     private static string? OurTool(string title, string? kind, (string Title, string? Kind)? announced)
     {
-        static bool Risky(string? k) => k is "execute" or "delete" or "move";
-        if (Risky(kind) || Risky(announced?.Kind))
+        // Only kinds an MCP tool call can have: never commands, deletes, moves or fetches.
+        static bool Plain(string? k) => k is null or "other" or "read" or "edit";
+        if (!Plain(kind) || (announced is { } an && !Plain(an.Kind)))
         {
             return null;
         }
 
         static string? Named(string text) => OurToolTitle().Match(text.Trim()) is { Success: true } m && TodoTools.All.Contains(m.Groups[1].Value) ? m.Groups[1].Value : null;
-        return Named(title) ?? (announced is { } a && Named(a.Title) is { } name && (title.Trim() == name || title.Trim() == a.Title.Trim()) ? name : null);
+
+        // The request and how the call was announced must agree on the tool.
+        var named = Named(title);
+        if (announced is not { } a)
+        {
+            return named;
+        }
+
+        return Named(a.Title) is { } announcedName && (named == announcedName || (named is null && title.Trim() == announcedName)) ? announcedName : null;
     }
 
     [GeneratedRegex("^(?:todo-tracker-|todo-tracker: ?|todo-tracker/|mcp__todo-tracker__)([a-z]+(?:_[a-z]+)+)$")]
@@ -319,7 +353,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
 
         try
         {
-            await turn.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await turn.WaitAsync(_options.StopTimeout).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
@@ -721,7 +755,20 @@ public sealed partial class AgentChatService : IAsyncDisposable
         }
     }
 
-    private void Notify() => Changed?.Invoke(this, State);
+    /// <summary>Every change gets a new version (one per announcement, so a version always means the same state).</summary>
+    private void Notify()
+    {
+        ChatState state;
+        lock (_lock)
+        {
+            _version++;
+            state = Snapshot();
+        }
+
+        Changed?.Invoke(this, state);
+    }
+
+    private ChatState Snapshot() => new(_status, _choice, _agents, [.. _entries], _problem, _version, _epoch);
 
     private string? LoadChoice()
     {

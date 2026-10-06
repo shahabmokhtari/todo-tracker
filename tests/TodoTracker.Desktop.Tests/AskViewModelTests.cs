@@ -140,6 +140,19 @@ public sealed class AskViewModelTests
     }
 
     [Fact]
+    public void A_state_that_arrives_late_is_ignored()
+    {
+        // Review finding: states are announced from several threads; an older one could replace a newer one.
+        using var vm = Create();
+        _agent.Set(new AskState("ready", true, "GitHub Copilot", null, "Added it.", null, null, Version: 5));
+
+        _agent.Set(new AskState("busy", true, "GitHub Copilot", null, null, null, null, Version: 4));
+
+        Assert.Equal("Added it.", vm.Message);
+        Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
     public void Send_needs_text()
     {
         using var vm = Create();

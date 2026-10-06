@@ -39,7 +39,8 @@ internal sealed class AgentChatAsk : IAskAgent, IDisposable
             agent is { Installed: true } ? null : state.Agents.Select(a => a.Hint).FirstOrDefault(h => h is not null),
             reply,
             question is null ? null : new AskQuestion(question.Id, question.Text, question.Choices!),
-            state.Problem);
+            state.Problem,
+            state.Version);
     }
 
     private void OnChanged(object? sender, ChatState state) => Changed?.Invoke(this, Map(state));

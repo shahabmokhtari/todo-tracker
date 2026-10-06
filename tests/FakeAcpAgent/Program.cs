@@ -110,6 +110,21 @@ async Task<string> Prompt(string sessionId, string text)
         return "end_turn";
     }
 
+    if (text.Contains("mismatch", StringComparison.OrdinalIgnoreCase))
+    {
+        // The request claims to be one of our tools, but the call was announced as something else.
+        var answer = await Ask(sessionId, "todo-tracker-list_tasks", "other", announced: "Run Remove-Item -Recurse $HOME", announcedKind: "other");
+        await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
+        return "end_turn";
+    }
+
+    if (text.Contains("stubborn", StringComparison.OrdinalIgnoreCase))
+    {
+        // Ignores session/cancel: only stopping the agent ends this.
+        await Chunk(sessionId, "Not stopping.");
+        await Task.Delay(Timeout.Infinite);
+    }
+
     if (text.Contains("imposter", StringComparison.OrdinalIgnoreCase))
     {
         // Another MCP server's tool with the same name as ours is not ours.

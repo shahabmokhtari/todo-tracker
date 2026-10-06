@@ -6,8 +6,11 @@ namespace TodoTracker.Desktop;
 /// <summary>A question the agent asks before acting (e.g. "Change your tasks: create_task").</summary>
 public sealed record AskQuestion(string Id, string Text, IReadOnlyList<string> Choices);
 
-/// <summary>What the sidebar shows of the chat: the latest answer, a question waiting for you, or what to install.</summary>
-public sealed record AskState(string Status, bool HasAgent, string? AgentName, string? Hint, string? Reply, AskQuestion? Question, string? Problem);
+/// <summary>
+/// What the sidebar shows of the chat: the latest answer, a question waiting for you, or what to install. A state with
+/// a lower <paramref name="Version"/> than one already shown is older (it arrived late) and is ignored.
+/// </summary>
+public sealed record AskState(string Status, bool HasAgent, string? AgentName, string? Hint, string? Reply, AskQuestion? Question, string? Problem, long Version = 0);
 
 /// <summary>The in-app agent chat (the Ask AI plugin), as the sidebar needs it.</summary>
 public interface IAskAgent
@@ -42,6 +45,7 @@ public sealed partial class AskViewModel : ObservableObject, IDisposable
     private readonly IAskAgent _agent;
     private readonly Action<Action> _runOnUi;
     private readonly Action _openFullChat;
+    private long _shown;
 
     public AskViewModel(IAskAgent agent, Action<Action> runOnUi, Action openFullChat)
     {
@@ -123,6 +127,12 @@ public sealed partial class AskViewModel : ObservableObject, IDisposable
 
     private void Apply(AskState state)
     {
+        if (state.Version < _shown)
+        {
+            return;
+        }
+
+        _shown = state.Version;
         HasAgent = state.HasAgent;
         IsBusy = state.Status is "busy" or "starting";
         Placeholder = state.HasAgent ? $"Ask {state.AgentName ?? "AI"}… e.g. add: call the bank tomorrow" : "Ask AI (install Copilot CLI or Claude Code)";
