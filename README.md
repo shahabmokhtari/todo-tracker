@@ -16,7 +16,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
 | **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |
 | **Teams** | Reminder cards through a Teams Workflows webhook |
-| **Ask AI** | Chat with Copilot or Claude Code in the app: "add: call the bank tomorrow, renew passport !!" |
+| **Ask AI** | Chat with Copilot, Claude Code or a model with an API key in the app, with every chat kept: "add: call the bank tomorrow, renew passport !!" |
 | **Plugins** | Every extra can be switched off ([`docs/plugins.md`](docs/plugins.md)) |
 | **Sync** | Your computers stay in step through OneDrive, iCloud Drive or a private GitHub gist, merging changes made on both ([`docs/sync.md`](docs/sync.md)) |
 | **Files** | An Obsidian-compatible markdown vault (`Documents/Todo Tracker` by default), with version history |
@@ -91,9 +91,10 @@ Claude Desktop extension (`.mcpb`), a plugin with a skill for Claude Code and Co
 
 ### Ask AI and plugins
 
-Type in the **Ask AI** box at the bottom of the sidebar (or the chat button in the dashboard): Copilot or Claude Code
-adds, finds and organizes tasks for you, asking before it changes anything. Turn any extra off under **⋯ › Plugins**.
-See [`docs/plugins.md`](docs/plugins.md).
+Type in the **Ask AI** box at the bottom of the sidebar (or the chat button in the dashboard): Copilot, Claude Code,
+or a model you add with an API key (OpenAI, Anthropic, Azure, OpenRouter, Ollama, LM Studio…) adds, finds and
+organizes tasks for you, asking before it changes anything. Every chat is kept: **Chats** finds, reopens, renames or
+deletes them. Turn any extra off under **⋯ › Plugins**. See [`docs/plugins.md`](docs/plugins.md).
 
 ### Browser extension
 
