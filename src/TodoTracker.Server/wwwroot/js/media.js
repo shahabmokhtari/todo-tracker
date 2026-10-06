@@ -102,10 +102,13 @@ export function acceptPastedMedia(box, { upload, onError, onUploaded }) {
         try {
           const attachment = await upload(file, pastedName(file));
           const embed = `![[${attachment.storedName ?? attachment.fileName}]]`;
-          // Where the caret is now if the box is still being typed in; else where the paste was.
-          const at = document.activeElement === box ? box.selectionStart : Math.min(caret, box.value.length);
+          // Where the caret is now if the box is still being typed in; else where the paste was. Never in place of
+          // text selected meanwhile (the upload took a moment): the embed goes after it and the selection stays.
+          const focused = document.activeElement === box;
+          const at = focused ? box.selectionEnd : Math.min(caret, box.value.length);
+          const selecting = focused && box.selectionStart !== box.selectionEnd;
           const before = at > 0 && !/\s$/.test(box.value.slice(0, at)) ? ' ' : '';
-          box.setRangeText(before + embed, at, document.activeElement === box ? box.selectionEnd : at, 'end');
+          box.setRangeText(before + embed, at, at, selecting ? 'preserve' : 'end');
           caret = at + before.length + embed.length;
           box.dispatchEvent(new Event('input', { bubbles: true }));
           onUploaded?.(attachment);

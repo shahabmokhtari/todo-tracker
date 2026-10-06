@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { embedNames, splitEmbeds, pastedName, imageFiles } from '../../src/TodoTracker.Server/wwwroot/js/media.js';
+import { embedNames, splitEmbeds, pastedName, imageFiles, acceptPastedMedia, pastesDone } from '../../src/TodoTracker.Server/wwwroot/js/media.js';
 
 test('embeds are found in Obsidian and markdown form', () => {
   const text = 'Before ![[Pasted image 20261006132517.png]] mid ![[shot.png|300]] and ![diagram](../_attachments/ab12cd34/flow%20chart.png) end';
@@ -40,4 +40,39 @@ test('only files are taken from a paste; text-only pastes stay text', () => {
   // Copying from an office app puts text and a picture of it on the clipboard: the text wins.
   assert.equal(imageFiles({ items: [text, file] }).length, 0);
   assert.equal(imageFiles(null).length, 0);
+});
+
+// A textarea, as far as pasting needs one.
+function fakeBox(value) {
+  const box = {
+    value, selectionStart: value.length, selectionEnd: value.length, handlers: {},
+    addEventListener(type, fn) { this.handlers[type] = fn; },
+    dispatchEvent() {},
+    setRangeText(text, start, end, mode) {
+      const { selectionStart: s, selectionEnd: e } = this;
+      this.value = this.value.slice(0, start) + text + this.value.slice(end);
+      if (mode === 'end') this.selectionStart = this.selectionEnd = start + text.length;
+      else if (mode === 'preserve') { this.selectionStart = s; this.selectionEnd = e; }
+    },
+  };
+  return box;
+}
+
+test('a picture that finishes uploading late never replaces text selected meanwhile', async () => {
+  const box = fakeBox('Call the dentist');
+  globalThis.document = { activeElement: box };
+  let finish;
+  acceptPastedMedia(box, { upload: () => new Promise((r) => { finish = r; }) });
+  const file = { name: 'image.png', type: 'image/png', size: 10 };
+  box.handlers.paste({ clipboardData: { files: [file], items: [{ kind: 'file', type: 'image/png', getAsFile: () => file }] }, preventDefault() {} });
+
+  // While it uploads, the person selects "dentist" to retype it.
+  box.selectionStart = 9;
+  box.selectionEnd = 16;
+  finish({ storedName: 'Pasted image.png' });
+  await pastesDone();
+
+  assert.equal(box.value, 'Call the dentist ![[Pasted image.png]]');
+  assert.deepEqual([box.selectionStart, box.selectionEnd], [9, 16]);
+  delete globalThis.document;
 });

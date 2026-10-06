@@ -19,58 +19,55 @@ public sealed class PairingCodes(TimeProvider time)
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(5);
     private const int MaxFailures = 5;
     private readonly Lock _lock = new();
-    private (string Code, DateTimeOffset Expires)? _current;
+    private (string Code, DateTimeOffset Expires, string Id)? _current;
     private int _failures;
-    private string? _pairedName;
+    private (string Id, string Browser)? _paired;
 
-    /// <summary>What the dashboard shows while it waits: "waiting", "paired" (with the browser's name), or "none".</summary>
-    public (string State, string? Browser) Status()
+    /// <summary>
+    /// What the screen that showed code <paramref name="id"/> should say: "waiting", "paired" (with the browser's name),
+    /// or "none" (expired, or replaced by a newer code). Without an id: the latest code.
+    /// </summary>
+    public (string State, string? Browser) Status(string? id = null)
     {
         lock (_lock)
         {
-            if (_pairedName is not null)
+            id ??= _current?.Id ?? _paired?.Id;
+            if (_paired is { } paired && paired.Id == id)
             {
-                return ("paired", _pairedName);
+                return ("paired", paired.Browser);
             }
 
-            return _current is { } current && current.Expires > time.GetUtcNow() ? ("waiting", null) : ("none", null);
+            return _current is { } current && current.Id == id && current.Expires > time.GetUtcNow() ? ("waiting", null) : ("none", null);
         }
     }
 
-    public void Paired(string name)
-    {
-        lock (_lock)
-        {
-            _pairedName = name;
-        }
-    }
-
-    public (string Code, DateTimeOffset Expires) Create()
+    public (string Code, DateTimeOffset Expires, string Id) Create()
     {
         lock (_lock)
         {
             var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
-            _current = (code, time.GetUtcNow() + Lifetime);
+            _current = (code, time.GetUtcNow() + Lifetime, Guid.NewGuid().ToString("N"));
             _failures = 0;
-            _pairedName = null;
+            _paired = null;
             return _current.Value;
         }
     }
 
-    public bool TryRedeem(string? code)
+    /// <summary>Uses the code up; returns the id of the code it was (to report "paired" on), or null.</summary>
+    public string? TryRedeem(string? code)
     {
         lock (_lock)
         {
             if (_current is not { } current || current.Expires <= time.GetUtcNow())
             {
                 _current = null;
-                return false;
+                return null;
             }
 
             if (code is { Length: 6 } && CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(code), System.Text.Encoding.ASCII.GetBytes(current.Code)))
             {
                 _current = null;
-                return true;
+                return current.Id;
             }
 
             if (++_failures >= MaxFailures)
@@ -78,7 +75,15 @@ public sealed class PairingCodes(TimeProvider time)
                 _current = null;
             }
 
-            return false;
+            return null;
+        }
+    }
+
+    public void Paired(string codeId, string browser)
+    {
+        lock (_lock)
+        {
+            _paired = (codeId, browser);
         }
     }
 }
@@ -107,25 +112,25 @@ public sealed class BrowserExtensionPlugin : ITodoPlugin
         group.MapGet("/", (TodoTrackerServerOptions options) => new { serverUrl = options.BaseUrl });
         group.MapPost("/pair", (PairingCodes codes) =>
         {
-            var (code, expires) = codes.Create();
-            return new { code, expiresAt = expires };
+            var (code, expires, id) = codes.Create();
+            return new { code, expiresAt = expires, id };
         });
-        group.MapGet("/pair", (PairingCodes codes) =>
+        group.MapGet("/pair", (string? id, PairingCodes codes) =>
         {
-            var (state, browser) = codes.Status();
+            var (state, browser) = codes.Status(id);
             return new { state, browser };
         });
 
         // Anonymous (the extension has no token yet), but only with the extension's header: see Security.Guard.
         group.MapPost("/claim", (PairingClaim claim, PairingCodes codes, PairedBrowsers browsers) =>
         {
-            if (!codes.TryRedeem(claim.Code?.Trim()))
+            if (codes.TryRedeem(claim.Code?.Trim()) is not { } codeId)
             {
                 return Results.Problem("That code didn’t work (codes last 5 minutes and work once). Get a new one in Todo Tracker.", statusCode: StatusCodes.Status400BadRequest);
             }
 
             var (token, browser) = browsers.Pair(claim.Name);
-            codes.Paired(browser.Name);
+            codes.Paired(codeId, browser.Name);
             return Results.Ok(new { token });
         });
 

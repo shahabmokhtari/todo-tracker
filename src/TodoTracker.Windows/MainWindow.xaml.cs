@@ -387,11 +387,14 @@ public partial class MainWindow : Window
         _pendingPastes++;
         try
         {
-            if (await _vm.AttachPastedImageAsync(card, png).ConfigureAwait(true) is { } embed)
+            // The box may show another task by now, and text may have been selected meanwhile: insert at the caret
+            // of this task's box only, never in place of a selection.
+            if (await _vm.AttachPastedImageAsync(card, png).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
             {
-                box.SelectedText = embed;
-                box.CaretIndex = box.SelectionStart + box.SelectionLength;
-                box.SelectionLength = 0;
+                var at = box.SelectionStart + box.SelectionLength;
+                var text = (at > 0 && !char.IsWhiteSpace(box.Text[at - 1]) ? " " : string.Empty) + embed;
+                box.Text = box.Text.Insert(at, text);
+                box.CaretIndex = at + text.Length;
             }
         }
         finally

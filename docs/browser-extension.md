@@ -45,8 +45,9 @@ secret to copy, and the panel says **Paired with Edge on Windows** (or whichever
 works once, for 5 minutes, and five wrong tries void it. Only the extension can use a code: the request needs a header
 that web pages can't send to the app.
 
-A paired browser's token reaches your tasks and nothing else: not the AI tools (MCP), settings, plugins or sign-in
-links, and whatever it does is recorded as the browser. **Paired browsers** in the setup panel lists them; **Remove**
+A paired browser's token can do what the extension does and nothing more: see what to do now, add tasks, finish
+and snooze them, and add notes. Everything else (deleting, settings, plugins, the AI tools over MCP, sign-in links)
+is refused, including anything added to the app later, and whatever it does is recorded as the browser. **Paired browsers** in the setup panel lists them; **Remove**
 takes one's access away at once (the extension then asks for a new code). Switching the plugin off (it applies after a restart, like every plugin) stops them all.
 Pasting the app's own token (**⋯ › Copy API token**, under *Other server, or paste a token instead*) still works and
 has full access.

@@ -43,8 +43,10 @@ public sealed class PairedBrowsers
         var entry = new Entry(Guid.NewGuid().ToString("N")[..12], clean.Length == 0 ? "Browser" : clean, Hash(token), _time.GetUtcNow(), null);
         lock (_lock)
         {
-            _entries.Add(entry);
-            Save();
+            // Saved first: if it can't be, nothing changes (no token handed out for a browser that isn't kept).
+            List<Entry> next = [.. _entries, entry];
+            Save(next);
+            _entries = next;
         }
 
         return (token, new PairedBrowser(entry.Id, entry.Name, entry.PairedAt, null));
@@ -73,7 +75,14 @@ public sealed class PairedBrowsers
             if (entry.LastUsed is not { } last || now - last > TimeSpan.FromMinutes(10))
             {
                 _entries[index] = entry = entry with { LastUsed = now };
-                Save();
+                try
+                {
+                    Save(_entries);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Only "last used": never fail a request over it (a later request tries again).
+                }
             }
 
             return new PairedBrowser(entry.Id, entry.Name, entry.PairedAt, entry.LastUsed);
@@ -84,13 +93,16 @@ public sealed class PairedBrowsers
     {
         lock (_lock)
         {
-            var removed = _entries.RemoveAll(e => e.Id == id) > 0;
-            if (removed)
+            var remaining = _entries.Where(e => e.Id != id).ToList();
+            if (remaining.Count == _entries.Count)
             {
-                Save();
+                return false;
             }
 
-            return removed;
+            // Saved first: a removal that couldn't be saved would come back after a restart.
+            Save(remaining);
+            _entries = remaining;
+            return true;
         }
     }
 
@@ -102,17 +114,30 @@ public sealed class PairedBrowsers
         {
             return File.Exists(_path) ? JsonSerializer.Deserialize<List<Entry>>(File.ReadAllText(_path), Json) ?? [] : [];
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch (JsonException)
+        {
+            // Unreadable: no browser gets in (fail closed), and the file is kept aside rather than overwritten.
+            try
+            {
+                File.Move(_path, _path + ".bad", overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            return [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return [];
         }
     }
 
-    private void Save()
+    private void Save(List<Entry> entries)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         var temp = _path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Json));
+        File.WriteAllText(temp, JsonSerializer.Serialize(entries, Json));
         File.Move(temp, _path, overwrite: true);
     }
 

@@ -113,9 +113,8 @@ internal static class Security
         }
         else if (bearer is not null && context.RequestServices.GetService<PairedBrowsers>()?.Match(bearer) is not null)
         {
-            // A paired browser reaches the task API only (not MCP, the app's own token, sign-in links or settings),
-            // always as the browser.
-            if (isMcp || !BrowserMayReach(path, mutating))
+            // A paired browser reaches only what the extension does (see BrowserRoutes), always as the browser.
+            if (isMcp || !BrowserMayReach(path, context.Request.Method.ToUpperInvariant()))
             {
                 response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
@@ -142,11 +141,20 @@ internal static class Security
         await next(context).ConfigureAwait(false);
     }
 
-    private static bool BrowserMayReach(PathString path, bool mutating) =>
-        !path.StartsWithSegments("/api/connection", StringComparison.OrdinalIgnoreCase)
-        && !path.StartsWithSegments("/api/launch", StringComparison.OrdinalIgnoreCase)
-        && !path.StartsWithSegments("/api/plugins", StringComparison.OrdinalIgnoreCase)
-        && !(mutating && path.StartsWithSegments("/api/settings", StringComparison.OrdinalIgnoreCase));
+    private static bool BrowserMayReach(PathString path, string method)
+    {
+        // An allow-list of what the extension does: what to do now, add, finish, snooze, and notes. Anything else
+        // (and every route added later) stays closed to a paired browser.
+        var value = path.Value ?? string.Empty;
+        return BrowserRoutes.Any(r => r.Method == method && r.Path.IsMatch(value));
+    }
+
+    private static readonly (string Method, System.Text.RegularExpressions.Regex Path)[] BrowserRoutes =
+    [
+        ("GET", new("^/api/dashboard/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+        ("POST", new("^/api/capture/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+        ("POST", new("^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(complete|notes|schedule)/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+    ];
 
     public static void SetSessionCookie(HttpResponse response, ApiToken token) =>
         response.Cookies.Append(CookieName, token.Value, new CookieOptions

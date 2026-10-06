@@ -17,7 +17,6 @@ export function detectBrowser(userAgent = navigator.userAgent) {
 
 export function activate(host) {
   const { h, icon } = host;
-  let timer = null;
 
   async function copy(text, done = 'Copied') {
     try {
@@ -56,46 +55,62 @@ export function activate(host) {
     const out = h('div', { class: 'pairing' });
     // Announces "Paired with …" (and expiry) to screen readers as well as showing it.
     const status = h('p', { class: 'muted small', role: 'status', 'aria-live': 'polite' });
-    let polling = null;
+    // Each code shown gets a generation; a slower answer for an older one (double click, closed panel) is dropped,
+    // and its timers are always the ones stopped.
+    let generation = 0;
+    let handles = [];
     const stop = () => {
-      clearInterval(timer);
-      clearInterval(polling);
+      generation++;
+      handles.forEach(clearInterval);
+      handles = [];
     };
     const show = async () => {
       stop();
+      const mine = generation;
+      let pairing;
       try {
-        const { code, expiresAt } = await host.post('/api/plugins/browser-extension/pair');
-        const left = h('span', { class: 'muted small' });
-        const tick = () => {
-          const seconds = Math.max(0, Math.round((new Date(expiresAt) - Date.now()) / 1000));
-          left.textContent = seconds ? `works once, for ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '';
-          if (!seconds) {
-            stop();
-            status.textContent = 'That code expired – get a new one.';
-          }
-        };
-        tick();
-        timer = setInterval(tick, 1000);
-        polling = setInterval(async () => {
-          try {
-            const { state, browser } = await host.api('/api/plugins/browser-extension/pair');
-            if (state !== 'paired') return;
-            stop();
-            out.replaceChildren(h('p', { class: 'paired' }, icon('check', { size: 16 }), ` Paired with ${browser}.`), status,
-              h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'Pair another browser'));
-            status.textContent = `Paired with ${browser}.`;
-            onPaired();
-          } catch {
-            // The next poll tries again.
-          }
-        }, 2000);
-        status.textContent = '';
-        out.replaceChildren(h('p', { class: 'muted small', id: 'pair-code-label' }, 'Type this code in the extension:'),
-          h('div', { class: 'pair-code', 'aria-labelledby': 'pair-code-label' }, `${code.slice(0, 3)} ${code.slice(3)}`), left, status,
-          h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'New code'));
+        pairing = await host.post('/api/plugins/browser-extension/pair');
       } catch (err) {
         host.toast(err.message, 'error');
+        return;
       }
+      if (mine !== generation) return;
+      const { code, expiresAt, id } = pairing;
+      const left = h('span', { class: 'muted small' });
+      const tick = () => {
+        const seconds = Math.max(0, Math.round((new Date(expiresAt) - Date.now()) / 1000));
+        left.textContent = seconds ? `works once, for ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}` : '';
+        if (!seconds && mine === generation) {
+          stop();
+          status.textContent = 'That code expired – get a new one.';
+        }
+      };
+      const poll = async () => {
+        let answer;
+        try {
+          answer = await host.api(`/api/plugins/browser-extension/pair?id=${encodeURIComponent(id)}`);
+        } catch {
+          return; // The next poll tries again.
+        }
+        if (mine !== generation) return;
+        if (answer.state === 'none') {
+          stop();
+          status.textContent = 'That code isn’t valid any more (a newer one was made) – get a new one.';
+          return;
+        }
+        if (answer.state !== 'paired') return;
+        stop();
+        out.replaceChildren(h('p', { class: 'paired' }, icon('check', { size: 16 }), ` Paired with ${answer.browser}.`), status,
+          h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'Pair another browser'));
+        status.textContent = `Paired with ${answer.browser}.`;
+        onPaired();
+      };
+      tick();
+      handles = [setInterval(tick, 1000), setInterval(poll, 2000)];
+      status.textContent = '';
+      out.replaceChildren(h('p', { class: 'muted small', id: 'pair-code-label' }, 'Type this code in the extension:'),
+        h('div', { class: 'pair-code', 'aria-labelledby': 'pair-code-label' }, `${code.slice(0, 3)} ${code.slice(3)}`), left, status,
+        h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'New code'));
     };
     out.append(h('button', { class: 'btn primary', type: 'button', onclick: show }, 'Get a pairing code'), status);
     return { node: out, stop };
@@ -156,7 +171,7 @@ export function activate(host) {
       body,
       h('section', { class: 'drawer-section' }, h('h3', null, 'Pairing code'), code.node),
       h('section', { class: 'drawer-section' }, h('h3', null, 'Paired browsers'),
-        h('p', { class: 'muted small' }, 'Each browser gets its own access to your tasks only (not settings or AI tools). Remove one you no longer use.'),
+        h('p', { class: 'muted small' }, 'Each browser gets its own access, only to what the extension does (see, add, finish, snooze, notes). Remove one you no longer use.'),
         paired.node)),
     { iconName: 'puzzle', onClose: code.stop });
   }

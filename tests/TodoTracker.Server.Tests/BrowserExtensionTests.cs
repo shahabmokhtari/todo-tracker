@@ -63,6 +63,65 @@ public sealed class BrowserExtensionTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await paired.GetAsync(new Uri("/api/dashboard", UriKind.Relative), TestContext.Current.CancellationToken)).StatusCode);
     }
 
+    [Theory]
+    [InlineData("DELETE", "/api/items/{id}")]
+    [InlineData("GET", "/api/plugins/connect-ai")]
+    [InlineData("GET", "/API/Connection/")]
+    [InlineData("PUT", "/api/settings")]
+    [InlineData("GET", "/api/vault")]
+    [InlineData("GET", "/api/export")]
+    [InlineData("POST", "/api/items/{id}/attachments")]
+    [InlineData("GET", "/api/plugins/sync")]
+    [InlineData("GET", "/api/some-future-route")]
+    public async Task A_browser_token_is_refused_everywhere_the_extension_does_not_go(string method, string path)
+    {
+        // An allow-list: routes added later stay closed to browsers until someone opens them on purpose.
+        var paired = await PairedClient();
+        var id = Guid.NewGuid();
+
+        using var response = await paired.SendAsync(new HttpRequestMessage(new HttpMethod(method), path.Replace("{id}", id.ToString(), StringComparison.Ordinal)) { Content = method == "GET" ? null : JsonContent.Create(new { }) }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_browser_token_reaches_what_the_extension_does()
+    {
+        var paired = await PairedClient();
+        var created = JsonNode.Parse(await (await paired.PostAsJsonAsync(new Uri("/api/capture", UriKind.Relative), new { text = "From a page" }, TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
+        var id = created["id"]?.GetValue<string>() ?? created["item"]!["id"]!.GetValue<string>();
+        (await paired.GetAsync(new Uri("/api/dashboard", UriKind.Relative), TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/notes", UriKind.Relative), new { text = "a note" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/schedule", UriKind.Relative), new { inMinutes = 60 }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/complete", UriKind.Relative), new { }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task The_pairing_status_is_about_the_code_this_screen_shows()
+    {
+        using var app = _server.Client();
+        var first = JsonNode.Parse(await (await app.PostAsync(new Uri("/api/plugins/browser-extension/pair", UriKind.Relative), null, TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
+        var second = JsonNode.Parse(await (await app.PostAsync(new Uri("/api/plugins/browser-extension/pair", UriKind.Relative), null, TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
+        using var extension = Extension();
+        (await Claim(extension, second["code"]!.GetValue<string>())).EnsureSuccessStatusCode();
+
+        async Task<string> State(JsonNode code) => JsonNode.Parse(await app.GetStringAsync(new Uri($"/api/plugins/browser-extension/pair?id={code["id"]!.GetValue<string>()}", UriKind.Relative), TestContext.Current.CancellationToken))!["state"]!.GetValue<string>();
+
+        // Another tab's newer code replaced the first one: that screen must not say "paired".
+        Assert.Equal("none", await State(first));
+        Assert.Equal("paired", await State(second));
+    }
+
+    private async Task<HttpClient> PairedClient()
+    {
+        var code = await NewCode();
+        using var extension = Extension();
+        var token = JsonNode.Parse(await (await Claim(extension, code)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!["token"]!.GetValue<string>();
+        var paired = _server.Client(authenticated: false);
+        paired.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return paired;
+    }
+
     [Fact]
     public async Task A_browser_token_only_reaches_the_task_api_and_always_counts_as_the_browser()
     {
@@ -73,7 +132,7 @@ public sealed class BrowserExtensionTests : IAsyncLifetime
         paired.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         paired.DefaultRequestHeaders.Add("X-TodoTracker-Actor", "agent:pretend");
 
-        var created = await paired.PostAsJsonAsync(new Uri("/api/items", UriKind.Relative), new { title = "From the browser" }, TestContext.Current.CancellationToken);
+        var created = await paired.PostAsJsonAsync(new Uri("/api/capture", UriKind.Relative), new { text = "From the browser" }, TestContext.Current.CancellationToken);
         created.EnsureSuccessStatusCode();
         using var mcp = await paired.PostAsync(new Uri("/mcp", UriKind.Relative), new StringContent("{}"), TestContext.Current.CancellationToken);
         using var launch = await paired.PostAsJsonAsync(new Uri("/api/launch", UriKind.Relative), new { @return = "/" }, TestContext.Current.CancellationToken);
