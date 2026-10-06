@@ -165,3 +165,55 @@ test('details autosave, tags and labels filter, notes save as you type, files at
 
   expect(errors).toEqual([]);
 });
+
+test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const auth = { Authorization: `Bearer ${token}` };
+  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await expect(page.locator('#board')).toBeVisible();
+  for (const title of ['Order alpha', 'Order bravo', 'Order charlie']) {
+    await page.fill('#capture-input', title);
+    await page.press('#capture-input', 'Enter');
+    await expect(page.locator('.title, .focus-title', { hasText: title })).toHaveCount(1);
+  }
+  await page.fill('#filter', 'order');
+  await page.press('#filter', 'Enter');
+  const focus = page.locator('.focus-title');
+  const rows = page.locator('#sec-now .item .title');
+  const nowTitles = async () => (await (await request.get('/api/dashboard?q=order', { headers: auth })).json()).now.map((c) => c.title);
+  await expect(focus).toHaveText('Order alpha');
+
+  // Arrow button: charlie moves above bravo.
+  const charlie = page.locator('#sec-now .item', { hasText: 'Order charlie' });
+  await charlie.hover();
+  await charlie.getByRole('button', { name: 'Move up' }).click();
+  await expect(rows).toHaveText(['Order charlie', 'Order bravo']);
+  await expect.poll(nowTitles).toEqual(['Order alpha', 'Order charlie', 'Order bravo']);
+
+  // Keyboard: Alt+↑ on charlie makes it the focus.
+  await page.locator('#sec-now .item .title', { hasText: 'Order charlie' }).focus();
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect(focus).toHaveText('Order charlie');
+
+  // Drag and drop: bravo dropped on the focus card becomes the focus.
+  await page.locator('#sec-now .item', { hasText: 'Order bravo' }).dragTo(page.locator('.focus-card'), { targetPosition: { x: 20, y: 5 } });
+  await expect(focus).toHaveText('Order bravo');
+  await expect.poll(nowTitles).toEqual(['Order bravo', 'Order charlie', 'Order alpha']);
+
+  // Subtasks keep their parent and can be reordered in the panel.
+  const parent = await (await request.post('/api/items', { headers: auth, data: { title: 'Order trip' } })).json();
+  for (const t of ['Flights', 'Hotel', 'Visa']) await request.post('/api/items', { headers: auth, data: { title: t, parentId: parent.id } });
+  await page.goto(`/?item=${parent.id}`);
+  const subs = page.locator('#drawer .subtasks > li .sub-row .link');
+  await expect(subs).toHaveText(['Flights', 'Hotel', 'Visa']);
+  const visa = page.locator('#drawer .subtasks > li', { hasText: 'Visa' });
+  await visa.hover();
+  await visa.getByRole('button', { name: 'Move up' }).click();
+  await expect(subs).toHaveText(['Flights', 'Visa', 'Hotel']);
+  await page.locator('#drawer .subtasks > li', { hasText: 'Hotel' }).dragTo(page.locator('#drawer .subtasks > li', { hasText: 'Flights' }), { targetPosition: { x: 20, y: 2 } });
+  await expect(subs).toHaveText(['Hotel', 'Flights', 'Visa']);
+
+  expect(errors).toEqual([]);
+});

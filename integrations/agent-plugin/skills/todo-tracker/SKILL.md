@@ -25,13 +25,15 @@ Use the `todo-tracker` MCP tools. If they aren't available, use the `tt` command
 | Finish or undo | `complete_task`, `reopen_task` | `tt done <task>`, `tt reopen <task>` |
 | Rename, re-prioritize, tag, label | `update_task` | `tt edit`, `tt tag`, `tt label` |
 | Reorganize | `move_task` | `tt move <task> --under <task>` |
+| Decide what comes first | `put_first` | `tt first <task>` |
 | Undo a change | `task_history`, `restore_task_version` | `tt history <task>`, `tt restore <task> <version>` |
 
 `<task>` in the CLI is an id prefix (as `tt` prints it) or words from the title.
 
 ## How to help
 
-1. **Start with the dashboard** before suggesting what to work on. Respect the Focus task: it is what the user chose.
+1. **Start with the dashboard** before suggesting what to work on. Respect the order of Do now: the user arranged it.
+   When they say what matters most, put it first (`put_first`).
 2. **Capture what the user says they need to do**, right away, in their words. Don't ask for details you can infer.
    Put it in the right group (tab), e.g. Work or Personal. Use `#tags` for topics and the user's curated labels
    (`list_labels`) only when they clearly fit.

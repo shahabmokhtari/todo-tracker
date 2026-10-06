@@ -43,7 +43,10 @@ The sidebar docks on the right. To move it, use **⋯ › Position**:
 - **Float as a window** makes it a normal window you can drag and resize. Turn on **⋯ › Always on top** if you want it
   to stay above other windows.
 
-Your choice is remembered. Type a task in the box at the top and press Enter:
+Your choice is remembered. **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
+or use its ↑/↓ buttons or Alt+↑/↓. Subtasks reorder the same way in the task panel.
+
+Type a task in the box at the top and press Enter:
 
 ```
 Deploy ring 2 !! @2h due:tomorrow      →  critical, back in 2h with a reminder, due tomorrow 17:00

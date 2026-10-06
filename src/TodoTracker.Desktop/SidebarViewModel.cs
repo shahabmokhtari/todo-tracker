@@ -180,6 +180,54 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return $"Snoozed: {request.Option.Label.ToLowerInvariant()}";
     });
 
+    /// <summary>The Do now order as shown: the focus card, then the rest.</summary>
+    private List<Guid> VisibleNow() => (Focus is null ? Now : Now.Prepend(Focus)).Select(c => c.Id).Distinct().ToList();
+
+    [RelayCommand]
+    private Task MoveUp(CardViewModel? card) => Step(card, -1);
+
+    [RelayCommand]
+    private Task MoveDown(CardViewModel? card) => Step(card, 1);
+
+    /// <summary>Drag and drop: puts <paramref name="card"/> before (or after) <paramref name="target"/>.</summary>
+    public Task MoveCardAsync(CardViewModel card, CardViewModel target, bool after)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(target);
+        var ids = VisibleNow();
+        if (!card.CanReorder || !target.CanReorder || card.Id == target.Id || !ids.Remove(card.Id) || ids.IndexOf(target.Id) is var at && at < 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        ids.Insert(at + (after ? 1 : 0), card.Id);
+        return Arrange(ids);
+    }
+
+    private Task Step(CardViewModel? card, int delta)
+    {
+        var ids = VisibleNow();
+        var from = card is { CanReorder: true } ? ids.IndexOf(card.Id) : -1;
+        if (from < 0 || from + delta < 0 || from + delta >= ids.Count)
+        {
+            return Task.CompletedTask;
+        }
+
+        ids.RemoveAt(from);
+        ids.Insert(from + delta, card!.Id);
+        return Arrange(ids);
+    }
+
+    private Task Arrange(List<Guid> ids) => Run(async () =>
+    {
+        await _store.UpdateAsync(b =>
+        {
+            b.ArrangeNow(ids);
+            return true;
+        }).ConfigureAwait(true);
+        return null;
+    });
+
     [RelayCommand]
     private Task BringBack(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
     {

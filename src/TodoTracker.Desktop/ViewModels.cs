@@ -81,7 +81,11 @@ public sealed partial class CardViewModel : ObservableObject
     public partial string? ReminderMessage { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReorder))]
     public partial bool IsWaiting { get; set; }
+
+    /// <summary>Do now cards can be put in any order (drag, arrows, Alt+↑/↓); waiting ones come back by time.</summary>
+    public bool CanReorder => !IsWaiting;
 
     [ObservableProperty]
     public partial bool CanComplete { get; set; }

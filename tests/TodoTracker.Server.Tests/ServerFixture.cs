@@ -149,6 +149,13 @@ public static class JsonHelpers
         return JsonNode.Parse(text)!;
     }
 
+    /// <summary>POST that must succeed and returns no body (204).</summary>
+    public static async Task PostOk(this HttpClient client, string url, object body)
+    {
+        var response = await client.PostAsJsonAsync(url, body);
+        Assert.True(response.IsSuccessStatusCode, $"{(int)response.StatusCode}: {await response.Content.ReadAsStringAsync()}");
+    }
+
     public static async Task<JsonNode> PostJson(this HttpClient client, string url, object? body = null) =>
         await (await client.PostAsJsonAsync(url, body ?? new { })).Json();
 

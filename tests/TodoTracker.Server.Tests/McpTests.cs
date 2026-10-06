@@ -69,6 +69,17 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_put_what_matters_most_first()
+    {
+        await Call("create_task", new() { ["title"] = "Urgent", ["priority"] = "critical" });
+        var bank = await Call("create_task", new() { ["title"] = "Call the bank" });
+
+        var dashboard = await Call("put_first", new() { ["taskIds"] = new[] { bank.GetProperty("id").GetString() } });
+
+        Assert.Equal("Call the bank", dashboard.GetProperty("focus").GetProperty("title").GetString());
+    }
+
+    [Fact]
     public async Task Agent_can_schedule_follow_up_with_reminder()
     {
         var task = await Call("create_task", new() { ["title"] = "Check canary" });

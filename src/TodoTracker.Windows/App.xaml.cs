@@ -22,6 +22,8 @@ public partial class App : Application
     private SidebarViewModel? _viewModel;
     private ToastService? _toasts;
     private string _dataDirectory = TodoTrackerServerOptions.DefaultDataDirectory();
+    private SingleInstance? _instance;
+    private MainWindow? _window;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -29,6 +31,16 @@ public partial class App : Application
         DispatcherUnhandledException += OnUnhandledUiException;
         TaskScheduler.UnobservedTaskException += (_, unobserved) => unobserved.SetObserved();
         var args = StartupArgs.Parse(e.Args);
+
+        // One sidebar at a time (tests included): a second launch brings the running one to the front instead.
+        _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(10) : TimeSpan.Zero);
+        if (_instance is null)
+        {
+            Shutdown(args.SmokeTest ? 3 : 0);
+            return;
+        }
+
+        _instance.OnShowRequested(() => Dispatcher.BeginInvoke(() => _window?.BringToFront()));
         try
         {
             if (args.SmokeTest)
@@ -100,6 +112,7 @@ public partial class App : Application
             }).Wait(TimeSpan.FromSeconds(5));
         }
 
+        _instance?.Dispose();
         base.OnExit(e);
     }
 
@@ -147,6 +160,7 @@ public partial class App : Application
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);
         window.Vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
         MainWindow = window;
+        _window = window;
 
         var events = services.GetRequiredService<ServerEvents>();
         if (toasts)

@@ -9,7 +9,8 @@
         WindowStyle="None" ResizeMode="NoResize" Topmost="True" ShowInTaskbar="True"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
         Background="{DynamicResource ApplicationBackgroundBrush}"
-        AutomationProperties.Name="Todo Tracker sidebar">
+        AutomationProperties.Name="Todo Tracker sidebar"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
     <Window.Resources>
         <!-- Toned chips (step, back in, due, notes). -->
         <DataTemplate x:Key="ChipTemplate" DataType="{x:Type d:ChipViewModel}">
@@ -35,7 +36,9 @@
 
         <!-- A list row: priority dot, text, quiet icon actions that brighten on hover. -->
         <DataTemplate x:Key="CardTemplate" DataType="{x:Type d:CardViewModel}">
-            <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="8,8,4,8" CornerRadius="10" Background="Transparent">
+            <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="8,8,4,8" CornerRadius="10" Background="Transparent" BorderThickness="0"
+                    AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="18" />
@@ -73,6 +76,12 @@
                                     Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus timer on this" AutomationProperties.Name="Focus"
                                     Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70E;" ToolTip="Move up (Alt+↑)" AutomationProperties.Name="Move up"
+                                    Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70D;" ToolTip="Move down (Alt+↓)" AutomationProperties.Name="Move down"
+                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" />
                         </StackPanel>
                         <Grid Margin="0,4,0,0" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">
@@ -105,7 +114,9 @@
 
         <!-- The hero "Do this now" card with a gradient hairline border. -->
         <DataTemplate x:Key="FocusTemplate" DataType="{x:Type d:CardViewModel}">
-            <Border x:Name="Frame" CornerRadius="16" Padding="1.5" Background="{StaticResource BrandGradient}">
+            <Border x:Name="Frame" CornerRadius="16" Padding="1.5" Background="{StaticResource BrandGradient}" BorderThickness="0"
+                    AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
                 <Border CornerRadius="14.5" Padding="14,12,14,8" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,6">
@@ -175,6 +186,8 @@
                                     <TextBlock Text="Focus" />
                                 </StackPanel>
                             </Button>
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70D;" ToolTip="Do something else first (Alt+↓)" AutomationProperties.Name="Move down"
+                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,0,6" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" Margin="0,0,0,6" />
                         </WrapPanel>
                         <Grid Margin="0,2,0,6" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">

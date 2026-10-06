@@ -32,6 +32,9 @@ const PATHS = {
   search: ['M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z', 'M20 20l-4-4'],
   obsidian: ['M9 3 5 9l3 12 8-3 3-7-5-8z', 'M9 3l1 8-2 10', 'M10 11l9 0'],
   history: ['M3 12a9 9 0 1 0 3-6.7', 'M3 4v5h5', 'M12 7v5l3 2'],
+  grip: ['M9 6h.01', 'M15 6h.01', 'M9 12h.01', 'M15 12h.01', 'M9 18h.01', 'M15 18h.01'],
+  up: ['M12 19V5', 'M5 12l7-7 7 7'],
+  down: ['M12 5v14', 'M19 12l-7 7-7-7'],
 };
 
 export function icon(name, { size = 18, className = '' } = {}) {

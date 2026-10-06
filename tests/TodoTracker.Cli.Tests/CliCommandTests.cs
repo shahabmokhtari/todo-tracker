@@ -181,6 +181,19 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task First_puts_a_task_at_the_top_of_do_now()
+    {
+        await _tt.Ok("add", "Urgent thing !!");
+        await _tt.Ok("add", "Call", "the", "bank");
+
+        var dashboard = await _tt.Json("first", "call", "the", "bank");
+
+        Assert.Equal("Call the bank", dashboard["focus"].Str("title"));
+        Assert.Contains("Focus", await _tt.Ok("first", "urgent"), StringComparison.Ordinal);
+        Assert.Equal("Urgent thing", (await _tt.Json("now"))["focus"].Str("title"));
+    }
+
+    [Fact]
     public async Task Subtasks_are_added_under_a_parent()
     {
         var parent = (await _tt.Json("add", "Plan trip")).Id().ToString("N")[..8];

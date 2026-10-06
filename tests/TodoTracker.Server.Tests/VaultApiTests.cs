@@ -104,6 +104,27 @@ public sealed class VaultApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Do_now_can_be_arranged_put_first_and_subtasks_reordered()
+    {
+        var a = await _client.PostJson("/api/items", new { title = "A", priority = "critical" });
+        var b = await _client.PostJson("/api/items", new { title = "B" });
+        var c = await _client.PostJson("/api/items", new { title = "C", priority = "low" });
+
+        await _client.PostOk("/api/now/order", new { ids = new[] { c.Id(), a.Id(), b.Id() } });
+        Assert.Equal(["C", "A", "B"], (await _client.GetJson("/api/dashboard"))["now"].Titles());
+        Assert.Equal("C", (await _client.GetJson("/api/dashboard"))["focus"]!["title"]!.GetValue<string>());
+
+        await _client.PostOk("/api/now/first", new { ids = new[] { b.Id() } });
+        Assert.Equal(["B", "C", "A"], (await _client.GetJson("/api/dashboard"))["now"].Titles());
+
+        var trip = await _client.PostJson("/api/items", new { title = "Trip" });
+        var flights = await _client.PostJson("/api/items", new { title = "Flights", parentId = trip.Id() });
+        var visa = await _client.PostJson("/api/items", new { title = "Visa", parentId = trip.Id() });
+        await _client.PostJson($"/api/items/{visa.Id()}/reorder", new { before = flights.Id() });
+        Assert.Equal(["Visa", "Flights"], (await _client.GetJson($"/api/items/{trip.Id()}"))["children"].Titles());
+    }
+
+    [Fact]
     public async Task Search_shows_done_tasks_only_when_asked_with_is()
     {
         var done = await _client.PostJson("/api/items", new { title = "Analysis: Q3" });
