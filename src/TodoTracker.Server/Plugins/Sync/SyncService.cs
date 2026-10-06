@@ -12,7 +12,8 @@ namespace TodoTracker.Server.Plugins.Sync;
 
 public sealed record SyncProviderView(string Id, string Name, bool Available, string Detail, bool Active);
 
-public sealed record SyncConflictView(string Key, string Path, string PeerName, DateTimeOffset At);
+/// <summary>A clash; <paramref name="Ready"/> once both computers have the merged task (a side can be chosen then).</summary>
+public sealed record SyncConflictView(string Key, string Path, string PeerName, DateTimeOffset At, bool Ready);
 
 public sealed record MergeTool(string Id, string Name, string Path);
 
@@ -80,7 +81,8 @@ public sealed class SyncService : IDisposable
         {
             var choice = Choice;
             var active = Active(out var reason);
-            var status = active is null ? SyncStatus.Empty : StateFor(active).Status;
+            var state = active is null ? null : StateFor(active);
+            var status = state?.Status ?? SyncStatus.Empty;
             var views = _providers.Select(p =>
             {
                 var check = p.Check(_vault.RootPath);
@@ -94,10 +96,10 @@ public sealed class SyncService : IDisposable
                 problem = _problem;
             }
 
-            var state = choice == "off" ? "off" : active is null ? "unavailable" : syncing ? "syncing" : problem is not null ? "error" : "idle";
+            var shown = choice == "off" ? "off" : active is null ? "unavailable" : syncing ? "syncing" : problem is not null ? "error" : "idle";
             return new SyncView(
                 choice,
-                state,
+                shown,
                 active?.Name,
                 active is null ? reason : active.Check(_vault.RootPath).Detail,
                 status.LastSync,
@@ -105,7 +107,7 @@ public sealed class SyncService : IDisposable
                 Library,
                 views,
                 status.Devices,
-                [.. status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At))],
+                [.. status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At, c.Result is null || state!.LoadBase(c.Peer).GetValueOrDefault(c.Key)?.Hash == c.Result))],
                 MergeTools.Find());
         }
     }
@@ -231,6 +233,12 @@ public sealed class SyncService : IDisposable
                 throw new InvalidOperationException("That version isn't kept any more.");
             }
 
+            // Choosing a side before the other computer has the merged task too would be undone by its merge.
+            if (!Ready(engine, conflict))
+            {
+                throw new InvalidOperationException($"Wait until {conflict.PeerName} has synced too (usually within a minute), then choose.");
+            }
+
             var content = conflict.Base is { } baseHash && engine.State.ReadBlob(baseHash) is { } @base
                 ? Encoding.UTF8.GetBytes(TextMerge.Merge(
                     Encoding.UTF8.GetString(@base),
@@ -295,6 +303,10 @@ public sealed class SyncService : IDisposable
     private static SyncConflictRecord Newest(SyncEngine engine, string key) =>
         engine.State.Status.Conflicts.Where(c => c.Key == key).OrderByDescending(c => c.At).FirstOrDefault()
             ?? throw new InvalidOperationException("That conflict was already settled.");
+
+    /// <summary>Both computers have the merged task (it's what they last agreed on): a side can be chosen now.</summary>
+    private static bool Ready(SyncEngine engine, SyncConflictRecord conflict) =>
+        conflict.Result is null || engine.State.LoadBase(conflict.Peer).GetValueOrDefault(conflict.Key)?.Hash == conflict.Result;
 
     private string? Setting(string name)
     {

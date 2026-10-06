@@ -27,6 +27,7 @@ public sealed class GistRemote : ISyncRemote
     private readonly Action<string> _saveId;
     private readonly string _description;
     private readonly Dictionary<string, Dictionary<string, string>> _contents = [];
+    private bool _looked;
 
     /// <param name="http">Talks to api.github.com.</param>
     /// <param name="token">A GitHub token with the gist scope.</param>
@@ -171,6 +172,9 @@ public sealed class GistRemote : ISyncRemote
             if (id is null && gist["id"]?.GetValue<string>() is { } created)
             {
                 _saveId(created);
+
+                // Another device may have made one at the same moment: look again next time.
+                _looked = false;
             }
 
             // Our write is the only change since we read the gist when the version before it is the one we read:
@@ -215,13 +219,15 @@ public sealed class GistRemote : ISyncRemote
 
     private async Task<string?> GistIdAsync(CancellationToken cancellationToken)
     {
-        if (_loadId() is { Length: > 0 } known)
+        var known = _loadId() is { Length: > 0 } saved ? saved : null;
+        if (known is not null && _looked)
         {
             return known;
         }
 
         // A gist made earlier (on another device, or before a reinstall): found by its description and marker file.
-        // If two devices made one at the same moment, all use the oldest.
+        // Looked for once per start (and after making one): if two devices each made one at the same moment, every
+        // device moves to the oldest, so they meet again.
         var found = new List<(string Id, string Created)>();
         for (var page = 1; page <= 5; page++)
         {
@@ -231,7 +237,7 @@ public sealed class GistRemote : ISyncRemote
             var gists = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false))!.AsArray();
             foreach (var gist in gists)
             {
-                if (gist?["description"]?.GetValue<string>() == _description && gist["files"]?[Marker] is not null && gist["id"]?.GetValue<string>() is { } id)
+                if (string.Equals(gist?["description"]?.GetValue<string>(), _description, StringComparison.OrdinalIgnoreCase) && gist!["files"]?[Marker] is not null && gist["id"]?.GetValue<string>() is { } id)
                 {
                     found.Add((id, gist["created_at"]?.GetValue<string>() ?? string.Empty));
                 }
@@ -243,13 +249,18 @@ public sealed class GistRemote : ISyncRemote
             }
         }
 
+        _looked = true;
         if (found.Count == 0)
         {
-            return null;
+            return known;
         }
 
         var oldest = found.OrderBy(f => f.Created, StringComparer.Ordinal).ThenBy(f => f.Id, StringComparer.Ordinal).First().Id;
-        _saveId(oldest);
+        if (oldest != known)
+        {
+            _saveId(oldest);
+        }
+
         return oldest;
     }
 

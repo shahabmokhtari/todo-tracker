@@ -115,11 +115,14 @@ export function activate(host) {
 
   function conflict(c) {
     const resolve = (choice) => run(host.post(`${base}/resolve`, { key: c.key, choice }));
+    const sides = c.ready
+      ? [h('button', { class: 'btn', type: 'button', onclick: () => resolve('mine') }, 'Keep mine'),
+        h('button', { class: 'btn', type: 'button', onclick: () => resolve('theirs') }, `Keep ${c.peerName}’s`)]
+      : [h('span', { class: 'muted small' }, `Waiting for ${c.peerName} to sync before you can pick a side…`)];
     return h('div', { class: 'sync-conflict' },
       h('div', null, h('strong', null, c.path.split('/').pop().replace(/\.md$/, '')), h('span', { class: 'muted small' }, ` · also changed on ${c.peerName}`)),
       h('div', { class: 'row' },
-        h('button', { class: 'btn', type: 'button', onclick: () => resolve('mine') }, 'Keep mine'),
-        h('button', { class: 'btn', type: 'button', onclick: () => resolve('theirs') }, `Keep ${c.peerName}’s`),
+        ...sides,
         h('button', { class: 'btn ghost', type: 'button', title: 'Keep the task as it is now (both versions)', onclick: () => resolve('merged') }, 'Keep both'),
         ...view.mergeTools.map((t) => h('button', {
           class: 'btn ghost', type: 'button', title: `Compare in ${t.name} (edit the task on the right)`,

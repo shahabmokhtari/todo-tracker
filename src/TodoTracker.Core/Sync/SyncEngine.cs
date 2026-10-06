@@ -138,9 +138,14 @@ public sealed class SyncEngine : IDisposable
         }
 
         var publishedSince = _state.PublishedEntries.Where(e => e.Since is not null).ToDictionary(e => (e.Key, e.Hash), e => e.Since!.Value);
+
+        // A device with no sync history (new, reinstalled, a restored backup) may hold copies of files deleted
+        // elsewhere since: its files count as old, so existing deletes apply. Later, a file that wasn't published
+        // yet is new (made after any delete seen so far).
+        var unpublished = _state.PublishedEntries.Count == 0 && !_state.Peers().Any() ? DateTimeOffset.MinValue : now;
         var options = new SyncPlanOptions
         {
-            Deleted = e => deleted.TryGetValue((e.Key, e.Hash), out var at) && at > (e.Since ?? publishedSince.GetValueOrDefault((e.Key, e.Hash), now)),
+            Deleted = e => deleted.TryGetValue((e.Key, e.Hash), out var at) && at > (e.Since ?? publishedSince.GetValueOrDefault((e.Key, e.Hash), unpublished)),
             IsValidTask = _store.IsValidTaskText,
         };
 
@@ -207,6 +212,11 @@ public sealed class SyncEngine : IDisposable
         if (remote is not null && complete)
         {
             _state.RemoteVersion = remote.Version;
+        }
+
+        if (remote is { Partial: true })
+        {
+            problems.Add("Another computer's sync file couldn't be read (it may be from a newer version of Todo Tracker); it's tried again.");
         }
 
         var published = false;

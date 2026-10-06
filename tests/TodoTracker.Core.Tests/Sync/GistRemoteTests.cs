@@ -318,6 +318,29 @@ public sealed class GistRemoteTests : IDisposable
     }
 
     [Fact]
+    public async Task Two_gists_made_at_once_are_joined_on_the_next_start()
+    {
+        // Review finding: a device that made the newer gist kept using it, so the two never met.
+        var (laptop, laptopSync) = Device("Laptop");
+        await laptop.UpdateAsync(b => b.AddTask(new NewTask("On the first gist"), Actor.User, T0));
+        await laptopSync.SyncAsync(TestContext.Current.CancellationToken);
+        using var http = new HttpClient(_github);
+        using var create = new HttpRequestMessage(HttpMethod.Post, "https://api.github.com/gists")
+        {
+            Content = new StringContent("""{"description":"Todo Tracker sync: Todo Tracker","public":false,"files":{"todo-tracker-sync.md":{"content":"x"}}}"""),
+        };
+        create.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "token");
+        var second = JsonNode.Parse(await (await http.SendAsync(create, TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!["id"]!.GetValue<string>();
+        Directory.CreateDirectory(Path.Combine(_root, "Desktop"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "Desktop", "gist-id"), second, TestContext.Current.CancellationToken);
+
+        var (desktop, desktopSync) = Device("Desktop");
+        await desktopSync.SyncAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("On the first gist", await Titles(desktop));
+    }
+
+    [Fact]
     public async Task A_second_computer_finds_the_existing_gist()
     {
         var (laptop, laptopSync) = Device("Laptop");

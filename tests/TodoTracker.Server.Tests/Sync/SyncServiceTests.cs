@@ -188,11 +188,27 @@ public sealed class SyncApiTests : IAsyncLifetime
         Assert.Contains("Ask about the car", details, StringComparison.Ordinal);
 
         using var client = _desktop.Client();
-        var resolved = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/resolve", UriKind.Relative), new { key = conflict["key"]!.GetValue<string>(), choice = "mine" }, TestContext.Current.CancellationToken);
+        var key = conflict["key"]!.GetValue<string>();
+
+        // Review finding: choosing a side before the other computer had the merged task was undone by its merge.
+        Assert.False(conflict["ready"]!.GetValue<bool>());
+        var early = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/resolve", UriKind.Relative), new { key, choice = "mine" }, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.Conflict, early.StatusCode);
+        await Sync(_laptop);
+        Assert.True((await Sync(_desktop))["conflicts"]![0]!["ready"]!.GetValue<bool>());
+
+        var resolved = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/resolve", UriKind.Relative), new { key, choice = "mine" }, TestContext.Current.CancellationToken);
         resolved.EnsureSuccessStatusCode();
 
         Assert.Empty(JsonNode.Parse(await resolved.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!["conflicts"]!.AsArray());
         Assert.Equal("Ask about the car", await ((VaultBoardStore)_desktop.Store).ReadAsync(b => b.Get(task.Id).Details));
+
+        // And it stays chosen on both computers.
+        await Sync(_desktop);
+        await Sync(_laptop);
+        await Sync(_desktop);
+        Assert.Equal("Ask about the car", await ((VaultBoardStore)_desktop.Store).ReadAsync(b => b.Get(task.Id).Details));
+        Assert.Equal("Ask about the car", await ((VaultBoardStore)_laptop.Store).ReadAsync(b => b.Get(task.Id).Details));
     }
 
     [Fact]
@@ -206,6 +222,8 @@ public sealed class SyncApiTests : IAsyncLifetime
         await _desktop.Store.UpdateAsync(b => b.Update(task.Id, new TaskChanges { Details = "By plane" }, Actor.User, ServerFixture.T0));
         await Sync(_laptop);
         var key = (await Sync(_desktop))["conflicts"]![0]!["key"]!.GetValue<string>();
+        await Sync(_laptop);
+        await Sync(_desktop);
         using var client = _desktop.Client();
 
         var compare = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/compare", UriKind.Relative), new { key, tool = "no-such-tool" }, TestContext.Current.CancellationToken);

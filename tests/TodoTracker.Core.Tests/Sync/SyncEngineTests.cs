@@ -384,6 +384,28 @@ public sealed class SyncEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_new_device_with_an_old_copy_of_a_deleted_file_does_not_bring_it_back()
+    {
+        // Review finding: a device with no sync history (a restored backup, a reinstall) counted its files as new.
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        var notes = Path.Combine(laptop.Vault, "Work", "old.txt");
+        await System.IO.File.WriteAllTextAsync(notes, "old notes", TestContext.Current.CancellationToken);
+        laptop.Store.MarkDirty();
+        await Settle();
+        System.IO.File.Delete(notes);
+        laptop.Store.MarkDirty();
+        await Settle();
+
+        var restored = Add("Restored");
+        await System.IO.File.WriteAllTextAsync(Path.Combine(restored.Vault, "Work", "old.txt"), "old notes", TestContext.Current.CancellationToken);
+        restored.Store.MarkDirty();
+        await Settle();
+
+        Assert.All(_devices, d => Assert.False(System.IO.File.Exists(Path.Combine(d.Vault, "Work", "old.txt")), d.State.DeviceName));
+    }
+
+    [Fact]
     public async Task A_device_name_that_is_not_a_file_name_still_syncs()
     {
         // Review finding: a copy named "(from Mac: home)" was refused, and that stopped the sync for good.

@@ -43,7 +43,7 @@ Every computer remembers what it last agreed on with each other computer, and me
 * **Moves and renames** follow the task (tasks are matched by their id, not their file name).
 * **Tabs, labels and the Do now order** are merged item by item.
 * **The same line changed on two computers:** both versions are kept in the task, and the Sync panel lists it under
-  *Changed on both computers*: **Keep mine** or **Keep <other computer>'s** (only where the two clashed; every other change from both stays), **Keep both**, or compare them side by side
+  *Changed on both computers*: **Keep mine** or **Keep <other computer>'s** (only where the two clashed; every other change from both stays; available once the other computer has synced the merged task too, usually within a minute), **Keep both**, or compare them side by side
   in **Beyond Compare**, **WinMerge** or **Visual Studio Code** (whichever is installed; you edit the task on the right).
 * **Two versions that can't be merged** (a task created on both before they ever synced, a binary attachment changed
   on both): the other one is kept next to it as *"Title (from <computer>)"*.
