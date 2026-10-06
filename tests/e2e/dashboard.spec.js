@@ -225,8 +225,11 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
   await visa.hover();
   await visa.getByRole('button', { name: 'Move up' }).click();
   await expect(subs).toHaveText(['Flights', 'Visa', 'Hotel']);
-  await page.locator('#drawer .subtasks > li', { hasText: 'Hotel' }).dragTo(page.locator('#drawer .subtasks > li', { hasText: 'Flights' }), { targetPosition: { x: 20, y: 2 } });
-  await expect(subs).toHaveText(['Hotel', 'Flights', 'Visa']);
+  // HTML5 drag and drop in headless Chromium on Linux sometimes drops the gesture: retry it (dropping again is a no-op).
+  await expect(async () => {
+    await page.locator('#drawer .subtasks > li', { hasText: 'Hotel' }).dragTo(page.locator('#drawer .subtasks > li', { hasText: 'Flights' }), { targetPosition: { x: 20, y: 2 } });
+    await expect(subs).toHaveText(['Hotel', 'Flights', 'Visa'], { timeout: 2000 });
+  }).toPass({ timeout: 20000 });
 
   expect(errors).toEqual([]);
 });

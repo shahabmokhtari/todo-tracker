@@ -971,7 +971,8 @@ function subtaskTree(children, parentId) {
         ...c.tags.map(tagChip),
         h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c)),
         controls),
-      c.children.length ? subtaskTree(c.children, c.id) : null);
+      // append() would write "null" for a missing child.
+      ...(c.children.length ? [subtaskTree(c.children, c.id)] : []));
     return li;
   }));
 }
