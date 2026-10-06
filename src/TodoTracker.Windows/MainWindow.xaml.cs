@@ -481,7 +481,8 @@ public partial class MainWindow : Window
         var now = new MenuItem { Header = "Sync now", IsEnabled = view.State is "idle" or "error" };
         now.Click += async (_, _) =>
         {
-            var after = await sync.SyncNowAsync().ConfigureAwait(true);
+            // Off the UI thread: reading the folder and the cloud are partly synchronous.
+            var after = await Task.Run(() => sync.SyncNowAsync()).ConfigureAwait(true);
             _vm.StatusMessage = after.Problem is { } problem ? $"Couldn't sync: {problem}" : $"Synced with {after.Provider}.";
         };
         item.Items.Add(now);

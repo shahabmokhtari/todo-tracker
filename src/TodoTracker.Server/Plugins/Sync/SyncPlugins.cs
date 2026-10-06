@@ -12,6 +12,10 @@ namespace TodoTracker.Server.Plugins.Sync;
 
 public sealed record SyncChoiceRequest(string? Provider);
 
+public sealed record SyncLibraryRequest(string? Library);
+
+public sealed record SyncDeviceRequest(string? Device);
+
 public sealed record SyncResolveRequest(string? Key, string? Choice);
 
 public sealed record SyncToolRequest(string? Key, string? Tool);
@@ -38,7 +42,7 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
     /// <summary>How a token is found (tests replace it).</summary>
     internal Func<string?> FindToken { get; init; } = DefaultToken;
 
-    private string IdPath => Path.Combine(options.DataDirectory, "sync", "gist.json");
+    private string IdPath(string library) => Path.Combine(options.DataDirectory, "sync", "gists", Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(library)))[..16] + ".json");
 
     public SyncAvailability Check(string vaultRoot)
     {
@@ -50,25 +54,26 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
 
         return Token() is null
             ? new SyncAvailability(false, "Sign in to GitHub first: install the GitHub CLI and run gh auth login (or set GH_TOKEN).")
-            : new SyncAvailability(true, LoadId() is { } id ? $"Your private gist {id} on GitHub" : "A new private gist on your GitHub account");
+            : new SyncAvailability(true, "A private gist on your GitHub account");
     }
 
-    public ISyncRemote CreateRemote(string vaultRoot) =>
+    public ISyncRemote CreateRemote(string vaultRoot, string library) =>
         new GistRemote(
             Client,
             async ct => await TokenLookup().WaitAsync(ct).ConfigureAwait(false) ?? throw new InvalidOperationException("Sign in to GitHub first (gh auth login)."),
-            LoadId,
+            () => LoadId(library),
             id =>
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(IdPath)!);
-                File.WriteAllText(IdPath, new JsonObject { ["id"] = id }.ToJsonString());
-            });
+                Directory.CreateDirectory(Path.GetDirectoryName(IdPath(library))!);
+                File.WriteAllText(IdPath(library), new JsonObject { ["id"] = id }.ToJsonString());
+            },
+            library);
 
-    private string? LoadId()
+    private string? LoadId(string library)
     {
         try
         {
-            return File.Exists(IdPath) ? JsonNode.Parse(File.ReadAllText(IdPath))?["id"]?.GetValue<string>() : null;
+            return File.Exists(IdPath(library)) ? JsonNode.Parse(File.ReadAllText(IdPath(library)))?["id"]?.GetValue<string>() : null;
         }
         catch (Exception ex) when (ex is System.Text.Json.JsonException or IOException or InvalidOperationException)
         {
@@ -195,6 +200,13 @@ public static class SyncEndpoints
             sync.Choose(request.Provider ?? "auto");
             return sync.View;
         });
+        group.MapPut("/library", (SyncLibraryRequest request, SyncService sync) =>
+        {
+            sync.SetLibrary(request.Library ?? string.Empty);
+            return sync.View;
+        });
+        group.MapPost("/forget", (SyncDeviceRequest request, SyncService sync, CancellationToken cancellationToken) =>
+            sync.ForgetAsync(request.Device ?? string.Empty, cancellationToken));
         group.MapPost("/resolve", (SyncResolveRequest request, SyncService sync, CancellationToken cancellationToken) =>
             sync.ResolveAsync(request.Key ?? string.Empty, request.Choice ?? string.Empty, cancellationToken));
         group.MapPost("/compare", async (SyncToolRequest request, SyncService sync, CancellationToken cancellationToken) =>

@@ -4,12 +4,21 @@ using System.Text.Json.Serialization;
 namespace TodoTracker.Core.Sync;
 
 /// <summary>A sync that couldn't be merged by itself; both versions are kept (see <see cref="SyncConflict"/>).</summary>
-public sealed record SyncConflictRecord(string Key, string Path, string Peer, string PeerName, string Mine, string Theirs, string? Base, DateTimeOffset At);
+public sealed record SyncConflictRecord(string Key, string Path, string Peer, string PeerName, string Mine, string Theirs, string? Base, DateTimeOffset At)
+{
+    /// <summary>The hash of what the merge wrote (choosing a side only applies while the file is still that).</summary>
+    public string? Result { get; init; }
+}
+
+/// <summary>Another device syncing through the same place, and when it last published.</summary>
+public sealed record SyncDevice(string Device, string Name, DateTimeOffset At);
 
 /// <summary>How the last sync went, for the status line and the Sync panel.</summary>
 public sealed record SyncStatus(DateTimeOffset? LastSync, string? LastError, int Peers, IReadOnlyList<SyncConflictRecord> Conflicts)
 {
     public static SyncStatus Empty { get; } = new(null, null, 0, []);
+
+    public IReadOnlyList<SyncDevice> Devices { get; init; } = [];
 }
 
 /// <summary>
@@ -66,6 +75,22 @@ public sealed class SyncState
     {
         get => Read<Marks>(MarksPath)?.PublishedAt;
         set => Write(MarksPath, (Read<Marks>(MarksPath) ?? new Marks()) with { PublishedAt = value });
+    }
+
+    /// <summary>Which place we last synced with (a new one gets everything published again).</summary>
+    public string? RemoteIdentity
+    {
+        get => Read<Marks>(MarksPath)?.RemoteIdentity;
+        set => Write(MarksPath, (Read<Marks>(MarksPath) ?? new Marks()) with { RemoteIdentity = value });
+    }
+
+    /// <summary>Drops what we agreed on with a device that's gone.</summary>
+    public void ForgetPeer(string peer)
+    {
+        if (File.Exists(BasePath(peer)))
+        {
+            File.Delete(BasePath(peer));
+        }
     }
 
     /// <summary>The entries we last published (what disappeared since was deleted here).</summary>
@@ -178,5 +203,5 @@ public sealed class SyncState
 
     private sealed record DeviceInfo(string Id, string Name);
 
-    private sealed record Marks(string? RemoteVersion = null, string? Published = null, DateTimeOffset? PublishedAt = null);
+    private sealed record Marks(string? RemoteVersion = null, string? Published = null, DateTimeOffset? PublishedAt = null, string? RemoteIdentity = null);
 }

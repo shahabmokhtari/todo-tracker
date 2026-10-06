@@ -26,7 +26,12 @@ public enum SyncKind
 }
 
 /// <summary>One syncable thing: <paramref name="Path"/> is vault-relative with forward slashes; <paramref name="Hash"/> is of its bytes.</summary>
-public sealed record SyncEntry(string Key, string Path, string Hash);
+public sealed record SyncEntry(string Key, string Path, string Hash)
+{
+    /// <summary>When the publishing device first had this version (a delete recorded later wins; an earlier one doesn't).</summary>
+    [JsonPropertyName("since")]
+    public DateTimeOffset? Since { get; init; }
+}
 
 public static class SyncKeys
 {

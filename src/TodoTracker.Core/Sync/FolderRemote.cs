@@ -16,11 +16,25 @@ public sealed class FolderRemote(string root) : ISyncRemote
 
     public string Root { get; } = root ?? throw new ArgumentNullException(nameof(root));
 
+    public string Identity => "folder:" + Path.GetFullPath(Root);
+
     private string Devices => Path.Combine(Root, "devices");
+
+    public Task ForgetAsync(string device, CancellationToken cancellationToken)
+    {
+        if (device is not { Length: > 1 and <= 64 } || !device.All(char.IsAsciiLetterOrDigit))
+        {
+            throw new ArgumentException("Not a device id.", nameof(device));
+        }
+
+        File.Delete(Path.Combine(Devices, device + ".json"));
+        return Task.CompletedTask;
+    }
 
     public Task<RemoteSnapshot?> ReadAsync(string self, string? knownVersion, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Devices);
+        var selfMissing = !File.Exists(Path.Combine(Devices, self + ".json"));
         var files = new List<(string Name, byte[] Content)>();
         foreach (var file in Directory.EnumerateFiles(Devices, "*.json").Order(StringComparer.Ordinal))
         {
@@ -41,12 +55,13 @@ public sealed class FolderRemote(string root) : ISyncRemote
 
         // The other devices' files by content (times and sizes can stay the same across quick writes; ours don't count).
         var version = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', files.Select(f => $"{f.Name}|{SyncHash.Of(f.Content)}")))));
-        if (version == knownVersion)
+        if (version == knownVersion && !selfMissing)
         {
             return Task.FromResult<RemoteSnapshot?>(null);
         }
 
         var devices = new List<DeviceSnapshot>();
+        var partial = false;
         foreach (var (name, content) in files)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -60,11 +75,12 @@ public sealed class FolderRemote(string root) : ISyncRemote
             }
             catch (JsonException)
             {
-                // Half-synced or from a newer version: skipped this time.
+                // Half-synced or from a newer version: skipped, and looked at again next time.
+                partial = true;
             }
         }
 
-        return Task.FromResult<RemoteSnapshot?>(new RemoteSnapshot(devices, version));
+        return Task.FromResult<RemoteSnapshot?>(new RemoteSnapshot(devices, version, partial, selfMissing));
     }
 
     public async Task<byte[]> ReadContentAsync(DeviceSnapshot device, SyncEntry entry, CancellationToken cancellationToken)
@@ -94,6 +110,11 @@ public sealed class FolderRemote(string root) : ISyncRemote
             if (!File.Exists(path))
             {
                 await WriteAsync(path, read(entry), cancellationToken).ConfigureAwait(false);
+            }
+            else if (File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-1))
+            {
+                // Still in use: never "old" to a device cleaning up while it sees an older list of ours.
+                File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
             }
         }
 

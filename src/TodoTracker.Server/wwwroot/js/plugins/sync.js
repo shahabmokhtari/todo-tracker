@@ -80,15 +80,37 @@ export function activate(host) {
       h('div', { class: 'row' },
         h('label', { class: 'field' }, h('span', null, 'Sync with'), picker),
         h('button', { class: 'btn primary', type: 'button', disabled: !active || view.state === 'syncing', onclick: () => run(host.post(`${base}/now`)) }, 'Sync now')),
+      library(),
       view.conflicts.length
         ? h('section', { class: 'drawer-section' },
           h('h3', null, 'Changed on both computers'),
-          h('p', { class: 'muted small' }, 'Both versions are kept in the task for now. Keep one, or compare them side by side.'),
+          h('p', { class: 'muted small' }, 'Both computers’ changes are in the task; where they changed the same thing, both versions are kept for now. Keep yours or theirs there, or compare them side by side.'),
           ...view.conflicts.map(conflict))
+        : null,
+      view.devices.length
+        ? h('section', { class: 'drawer-section' },
+          h('h3', null, 'Other computers'),
+          ...view.devices.map((d) => h('div', { class: 'sync-device row' },
+            h('span', null, h('strong', null, d.name), h('span', { class: 'muted small' }, ` · last synced ${ago(d.at)}`)),
+            h('button', {
+              class: 'btn ghost', type: 'button', title: 'Stop syncing with it (a computer you no longer use, or an old tasks folder)',
+              onclick: () => { if (confirm(`Stop syncing with ${d.name}?`)) run(host.post(`${base}/forget`, { device: d.device })); },
+            }, 'Forget'))))
         : null,
       h('details', { class: 'sync-providers' },
         h('summary', null, 'Where it can sync'),
         ...view.providers.map((p) => h('div', { class: 'small' }, h('strong', null, p.name), ' – ', h('span', { class: 'muted' }, p.detail)))));
+  }
+
+  function library() {
+    const input = h('input', { value: view.library, maxlength: 60, 'aria-label': 'Library', class: 'sync-library' });
+    const save = () => {
+      const name = input.value.trim();
+      if (name && name !== view.library) run(host.put(`${base}/library`, { library: name }));
+    };
+    input.addEventListener('change', save);
+    return h('label', { class: 'field', title: 'Computers sync when they use the same place and the same library name. Give a second tasks folder its own name to keep it separate.' },
+      h('span', null, 'Library'), input);
   }
 
   function conflict(c) {
@@ -98,7 +120,7 @@ export function activate(host) {
       h('div', { class: 'row' },
         h('button', { class: 'btn', type: 'button', onclick: () => resolve('mine') }, 'Keep mine'),
         h('button', { class: 'btn', type: 'button', onclick: () => resolve('theirs') }, `Keep ${c.peerName}’s`),
-        h('button', { class: 'btn ghost', type: 'button', title: 'Keep the task as it is now (both versions merged)', onclick: () => resolve('merged') }, 'Keep both'),
+        h('button', { class: 'btn ghost', type: 'button', title: 'Keep the task as it is now (both versions)', onclick: () => resolve('merged') }, 'Keep both'),
         ...view.mergeTools.map((t) => h('button', {
           class: 'btn ghost', type: 'button', title: `Compare in ${t.name} (edit the task on the right)`,
           onclick: async () => {

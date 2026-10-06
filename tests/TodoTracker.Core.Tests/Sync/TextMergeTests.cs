@@ -87,10 +87,10 @@ public class TextMergeTests
     public void Lines_with_their_own_keys_merge_one_by_one()
     {
         // Checking off one step while renaming the next (adjacent lines) is not a conflict.
-        string? Key(string line) => line.Contains('^', StringComparison.Ordinal) ? line[line.IndexOf('^', StringComparison.Ordinal)..].Trim() : null;
+        string?[] Keys(IReadOnlyList<string> lines) => [.. lines.Select(line => line.Contains('^', StringComparison.Ordinal) ? line[line.IndexOf('^', StringComparison.Ordinal)..].Trim() : null)];
         var b = L("# Trip", "- [ ] Flights ^a1", "- [ ] Hotel ^b2", "end");
 
-        var result = TextMerge.Merge(b, L("# Trip", "- [x] Flights ^a1", "- [ ] Hotel ^b2", "end"), L("# Trip", "- [ ] Flights ^a1", "- [ ] Beach hotel ^b2", "end"), Key);
+        var result = TextMerge.Merge(b, L("# Trip", "- [x] Flights ^a1", "- [ ] Hotel ^b2", "end"), L("# Trip", "- [ ] Flights ^a1", "- [ ] Beach hotel ^b2", "end"), Keys);
 
         Assert.False(result.Conflicted);
         Assert.Equal(L("# Trip", "- [x] Flights ^a1", "- [ ] Beach hotel ^b2", "end"), result.Text);
@@ -98,12 +98,31 @@ public class TextMergeTests
     }
 
     [Fact]
-    public void Task_lines_are_keyed_by_block_id_or_frontmatter_key()
+    public void Task_lines_are_keyed_by_frontmatter_key_inside_the_frontmatter_and_block_id_below()
     {
-        Assert.Equal("^x7k2m9", SyncPlanner.TaskLineKey("\t- [ ] Book #trip 📅 2026-10-07 ^x7k2m9 %%{\"seq\":1}%%\n"));
-        Assert.Equal("^x7k2m9", SyncPlanner.TaskLineKey("- [x] Book ^x7k2m9\r\n"));
-        Assert.Equal("priority:", SyncPlanner.TaskLineKey("priority: high\n"));
-        Assert.Null(SyncPlanner.TaskLineKey("Just a note line\n"));
+        var keys = SyncPlanner.TaskLineKeys([
+            "---\n",
+            "priority: high\n",
+            "---\n",
+            "# Book\n",
+            "Note: call Bob\n",
+            "\t- [ ] Book #trip 📅 2026-10-07 ^x7k2m9 %%{\"seq\":1}%%\n",
+            "- [x] Pack ^a1b2c3\r\n",
+        ]);
+
+        // Review finding: "Note: call Bob" in the body was taken for a frontmatter key.
+        Assert.Equal([null, "priority:", null, null, null, "^x7k2m9", "^a1b2c3"], keys);
+    }
+
+    [Fact]
+    public void A_clash_can_be_settled_for_one_side_while_every_other_change_stays()
+    {
+        var b = L("a", "b", "c", "d");
+        var mine = L("A", "b", "mine", "d");
+        var theirs = L("a", "b", "theirs", "d", "e");
+
+        Assert.Equal(L("A", "b", "mine", "d", "e"), TextMerge.Merge(b, mine, theirs, policy: ConflictPolicy.First).Text);
+        Assert.Equal(L("A", "b", "theirs", "d", "e"), TextMerge.Merge(b, mine, theirs, policy: ConflictPolicy.Second).Text);
     }
 
     [Fact]

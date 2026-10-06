@@ -23,7 +23,8 @@ public interface ISyncProvider
 
     SyncAvailability Check(string vaultRoot);
 
-    ISyncRemote CreateRemote(string vaultRoot);
+    /// <summary>The place for one library (a named set of tasks: separate tasks folders sync separately).</summary>
+    ISyncRemote CreateRemote(string vaultRoot, string library);
 }
 
 /// <summary>A cloud drive folder on this computer.</summary>
@@ -131,10 +132,10 @@ public abstract class CloudDriveProvider(CloudEnvironment environment) : ISyncPr
         return new SyncAvailability(true, Path.Combine(folders[0].Root, "Apps", Folder));
     }
 
-    public ISyncRemote CreateRemote(string vaultRoot)
+    public ISyncRemote CreateRemote(string vaultRoot, string library)
     {
         var available = Check(vaultRoot);
-        return available.Available ? new FolderRemote(available.Detail) : throw new InvalidOperationException(available.Detail);
+        return available.Available ? new FolderRemote(Path.Combine(available.Detail, library)) : throw new InvalidOperationException(available.Detail);
     }
 
     protected abstract IReadOnlyList<CloudFolder> Folders();

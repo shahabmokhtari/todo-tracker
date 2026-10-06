@@ -7,6 +7,9 @@ namespace TodoTracker.Core.Vault;
 /// <summary>What sync needs from the vault: a consistent snapshot of everything that syncs, and a careful apply.</summary>
 public sealed partial class VaultBoardStore
 {
+    // What each synced file hashed to, by its time and size (read under the gate).
+    private readonly Dictionary<string, ((DateTime Time, long Size) Stamp, string Hash)> _syncHashes = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// Everything that syncs, read under the lock after taking in outside edits: task files (keyed by task id, so
     /// renames and moves merge), their rich pages, other files in the vault's folders (attachments, images), the
@@ -61,32 +64,88 @@ public sealed partial class VaultBoardStore
 
             Verify(ops);
             List<Guid>? order = null;
-            foreach (var op in ops)
+
+            // Everything done is undone if a step fails part way (a full disk, a file locked by another app): the
+            // vault is never left half synced, and the next sync starts from what it really holds.
+            var undo = new Stack<Action>();
+            try
             {
-                var full = op.Kind is SyncOpKind.SetConfig or SyncOpKind.SetOrder or SyncOpKind.AppendActivity ? null : VaultFiles.Full(_root, op.Path);
-                switch (op.Kind)
+                foreach (var op in ops)
                 {
-                    case SyncOpKind.AppendActivity:
-                        AppendActivityLines(op.Content!);
-                        break;
-                    case SyncOpKind.Write:
-                        VaultFiles.WriteAtomic(full!, op.Content!);
-                        break;
-                    case SyncOpKind.Move:
-                        var target = VaultFiles.Full(_root, op.To!);
-                        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                        File.Move(full!, target);
-                        break;
-                    case SyncOpKind.Delete:
-                        File.Move(full!, TrashPath(Path.GetFileName(full!)));
-                        break;
-                    case SyncOpKind.SetConfig:
-                        VaultFiles.WriteAtomic(Path.Combine(MetaDir, "config.json"), op.Content!);
-                        break;
-                    case SyncOpKind.SetOrder:
-                        order = ParseOrder(op.Content!);
-                        break;
+                    var full = op.Kind is SyncOpKind.SetConfig or SyncOpKind.SetOrder or SyncOpKind.AppendActivity ? null : VaultFiles.Full(_root, op.Path);
+                    switch (op.Kind)
+                    {
+                        case SyncOpKind.AppendActivity:
+                            var activity = Path.Combine(MetaDir, "activity.jsonl");
+                            var length = FileLength(activity);
+                            AppendActivityLines(op.Content!);
+                            undo.Push(() =>
+                            {
+                                using var stream = new FileStream(activity, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                                stream.SetLength(length);
+                            });
+                            break;
+                        case SyncOpKind.Write:
+                            var before = File.Exists(full) ? File.ReadAllBytes(full!) : null;
+                            VaultFiles.WriteAtomic(full!, op.Content!);
+                            undo.Push(() =>
+                            {
+                                if (before is null)
+                                {
+                                    File.Delete(full!);
+                                }
+                                else
+                                {
+                                    VaultFiles.WriteAtomic(full!, before);
+                                }
+                            });
+                            break;
+                        case SyncOpKind.Move:
+                            var target = VaultFiles.Full(_root, op.To!);
+                            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                            File.Move(full!, target);
+                            undo.Push(() => File.Move(target, full!));
+                            break;
+                        case SyncOpKind.Delete:
+                            var trash = TrashPath(Path.GetFileName(full!));
+                            File.Move(full!, trash);
+                            undo.Push(() => File.Move(trash, full!));
+                            break;
+                        case SyncOpKind.SetConfig:
+                            var config = Path.Combine(MetaDir, "config.json");
+                            var previous = File.Exists(config) ? File.ReadAllBytes(config) : null;
+                            VaultFiles.WriteAtomic(config, op.Content!);
+                            undo.Push(() =>
+                            {
+                                if (previous is not null)
+                                {
+                                    VaultFiles.WriteAtomic(config, previous);
+                                }
+                            });
+                            break;
+                        case SyncOpKind.SetOrder:
+                            order = ParseOrder(op.Content!);
+                            break;
+                    }
                 }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                while (undo.TryPop(out var step))
+                {
+                    try
+                    {
+                        step();
+                    }
+                    catch (Exception undoFailure) when (undoFailure is IOException or UnauthorizedAccessException)
+                    {
+                        // Best effort: the next sync sees whatever is there.
+                    }
+                }
+
+                MarkDirty();
+                Reload();
+                throw;
             }
 
             MarkDirty();
@@ -123,25 +182,46 @@ public sealed partial class VaultBoardStore
         }
     }
 
-    /// <summary>A path from another device is only ever a file inside the vault's own folders.</summary>
+    /// <summary>A path from another device is only ever a file inside the vault's own folders, with a name every system keeps as is.</summary>
     internal static bool IsSyncablePath(string rel) =>
         rel.Length > 0 && rel.Length < 400 && rel.Contains('/', StringComparison.Ordinal) && !rel.Contains('\\', StringComparison.Ordinal)
         && !rel.Contains(':', StringComparison.Ordinal) && !rel.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
-        && rel.Split('/').All(s => s.Length > 0 && s != ".." && s[0] != '.' && s.Trim().Length == s.Length && s.IndexOfAny(Path.GetInvalidFileNameChars()) < 0);
+        && rel.Split('/').All(s => s.Length > 0 && s != ".." && s[0] != '.' && s.Trim().Length == s.Length && !s.EndsWith('.')
+            && s.IndexOfAny(InvalidNameChars) < 0 && !ReservedName().IsMatch(s));
+
+    // Windows' file name rules, on every system (a name another computer can't write would never sync).
+    private static readonly char[] InvalidNameChars = [.. Path.GetInvalidFileNameChars(), '<', '>', ':', '"', '|', '?', '*'];
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ReservedName();
 
     private SyncSnapshot BuildSyncSnapshot()
     {
         var entries = new Dictionary<string, SyncEntry>(StringComparer.Ordinal);
         var memory = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void Add(string key, string rel)
         {
             var full = VaultFiles.Full(_root, rel);
             var info = new FileInfo(full);
             if (info.Exists && info.Length <= SyncLimits.MaxFileBytes && !info.Attributes.HasFlag(FileAttributes.ReparsePoint))
             {
-                entries[key] = new SyncEntry(key, rel, SyncHash.Of(File.ReadAllBytes(full)));
+                // Files are only read again when their time or size changed (sync looks every minute).
+                var stamp = (info.LastWriteTimeUtc, info.Length);
+                ((DateTime, long) Stamp, string Hash) known;
+                lock (_syncHashes)
+                {
+                    if (!_syncHashes.TryGetValue(rel, out known) || known.Stamp != stamp)
+                    {
+                        known = (stamp, SyncHash.Of(File.ReadAllBytes(full)));
+                        _syncHashes[rel] = known;
+                    }
+                }
+
+                entries[key] = new SyncEntry(key, rel, known.Hash);
                 covered.Add(rel);
+                seen.Add(rel);
             }
         }
 
@@ -173,7 +253,16 @@ public sealed partial class VaultBoardStore
             Remember(SyncKeys.Activity, SyncKeys.ActivityPath, File.ReadAllBytes(Path.Combine(MetaDir, "activity.jsonl")));
         }
 
+        lock (_syncHashes)
+        {
+            foreach (var gone in _syncHashes.Keys.Where(k => !seen.Contains(k)).ToList())
+            {
+                _syncHashes.Remove(gone);
+            }
+        }
+
         var root = _root;
+        var hashes = _syncHashes;
         return new SyncSnapshot(entries, e =>
         {
             if (memory.TryGetValue(e.Key, out var bytes))
@@ -183,7 +272,18 @@ public sealed partial class VaultBoardStore
 
             var full = VaultFiles.Full(root, e.Path);
             var content = File.Exists(full) ? File.ReadAllBytes(full) : [];
-            return SyncHash.Of(content) == e.Hash ? content : throw new SyncStaleException($"{e.Path} changed.");
+            if (SyncHash.Of(content) == e.Hash)
+            {
+                return content;
+            }
+
+            // Changed without a new time or size (rare): hash it again next time.
+            lock (hashes)
+            {
+                hashes.Remove(e.Path);
+            }
+
+            throw new SyncStaleException($"{e.Path} changed.");
         });
     }
 

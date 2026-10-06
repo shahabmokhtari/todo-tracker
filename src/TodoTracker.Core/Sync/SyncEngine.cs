@@ -5,7 +5,14 @@ using TodoTracker.Core.Vault;
 namespace TodoTracker.Core.Sync;
 
 /// <summary>What one sync did.</summary>
-public sealed record SyncResult(int Changes, int Peers, IReadOnlyList<SyncConflictRecord> Conflicts, bool Published, bool Skipped);
+public sealed record SyncResult(int Changes, int Peers, IReadOnlyList<SyncConflictRecord> Conflicts, bool Published, bool Skipped)
+{
+    /// <summary>Devices that couldn't be merged this time, and why (the others were).</summary>
+    public string? Problem { get; init; }
+
+    /// <summary>The other devices seen (null when the remote didn't change).</summary>
+    public IReadOnlyList<SyncDevice>? Devices { get; init; }
+}
 
 /// <summary>
 /// Syncs a vault through a remote: merges each other device's latest snapshot into the vault (three-way, against
@@ -47,7 +54,7 @@ public sealed class SyncEngine : IDisposable
                     var result = await SyncOnceAsync(cancellationToken).ConfigureAwait(false);
                     var open = _state.Status.Conflicts.Concat(result.Conflicts)
                         .DistinctBy(c => (c.Key, c.Mine, c.Theirs)).TakeLast(50).ToList();
-                    _state.Status = new SyncStatus(_time.GetUtcNow(), null, result.Peers, open);
+                    _state.Status = new SyncStatus(_time.GetUtcNow(), result.Problem, result.Peers, open) { Devices = result.Devices ?? _state.Status.Devices };
                     return result;
                 }
                 catch (SyncStaleException) when (attempt < 3)
@@ -68,13 +75,49 @@ public sealed class SyncEngine : IDisposable
         }
     }
 
-    /// <summary>Forgets a conflict once it's been looked at.</summary>
-    public void Dismiss(string key) =>
-        _state.Status = _state.Status with { Conflicts = _state.Status.Conflicts.Where(c => c.Key != key).ToList() };
+    /// <summary>Forgets a conflict once it's been settled (between syncs, so a running sync can't bring it back).</summary>
+    public async Task DismissAsync(string key, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _state.Status = _state.Status with { Conflicts = _state.Status.Conflicts.Where(c => c.Key != key).ToList() };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Stops merging a device (a computer that's gone, or this computer's old tasks folder).</summary>
+    public async Task ForgetAsync(string device, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _remote.ForgetAsync(device, cancellationToken).ConfigureAwait(false);
+            _state.ForgetPeer(device);
+            _state.RemoteVersion = null;
+            _state.Status = _state.Status with { Devices = _state.Status.Devices.Where(d => d.Device != device).ToList() };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     private async Task<SyncResult> SyncOnceAsync(CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
+
+        // A new place (another folder, another gist): everything is published there again.
+        if (_state.RemoteIdentity != _remote.Identity)
+        {
+            _state.RemoteIdentity = _remote.Identity;
+            _state.RemoteVersion = null;
+            _state.Published = null;
+        }
+
         var local = await _store.ReadSyncAsync(cancellationToken).ConfigureAwait(false);
         var remote = await _remote.ReadAsync(_state.DeviceId, _state.RemoteVersion, cancellationToken).ConfigureAwait(false);
         var heartbeatDue = _state.PublishedAt is not { } last || now - last > SyncLimits.Heartbeat;
@@ -85,62 +128,80 @@ public sealed class SyncEngine : IDisposable
 
         // Devices not heard from in months are no longer merged (their old copies would bring back deleted tasks).
         var peers = (remote?.Devices ?? []).Where(d => d.Device != _state.DeviceId && now - d.At < SyncLimits.Memory).OrderBy(d => d.Device, StringComparer.Ordinal).ToList();
-        var deleted = peers.SelectMany(d => d.Deleted ?? []).Where(t => t?.Key is not null && t.Hash is not null)
-            .Select(t => (t.Key, t.Hash)).ToHashSet();
+
+        // A delete counts against the version it deleted, and only if it happened after that version appeared there
+        // (the same content made again later is new, not deleted).
+        var deleted = new Dictionary<(string Key, string Hash), DateTimeOffset>();
+        foreach (var t in peers.SelectMany(d => d.Deleted ?? []).Where(t => t?.Key is not null && t.Hash is not null))
+        {
+            deleted[(t.Key, t.Hash)] = deleted.TryGetValue((t.Key, t.Hash), out var at) && at > t.At ? at : t.At;
+        }
+
+        var publishedSince = _state.PublishedEntries.Where(e => e.Since is not null).ToDictionary(e => (e.Key, e.Hash), e => e.Since!.Value);
         var options = new SyncPlanOptions
         {
-            Deleted = e => deleted.Contains((e.Key, e.Hash)),
+            Deleted = e => deleted.TryGetValue((e.Key, e.Hash), out var at) && at > (e.Since ?? publishedSince.GetValueOrDefault((e.Key, e.Hash), now)),
             IsValidTask = _store.IsValidTaskText,
         };
 
         var changes = 0;
         var conflicts = new List<SyncConflictRecord>();
-        var complete = true;
+        var problems = new List<string>();
+        var complete = remote is not { Partial: true };
         foreach (var peer in peers)
         {
-            var entries = Valid(peer);
-            if (entries is null)
+            try
             {
-                continue;
-            }
+                var entries = Valid(peer);
+                if (entries is null)
+                {
+                    continue;
+                }
 
-            if (!await FetchAsync(peer, entries, local, cancellationToken).ConfigureAwait(false))
+                if (!await FetchAsync(peer, entries, local, cancellationToken).ConfigureAwait(false))
+                {
+                    complete = false;
+                    continue;
+                }
+
+                var @base = _state.LoadBase(peer.Device);
+                var plan = SyncPlanner.Plan(
+                    new SyncSide(_state.DeviceId, _state.DeviceName, local.Entries, local.Read),
+                    new SyncSide(peer.Device, peer.Name, entries, e => _state.ReadBlob(e.Hash) ?? throw new SyncStaleException($"{e.Path} is missing.")),
+                    @base,
+                    _state.ReadBlob,
+                    options);
+
+                // Both versions of a clash stay available (to keep one of them, or open them in a merge tool).
+                foreach (var conflict in plan.Conflicts)
+                {
+                    _state.WriteBlob(conflict.Mine, local.Read(local.Entries[conflict.Key]));
+                }
+
+                if (plan.Ops.Count > 0)
+                {
+                    await _store.ApplySyncAsync(plan.Ops, cancellationToken).ConfigureAwait(false);
+                    changes += plan.Ops.Count;
+                    local = await _store.ReadSyncAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                conflicts.AddRange(plan.Conflicts.Select(c => new SyncConflictRecord(c.Key, c.Path, c.Peer, c.PeerName, c.Mine, c.Theirs, c.Base, now) { Result = c.Result }));
+
+                // Remember what both now have; text needs its content kept for the next three-way merge.
+                var next = SyncPlanner.NextBase(local.Entries, entries, @base);
+                foreach (var entry in next.Values.Where(e => NeedsBase(e.Key) && !_state.HasBlob(e.Hash)))
+                {
+                    _state.WriteBlob(entry.Hash, local.Read(entry));
+                }
+
+                _state.SaveBase(peer.Device, next);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
             {
+                // One device's odd data never stops this one syncing with the others (or publishing).
+                problems.Add($"{peer.Name}: {ex.Message}");
                 complete = false;
-                continue;
             }
-
-            var @base = _state.LoadBase(peer.Device);
-            var plan = SyncPlanner.Plan(
-                new SyncSide(_state.DeviceId, _state.DeviceName, local.Entries, local.Read),
-                new SyncSide(peer.Device, peer.Name, entries, e => _state.ReadBlob(e.Hash) ?? throw new SyncStaleException($"{e.Path} is missing.")),
-                @base,
-                _state.ReadBlob,
-                options);
-
-            // Both versions of a clash stay available (to keep one of them, or open them in a merge tool).
-            foreach (var conflict in plan.Conflicts)
-            {
-                _state.WriteBlob(conflict.Mine, local.Read(local.Entries[conflict.Key]));
-            }
-
-            if (plan.Ops.Count > 0)
-            {
-                await _store.ApplySyncAsync(plan.Ops, cancellationToken).ConfigureAwait(false);
-                changes += plan.Ops.Count;
-                local = await _store.ReadSyncAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            conflicts.AddRange(plan.Conflicts.Select(c => new SyncConflictRecord(c.Key, c.Path, c.Peer, c.PeerName, c.Mine, c.Theirs, c.Base, now)));
-
-            // Remember what both now have; text needs its content kept for the next three-way merge.
-            var next = SyncPlanner.NextBase(local.Entries, entries, @base);
-            foreach (var entry in next.Values.Where(e => NeedsBase(e.Key) && !_state.HasBlob(e.Hash)))
-            {
-                _state.WriteBlob(entry.Hash, local.Read(entry));
-            }
-
-            _state.SaveBase(peer.Device, next);
         }
 
         if (remote is not null && complete)
@@ -150,7 +211,7 @@ public sealed class SyncEngine : IDisposable
 
         var published = false;
         var fingerprint = Fingerprint(local);
-        if (fingerprint != _state.Published || heartbeatDue)
+        if (fingerprint != _state.Published || heartbeatDue || remote is { SelfMissing: true })
         {
             // What disappeared since the last publish was deleted here: say so (for months) so it stays gone everywhere.
             var tombstones = _state.Tombstones.Where(t => now - t.At < SyncLimits.Memory && !local.Entries.ContainsKey(t.Key))
@@ -158,7 +219,10 @@ public sealed class SyncEngine : IDisposable
                     .Select(e => new SyncTombstone(e.Key, e.Hash, now)))
                 .DistinctBy(t => (t.Key, t.Hash))
                 .ToList();
-            var entriesNow = local.Entries.Values.OrderBy(e => e.Key, StringComparer.Ordinal).ToList();
+            var entriesNow = local.Entries.Values
+                .Select(e => e with { Since = publishedSince.TryGetValue((e.Key, e.Hash), out var since) ? since : now })
+                .OrderBy(e => e.Key, StringComparer.Ordinal)
+                .ToList();
             var mine = new DeviceSnapshot(_state.DeviceId, _state.DeviceName, now, entriesNow) { Deleted = tombstones };
             var version = await _remote.PublishAsync(mine, local.Read, _state.RemoteVersion, cancellationToken).ConfigureAwait(false);
             _state.Tombstones = tombstones;
@@ -174,7 +238,8 @@ public sealed class SyncEngine : IDisposable
         }
 
         CollectBlobs(conflicts);
-        return new SyncResult(changes, peers.Count, conflicts, published, false);
+        var devices = remote is null ? null : peers.Select(d => new SyncDevice(d.Device, d.Name, d.At)).ToList();
+        return new SyncResult(changes, peers.Count, conflicts, published, false) { Problem = problems.Count > 0 ? string.Join(" ", problems) : null, Devices = devices };
     }
 
     /// <summary>Brings the peer's contents we don't have yet into the local cache. False if some haven't arrived.</summary>
@@ -237,7 +302,8 @@ public sealed class SyncEngine : IDisposable
             };
             if (ok)
             {
-                entries[e.Key] = e;
+                // Older devices don't say since when they have a version: oldest possible (a later delete wins).
+                entries[e.Key] = e.Since is null ? e with { Since = DateTimeOffset.MinValue } : e;
             }
         }
 

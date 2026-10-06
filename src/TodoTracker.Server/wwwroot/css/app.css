@@ -771,3 +771,5 @@ button.focus-title:hover { color: var(--accent); }
 .sync-providers > div { margin-top: 6px; }
 .sync-btn { position: relative; }
 .sync-btn.attention::after { content: ''; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface-solid, #fff); }
+.sync-device { justify-content: space-between; align-items: center !important; }
+.sync-library { width: 100%; }

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using TodoTracker.Core;
+using TodoTracker.Core.Sync;
 using TodoTracker.Core.Vault;
 using TodoTracker.Server.Plugins.Sync;
 
@@ -149,7 +150,7 @@ public sealed class SyncApiTests : IAsyncLifetime
         await Sync(_desktop);
 
         Assert.Contains("Synced through OneDrive", await Titles(_desktop));
-        Assert.True(Directory.EnumerateFiles(Path.Combine(_cloud, "Apps", "TodoTrackerSync", "devices")).Count() == 2);
+        Assert.Equal(2, Directory.EnumerateFiles(Path.Combine(_cloud, "Apps", "TodoTrackerSync", "vault", "devices")).Count());
     }
 
     [Fact]
@@ -163,7 +164,7 @@ public sealed class SyncApiTests : IAsyncLifetime
         var view = await Sync(_laptop);
 
         Assert.Equal("off", view["state"]!.GetValue<string>());
-        Assert.False(Directory.Exists(Path.Combine(_cloud, "Apps", "TodoTrackerSync", "devices")));
+        Assert.False(Directory.Exists(Path.Combine(_cloud, "Apps", "TodoTrackerSync", "vault", "devices")));
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await client.PutAsJsonAsync(new Uri("/api/plugins/sync/provider", UriKind.Relative), new { provider = "dropbox" }, TestContext.Current.CancellationToken)).StatusCode);
     }
 
@@ -203,5 +204,89 @@ public sealed class SyncApiTests : IAsyncLifetime
         Assert.True(plugins.Single(p => p!["id"]!.GetValue<string>() == "sync-onedrive")!["enabled"]!.GetValue<bool>());
         Assert.True(plugins.Single(p => p!["id"]!.GetValue<string>() == "sync-icloud")!["enabled"]!.GetValue<bool>());
         Assert.False(plugins.Single(p => p!["id"]!.GetValue<string>() == "sync-gist")!["enabled"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task A_different_library_name_keeps_tasks_apart_and_forgotten_computers_are_gone()
+    {
+        using var desktop = _desktop.Client();
+        (await desktop.PutAsJsonAsync(new Uri("/api/plugins/sync/library", UriKind.Relative), new { library = "Side project" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        await _laptop.Store.UpdateAsync(b => b.AddTask(new NewTask("Work only"), Actor.User, ServerFixture.T0));
+        await Sync(_laptop);
+        await Sync(_desktop);
+
+        Assert.DoesNotContain("Work only", await Titles(_desktop));
+        Assert.Equal("Side project", (await View(_desktop))["library"]!.GetValue<string>());
+
+        (await desktop.PutAsJsonAsync(new Uri("/api/plugins/sync/library", UriKind.Relative), new { library = "vault" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        await Sync(_desktop);
+        var laptopSeen = Assert.Single((await View(_desktop))["devices"]!.AsArray());
+        Assert.Contains("Work only", await Titles(_desktop));
+
+        var forgotten = await desktop.PostAsJsonAsync(new Uri("/api/plugins/sync/forget", UriKind.Relative), new { device = laptopSeen!["device"]!.GetValue<string>() }, TestContext.Current.CancellationToken);
+        forgotten.EnsureSuccessStatusCode();
+        Assert.Empty(JsonNode.Parse(await forgotten.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!["devices"]!.AsArray());
+    }
+}
+
+/// <summary>Sync must never take the app down, whatever a provider does.</summary>
+public sealed class SyncRobustnessTests
+{
+    private sealed class Throwing(Exception error) : ISyncProvider, ISyncRemote
+    {
+        public string Id => "throwing";
+
+        public string Name => "Throwing";
+
+        public int Order => 1;
+
+        public bool Automatic => true;
+
+        public string Identity => "throwing";
+
+        public SyncAvailability Check(string vaultRoot) => new(true, "nowhere");
+
+        public ISyncRemote CreateRemote(string vaultRoot, string library) => this;
+
+        public Task<Core.Sync.RemoteSnapshot?> ReadAsync(string self, string? knownVersion, CancellationToken cancellationToken) => throw error;
+
+        public Task<byte[]> ReadContentAsync(Core.Sync.DeviceSnapshot device, Core.Sync.SyncEntry entry, CancellationToken cancellationToken) => throw error;
+
+        public Task<string?> PublishAsync(Core.Sync.DeviceSnapshot snapshot, Func<Core.Sync.SyncEntry, byte[]> read, string? readVersion, CancellationToken cancellationToken) => throw error;
+
+        public Task ForgetAsync(string device, CancellationToken cancellationToken) => throw error;
+    }
+
+    [Theory]
+    [InlineData("timeout")]
+    [InlineData("argument")]
+    [InlineData("json")]
+    public async Task A_failing_sync_is_reported_not_thrown(string kind)
+    {
+        // Review finding: an HttpClient timeout (TaskCanceledException) escaped and stopped the whole app.
+        Exception error = kind switch
+        {
+            "timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."),
+            "argument" => new ArgumentException("An item with the same key has already been added."),
+            _ => new System.Text.Json.JsonException("bad"),
+        };
+        await using var app = await ServerFixture.StartAsync(services: s => s.AddSingleton<ISyncProvider>(new Throwing(error)));
+        var sync = app.App.Services.GetRequiredService<SyncService>();
+
+        var view = await sync.SyncNowAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("error", view.State);
+        Assert.NotNull(view.Problem);
+    }
+
+    [Fact]
+    public void Merge_tools_get_file_names_as_plain_arguments()
+    {
+        // Review finding: VS Code went through cmd.exe, which broke on spaces and ran "&" in file names.
+        var start = MergeTools.StartInfo(new MergeTool("vscode", "Visual Studio Code", @"C:\Program Files\Microsoft VS Code\Code.exe"), @"C:\data\other.md", @"C:\Tasks\R&D a&echo INJECTED&.md");
+
+        Assert.Equal(@"C:\Program Files\Microsoft VS Code\Code.exe", start.FileName);
+        Assert.Equal(["--diff", @"C:\data\other.md", @"C:\Tasks\R&D a&echo INJECTED&.md"], start.ArgumentList);
+        Assert.False(start.UseShellExecute);
     }
 }

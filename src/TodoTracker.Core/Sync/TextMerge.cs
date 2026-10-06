@@ -2,6 +2,19 @@ namespace TodoTracker.Core.Sync;
 
 public sealed record TextMergeResult(string Text, bool Conflicted);
 
+/// <summary>What to do where both sides changed the same lines differently.</summary>
+public enum ConflictPolicy
+{
+    /// <summary>Keep both sides' lines (the first side's first): nothing typed is lost.</summary>
+    Both,
+
+    /// <summary>Keep only the first side's lines there (everything else still merges).</summary>
+    First,
+
+    /// <summary>Keep only the second side's lines there.</summary>
+    Second,
+}
+
 /// <summary>
 /// Line-based three-way merge (diff3). Changes to different lines are combined; where both sides changed the same
 /// lines differently, both versions' lines are kept (the first side's first), so nothing typed is ever lost and
@@ -9,11 +22,15 @@ public sealed record TextMergeResult(string Text, bool Conflicted);
 /// </summary>
 public static class TextMerge
 {
-    public static TextMergeResult Merge(string @base, string first, string second, Func<string, string?>? lineKey = null)
+    /// <param name="lineKeys">Gives each line of a file its identity (or null), e.g. a step's block id: keyed lines merge one by one.</param>
+    public static TextMergeResult Merge(string @base, string first, string second, Func<IReadOnlyList<string>, string?[]>? lineKeys = null, ConflictPolicy policy = ConflictPolicy.Both)
     {
         var o = Split(@base);
         var a = Split(first);
         var b = Split(second);
+        var ko = lineKeys?.Invoke(o);
+        var ka = lineKeys?.Invoke(a);
+        var kb = lineKeys?.Invoke(b);
         var ma = Match(o, a);
         var mb = Match(o, b);
         var output = new List<string>();
@@ -54,7 +71,7 @@ public static class TextMerge
             {
                 output.AddRange(ca);
             }
-            else if (lineKey is not null && MergeByKey(co, ca, cb, lineKey) is { } keyed)
+            else if (ko is not null && MergeByKey(co, ca, cb, ko[io..next], ka![ia..ea], kb![ib..eb], policy) is { } keyed)
             {
                 output.AddRange(keyed.Lines);
                 conflicted |= keyed.Conflicted;
@@ -62,8 +79,12 @@ public static class TextMerge
             else
             {
                 conflicted = true;
-                output.AddRange(ca);
-                output.AddRange(cb.Where(line => !ca.Contains(line)));
+                output.AddRange(policy switch
+                {
+                    ConflictPolicy.First => ca,
+                    ConflictPolicy.Second => cb,
+                    _ => [.. ca, .. cb.Where(line => !ca.Contains(line))],
+                });
             }
 
             io = next;
@@ -79,7 +100,7 @@ public static class TextMerge
     /// clashing stretch has the same keys in the same order on all three sides: checking off one step while renaming
     /// the next is not a conflict.
     /// </summary>
-    private static (List<string> Lines, bool Conflicted)? MergeByKey(string[] o, string[] a, string[] b, Func<string, string?> lineKey)
+    private static (List<string> Lines, bool Conflicted)? MergeByKey(string[] o, string[] a, string[] b, string?[] ko, string?[] ka, string?[] kb, ConflictPolicy policy)
     {
         if (o.Length != a.Length || o.Length != b.Length || o.Length == 0)
         {
@@ -90,8 +111,8 @@ public static class TextMerge
         var conflicted = false;
         for (var i = 0; i < o.Length; i++)
         {
-            var key = lineKey(o[i]);
-            if (key is null || lineKey(a[i]) != key || lineKey(b[i]) != key)
+            var key = ko[i];
+            if (key is null || ka[i] != key || kb[i] != key)
             {
                 return null;
             }
@@ -106,9 +127,10 @@ public static class TextMerge
             }
             else
             {
-                // The same step changed on both sides: the first side's version (a step can't be two lines).
+                // The same step changed on both sides: one version (a step can't be two lines); the other stays
+                // available with the conflict, to choose instead.
                 conflicted = true;
-                lines.Add(a[i]);
+                lines.Add(policy == ConflictPolicy.Second ? b[i] : a[i]);
             }
         }
 

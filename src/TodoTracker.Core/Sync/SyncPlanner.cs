@@ -29,8 +29,11 @@ public enum SyncOpKind
 /// <summary>One change to make to the vault; <see cref="Expected"/> is the hash the file must still have (else the sync starts over).</summary>
 public sealed record SyncOp(SyncOpKind Kind, string Path, string? Expected, byte[]? Content = null, string? To = null);
 
-/// <summary>Both devices changed the same lines; both versions' lines were kept (the result is the same on both devices).</summary>
-public sealed record SyncConflict(string Key, string Path, string Peer, string PeerName, string Mine, string Theirs, string? Base);
+/// <summary>
+/// Both devices changed the same lines; both versions' lines were kept (the result is the same on both devices).
+/// <paramref name="Result"/> is the hash of what was written (choosing a side later only applies if the file is still that).
+/// </summary>
+public sealed record SyncConflict(string Key, string Path, string Peer, string PeerName, string Mine, string Theirs, string? Base, string Result);
 
 public sealed record SyncPlan(IReadOnlyList<SyncOp> Ops, IReadOnlyList<SyncConflict> Conflicts);
 
@@ -95,6 +98,12 @@ public static partial class SyncPlanner
             }
         }
 
+        // Paths that are deleted in this plan are free for new files (a file renamed only in letter case, say).
+        foreach (var delete in ctx.Ops.Where(o => o.Kind == SyncOpKind.Delete))
+        {
+            ctx.Taken.Remove(delete.Path);
+        }
+
         // Where things live first (so moves never land on another file), then what they contain.
         var paths = PlanMoves(ctx, files.Where(f => f.L is not null).Select(f => (f.Key, f.L!, f.P, f.B)).ToList());
         foreach (var (key, l, p, b) in files)
@@ -102,12 +111,12 @@ public static partial class SyncPlanner
             MergeFile(ctx, key, l, p, b, l is null ? null : paths[key]);
         }
 
-        // Moves first, then files that gain content before files that lose it (a crash in between duplicates, never
-        // loses); the activity log last, so it never describes a change that didn't happen.
+        // Moves, then deletes (to the trash, freeing their paths), then writes; the activity log last, so it never
+        // describes a change that didn't happen.
         var ordered = ctx.Moves
+            .Concat(ctx.Ops.Where(o => o.Kind == SyncOpKind.Delete))
             .Concat(ctx.Ops.Where(o => o.Kind == SyncOpKind.Write))
             .Concat(ctx.Ops.Where(o => o.Kind is SyncOpKind.SetConfig or SyncOpKind.SetOrder))
-            .Concat(ctx.Ops.Where(o => o.Kind == SyncOpKind.Delete))
             .Concat(ctx.Ops.Where(o => o.Kind == SyncOpKind.AppendActivity))
             .ToList();
         return new SyncPlan(ordered, ctx.Conflicts);
@@ -280,7 +289,7 @@ public static partial class SyncPlanner
         var baseBytes = b is null ? null : ctx.ReadBase(b.Hash);
         if (kind is SyncKind.Task or SyncKind.Rich && baseBytes is not null)
         {
-            var merged = TextMerge.Merge(Encoding.UTF8.GetString(baseBytes), Encoding.UTF8.GetString(winner), Encoding.UTF8.GetString(loser), kind == SyncKind.Task ? TaskLineKey : null);
+            var merged = TextMerge.Merge(Encoding.UTF8.GetString(baseBytes), Encoding.UTF8.GetString(winner), Encoding.UTF8.GetString(loser), kind == SyncKind.Task ? TaskLineKeys : null);
 
             // A merge that isn't a valid task any more (say, both changed the same frontmatter) isn't written: both
             // versions are kept whole instead.
@@ -289,7 +298,7 @@ public static partial class SyncPlanner
                 var text = Encoding.UTF8.GetBytes(merged.Text);
                 if (merged.Conflicted)
                 {
-                    ctx.Conflicts.Add(new SyncConflict(key, current.Path, ctx.Peer.Device, ctx.Peer.Name, l.Hash, p.Hash, b?.Hash));
+                    ctx.Conflicts.Add(new SyncConflict(key, current.Path, ctx.Peer.Device, ctx.Peer.Name, l.Hash, p.Hash, b?.Hash, SyncHash.Of(text)));
                 }
 
                 if (SyncHash.Of(text) != l.Hash)
@@ -300,15 +309,17 @@ public static partial class SyncPlanner
                 return;
             }
 
-            ctx.Conflicts.Add(new SyncConflict(key, current.Path, ctx.Peer.Device, ctx.Peer.Name, l.Hash, p.Hash, b?.Hash));
+            ctx.Conflicts.Add(new SyncConflict(key, current.Path, ctx.Peer.Device, ctx.Peer.Name, l.Hash, p.Hash, b?.Hash, SyncHash.Of(winner)));
         }
 
         // Nothing to merge against (or not text, or no valid merge): the winner keeps the file, the other version is
         // kept next to it, the same on both devices.
         var copyPath = CopyPath(current.Path, ctx.LoserName);
         var copy = kind == SyncKind.Task ? Encoding.UTF8.GetBytes(MarkTitle(Encoding.UTF8.GetString(loser), ctx.LoserName)) : loser;
+        var copyHash = SyncHash.Of(copy);
         var existing = ctx.LocalAt(copyPath);
-        if (existing is null || existing.Hash != SyncHash.Of(copy))
+        var planned = ctx.Ops.Any(o => o.Kind == SyncOpKind.Write && string.Equals(o.Path, copyPath, StringComparison.OrdinalIgnoreCase) && SyncHash.Of(o.Content!) == copyHash);
+        if (!planned && (existing is null || existing.Hash != copyHash))
         {
             ctx.Ops.Add(new SyncOp(SyncOpKind.Write, existing is null && !ctx.Taken.Contains(copyPath) ? Take(ctx, copyPath) : ctx.FreePath(copyPath), null, copy));
         }
@@ -327,8 +338,10 @@ public static partial class SyncPlanner
 
     private static string CopyPath(string path, string device)
     {
+        // The name comes from another device: only characters every file system takes.
+        var safe = new string([.. device.Where(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' or '\'' or '(' or ')')]).Trim();
         var ext = System.IO.Path.GetExtension(path);
-        return $"{path[..^ext.Length]} (from {device}){ext}";
+        return $"{path[..^ext.Length]} (from {(safe.Length > 0 ? safe[..Math.Min(40, safe.Length)].Trim() : "another device")}){ext}";
     }
 
     /// <summary>"# Title" becomes "# Title (from Device)" so the copy is told apart in every list.</summary>
@@ -341,16 +354,31 @@ public static partial class SyncPlanner
     [GeneratedRegex(@"^# (.*?)\r?$", RegexOptions.Multiline)]
     private static partial Regex Heading();
 
-    /// <summary>A task file line's identity: a step's block id (<c>^x7k2m9</c>) or a frontmatter key.</summary>
-    internal static string? TaskLineKey(string line)
+    /// <summary>A task file's line identities: frontmatter keys inside the frontmatter, steps' block ids (<c>^x7k2m9</c>) below.</summary>
+    public static string?[] TaskLineKeys(IReadOnlyList<string> lines)
     {
-        var text = line.TrimEnd('\r', '\n');
-        if (BlockId().Match(text) is { Success: true } block)
+        var keys = new string?[lines.Count];
+        var inFrontmatter = lines.Count > 0 && lines[0].TrimEnd('\r', '\n') == "---";
+        for (var i = 0; i < lines.Count; i++)
         {
-            return "^" + block.Groups[1].Value;
+            var text = lines[i].TrimEnd('\r', '\n');
+            if (inFrontmatter && i > 0 && text == "---")
+            {
+                inFrontmatter = false;
+                continue;
+            }
+
+            if (inFrontmatter && i > 0)
+            {
+                keys[i] = FrontmatterKey().Match(text) is { Success: true } key ? key.Groups[1].Value + ":" : null;
+            }
+            else if (!inFrontmatter && BlockId().Match(text) is { Success: true } block)
+            {
+                keys[i] = "^" + block.Groups[1].Value;
+            }
         }
 
-        return FrontmatterKey().Match(text) is { Success: true } key ? key.Groups[1].Value + ":" : null;
+        return keys;
     }
 
     [GeneratedRegex(@"\s\^([A-Za-z0-9-]+)(?:\s+%%.*%%)?\s*$")]

@@ -33,12 +33,12 @@ public sealed class SyncEngineTests : IDisposable
 
     private sealed class Device
     {
-        public Device(string root, string name, string remote)
+        public Device(string root, string name, string remote, string? displayName = null)
         {
             var home = Path.Combine(root, name);
             Vault = Path.Combine(home, "vault");
             Store = VaultBoardStore.Open(new VaultOptions(Vault) { TimeZone = TimeZoneInfo.Utc, LockDirectory = Path.Combine(home, "locks"), Watch = false, EditSettleTime = TimeSpan.Zero });
-            State = new SyncState(Path.Combine(home, "sync"), Path.Combine(home, "device"), name);
+            State = new SyncState(Path.Combine(home, "sync"), Path.Combine(home, "device"), displayName ?? name);
             Engine = new SyncEngine(Store, new FolderRemote(remote), State, Path.Combine(home, "sync.lock"));
         }
 
@@ -341,6 +341,99 @@ public sealed class SyncEngineTests : IDisposable
         var published = Directory.EnumerateFiles(Path.Combine(Remote, "blobs"), "*", SearchOption.AllDirectories).Select(System.IO.File.ReadAllText).ToList();
         Directory.Delete(link);
         Assert.DoesNotContain("private", published);
+    }
+
+    [Fact]
+    public async Task The_same_file_added_again_after_a_delete_stays_everywhere()
+    {
+        // Review finding: a delete recorded earlier deleted the same content added again later.
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        var notes = Path.Combine(laptop.Vault, "Work", "notes.txt");
+        await System.IO.File.WriteAllTextAsync(notes, "same text", TestContext.Current.CancellationToken);
+        await Settle();
+        System.IO.File.Delete(notes);
+        laptop.Store.MarkDirty();
+        await Settle();
+        Assert.False(System.IO.File.Exists(Path.Combine(desktop.Vault, "Work", "notes.txt")));
+
+        await System.IO.File.WriteAllTextAsync(notes, "same text", TestContext.Current.CancellationToken);
+        laptop.Store.MarkDirty();
+        await Settle();
+        await desktop.AddTask("Unrelated");
+        await Settle();
+
+        Assert.True(System.IO.File.Exists(notes));
+        Assert.True(System.IO.File.Exists(Path.Combine(desktop.Vault, "Work", "notes.txt")));
+    }
+
+    [Fact]
+    public async Task A_file_renamed_only_in_letter_case_is_not_duplicated()
+    {
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        var lower = Path.Combine(laptop.Vault, "Work", "pic.txt");
+        await System.IO.File.WriteAllTextAsync(lower, "x", TestContext.Current.CancellationToken);
+        await Settle();
+
+        System.IO.File.Move(lower, Path.Combine(laptop.Vault, "Work", "Pic.txt"));
+        laptop.Store.MarkDirty();
+        await Settle();
+
+        Assert.Equal(["Pic.txt"], Directory.EnumerateFiles(Path.Combine(desktop.Vault, "Work"), "*.txt").Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task A_device_name_that_is_not_a_file_name_still_syncs()
+    {
+        // Review finding: a copy named "(from Mac: home)" was refused, and that stopped the sync for good.
+        var laptop = Add("Laptop");
+        var mac = new Device(_root, "Mac", Remote, displayName: "Mac: home/x");
+        _devices.Add(mac);
+        await System.IO.File.WriteAllTextAsync(Path.Combine(laptop.Vault, "Work", "n.txt"), "laptop", TestContext.Current.CancellationToken);
+        await System.IO.File.WriteAllTextAsync(Path.Combine(mac.Vault, "Work", "n.txt"), "mac", TestContext.Current.CancellationToken);
+        laptop.Store.MarkDirty();
+        mac.Store.MarkDirty();
+
+        await Settle();
+
+        var names = Directory.EnumerateFiles(Path.Combine(laptop.Vault, "Work"), "n*.txt").Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
+        Assert.True(names.Count == 2, string.Join(" | ", names) + " || mac: " + string.Join(" | ", Directory.EnumerateFiles(Path.Combine(mac.Vault, "Work"), "n*.txt").Select(Path.GetFileName)));
+        Assert.Equal(names, Directory.EnumerateFiles(Path.Combine(mac.Vault, "Work"), "n*.txt").Select(Path.GetFileName).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_device_whose_own_file_went_missing_publishes_again()
+    {
+        var laptop = Add("Laptop");
+        await laptop.AddTask("Still here");
+        await laptop.Sync();
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(Remote, "devices")))
+        {
+            System.IO.File.Delete(file);
+        }
+
+        var again = await laptop.Sync();
+
+        Assert.True(again.Published);
+        Assert.Single(Directory.EnumerateFiles(Path.Combine(Remote, "devices")));
+    }
+
+    [Fact]
+    public async Task A_forgotten_device_is_no_longer_merged()
+    {
+        var laptop = Add("Laptop");
+        var old = Add("Old tasks folder");
+        await old.AddTask("From the old folder");
+        await old.Sync();
+        _devices.Remove(old);
+
+        await laptop.Engine.ForgetAsync(old.State.DeviceId, TestContext.Current.CancellationToken);
+        await laptop.Sync();
+
+        Assert.DoesNotContain("From the old folder", await laptop.Titles());
+        old.Engine.Dispose();
+        old.Store.Dispose();
     }
 
     [Fact]

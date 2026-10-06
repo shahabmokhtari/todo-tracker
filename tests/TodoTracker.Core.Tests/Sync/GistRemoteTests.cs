@@ -31,6 +31,16 @@ internal sealed class FakeGitHub : HttpMessageHandler
         }
     }
 
+    /// <summary>Changes a file behind the devices' backs (a damaged or half-written one).</summary>
+    public void Replace(string id, string name, string content)
+    {
+        lock (_lock)
+        {
+            _gists[id].Files[name] = content;
+            _gists[id].History.Insert(0, $"v{_gists[id].History.Count + 1}");
+        }
+    }
+
     public IEnumerable<string> Ids
     {
         get
@@ -47,16 +57,22 @@ internal sealed class FakeGitHub : HttpMessageHandler
         var body = request.Content is null ? null : JsonNode.Parse(await request.Content.ReadAsStringAsync(cancellationToken));
         lock (_lock)
         {
-            if (request.Headers.Authorization?.Parameter != Token)
-            {
-                return new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("{}") };
-            }
-
             var path = request.RequestUri!.AbsolutePath;
             if (request.RequestUri.Host == "raw.example")
             {
+                // Not a GitHub host: the token must not be sent there.
+                if (request.Headers.Authorization is not null)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("token leaked") };
+                }
+
                 var (gistId, name) = (path.Split('/')[1], Uri.UnescapeDataString(path.Split('/')[2]));
                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(_gists[gistId].Files[name]) };
+            }
+
+            if (request.Headers.Authorization?.Parameter != Token)
+            {
+                return new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("{}") };
             }
 
             if (request.Method == HttpMethod.Get && path == "/gists")
@@ -105,7 +121,14 @@ internal sealed class FakeGitHub : HttpMessageHandler
     {
         foreach (var (name, file) in body["files"]!.AsObject())
         {
-            _gists[id].Files[name] = file!["content"]!.GetValue<string>();
+            if (file is null)
+            {
+                _gists[id].Files.Remove(name);
+            }
+            else
+            {
+                _gists[id].Files[name] = file["content"]!.GetValue<string>();
+            }
         }
 
         _gists[id].History.Insert(0, $"v{_gists[id].History.Count + 1}");
@@ -162,12 +185,12 @@ public sealed class GistRemoteTests : IDisposable
         Directory.Delete(_root, recursive: true);
     }
 
-    private (VaultBoardStore Store, SyncEngine Engine) Device(string name)
+    private (VaultBoardStore Store, SyncEngine Engine) Device(string name, string library = "Todo Tracker")
     {
         var home = Path.Combine(_root, name);
         var store = VaultBoardStore.Open(new VaultOptions(Path.Combine(home, "vault")) { TimeZone = TimeZoneInfo.Utc, LockDirectory = Path.Combine(home, "locks"), Watch = false, EditSettleTime = TimeSpan.Zero });
         var idFile = Path.Combine(home, "gist-id");
-        var remote = new GistRemote(_http, _ => Task.FromResult("token"), () => File.Exists(idFile) ? File.ReadAllText(idFile) : null, id => File.WriteAllText(idFile, id));
+        var remote = new GistRemote(_http, _ => Task.FromResult("token"), () => File.Exists(idFile) ? File.ReadAllText(idFile) : null, id => File.WriteAllText(idFile, id), library);
         var engine = new SyncEngine(store, remote, new SyncState(Path.Combine(home, "sync"), Path.Combine(home, "device"), name), Path.Combine(home, "sync.lock"));
         _devices.Add((store, engine));
         return (store, engine);
@@ -244,6 +267,54 @@ public sealed class GistRemoteTests : IDisposable
         await desktopSync.SyncAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains("Long one", await Titles(desktop));
+    }
+
+    [Fact]
+    public async Task A_vault_too_big_for_a_gist_says_so()
+    {
+        // Review finding: big vaults were published anyway and silently couldn't be read back.
+        var (laptop, laptopSync) = Device("Laptop");
+        var task = await laptop.UpdateAsync(b => b.AddTask(new NewTask("Scans"), Actor.User, T0));
+        var big = new byte[GistRemote.MaxBundleBytes];
+        Random.Shared.NextBytes(big);
+        await laptop.AddAttachmentAsync(task.Id, "scan.bin", new MemoryStream(big), Actor.User, TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => laptopSync.SyncAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("too big for a gist", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_device_that_can_not_be_read_is_tried_again()
+    {
+        var (laptop, laptopSync) = Device("Laptop");
+        var (desktop, desktopSync) = Device("Desktop");
+        await laptop.UpdateAsync(b => b.AddTask(new NewTask("Hello"), Actor.User, T0));
+        await laptopSync.SyncAsync(TestContext.Current.CancellationToken);
+        var id = Assert.Single(_github.Ids);
+        var good = _github.Files(id).Single(f => f.Key.StartsWith("device-", StringComparison.Ordinal));
+        _github.Replace(id, good.Key, "{ not json");
+
+        await desktopSync.SyncAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("Hello", await Titles(desktop));
+
+        _github.Replace(id, good.Key, good.Value);
+        await desktopSync.SyncAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Hello", await Titles(desktop));
+    }
+
+    [Fact]
+    public async Task Each_library_has_its_own_gist()
+    {
+        var (laptop, laptopSync) = Device("Laptop");
+        await laptop.UpdateAsync(b => b.AddTask(new NewTask("Work things"), Actor.User, T0));
+        await laptopSync.SyncAsync(TestContext.Current.CancellationToken);
+
+        var (other, otherSync) = Device("Laptop2", library: "Side project");
+        await otherSync.SyncAsync(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain("Work things", await Titles(other));
+        Assert.Equal(2, _github.Ids.Count());
     }
 
     [Fact]

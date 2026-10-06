@@ -16,10 +16,10 @@ turn sync off.
 
 ## How it works
 
-* On OneDrive and iCloud Drive, computers meet in **`Apps/TodoTrackerSync`**. Each computer writes only its own files
+* On OneDrive and iCloud Drive, computers meet in **`Apps/TodoTrackerSync/<library>`**. Each computer writes only its own files
   there: `devices/<id>.json` (what its tasks folder holds) and `blobs/` (the contents, named by their hash; contents are
   written first, the list last, so a half-uploaded change is never read).
-* A gist holds one file per computer (`device-<id>.json`). Each check sends the gist's **ETag**
+* A gist (one per library) holds one file per computer (`device-<id>.json`, up to 9 MB including attachments: bigger tasks folders should sync through OneDrive or iCloud Drive). Each check sends the gist's **ETag**
   (`If-None-Match`); GitHub answers *304 Not Modified* when nothing changed, so idle checks cost almost nothing.
   After its own write a computer only treats the gist as "seen" when the gist's history shows no other write in
   between.
@@ -28,6 +28,11 @@ turn sync off.
 * The tasks folder itself is never moved. If it already is inside OneDrive (say, in OneDrive's Documents), OneDrive is
   not used for sync: OneDrive already copies the folder as it is, and both at once would copy every change twice. Move
   the tasks folder out of OneDrive (**⋯ › Tasks folder › Choose another folder…**) to sync with merging instead.
+
+## Libraries and computers
+
+* A **library** is a set of tasks that syncs together. It is named after the tasks folder (`Todo Tracker` by default), so the usual folder on every computer meets the others, and a second tasks folder with another name stays separate. Change the name in the Sync panel to join or split them.
+* The Sync panel lists the **other computers** and when each last synced. **Forget** one you no longer use (or an old tasks folder of this computer) and it's no longer merged.
 
 ## Changes on more than one computer
 
@@ -38,7 +43,7 @@ Every computer remembers what it last agreed on with each other computer, and me
 * **Moves and renames** follow the task (tasks are matched by their id, not their file name).
 * **Tabs, labels and the Do now order** are merged item by item.
 * **The same line changed on two computers:** both versions are kept in the task, and the Sync panel lists it under
-  *Changed on both computers*: **Keep mine**, **Keep <other computer>'s**, **Keep both**, or compare them side by side
+  *Changed on both computers*: **Keep mine** or **Keep <other computer>'s** (only where the two clashed; every other change from both stays), **Keep both**, or compare them side by side
   in **Beyond Compare**, **WinMerge** or **Visual Studio Code** (whichever is installed; you edit the task on the right).
 * **Two versions that can't be merged** (a task created on both before they ever synced, a binary attachment changed
   on both): the other one is kept next to it as *"Title (from <computer>)"*.
