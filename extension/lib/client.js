@@ -27,6 +27,26 @@ export function pageSource(tab) {
   return { url: tab.url, title: tab.title || tab.url };
 }
 
+/**
+ * Pairs with Todo Tracker: the 6-digit code shown there (Browser extension › Get a code) is traded for the token, so
+ * nothing secret has to be copied by hand. The custom header means web pages can't do this from the browser.
+ */
+export async function pair({ serverUrl, code, fetch = globalThis.fetch }) {
+  const digits = String(code ?? '').replace(/\D/g, '');
+  if (digits.length !== 6) throw new Error('The pairing code has 6 digits.');
+  const response = await fetch(`${normalizeServerUrl(serverUrl)}/api/plugins/browser-extension/claim`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-TodoTracker-Client': 'browser-extension' },
+    body: JSON.stringify({ code: digits }),
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok || !data?.token) {
+    throw new ApiError(response.status, data?.detail || data?.title || `Pairing failed (${response.status})`);
+  }
+  return data.token;
+}
+
 export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
   const base = normalizeServerUrl(serverUrl);
 

@@ -462,7 +462,12 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
-        menu.Items.Add(new MenuItem { Header = "Copy API token (browser extension)", Command = _vm.CopyApiTokenCommand });
+        if (On("browser-extension"))
+        {
+            menu.Items.Add(new MenuItem { Header = "Set up the browser extension (Edge, Chrome, Safari)…", Command = _vm.SetUpBrowserExtensionCommand });
+        }
+
+        menu.Items.Add(new MenuItem { Header = "Copy API token", Command = _vm.CopyApiTokenCommand });
         if (Vault is not null)
         {
             menu.Items.Add(StorageMenu());

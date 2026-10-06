@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createClient, normalizeServerUrl, pageSource } from '../lib/client.js';
+import { createClient, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
 
 function fakeFetch(responses = {}) {
   const calls = [];
@@ -102,4 +102,23 @@ test('manifest only requests loopback host access', () => {
   assert.equal(manifest.manifest_version, 3);
   assert.deepEqual(manifest.host_permissions, ['http://127.0.0.1/*', 'http://localhost/*']);
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
+});
+
+test('pairing trades the code shown in Todo Tracker for the token (no token to copy)', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 200, body: { token: 'tok-123' } } });
+
+  const token = await pair({ serverUrl: 'http://127.0.0.1:5317/', code: ' 123 456 ', fetch });
+
+  assert.equal(token, 'tok-123');
+  assert.equal(fetch.calls[0].url, 'http://127.0.0.1:5317/api/plugins/browser-extension/claim');
+  assert.deepEqual(fetch.calls[0].body, { code: '123456' });
+  // A custom header: a web page can't send it without the server's permission, so it can't claim codes.
+  assert.equal(fetch.calls[0].init.headers['X-TodoTracker-Client'], 'browser-extension');
+});
+
+test('a wrong or old pairing code says what to do', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 400, body: { detail: 'That code didn\u2019t work.' } } });
+
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '000000', fetch }), /didn.t work/);
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '12', fetch }), /6 digits/);
 });

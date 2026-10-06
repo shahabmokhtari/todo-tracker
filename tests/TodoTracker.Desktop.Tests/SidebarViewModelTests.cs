@@ -523,9 +523,10 @@ public sealed class SidebarViewModelTests : IDisposable
         _vm.CopyMcpConfigCommand.Execute(null);
         _vm.ConnectAiCommand.Execute(null);
         _vm.OpenSyncCommand.Execute(null);
+        _vm.SetUpBrowserExtensionCommand.Execute(null);
 
         Assert.Equal(
-            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1"],
+            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
 

@@ -463,6 +463,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenSync() => _shell.OpenUrl(Launch("/?sync=1"));
 
+    /// <summary>Opens the step-by-step browser extension setup (Edge, Chrome, Safari) with a pairing code.</summary>
+    [RelayCommand]
+    private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
+
     [RelayCommand]
     private void CopyMcpConfig()
     {

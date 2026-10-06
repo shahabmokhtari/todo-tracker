@@ -10,10 +10,14 @@
   <section id="setup" class="card setup" hidden>
     <img src="icons/logo.svg" alt="" width="44" height="44">
     <h1>Connect Todo Tracker</h1>
-    <p class="muted">Start the Windows sidebar (or <code>TodoTracker.Web</code>), then choose <em>Copy API token</em> in the sidebar menu.</p>
+    <p class="muted">In Todo Tracker, open <em>Browser extension</em> (the puzzle button in the dashboard, or <em>⋯ › Set up the browser extension</em> in the sidebar) and choose <em>Get a pairing code</em>.</p>
     <form id="setup-form">
-      <label>Server <input id="server" value="http://127.0.0.1:5317" required></label>
-      <label>API token <input id="token" type="password" autocomplete="off" required></label>
+      <label>Pairing code <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456" maxlength="7"></label>
+      <details id="advanced">
+        <summary>Other server, or paste a token instead</summary>
+        <label>Server <input id="server" value="http://127.0.0.1:5317" required></label>
+        <label>API token <input id="token" type="password" autocomplete="off" placeholder="Only if you don't have a code"></label>
+      </details>
       <button class="btn primary" type="submit">Connect</button>
       <p id="setup-error" class="error" role="alert"></p>
     </form>

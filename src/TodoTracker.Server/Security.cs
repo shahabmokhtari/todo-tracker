@@ -90,8 +90,10 @@ internal static class Security
         var mutating = !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method) && !HttpMethods.IsOptions(context.Request.Method);
         var hasClientHeader = context.Request.Headers.ContainsKey(ClientHeader);
 
-        if (path.Equals("/api/login", StringComparison.OrdinalIgnoreCase))
+        if (path.Equals("/api/login", StringComparison.OrdinalIgnoreCase) || path.Equals(Plugins.BrowserExtensionPlugin.ClaimPath, StringComparison.OrdinalIgnoreCase))
         {
+            // Signing in (and pairing the browser extension) needs no token, only the app's own header: a web page
+            // can't send it to this server, so it can't do either.
             if (!hasClientHeader)
             {
                 response.StatusCode = StatusCodes.Status403Forbidden;

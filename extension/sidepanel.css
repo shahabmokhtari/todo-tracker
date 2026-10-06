@@ -95,3 +95,8 @@ label.check input { width: auto; accent-color: var(--accent); }
 .actions { display: flex; gap: 4px; }
 .empty-row { padding: 8px 10px; color: var(--text-3); }
 .status { text-align: center; min-height: 1em; }
+
+/* Safari: the page opens as the toolbar button's popup, which needs a size. */
+html.popup body { width: 380px; min-height: 540px; max-height: 600px; overflow-y: auto; }
+#advanced { margin: 4px 0 10px; }
+#advanced summary { cursor: pointer; font-size: 13px; opacity: .75; margin-bottom: 6px; }

@@ -85,12 +85,18 @@ jobs:
         with:
           name: playwright-report
           path: tests/e2e/playwright-report
-      - name: Package browser extension
-        run: cd extension && zip -r ../todo-tracker-extension.zip . -x 'tests/*'
+      - name: Package browser extension (Edge/Chrome, and the Safari web extension folder)
+        run: |
+          (cd extension && zip -r ../todo-tracker-extension.zip . -x 'tests/*' 'safari/*')
+          mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
+          cp extension/safari/manifest.json safari-src/manifest.json
+          (cd safari-src && zip -r ../todo-tracker-extension-safari.zip .)
       - uses: actions/upload-artifact@v4
         with:
           name: browser-extension
-          path: todo-tracker-extension.zip
+          path: |
+            todo-tracker-extension.zip
+            todo-tracker-extension-safari.zip
 
   connectors:
     name: AI connectors (tt CLI, Claude Desktop extension, plugin)
@@ -211,3 +217,16 @@ jobs:
         with:
           name: macos-app
           path: apple/TodoTracker-macOS.zip
+      - name: Safari extension (an unsigned Mac app that carries the web extension)
+        run: |
+          mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
+          cp extension/safari/manifest.json safari-src/manifest.json
+          xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Todo Tracker Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
+          project=$(find safari-build -name '*.xcodeproj' -maxdepth 3 | head -1)
+          xcodebuild -list -project "$project"
+          xcodebuild -project "$project" -scheme "Todo Tracker Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGNING_ALLOWED=NO build
+          ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/Todo Tracker Extension.app" TodoTracker-Safari-Extension.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: safari-extension
+          path: TodoTracker-Safari-Extension.zip

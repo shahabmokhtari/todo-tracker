@@ -11,6 +11,7 @@ applies after a restart; the sidebar offers to restart right away.
 | **Focus timer** | The Pomodoro-style timer | Yes |
 | **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
 | **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
+| **Browser extension** | Setup guide for the Edge, Chrome and Safari extension, with pairing codes ([`browser-extension.md`](browser-extension.md)) | Yes |
 | **OneDrive sync** | Sync with your other computers through OneDrive (work or school account first, then personal) ([`sync.md`](sync.md)) | Yes |
 | **iCloud Drive sync** | Sync with your Mac, iPhone and iPad through iCloud Drive | Yes |
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
