@@ -257,8 +257,11 @@ tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidi
 ### Plugins and Ask AI
 Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, version history, Obsidian, Teams)
 that can be switched off; the choice lives in `plugins.json` and applies after a restart. Ask AI drives GitHub Copilot
-CLI or Claude Code over the Agent Client Protocol with Todo Tracker's MCP tools attached: reading needs no permission,
-changing tasks asks (once or for the chat), anything else always asks. Details: [`docs/plugins.md`](plugins.md).
+CLI or Claude Code over the Agent Client Protocol with Todo Tracker's MCP tools attached, or a model reached with an API
+key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the same tools. Reading needs no permission;
+changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and
+can be searched, reopened (agents resume their session with `session/load` when they can), renamed and deleted with
+undo. A chat stays with the agent or model it began with. Details: [`docs/plugins.md`](plugins.md).
 
 ### Teams
 Paste a Teams **Workflows** webhook URL (channel › Workflows › "Post to a channel when a webhook request is
@@ -358,4 +361,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
 | Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
 | In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ✅ Ask AI plugin (dashboard panel + sidebar box; Copilot and Claude Code; permissions; warm agent); every optional feature is a switchable plugin ([`docs/plugins.md`](plugins.md)) |
+| Ask AI as a full chat with sessions and history; ACP plus API keys for OpenAI- and Anthropic-compatible APIs | ✅ chats kept, searched, reopened (ACP `session/load` or a primer), renamed, deleted with undo; API models with presets, encrypted keys, same tools and permissions (tested live with Copilot; Claude untested on the dev machine) |
+| Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar |
+| Browser extension for Edge/Chrome and Safari, with a setup guide while unsigned | ✅ one source, side panel (Edge/Chrome) and popup (Safari app built in CI); guided setup and pairing codes with per-browser access |
 | Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |

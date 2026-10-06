@@ -1,3 +1,4 @@
+import http from 'node:http';
 import { test, expect } from '@playwright/test';
 
 const token = 'e2e-token-0123456789abcdefghijklmnop';
@@ -242,7 +243,7 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await page.getByRole('button', { name: 'Ask AI' }).click();
   const drawer = page.locator('#drawer');
   await expect(drawer.locator('.chat')).toBeVisible();
-  await expect(drawer.locator('.chat-picker')).toBeHidden(); // only one agent: no picker
+  await expect(drawer.getByRole('combobox', { name: 'Chat with' })).toHaveValue('test');
 
   const input = drawer.getByRole('textbox', { name: 'Message' });
   await input.fill('hi');
@@ -257,11 +258,70 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Added "Milk".');
   await expect(ask).toContainText('Allowed');
 
-  await drawer.getByRole('button', { name: 'New chat' }).click();
+  await drawer.getByRole('button', { name: 'New', exact: true }).click();
   await expect(drawer.locator('.msg')).toHaveCount(0);
+
+  // The chat before is kept: find it, open it, and carry on.
+  await drawer.getByRole('button', { name: 'Chats' }).click();
+  await drawer.getByRole('searchbox', { name: 'Search chats' }).fill('milk');
+  await drawer.locator('.chat-item', { hasText: 'hi' }).click();
+  await expect(drawer.locator('.msg.agent').last()).toHaveText('Added "Milk".');
+  await input.fill('hi again');
+  await input.press('Enter');
+  await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');
+  await expect(drawer.locator('.msg.user')).toHaveCount(3);
+
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
   expect(errors).toEqual([]);
+});
+
+test('Ask AI: add a model with an API key and let it add a task', async ({ page, request }) => {
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // A stand-in for an OpenAI-compatible service: it asks to add a task, then says it did.
+  const sse = (...events) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('') + 'data: [DONE]\n\n';
+  const fake = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      const messages = JSON.parse(body).messages;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.end(messages.at(-1).role === 'tool'
+        ? sse({ choices: [{ delta: { content: 'Added Bread.' }, finish_reason: 'stop' }] })
+        : sse({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'c1', type: 'function', function: { name: 'create_task', arguments: '{"title":"Buy bread"}' } }] }, finish_reason: 'tool_calls' }] }));
+    });
+  });
+  await new Promise((resolve) => fake.listen(0, '127.0.0.1', resolve));
+  try {
+    const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+    await page.goto(launch.url);
+    await page.getByRole('button', { name: 'Ask AI' }).click();
+    const drawer = page.locator('#drawer');
+    await drawer.getByRole('combobox', { name: 'Chat with' }).selectOption({ label: '+ Add a model with an API key…' });
+    await drawer.getByRole('combobox', { name: 'Service' }).selectOption('openai-compatible');
+    await drawer.getByRole('textbox', { name: 'Address' }).fill(`http://127.0.0.1:${fake.address().port}/v1`);
+    await drawer.getByRole('textbox', { name: 'Model' }).fill('fake-1');
+    await drawer.getByRole('textbox', { name: 'Name' }).fill('Local fake');
+    await drawer.getByRole('button', { name: 'Add model' }).click();
+
+    await expect(drawer.getByRole('combobox', { name: 'Chat with' }).locator('option:checked')).toHaveText('Local fake');
+    await expect(drawer.locator('.chat-notice')).toBeHidden(); // on this computer: nothing leaves it
+    const input = drawer.getByRole('textbox', { name: 'Message' });
+    await input.fill('add bread');
+    await input.press('Enter');
+    const ask = drawer.locator('.ask').last();
+    await expect(ask).toContainText('create task');
+    await expect(ask).toContainText('Buy bread');
+    await ask.getByRole('button', { name: 'Allow', exact: true }).click();
+    await expect(drawer.locator('.msg.agent').last()).toHaveText('Added Bread.');
+
+    const items = await (await request.get('/api/search?q=bread', { headers: { Authorization: `Bearer ${token}` } })).json();
+    expect(JSON.stringify(items)).toContain('Buy bread');
+    expect(errors).toEqual([]);
+  } finally {
+    fake.close();
+  }
 });
 
 test('Plugins: every extra can be switched off (after a restart)', async ({ page, request }) => {
