@@ -180,6 +180,20 @@ public class TimeTrackingTests
     }
 
     [Fact]
+    public void Skipping_right_after_focus_ended_skips_the_break_that_started_not_a_new_one()
+    {
+        // The app shows the break the moment the session ends; Skip can arrive before the background tick.
+        var item = Task("Write report");
+        _board.StartFocus(item.Id, Actor.User, T0);
+
+        _board.SkipFocus(T0.AddMinutes(25).AddSeconds(3));
+
+        Assert.Equal(PomodoroPhase.Idle, _board.Pomodoro.Phase);
+        Assert.Equal(1, _board.Pomodoro.CompletedFocusCount);
+        Assert.Equal(T0.AddMinutes(25), Assert.Single(item.TimeEntries).End);
+    }
+
+    [Fact]
     public void A_timer_left_running_when_the_app_stopped_ends_when_it_was_last_seen()
     {
         var item = Task("A");

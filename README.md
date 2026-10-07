@@ -10,7 +10,8 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | | |
 |---|---|
 | **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture |
-| **Web** | Dashboard and full report/timeline at `http://127.0.0.1:5317` |
+| **Web** | The whole app at `http://127.0.0.1:5317`: Today, a Board (Inbox → Next → Doing → Done), a Tasks outline, Done & Archive, Reports with charts and a timeline; works on phones too |
+| **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
 | **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance) |
 | **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
@@ -35,6 +36,10 @@ The full plan, design, rules, and requirement traceability are in [`docs/product
 
 The report page shows the full task tree and a timeline: ![Report](docs/images/web-report.png)
 
+| Board | Reports |
+|---|---|
+| ![Board](docs/images/web-board.png) | ![Reports](docs/images/web-reports.png) |
+
 ## Quick start (Windows)
 
 ```powershell
@@ -55,6 +60,26 @@ Type a task in the box at the top and press Enter:
 ```
 Deploy ring 2 !! @2h due:tomorrow      →  critical, back in 2h with a reminder, due tomorrow 17:00
 ```
+
+### The full app
+
+The web app (and the app window on Windows) has five views; switch with the side bar, `Alt+1`…`Alt+5`, or `Ctrl+K`:
+
+- **Today**: what to do now (the same list as the sidebar).
+- **Board**: Inbox → Next → Doing → Done. Drag cards along, or focus one and press `Alt+←/→` (`Alt+↑/↓` within a
+  column). Doing is kept to three on purpose. New tasks start in Inbox.
+- **Tasks**: every task as an outline. Type to rename, `Enter` for the next task, `Tab`/`Shift+Tab` to nest and
+  un-nest, `Alt+↑/↓` to move, `Space` to finish, `Esc` to leave; or drag a row before, after or into another.
+- **Done**: what you finished, day by day, with the time it took. Archive finished tasks (or everything older than a
+  week or a month) to keep it short; bring them back from **Archive**, or delete them.
+- **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per
+  day, a donut by group, where the time went, when you work (weekday × hour), active days, and a timeline of each
+  task's work, deadline and finish.
+
+Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
+closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add
+by hand. Focus sessions count as time on their task; when one ends, a full-screen break reminds you to rest (skip it
+if you must).
 
 To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add rollout steps*), enter one step per line,
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
