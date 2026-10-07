@@ -156,9 +156,10 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   await nested.focus();
   await page.keyboard.press('Space');
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Launch website')?.children[0]?.done).toBe(true);
+  // Finished tasks are hidden: the keyboard moves to the row above, not off the page.
+  await expect(rowOf('Launch website')).toBeFocused();
 
   // The tree is one stop for Tab; Escape leaves it without changing anything.
-  await rowOf('Launch website').focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'New task' })).toBeFocused();
   await expect(outline.locator('.orow[data-id][tabindex="0"]')).toHaveCount(1);
