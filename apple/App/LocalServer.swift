@@ -1,19 +1,25 @@
 #if os(macOS)
+import AppKit
 import Foundation
 import TodoTrackerKit
 import TodoTrackerUI
 
 /// Runs Todo Tracker's server (it comes inside the app) in the background on this Mac, so the app uses the same tasks
 /// folder as the browser and the other computers: `~/Documents/Todo Tracker`, synced through OneDrive or iCloud Drive.
-/// It starts with the app and stops when the app quits (`--parent-pid`). The first time, it moves the tasks this Mac
-/// kept on its own into the folder.
+/// It starts with the app, is started again if it stops, and stops when the app quits (`--parent-pid` covers a crash).
+/// The first time, it moves the tasks this Mac kept on its own into the folder.
 @MainActor
 final class LocalServer {
     static let shared = LocalServer()
     nonisolated static let port = 5317
+    private static let base = URL(string: "http://127.0.0.1:\(port)")!
 
     private var process: Process?
+    private weak var model: BoardModel?
     private var started = false
+    private var quitting = false
+    private var restarts = 0
+    private var quitObserver: NSObjectProtocol?
 
     enum Failure: Error {
         case notBundled
@@ -29,78 +35,135 @@ final class LocalServer {
         }
     }
 
-    /// Once per run: start (or find) the server and switch the model over to it.
+    /// Once per run: start (or find) the server and switch the model over to it. Changes wait until then.
     func connect(_ model: BoardModel) {
         guard !started else { return }
         started = true
-        Task {
-            switch await start() {
-            case let .success(client): model.use(server: client)
-            case let .failure(failure): model.reportLocalOnly(failure.reason)
-            }
+        self.model = model
+        model.beginConnecting()
+        quitObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { LocalServer.shared.stop() }
+        }
+        Task { await self.open() }
+    }
+
+    private func open() async {
+        guard let model else { return }
+        switch await start() {
+        case let .success(client): model.use(server: client)
+        case let .failure(failure): model.reportLocalOnly(failure.reason)
         }
     }
 
-    func stop() {
+    private func stop() {
+        quitting = true
         process?.terminate()
     }
 
+    /// It stopped while the app runs: start it again (a few times), and say what's happening meanwhile.
+    private func stopped(_ which: Process) {
+        guard !quitting, which === process, let model else { return }
+        restarts += 1
+        guard restarts <= 3 else {
+            model.serverLost("Todo Tracker's server keeps stopping (see ~/Library/Logs/TodoTracker/server.log). Quit and open the app again.")
+            return
+        }
+        model.serverLost("Reconnecting to your tasks folder…")
+        Task { await self.open() }
+    }
+
     private func start() async -> Result<ServerClient, Failure> {
-        let client = ServerClient(baseURL: URL(string: "http://127.0.0.1:\(Self.port)")!, token: Self.token())
-        if await client.isUp() {
-            // Most likely the server of this app's last run, about to stop (its app is gone): wait for it.
-            for _ in 0..<12 {
-                if !(await client.isUp()) { break }
+        #if arch(arm64)
+        let probe = ServerClient(baseURL: Self.base, token: "")
+        if await probe.isUp() {
+            // Most likely the server of this app's last run, stopping (its app is gone): give it time.
+            for _ in 0..<24 {
+                if !(await probe.isUp()) { break }
                 try? await Task.sleep(nanoseconds: 250_000_000)
             }
-            if await client.isUp() {
-                // Still there: fine if it's ours (it knows our token), else the port is someone else's.
-                return (try? await client.send(ServerAPI.settings)) != nil ? .success(client) : .failure(.portTaken)
+            if await probe.isUp() {
+                // Still there: fine if it's this Mac's (it knows the token), else the port is someone else's.
+                guard let client = Self.client(), (try? await client.send(ServerAPI.settings)) != nil else { return .failure(.portTaken) }
+                return .success(client)
             }
         }
 
         guard let executable = Bundle.main.resourceURL?.appendingPathComponent("Server/TodoTracker.Web"),
               FileManager.default.isExecutableFile(atPath: executable.path) else { return .failure(.notBundled) }
+        // A server that just stopped may still hold the folder for a moment: a few tries.
+        for _ in 0..<3 {
+            let process = Self.makeProcess(executable)
+            process.terminationHandler = { [weak self] ended in
+                Task { @MainActor in self?.stopped(ended) }
+            }
+            do {
+                try process.run()
+            } catch {
+                return .failure(.didNotStart(error.localizedDescription))
+            }
+            self.process = process
+
+            // No time limit while it runs: the first start may wait on macOS asking about the Documents folder, or
+            // be moving this Mac's tasks into the folder.
+            var checks = 0
+            while process.isRunning {
+                if await probe.isUp(), let client = Self.client() { return .success(client) }
+                checks += 1
+                if checks == 40 { model?.connectingSlowly() }
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+        }
+        return .failure(.didNotStart("it stopped; see ~/Library/Logs/TodoTracker/server.log"))
+        #else
+        return .failure(.didNotStart("it needs a Mac with Apple silicon"))
+        #endif
+    }
+
+    private static func makeProcess(_ executable: URL) -> Process {
         let process = Process()
         process.executableURL = executable
-        process.arguments = ["--port", String(Self.port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
+        var arguments = ["--port", String(port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
+        if !hasGit { arguments.append("--no-history") }
+        process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
-        environment["TODOTRACKER_TOKEN"] = Self.token()
+        // Apps opened from the Finder get a short PATH: add where git usually is.
+        environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (environment["PATH"] ?? "/usr/bin:/bin")
         process.environment = environment
         // Its output goes to a log (never a pipe nobody reads: it would fill up and stall the server).
-        let log = Self.logFile()
+        let log = logFile()
         process.standardOutput = log
         process.standardError = log
-        do {
-            try process.run()
-        } catch {
-            return .failure(.didNotStart(error.localizedDescription))
-        }
-        self.process = process
-
-        // The first start can take a while (it may be moving this Mac's tasks into the tasks folder).
-        for _ in 0..<160 {
-            if await client.isUp() { return .success(client) }
-            if !process.isRunning { return .failure(.didNotStart("it stopped; see ~/Library/Logs/TodoTracker/server.log")) }
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
-        return .failure(.didNotStart("it took too long"))
+        return process
     }
 
-    /// The secret the app and its server share (kept in the app's preferences; the server only listens on this Mac).
-    private static func token() -> String {
-        let key = "serverToken"
-        if let saved = UserDefaults.standard.string(forKey: key), saved.count >= 32 { return saved }
-        let fresh = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
-        UserDefaults.standard.set(fresh, forKey: key)
-        return fresh
+    /// Version history needs a real git. Without the developer tools, /usr/bin/git only asks to install them (every
+    /// time), so history is off then.
+    private static var hasGit: Bool {
+        ["/Library/Developer/CommandLineTools/usr/bin/git", "/Applications/Xcode.app/Contents/Developer/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
+            .contains { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
+    /// The server's own token (`api-token` in its data folder, readable only by this user), as the browser uses.
+    private static func client() -> ServerClient? {
+        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker/api-token")
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+        let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : ServerClient(baseURL: base, token: token)
+    }
+
+    /// `server.log` (this run) and `server.previous.log` (the one before: why it stopped, after a crash).
     private static func logFile() -> FileHandle {
-        let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TodoTracker", isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let fm = FileManager.default
+        let folder = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TodoTracker", isDirectory: true)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent("server.log")
-        FileManager.default.createFile(atPath: file.path, contents: nil)
+        let previous = folder.appendingPathComponent("server.previous.log")
+        if fm.fileExists(atPath: file.path) {
+            try? fm.removeItem(at: previous)
+            try? fm.moveItem(at: file, to: previous)
+        }
+        fm.createFile(atPath: file.path, contents: nil)
         return (try? FileHandle(forWritingTo: file)) ?? FileHandle.nullDevice
     }
 }

@@ -64,7 +64,9 @@ Windows computer does:
 * **With Windows:** both need the same cloud. Install OneDrive on the Mac (it's used first, a work or school account
   before a personal one), or iCloud for Windows on the PC. Both meet in `Apps/TodoTrackerSync/<library>`.
 * **The first time,** the tasks the Mac app kept on its own (before it synced) move into the tasks folder and sync
-  from there. They are added to the other computers' tasks, never replace them.
+  from there. They are added to the other computers' tasks, never replace them (a task already there stays as it
+  is). The old file is kept as `board.json.migrated`. While the folder opens, changes wait a moment.
+* Version history needs git (Xcode's command line tools, or Homebrew's git); without it, history is off on the Mac.
 * **More:** the menu bar glance shows where the tasks are and **Open Todo Tracker…** opens the full window in the
   browser (board, reports, Settings, the Sync panel).
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac

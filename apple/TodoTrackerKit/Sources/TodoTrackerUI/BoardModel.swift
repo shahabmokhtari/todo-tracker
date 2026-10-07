@@ -25,6 +25,8 @@ public final class BoardModel: ObservableObject {
 
     /// The server in use (nil: the board lives on this device only).
     @Published public private(set) var serverURL: URL?
+    /// Opening the tasks folder through the server (Mac): changes wait.
+    @Published public private(set) var isConnecting = false
 
     public private(set) var board: TaskBoard
     private let store: BoardFileStore?
@@ -35,6 +37,10 @@ public final class BoardModel: ObservableObject {
     /// board never replaces a newer one).
     private var generation = 0
     private var changesInFlight = 0
+    private var readsInFlight = 0
+    private var readFailed = false
+    private var etag: String?
+    private var themeSettled = false
 
     public init(store: BoardFileStore?) {
         self.store = store
@@ -68,18 +74,47 @@ public final class BoardModel: ObservableObject {
 
     public var usesServer: Bool { serverURL != nil }
 
+    /// Opening the tasks folder (the server is starting): nothing changes meanwhile, so nothing is written to the board
+    /// on this Mac that the server may be moving into the folder right now.
+    public func beginConnecting() {
+        isConnecting = true
+        status = "Opening your tasks folder…"
+    }
+
+    /// Still starting after a while (the first time, macOS may be asking whether Todo Tracker may use Documents).
+    public func connectingSlowly() {
+        guard isConnecting else { return }
+        status = "Still opening your tasks folder… If macOS asks whether Todo Tracker may use your Documents folder, allow it."
+    }
+
     /// Use Todo Tracker's server from now on: its tasks folder, synced with the other computers.
     public func use(server client: ServerClient) {
         server = client
         serverURL = client.baseURL
+        isConnecting = false
         isReadOnly = false
+        etag = nil
+        themeSettled = false
         status = nil
         Task { await reload() }
     }
 
-    /// The server couldn't be used: say so (the board stays on this Mac).
+    /// The server is gone for now (it's being restarted): say so; changes wait until it's back.
+    public func serverLost(_ reason: String) {
+        isConnecting = true
+        status = reason
+    }
+
+    /// The server couldn't be used: say so. The board on this Mac is used, unless it already moved into the tasks
+    /// folder (then it's an old copy: shown, but not changed, so nothing goes astray).
     public func reportLocalOnly(_ reason: String) {
-        status = "Not syncing: \(reason). Your tasks stay on this Mac for now."
+        isConnecting = false
+        if store?.wasMigrated == true {
+            isReadOnly = true
+            status = "Your tasks are in your tasks folder, but Todo Tracker's server isn't running (\(reason)). Changes are off until it is."
+        } else {
+            status = "Not syncing: \(reason). Your tasks stay on this Mac for now."
+        }
     }
 
     /// A sign-in link for the full window in the browser (board, reports, settings, sync).
@@ -93,12 +128,15 @@ public final class BoardModel: ObservableObject {
         }
     }
 
-    /// Light, dark or the system's: shared with every window when the server is in use.
+    /// Light, dark or the system's (picked by the user here): shared with every window when the server is in use.
     public func setTheme(_ theme: String) {
         if UserDefaults.standard.string(forKey: AppTheme.storageKey) != theme {
             UserDefaults.standard.set(theme, forKey: AppTheme.storageKey)
         }
         guard let server else { return }
+        // A read already on its way would bring the old theme back.
+        generation += 1
+        themeSettled = true
         Task { _ = try? await server.perform(.setTheme(theme)) }
     }
 
@@ -107,20 +145,41 @@ public final class BoardModel: ObservableObject {
         guard let server else { return }
         generation += 1
         let mine = generation
+        readsInFlight += 1
+        defer { readsInFlight -= 1 }
         do {
-            let fresh = try await server.board()
+            let (fresh, tag) = try await server.board(ifChangedFrom: etag)
             let theme = try? await server.theme()
             guard mine == generation else { return }
-            board = fresh
-            if let theme, UserDefaults.standard.string(forKey: AppTheme.storageKey) != theme {
-                UserDefaults.standard.set(theme, forKey: AppTheme.storageKey)
+            etag = tag
+            if let fresh {
+                board = fresh
+                NotificationScheduler.sync(board)
             }
-            NotificationScheduler.sync(board)
+            if let theme { adopt(theme: theme, from: server) }
+            if readFailed {
+                readFailed = false
+                status = nil
+            }
             refresh()
         } catch {
             guard mine == generation else { return }
+            readFailed = true
             status = Self.describe(error)
         }
+    }
+
+    /// The shared theme. The first time, a choice made on this Mac wins over the server's untouched default.
+    private func adopt(theme: String, from server: ServerClient) {
+        let local = UserDefaults.standard.string(forKey: AppTheme.storageKey) ?? AppTheme.system.rawValue
+        if !themeSettled {
+            themeSettled = true
+            if theme == AppTheme.system.rawValue && local != theme {
+                Task { _ = try? await server.perform(.setTheme(local)) }
+                return
+            }
+        }
+        if local != theme { UserDefaults.standard.set(theme, forKey: AppTheme.storageKey) }
     }
 
     /// Sends a change to the server, then reads the board back.
@@ -142,16 +201,23 @@ public final class BoardModel: ObservableObject {
         }
     }
 
+    /// While the tasks folder is opening, changes wait (says so). True when it's opening.
+    private func waitWhileConnecting() -> Bool {
+        guard isConnecting else { return false }
+        status = "One moment: opening your tasks folder…"
+        return true
+    }
+
     /// A change: to the server when one is in use, else to the board on this device.
     @discardableResult
     private func change(_ message: String?, server action: @autoclosure () -> ServerAction, local: (Date) throws -> Void) -> Bool {
+        if waitWhileConnecting() { return false }
         if server != nil {
             send(action(), message)
             return true
         }
         return mutate(message, local)
     }
-
     private static func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
@@ -179,6 +245,7 @@ public final class BoardModel: ObservableObject {
 
     public func capture() {
         let text = quickText
+        if waitWhileConnecting() { return }
         if server != nil {
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             quickText = ""
@@ -211,6 +278,7 @@ public final class BoardModel: ObservableObject {
     }
 
     public func addNote(_ id: UUID, text: String) {
+        if waitWhileConnecting() { return }
         if server != nil {
             noteDrafts[id] = nil
             openNotes.remove(id)
@@ -257,6 +325,7 @@ public final class BoardModel: ObservableObject {
     public func delete(_ id: UUID) { change("Deleted", server: .delete(id)) { try board.delete(id, now: $0) } }
 
     public func addGroup(_ name: String) {
+        if waitWhileConnecting() { return }
         if server != nil {
             send(.addGroup(name: name), nil, onDone: { [weak self] data in
                 if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -347,11 +416,11 @@ public final class BoardModel: ObservableObject {
 
     private func tick() {
         let current = Date()
-        if server != nil {
+        if server != nil || isConnecting {
             // The server runs the focus timer and the reminders; here the clock moves and the board is read again
             // every few seconds (changes from the other computers, Obsidian, the browser).
             now = current
-            if changesInFlight == 0, current.timeIntervalSince(lastRefresh) >= 5 {
+            if !isConnecting, changesInFlight == 0, readsInFlight == 0, current.timeIntervalSince(lastRefresh) >= 5 {
                 lastRefresh = current
                 Task { await reload() }
             }

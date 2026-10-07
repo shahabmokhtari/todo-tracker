@@ -73,6 +73,27 @@ public sealed class MacAppContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_export_says_when_nothing_changed()
+    {
+        // The Mac app reads the board every few seconds: unchanged, it gets "304 Not Modified" and skips the work.
+        using var first = await _client.GetAsync("/api/export", TestContext.Current.CancellationToken);
+        var tag = first.Headers.ETag;
+        Assert.NotNull(tag);
+
+        using var unchanged = new HttpRequestMessage(HttpMethod.Get, "/api/export");
+        unchanged.Headers.IfNoneMatch.Add(tag);
+        using var notModified = await _client.SendAsync(unchanged, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NotModified, notModified.StatusCode);
+
+        await Send(HttpMethod.Post, "/api/capture", """{"text":"Something new"}""");
+        using var changed = new HttpRequestMessage(HttpMethod.Get, "/api/export");
+        changed.Headers.IfNoneMatch.Add(tag);
+        using var fresh = await _client.SendAsync(changed, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
+        Assert.NotEqual(tag, fresh.Headers.ETag);
+    }
+
+    [Fact]
     public async Task Health_answers_without_the_token()
     {
         using var anonymous = _server.Client(authenticated: false);

@@ -53,6 +53,45 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Tasks_an_app_kept_on_its_own_join_a_folder_that_already_has_tasks()
+    {
+        // The Mac app's board.json, when the tasks folder already came from another computer (synced).
+        var shared = Open();
+        var fromWindows = await Add(shared, "From Windows");
+        shared.Dispose();
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        var mac = new TaskBoard();
+        var macTask = mac.AddTask(new NewTask("From the Mac") { GroupId = mac.Groups.Single(g => g.Name == "Personal").Id }, Actor.User, T0);
+        mac.AddTask(new NewTask("Its step") { ParentId = macTask.Id }, Actor.User, T0);
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(legacy + ".bak", BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+
+        var store = Open(legacy);
+
+        var (titles, steps, group) = await store.ReadAsync(b => (
+            b.Items.Select(i => i.Title).Order().ToList(),
+            b.Get(macTask.Id).Children.Select(c => c.Title).ToList(),
+            b.Groups.Single(g => g.Id == b.Get(macTask.Id).GroupId).Name));
+        Assert.Equal(["From the Mac", "From Windows"], titles);
+        Assert.Equal(["Its step"], steps);
+        Assert.Equal("Personal", group);
+        Assert.True(File.Exists(P("Personal", "From the Mac.md")));
+        // Set aside with its backup, so neither is read (or restored) again.
+        Assert.False(File.Exists(legacy));
+        Assert.False(File.Exists(legacy + ".bak"));
+        Assert.True(File.Exists(legacy + ".migrated"));
+        Assert.True(File.Exists(legacy + ".bak.migrated"));
+
+        // Next start: nothing imported twice.
+        store.Dispose();
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+        var again = Open(legacy);
+        Assert.Equal(2, await again.ReadAsync(b => b.Items.Count));
+        _ = fromWindows;
+    }
+
+    [Fact]
     public async Task Board_column_time_and_archive_are_kept_in_the_file_and_read_back()
     {
         var store = Open();

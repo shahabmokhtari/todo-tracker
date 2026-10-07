@@ -120,25 +120,7 @@ public final class ServerClient: @unchecked Sendable {
 
     @discardableResult
     public func send(_ request: ServerRequest) async throws -> Data {
-        guard let url = URL(string: request.path, relativeTo: baseURL)?.absoluteURL else { throw ServerError.unreachable("bad address") }
-        var http = URLRequest(url: url)
-        http.httpMethod = request.method
-        http.timeoutInterval = 15
-        http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        if let body = request.body {
-            http.httpBody = Data(body.utf8)
-            http.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-
-        let result: (Data, URLResponse)
-        do {
-            result = try await session.data(for: http)
-        } catch {
-            throw ServerError.unreachable(error.localizedDescription)
-        }
-
-        let data = result.0
-        let status = (result.1 as? HTTPURLResponse)?.statusCode ?? 0
+        let (data, status, _) = try await exchange(request)
         guard (200..<300).contains(status) else { throw ServerError.refused(status: status, message: Self.message(data, status: status)) }
         return data
     }
@@ -152,6 +134,38 @@ public final class ServerClient: @unchecked Sendable {
         try BoardCodec.decode(try await send(ServerAPI.export))
     }
 
+    /// The board if it changed since the read that gave `etag` (nil: unchanged, nothing to do), and its tag now.
+    public func board(ifChangedFrom etag: String?) async throws -> (board: TaskBoard?, etag: String?) {
+        let (data, status, response) = try await exchange(ServerAPI.export, headers: etag.map { ["If-None-Match": $0] } ?? [:])
+        if status == 304 { return (nil, etag) }
+        guard (200..<300).contains(status) else { throw ServerError.refused(status: status, message: Self.message(data, status: status)) }
+        return (try BoardCodec.decode(data), response?.value(forHTTPHeaderField: "ETag"))
+    }
+
+    private func exchange(_ request: ServerRequest, headers: [String: String] = [:]) async throws -> (Data, Int, HTTPURLResponse?) {
+        guard let url = URL(string: request.path, relativeTo: baseURL)?.absoluteURL else { throw ServerError.unreachable("bad address") }
+        var http = URLRequest(url: url)
+        http.httpMethod = request.method
+        http.timeoutInterval = 15
+        // Always asked fresh (an ETag is sent on purpose, and a 304 must come back as one).
+        http.cachePolicy = .reloadIgnoringLocalCacheData
+        http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        for (name, value) in headers { http.setValue(value, forHTTPHeaderField: name) }
+        if let body = request.body {
+            http.httpBody = Data(body.utf8)
+            http.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        let result: (Data, URLResponse)
+        do {
+            result = try await session.data(for: http)
+        } catch {
+            throw ServerError.unreachable(error.localizedDescription)
+        }
+
+        let response = result.1 as? HTTPURLResponse
+        return (result.0, response?.statusCode ?? 0, response)
+    }
     /// The light/dark choice every window shares ("system", "light" or "dark").
     public func theme() async throws -> String? {
         let object = try JSONSerialization.jsonObject(with: try await send(ServerAPI.settings)) as? [String: Any]

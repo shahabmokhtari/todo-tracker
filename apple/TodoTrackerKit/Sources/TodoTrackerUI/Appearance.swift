@@ -44,7 +44,11 @@ public struct ThemeMenu: View {
 
     public var body: some View {
         Menu {
-            Picker("Appearance", selection: $theme) {
+            // Only a pick made here is passed on (not the theme changing because another window changed it).
+            Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
+                theme = chosen
+                onChoose?(chosen)
+            })) {
                 ForEach(AppTheme.allCases) { Text($0.label).tag($0.rawValue) }
             }
             .pickerStyle(.inline)
@@ -53,7 +57,6 @@ public struct ThemeMenu: View {
         }
         .menuIndicator(.hidden)
         .fixedSize()
-        .onChange(of: theme) { _, chosen in onChoose?(chosen) }
         .accessibilityLabel("Appearance")
         .help("Light, dark, or as the system is")
     }

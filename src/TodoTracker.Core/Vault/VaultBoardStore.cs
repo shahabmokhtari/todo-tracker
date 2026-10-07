@@ -292,6 +292,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
             PurgeOldTrash();
             Reload();
+            if (!fresh && _options.LegacyBoardPath is { } older && File.Exists(older))
+            {
+                ImportBeside(older);
+            }
         }
 
         if (_options.Watch)
@@ -314,8 +318,54 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _caches = new Caches { GroupFolders = folders };
         _loadedOnce = true;
         Persist();
-        File.Move(legacyPath, legacyPath + ".migrated", overwrite: true);
+        SetAside(legacyPath);
         _loadedOnce = false;
+    }
+
+    /// <summary>
+    /// The tasks an app kept on its own before it used this folder (the Mac app's board.json) when the folder already
+    /// has tasks (another computer's, synced): added beside them, never replacing any (a task already here is kept as
+    /// it is), into the tab of the same name (else the first one). Then the file is set aside.
+    /// </summary>
+    private void ImportBeside(string legacyPath)
+    {
+        TaskBoard legacy;
+        try
+        {
+            legacy = BoardSerializer.Deserialize(File.ReadAllText(legacyPath));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or ArgumentException)
+        {
+            // Unreadable: left where it is (nothing is lost, nothing half-imported).
+            return;
+        }
+
+        foreach (var root in legacy.Items.ToList())
+        {
+            if (_board.HasAnyId(root))
+            {
+                continue;
+            }
+
+            var tab = legacy.Groups.FirstOrDefault(g => g.Id == root.GroupId)?.Name;
+            var group = _board.Groups.FirstOrDefault(g => string.Equals(g.Name, tab, StringComparison.OrdinalIgnoreCase)) ?? _board.Groups[0];
+            _board.AttachLoaded(root, group.Id);
+        }
+
+        Persist();
+        SetAside(legacyPath);
+    }
+
+    /// <summary>The old board file and its backups are renamed <c>.migrated</c>: kept, and never read again.</summary>
+    private static void SetAside(string legacyPath)
+    {
+        foreach (var path in new[] { legacyPath, legacyPath + ".bak", legacyPath + ".restoring" })
+        {
+            if (File.Exists(path))
+            {
+                File.Move(path, path + ".migrated", overwrite: true);
+            }
+        }
     }
 
     private void StartWatching()

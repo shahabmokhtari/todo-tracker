@@ -17,6 +17,10 @@ for (var i = 0; i < args.Length; i++)
         case "--port" when i + 1 < args.Length:
             options.Port = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
+        case "--no-history":
+            // No version history (it needs git; on a Mac without the developer tools, git asks to install them).
+            options.EnableHistory = false;
+            break;
     }
 }
 
@@ -25,7 +29,7 @@ var connection = TodoTrackerHost.GetConnection(app.Services);
 if (ParentProcess.FromArguments(args) is { } parent)
 {
     // Started by an app (the Mac app): stop when it's gone.
-    _ = ParentProcess.WatchAsync(parent, app.Lifetime.StopApplication, TimeSpan.FromSeconds(2), app.Lifetime.ApplicationStopping);
+    _ = ParentProcess.WatchAsync(parent, app.Lifetime.StopApplication, TimeSpan.FromSeconds(1), app.Lifetime.ApplicationStopping);
 }
 
 Console.WriteLine($"Todo Tracker is running. Open within 15 minutes: {TodoTrackerHost.CreateLaunchUrl(app.Services, "/", TimeSpan.FromMinutes(15))}");

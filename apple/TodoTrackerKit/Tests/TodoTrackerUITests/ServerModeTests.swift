@@ -4,15 +4,28 @@ import XCTest
 
 /// Stands in for Todo Tracker's server: answers /api/export with a board and records what it's asked.
 final class FakeServer: URLProtocol {
-    static var board = Data()
-    static var requests: [String] = []
+    private static let lock = NSLock()
+    private static var storedBoard = Data()
+    private static var storedRequests: [String] = []
+
+    // Requests arrive on URL loading threads; the test reads them on the main actor.
+    static var board: Data {
+        get { lock.withLock { storedBoard } }
+        set { lock.withLock { storedBoard = newValue } }
+    }
+
+    static var requests: [String] {
+        get { lock.withLock { storedRequests } }
+        set { lock.withLock { storedRequests = newValue } }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let url = request.url!
-        Self.requests.append("\(request.httpMethod ?? "GET") \(url.path)")
+        let line = "\(request.httpMethod ?? "GET") \(url.path)"
+        Self.lock.withLock { Self.storedRequests.append(line) }
         let body: Data
         switch url.path {
         case "/api/export": body = Self.board
@@ -66,5 +79,41 @@ final class ServerModeTests: XCTestCase {
         }
         // Read again after the changes (what the server has is what shows).
         try await waitUntil { FakeServer.requests.filter { $0 == "GET /api/export" }.count >= 2 }
+    }
+
+    func testNothingChangesWhileTheTasksFolderOpens() async throws {
+        let model = BoardModel(store: nil)
+        let task = try XCTUnwrap(try? model.board.addTask(NewTask("Local"), now: Date()))
+        FakeServer.requests = []
+        model.beginConnecting()
+
+        model.complete(task.id)
+        model.quickText = "Typed at login"
+        model.capture()
+
+        XCTAssertFalse(task.isDone, "the server may be moving this board into the folder right now")
+        XCTAssertEqual(model.quickText, "Typed at login", "kept, to add once the folder is open")
+        XCTAssertEqual(model.status, "One moment: opening your tasks folder…")
+    }
+
+    func testAnOldCopyIsNotChangedOnceTheTasksMovedToTheFolder() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let old = TaskBoard()
+        _ = try old.addTask(NewTask("Moved to the folder"), now: Date())
+        let data = try BoardCodec.encode(old)
+        try data.write(to: folder.appendingPathComponent("board.json.migrated"))
+        try data.write(to: folder.appendingPathComponent("board.json.bak"))
+        let store = BoardFileStore(url: folder.appendingPathComponent("board.json"))
+
+        // The backup is an old copy now: not brought back.
+        XCTAssertTrue(try store.load().items.isEmpty)
+        XCTAssertTrue(store.wasMigrated)
+
+        let model = BoardModel(store: store)
+        model.reportLocalOnly("it stopped")
+        XCTAssertTrue(model.isReadOnly)
+        XCTAssertTrue(model.status?.contains("Your tasks are in your tasks folder") == true)
     }
 }
