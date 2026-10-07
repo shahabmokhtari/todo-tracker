@@ -114,11 +114,13 @@ public sealed partial class TaskBoard
     {
         var item = Get(id);
 
-        // A timer on what's deleted ends now (its time goes with the task).
+        // A timer on what's deleted ends now. A subtask's time stays with its task (the work happened).
         StopTimers(item.SelfAndDescendants(), now);
         if (item.Parent is { } parent)
         {
             parent.ChildList.Remove(item);
+            parent.TimeEntryList.AddRange(item.SelfAndDescendants().SelectMany(i => i.TimeEntryList));
+            parent.TimeEntryList.Sort((a, b) => a.Start.CompareTo(b.Start));
         }
         else
         {
@@ -378,7 +380,9 @@ public sealed partial class TaskBoard
     {
         var resuming = Pomodoro.Phase == PomodoroPhase.Focus && !Pomodoro.IsRunning;
         Pomodoro.Resume(now);
-        if (resuming && Pomodoro.ItemId is { } id && Find(id) is { IsDone: false } item)
+
+        // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
+        if (resuming && Pomodoro.ItemId is { } id && Find(id) is { IsDone: false } item && RunningTimer(now) is null)
         {
             StartTimerCore(item, TimeSource.Focus, now, device);
         }

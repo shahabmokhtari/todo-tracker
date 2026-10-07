@@ -14,7 +14,7 @@ public class TaskMarkdownTimeTests
         id: 7b0c2f9e-0000-4000-8000-000000000001
         status: open
         created: 2026-01-05T09:00:00.000Z
-        stage: doing
+        board: doing
         ---
         # Ship release
 
@@ -92,10 +92,10 @@ public class TaskMarkdownTimeTests
     }
 
     [Theory]
-    [InlineData("stage: inbox", Stage.Inbox)]
-    [InlineData("stage: Doing", Stage.Doing)]
-    [InlineData("stage: next", Stage.Next)]
-    [InlineData("stage: someday", Stage.Next)]
+    [InlineData("board: inbox", Stage.Inbox)]
+    [InlineData("board: Doing", Stage.Doing)]
+    [InlineData("board: next", Stage.Next)]
+    [InlineData("board: someday", Stage.Next)]
     [InlineData("", Stage.Next)]
     public void The_board_column_is_a_property_and_tasks_without_one_are_next(string property, Stage stage)
     {
@@ -113,14 +113,118 @@ public class TaskMarkdownTimeTests
         board.Complete(inbox.Id, Actor.User, Now);
         board.Archive(inbox.Id, Actor.User, Now);
 
-        Assert.DoesNotContain("stage:", TaskMarkdown.Render(next, Utc), StringComparison.Ordinal);
+        Assert.DoesNotContain("board:", TaskMarkdown.Render(next, Utc), StringComparison.Ordinal);
         var archived = TaskMarkdown.Render(inbox, Utc);
-        Assert.Contains("stage: inbox\n", archived, StringComparison.Ordinal);
+        Assert.Contains("board: inbox\n", archived, StringComparison.Ordinal);
         Assert.Contains("archived: 2026-01-06T12:00:00.000Z\n", archived, StringComparison.Ordinal);
 
         var back = TaskMarkdown.Parse(archived, "B", Utc).Root;
         Assert.Equal(Now, back.ArchivedAt);
         Assert.Equal(Stage.Inbox, back.Stage);
+    }
+
+    [Fact]
+    public void A_timer_stopped_within_the_same_minute_stays_that_short()
+    {
+        // Review finding: "09:00–09:00" read as past midnight: 24 hours.
+        var board = new TaskBoard();
+        var item = board.AddTask(new NewTask("A"), Actor.User, Now);
+        board.StartTimer(item.Id, Actor.User, Now.AddSeconds(10), "laptop");
+        board.StopTimer(Now.AddSeconds(50));
+
+        var text = TaskMarkdown.Render(item, Utc);
+        var parsed = TaskMarkdown.Parse(text, "A", Utc);
+
+        Assert.Equal(TimeSpan.FromSeconds(40), parsed.Root.TimeEntries[0].Duration(Now));
+        Assert.False(parsed.NeedsWrite);
+    }
+
+    [Fact]
+    public void An_end_on_the_clock_before_the_start_carries_its_date()
+    {
+        // DST fall-back, or a correction: the end is shown with its date so it can't be read as the next day.
+        var board = new TaskBoard();
+        var item = board.AddTask(new NewTask("A"), Actor.User, Now);
+        board.AddTime(item.Id, Now, Now.AddMinutes(30), Actor.User, Now);
+        var rendered = TaskMarkdown.Render(item, Utc);
+        Assert.Contains("12:00–12:30", rendered, StringComparison.Ordinal);
+
+        var typed = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# A\n\n## Time\n\n- 2026-01-05 10:00–2026-01-05 09:30\n";
+        var back = TaskMarkdown.Parse(TaskMarkdown.Render(TaskMarkdown.Parse(typed, "A", Utc).Root, Utc), "A", Utc);
+        Assert.True(back.Root.TimeEntries[0].Duration(Now) <= TimeSpan.Zero);
+    }
+
+    [Theory]
+    [InlineData("- 2026-01-05 24:00–25:00")]
+    [InlineData("- 2026-01-05 09:75–10:00")]
+    [InlineData("- 2026-02-30 09:00–10:00")]
+    public void A_mistyped_time_line_stays_as_text_and_the_task_still_loads(string line)
+    {
+        var text = $"---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# A\n\n## Time\n\n{line}\n";
+
+        var parsed = TaskMarkdown.Parse(text, "A", Utc);
+
+        Assert.Empty(parsed.Root.TimeEntries);
+        Assert.Contains(line, TaskMarkdown.Render(parsed.Root, Utc, parsed), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Text_after_the_time_lines_stays_after_them()
+    {
+        var text = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# A\n\n## Time\n\n- 2026-01-05 09:00–10:00 %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000d1\",\"start\":\"2026-01-05T09:00:00.000Z\",\"end\":\"2026-01-05T10:00:00.000Z\"}%%\n\nTotal this week: 1 h\n";
+
+        var parsed = TaskMarkdown.Parse(text, "A", Utc);
+        var rendered = TaskMarkdown.Render(parsed.Root, Utc, parsed);
+
+        Assert.True(rendered.IndexOf("Total this week", StringComparison.Ordinal) > rendered.IndexOf("09:00–10:00", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Time_lines_out_of_order_load_oldest_first()
+    {
+        var text = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# A\n\n## Time\n\n- 2026-01-05 11:00–12:00\n- 2026-01-05 09:00–10:00\n";
+
+        var entries = TaskMarkdown.Parse(text, "A", Utc).Root.TimeEntries;
+
+        Assert.True(entries[0].Start < entries[1].Start);
+    }
+
+    [Theory]
+    [InlineData("archived: true", true)]
+    [InlineData("archived: yes", true)]
+    [InlineData("archived: false", false)]
+    [InlineData("archived: soon", false)]
+    [InlineData("archived: 2026-01-06", true)]
+    public void An_archived_property_written_by_hand_never_breaks_the_file(string property, bool archived)
+    {
+        var text = $"---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: done\ncompleted: 2026-01-05T10:00:00.000Z\ncreated: 2026-01-05T09:00:00.000Z\n{property}\n---\n# A\n";
+
+        Assert.Equal(archived, TaskMarkdown.Parse(text, "A", Utc).Root.ArchivedAt is not null);
+    }
+
+    [Fact]
+    public void A_task_reopened_by_hand_is_not_archived()
+    {
+        var text = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\narchived: 2026-01-06T00:00:00.000Z\n---\n# A\n";
+
+        var parsed = TaskMarkdown.Parse(text, "A", Utc);
+
+        Assert.Null(parsed.Root.ArchivedAt);
+        Assert.True(parsed.NeedsWrite);
+    }
+
+    [Fact]
+    public void A_stage_property_of_the_persons_own_is_left_alone()
+    {
+        // Review finding: "stage: draft" (their own property) was taken over. The board column is "board:".
+        var text = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\nstage: draft\n---\n# A\n";
+        var parsed = TaskMarkdown.Parse(text, "A", Utc);
+        parsed.Root.Stage = Stage.Doing;
+
+        var rendered = TaskMarkdown.Render(parsed.Root, Utc, parsed);
+
+        Assert.Contains("stage: draft\n", rendered, StringComparison.Ordinal);
+        Assert.Contains("board: doing\n", rendered, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -11,15 +11,37 @@ public sealed partial class TaskBoard
 
     // ---- Time ----------------------------------------------------------------------------
 
-    /// <summary>The timer that runs (the newest, if sync brought two together), or null.</summary>
-    public (WorkItem Item, TimeEntry Entry)? RunningTimer()
+    /// <summary>A timer running longer than this was forgotten (or its computer is gone): it counts this long at most.</summary>
+    public static readonly TimeSpan ForgottenAfter = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// Ends every timer (any device) that has run longer than <see cref="ForgottenAfter"/>, at that length. Returns how
+    /// many ended.
+    /// </summary>
+    public int CloseForgottenTimers(DateTimeOffset now)
+    {
+        var closed = 0;
+        foreach (var entry in AllItems().SelectMany(i => i.TimeEntryList))
+        {
+            if (entry.IsRunning && now - entry.Start > ForgottenAfter)
+            {
+                entry.End = entry.Start + ForgottenAfter;
+                closed++;
+            }
+        }
+
+        return closed;
+    }
+
+    /// <summary>The timer that runs (the newest, if sync brought two together), or null. A forgotten one doesn't count.</summary>
+    public (WorkItem Item, TimeEntry Entry)? RunningTimer(DateTimeOffset? now = null)
     {
         (WorkItem Item, TimeEntry Entry)? newest = null;
         foreach (var item in AllItems())
         {
             foreach (var entry in item.TimeEntryList)
             {
-                if (entry.IsRunning && (newest is null || entry.Start > newest.Value.Entry.Start))
+                if (entry.IsRunning && (now is null || now.Value - entry.Start <= ForgottenAfter) && (newest is null || entry.Start > newest.Value.Entry.Start))
                 {
                     newest = (item, entry);
                 }
@@ -44,6 +66,12 @@ public sealed partial class TaskBoard
         if (RunningTimer() is { } running && running.Item == item)
         {
             return running.Entry;
+        }
+
+        // A focus session on another task no longer counts for it (the session itself goes on).
+        if (Pomodoro.Phase == PomodoroPhase.Focus && Pomodoro.ItemId is { } focused && focused != item.Id)
+        {
+            Pomodoro.DetachItem();
         }
 
         var entry = StartTimerCore(item, TimeSource.Manual, now, device);
@@ -134,7 +162,10 @@ public sealed partial class TaskBoard
         for (var i = 0; i < running.Count; i++)
         {
             var end = i < running.Count - 1 ? running[i + 1].Start : now;
-            running[i].End = end < running[i].Start ? running[i].Start : end;
+            end = end < running[i].Start ? running[i].Start : end;
+
+            // A forgotten timer ends at the most it counts, not hours (or days) later.
+            running[i].End = end - running[i].Start > ForgottenAfter ? running[i].Start + ForgottenAfter : end;
         }
     }
 

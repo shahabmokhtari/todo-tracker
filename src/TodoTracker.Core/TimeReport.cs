@@ -89,9 +89,9 @@ public sealed record TimeReport(
                     }
 
                     work.Add(new ReportSpan(start, end, entry.Source));
-                    var seconds = (long)(end - start).TotalSeconds;
-                    byGroup[root.GroupId] = byGroup.GetValueOrDefault(root.GroupId) + seconds;
-                    byTask[root.Id] = byTask.GetValueOrDefault(root.Id) + seconds;
+                    var ticks = (end - start).Ticks;
+                    byGroup[root.GroupId] = byGroup.GetValueOrDefault(root.GroupId) + ticks;
+                    byTask[root.Id] = byTask.GetValueOrDefault(root.Id) + ticks;
                     Spread(start, end, entry.Source, tz, days, grid, DayIndex);
                 }
             }
@@ -103,7 +103,9 @@ public sealed record TimeReport(
             }
         }
 
-        var reportDays = days.Select((d, i) => new ReportDay(from.AddDays(i), d.Tracked, d.Focus, d.Completed, d.Created)).ToList();
+        // Summed in ticks, whole seconds at the end: the days add up to the total.
+        static long Seconds(long ticks) => ticks / TimeSpan.TicksPerSecond;
+        var reportDays = days.Select((d, i) => new ReportDay(from.AddDays(i), Seconds(d.Tracked), Seconds(d.Focus), d.Completed, d.Created)).ToList();
         var active = reportDays.Select(d => d.TrackedSeconds > 0 || d.Completed > 0).ToList();
         var streak = 0;
         var longest = 0;
@@ -119,16 +121,16 @@ public sealed record TimeReport(
         return new TimeReport(
             from,
             to,
-            byTask.Values.Sum(),
+            Seconds(byTask.Values.Sum()),
             focusSessions,
             reportDays.Sum(d => d.Completed),
             reportDays.Sum(d => d.Created),
             active.Count(a => a),
             longest,
             reportDays,
-            [.. board.Groups.Where(g => byGroup.ContainsKey(g.Id)).Select(g => new ReportGroup(g.Id, g.Name, g.Color, byGroup[g.Id])).OrderByDescending(g => g.TrackedSeconds)],
-            [.. byTask.OrderByDescending(t => t.Value).Take(MaxTasks).Select(t => board.Get(t.Key)).Select(r => new ReportTask(r.Id, r.Title, r.GroupId, r.IsDone, byTask[r.Id]))],
-            [.. grid.Select(h => (IReadOnlyList<long>)h)],
+            [.. board.Groups.Where(g => byGroup.ContainsKey(g.Id)).Select(g => new ReportGroup(g.Id, g.Name, g.Color, Seconds(byGroup[g.Id]))).OrderByDescending(g => g.TrackedSeconds)],
+            [.. byTask.OrderByDescending(t => t.Value).Take(MaxTasks).Select(t => board.Get(t.Key)).Select(r => new ReportTask(r.Id, r.Title, r.GroupId, r.IsDone, Seconds(byTask[r.Id])))],
+            [.. grid.Select(h => (IReadOnlyList<long>)[.. h.Select(Seconds)])],
             [.. rows.OrderByDescending(r => r.Work.Sum(w => (w.End - w.Start).Ticks)).ThenByDescending(r => r.CompletedAt ?? r.CreatedAt).Take(MaxTimelineRows).OrderBy(r => r.Work.Count > 0 ? r.Work[0].Start : r.CompletedAt ?? r.CreatedAt)]);
     }
 
@@ -147,18 +149,18 @@ public sealed record TimeReport(
             var local = TimeZoneInfo.ConvertTime(cursor, tz);
             var nextHour = cursor.AddMinutes(60 - local.Minute).AddSeconds(-local.Second).AddMilliseconds(-local.Millisecond);
             var stop = nextHour < end ? nextHour : end;
-            var seconds = (long)(stop - cursor).TotalSeconds;
+            var ticks = (stop - cursor).Ticks;
             var index = dayIndex(cursor);
             if (index >= 0 && index < days.Length)
             {
-                days[index].Tracked += seconds;
+                days[index].Tracked += ticks;
                 if (source == TimeSource.Focus)
                 {
-                    days[index].Focus += seconds;
+                    days[index].Focus += ticks;
                 }
             }
 
-            grid[(int)local.DayOfWeek][local.Hour] += seconds;
+            grid[(int)local.DayOfWeek][local.Hour] += ticks;
             cursor = stop;
         }
     }

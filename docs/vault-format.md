@@ -34,7 +34,7 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
 ---
 id: 7b0c2f9e-0000-4000-8000-000000000001
 status: open                         # open | done   (other values, e.g. waiting, are kept as typed)
-stage: doing                         # board column: inbox | next | doing (omitted = next; done = status)
+board: doing                         # board column: inbox | next | doing (omitted = next; done = status)
 priority: high                       # low | normal | high | critical (omitted = normal)
 created: 2026-01-05T09:00:00.000Z
 archived: 2026-02-01T08:00:00.000Z   # put away (a done task): out of every list, found with is:archived
@@ -82,7 +82,7 @@ Free-form details in markdown. Any other headings, tables, embeds, or sections b
 
 ### Properties
 
-The app owns `id` (or `tt-id`), `status`, `stage`, `priority`, `created`, `completed`, `archived`, `due`,
+The app owns `id` (or `tt-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
 `scheduled`, `sequential`, `step-delay`, `tags`, `labels`, and `reminders`. Everything else (`aliases`, `cssclasses`, plugin properties,
 comments) is kept exactly as written and in place. An owned property whose value hasn't changed is written back
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
@@ -104,10 +104,10 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
 
 ### Board and archive
 
-* `stage` is the task's column on the board: `inbox` (just captured), `next`, or `doing`. A task without one is in
+* `board` is the task's column on the board: `inbox` (just captured), `next`, or `doing`. A task without one is in
   Next; finished tasks are in Done whatever their stage. Tasks created in the app start in the inbox. Starting a timer
   on a task (or a subtask) moves it to Doing.
-* `archived` puts a finished task away: it stays where it is (links to the file keep working), drops out of every
+* `archived` (a time, or `true`) puts a finished task away: it stays where it is (links to the file keep working), drops out of every
   list and search, and is found again with `is:archived`. Reopening it takes it out of the archive.
 
 ### Time
@@ -117,7 +117,8 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
   `→ running` is a timer that's still running (on the device in the hidden comment).
 * Typing a line counts too: `- 2026-01-05 9:00 to 10:30` (or `09:00–10:30`, `09:00 - 10:30`); words after a `·` are
   kept. The visible times win if they were edited. Other text in the section stays as written.
-* A timer left running when the app stopped (or the computer slept) ends when the app last saw it running.
+* A timer left running when the app stopped (or the computer slept) ends when the app last saw it running. A timer
+  running longer than 12 hours (say, on a computer that never came back) counts 12 hours and is ended there.
 
 ### Notes and attachments
 

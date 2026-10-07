@@ -60,7 +60,13 @@ public sealed partial class ReminderLoop(
     /// </summary>
     private async Task WatchTimerAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        var start = await store.ReadAsync(b => b.RunningTimer() is { } r && r.Entry.Device == TaskBoard.ThisDevice ? r.Entry.Start : (DateTimeOffset?)null, cancellationToken).ConfigureAwait(false);
+        // Timers forgotten anywhere (a computer that never came back, a hand-typed running line) end at the most they count.
+        if (await store.ReadAsync(b => b.AllItems().Any(i => i.TimeEntries.Any(e => e.IsRunning && now - e.Start > TaskBoard.ForgottenAfter)), cancellationToken).ConfigureAwait(false))
+        {
+            await store.UpdateAsync(b => b.CloseForgottenTimers(now), cancellationToken).ConfigureAwait(false);
+        }
+
+        var start = await store.ReadAsync(b => b.RunningTimer(now) is { } r && r.Entry.Device == TaskBoard.ThisDevice ? r.Entry.Start : (DateTimeOffset?)null, cancellationToken).ConfigureAwait(false);
         if (start is null)
         {
             return;

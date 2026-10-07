@@ -28,7 +28,7 @@ internal static class VaultGuide
         ---
         id: 7b0c2f9e-…            # keep as is; omit in new files (the app adds it)
         status: open              # open | done
-        stage: doing              # board column: inbox | next | doing (omit = next)
+        board: doing              # board column: inbox | next | doing (omit = next)
         priority: high            # low | normal | high | critical (omit = normal)
         due: 2026-01-07T17:00     # local time; a date alone means 17:00
         scheduled: 2026-01-06     # "not before": the task waits until then (09:00 for a date alone)

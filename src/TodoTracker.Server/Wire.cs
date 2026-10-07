@@ -197,6 +197,7 @@ public static class Wire
 
         var filter = string.IsNullOrWhiteSpace(query) ? null : TaskQuery.Parse(query);
         var snapshot = Agenda.Build(board, now, recentNotes, groupId, filter);
+        var timing = board.RunningTimer(now)?.Item.Id;
         return new DashboardDto(
             now,
             groupId,
@@ -205,9 +206,9 @@ public static class Wire
                 var c = snapshot.GroupCounts[gr.Id];
                 return new GroupDto(gr.Id, gr.Name, gr.Color, c.Now, c.Waiting, c.Attention);
             }).ToList(),
-            snapshot.Focus is { } f ? Card(f, now, board) : null,
-            snapshot.Now.Select(e => Card(e, now, board)).ToList(),
-            snapshot.Waiting.Select(e => Card(e, now, board)).ToList(),
+            snapshot.Focus is { } f ? Card(f, now, board, timing) : null,
+            snapshot.Now.Select(e => Card(e, now, board, timing)).ToList(),
+            snapshot.Waiting.Select(e => Card(e, now, board, timing)).ToList(),
             snapshot.Overview.Select(o => new OverviewDto(
                 o.Item.Id,
                 o.Item.Title,
@@ -229,9 +230,12 @@ public static class Wire
     }
 
     public static TimerDto Timer(TaskBoard board, DateTimeOffset now) =>
-        board.RunningTimer() is { } running
+        board.RunningTimer(now) is { } running
             ? new TimerDto(true, running.Item.Id, running.Item.Title, running.Item.Path, running.Entry.Start, Of(running.Entry.Source), (long)running.Entry.Duration(now).TotalSeconds)
             : new TimerDto(false);
+
+    /// <summary>The timer runs on this task or one of its subtasks (the same rule on cards and in the board).</summary>
+    private static bool IsTiming(WorkItem item, Guid? timing) => timing is { } t && item.SelfAndDescendants().Any(i => i.Id == t);
 
     public static TimeEntryDto TimeEntry(WorkItem item, TimeEntry entry, DateTimeOffset now) =>
         new(entry.Id, item.Id, entry.Start, entry.End, (long)entry.Duration(now).TotalSeconds, Of(entry.Source), entry.Device);
@@ -261,11 +265,12 @@ public static class Wire
             leaves.Count(l => l.IsDone),
             leaves.Count,
             (long)item.TimeSpent(now).TotalSeconds,
-            timing is { } t && item.SelfAndDescendants().Any(i => i.Id == t),
+            IsTiming(item, timing),
             item.Children.Select(c => TreeNode(c, now, board, timing)).ToList());
     }
 
-    public static CardDto Card(AgendaEntry e, DateTimeOffset now, TaskBoard board)
+    /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>
+    public static CardDto Card(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing = null)
     {
         ArgumentNullException.ThrowIfNull(e);
         ArgumentNullException.ThrowIfNull(board);
@@ -304,7 +309,7 @@ public static class Wire
             Labels(board, item),
             item.Attachments.Count,
             (long)item.TimeSpent(now).TotalSeconds,
-            board.RunningTimer() is { } running && running.Item == item);
+            IsTiming(item, timing));
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(

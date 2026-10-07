@@ -202,6 +202,62 @@ public class TimeTrackingTests
     }
 
     [Fact]
+    public void A_timer_running_for_more_than_twelve_hours_is_taken_as_forgotten()
+    {
+        // Review finding: a timer left running on a computer that never came back counted forever.
+        var item = Task("A");
+        _board.StartTimer(item.Id, Actor.User, T0, "old-laptop");
+
+        Assert.Equal(TaskBoard.ForgottenAfter, item.TimeSpent(T0.AddDays(3)));
+        Assert.Equal(1, _board.CloseForgottenTimers(T0.AddDays(3)));
+        Assert.Equal(T0 + TaskBoard.ForgottenAfter, Assert.Single(item.TimeEntries).End);
+        Assert.Null(_board.RunningTimer());
+    }
+
+    [Fact]
+    public void Resuming_focus_doesnt_stop_a_timer_started_by_hand_meanwhile()
+    {
+        var focused = Task("Write report");
+        var other = Task("Urgent call");
+        _board.StartFocus(focused.Id, Actor.User, T0);
+        _board.PauseFocus(T0.AddMinutes(5));
+        _board.StartTimer(other.Id, Actor.User, T0.AddMinutes(6));
+
+        _board.ResumeFocus(T0.AddMinutes(10));
+
+        Assert.Equal(other, _board.RunningTimer()!.Value.Item);
+    }
+
+    [Fact]
+    public void Timing_another_task_by_hand_during_focus_takes_the_session_off_the_first()
+    {
+        // The session keeps going, but it no longer counts for the task that isn't being worked on.
+        var focused = Task("Write report");
+        var other = Task("Urgent call");
+        _board.StartFocus(focused.Id, Actor.User, T0);
+
+        _board.StartTimer(other.Id, Actor.User, T0.AddMinutes(5));
+        _board.TickPomodoro(T0.AddMinutes(30));
+
+        Assert.Null(_board.Pomodoro.ItemId);
+        Assert.DoesNotContain(_board.Activity, a => a.Kind == ActivityKind.FocusCompleted && a.ItemId == focused.Id);
+        Assert.Equal(TimeSpan.FromMinutes(5), focused.TimeSpent(T0.AddHours(1)));
+    }
+
+    [Fact]
+    public void Deleting_a_subtask_keeps_its_time_on_the_task()
+    {
+        // The work happened: reports keep it.
+        var parent = Task("Release");
+        var step = Task("Roll out", parent.Id);
+        _board.AddTime(step.Id, T0, T0.AddHours(1), Actor.User, T0);
+
+        _board.Delete(step.Id, Actor.User, T0.AddHours(2));
+
+        Assert.Equal(TimeSpan.FromHours(1), parent.TimeSpent(T0.AddHours(3)));
+    }
+
+    [Fact]
     public void When_two_devices_both_left_a_timer_running_the_newest_one_runs()
     {
         // Sync can bring two running entries together: the newest wins; stopping stops both.

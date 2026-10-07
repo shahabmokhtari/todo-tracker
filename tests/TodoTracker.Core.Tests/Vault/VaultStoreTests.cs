@@ -65,7 +65,7 @@ public sealed class VaultStoreTests : IDisposable
         await store.UpdateAsync(b => b.Archive(task.Id, Actor.User, _time.GetUtcNow()));
 
         var text = await File.ReadAllTextAsync(P("Work", "Ship release 2.3.md"));
-        Assert.Contains("stage: doing", text, StringComparison.Ordinal);
+        Assert.Contains("board: doing", text, StringComparison.Ordinal);
         Assert.Contains("archived:", text, StringComparison.Ordinal);
         Assert.Contains("## Time\n\n- 2026-01-05 09:00–09:25 · 25 min · [[#^", text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
 

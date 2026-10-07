@@ -82,10 +82,10 @@ public sealed class TimeEntry
 
     public bool IsRunning => End is null;
 
-    /// <summary>How long it lasted (a running one: until <paramref name="now"/>).</summary>
+    /// <summary>How long it lasted (a running one: until <paramref name="now"/>, and at most <see cref="TaskBoard.ForgottenAfter"/>).</summary>
     public TimeSpan Duration(DateTimeOffset now)
     {
-        var end = End ?? now;
+        var end = End ?? (now - Start > TaskBoard.ForgottenAfter ? Start + TaskBoard.ForgottenAfter : now);
         return end > Start ? end - Start : TimeSpan.Zero;
     }
 }

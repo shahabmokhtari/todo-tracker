@@ -39,7 +39,7 @@ internal static class BoardTimeEndpoints
                 }
 
                 var now = time.GetUtcNow();
-                var timing = b.RunningTimer()?.Item.Id;
+                var timing = b.RunningTimer(now)?.Item.Id;
                 return b.Items
                     .Where(r => (group is null || r.GroupId == group) && (r.ArchivedAt is not null) == (archived == true))
                     .Select(r => Wire.TreeNode(r, now, b, timing))
@@ -124,6 +124,11 @@ internal static class BoardTimeEndpoints
                 var now = time.GetUtcNow();
                 var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, options.TimeZone).DateTime);
                 var end = to ?? today;
+                if (group is { } g)
+                {
+                    b.GetGroup(g);
+                }
+
                 return TimeReport.Build(b, from ?? end.AddDays(-(DefaultReportDays - 1)), end, options.TimeZone, now, group);
             }));
     }

@@ -265,7 +265,11 @@ internal static class CliCommands
     private static async Task Time(CliSession s, CliArgs a)
     {
         a.Allow("days", "group");
-        var days = a.Value("days") is { } text ? int.Parse(text, NumberStyles.None, CultureInfo.InvariantCulture) : 28;
+        var days = 28;
+        if (a.Value("days") is { } text && (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out days) || days is < 1 or > TimeReport.MaxDays))
+        {
+            throw new ArgumentException($"--days takes a number of days from 1 to {TimeReport.MaxDays}.");
+        }
         var report = await s.Read(b =>
         {
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(s.Now, s.Zone).DateTime);
