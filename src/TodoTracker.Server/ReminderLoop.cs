@@ -35,6 +35,10 @@ public sealed partial class ReminderLoop(
     ILogger<ReminderLoop> logger) : BackgroundService
 {
     private readonly ReminderDispatcher _dispatcher = new(store, notifiers, ex => LogNotifierFailed(logger, ex));
+    private readonly string _seenPath = Path.Combine(options.DataDirectory, "timer-seen.json");
+
+    /// <summary>Longer than this between two sightings of a running timer: the app wasn't running (or the computer slept).</summary>
+    private TimeSpan AbandonedAfter => TimeSpan.FromTicks(Math.Max(TimeSpan.FromMinutes(10).Ticks, options.TickInterval.Ticks * 3));
 
     public async Task RunOnceAsync(CancellationToken cancellationToken)
     {
@@ -45,6 +49,55 @@ public sealed partial class ReminderLoop(
         if (focusEvents.Count > 0)
         {
             events.RaisePomodoro(focusEvents[^1]);
+        }
+
+        await WatchTimerAsync(now, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Notes when this computer's timer was last seen running; a timer that wasn't seen for a long while (the app
+    /// stopped, or the computer slept) ends when it was last seen, not hours later.
+    /// </summary>
+    private async Task WatchTimerAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Timers forgotten anywhere (a computer that never came back, a hand-typed running line) end at the most they count.
+        if (await store.ReadAsync(b => b.AllItems().Any(i => i.TimeEntries.Any(e => e.IsRunning && now - e.Start > TaskBoard.ForgottenAfter)), cancellationToken).ConfigureAwait(false))
+        {
+            await store.UpdateAsync(b => b.CloseForgottenTimers(now), cancellationToken).ConfigureAwait(false);
+        }
+
+        var start = await store.ReadAsync(b => b.RunningTimer(now) is { } r && r.Entry.Device == TaskBoard.ThisDevice ? r.Entry.Start : (DateTimeOffset?)null, cancellationToken).ConfigureAwait(false);
+        if (start is null)
+        {
+            return;
+        }
+
+        if (LastSeen() is { } seen && seen >= start && now - seen > AbandonedAfter)
+        {
+            await store.UpdateAsync(b => b.CloseAbandonedTimers(TaskBoard.ThisDevice, seen), cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(options.DataDirectory);
+            await File.WriteAllTextAsync(_seenPath, System.Text.Json.JsonSerializer.Serialize(now), cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogTickFailed(logger, ex);
+        }
+    }
+
+    private DateTimeOffset? LastSeen()
+    {
+        try
+        {
+            return File.Exists(_seenPath) ? System.Text.Json.JsonSerializer.Deserialize<DateTimeOffset>(File.ReadAllText(_seenPath)) : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 

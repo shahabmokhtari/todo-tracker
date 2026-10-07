@@ -66,6 +66,23 @@ public enum ActivityKind
     AttachmentAdded,
     AttachmentRemoved,
     LabelChanged,
+    Archived,
+    TimeLogged,
+}
+
+/// <summary>Where a top-level task is on the board. Done is <see cref="WorkItem.IsDone"/>, not a stage.</summary>
+public enum Stage
+{
+    Inbox,
+    Next,
+    Doing,
+}
+
+/// <summary>How time was recorded: a timer started by hand (or typed in), or a focus (Pomodoro) session.</summary>
+public enum TimeSource
+{
+    Manual,
+    Focus,
 }
 
 public enum ReminderKind

@@ -35,7 +35,9 @@ public sealed record CardDto(
     string? Details,
     IReadOnlyList<string> Tags,
     IReadOnlyList<LabelDto> Labels,
-    int AttachmentCount);
+    int AttachmentCount,
+    long TimeSpentSeconds = 0,
+    bool Timing = false);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -77,7 +79,46 @@ public sealed record ItemDto(
     IReadOnlyList<AttachmentDto> Attachments,
     bool HasRich,
     string? File,
-    string? ObsidianUrl);
+    string? ObsidianUrl,
+    string? Stage = null,
+    DateTimeOffset? ArchivedAt = null,
+    long TimeSpentSeconds = 0,
+    IReadOnlyList<TimeEntryDto>? TimeEntries = null);
+
+/// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
+public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
+
+/// <summary>The timer: what's being timed (if anything), since when, and for how long so far.</summary>
+public sealed record TimerDto(bool Running, Guid? ItemId = null, string? Title = null, IReadOnlyList<string>? Path = null, DateTimeOffset? Start = null, string? Source = null, long ElapsedSeconds = 0);
+
+/// <summary>
+/// A task in the board and outline: lean (no notes or attachments), with its column (top-level tasks), how much of it
+/// is done, and the time spent on it (with its subtasks).
+/// </summary>
+public sealed record TreeNodeDto(
+    Guid Id,
+    string Title,
+    string Priority,
+    string State,
+    string? Stage,
+    bool Done,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? ArchivedAt,
+    DateTimeOffset? Deadline,
+    DateTimeOffset? NextActionAt,
+    bool Sequential,
+    Guid GroupId,
+    IReadOnlyList<string> Tags,
+    IReadOnlyList<LabelDto> Labels,
+    bool HasDetails,
+    int NoteCount,
+    int AttachmentCount,
+    int DoneCount,
+    int TotalCount,
+    long TimeSpentSeconds,
+    bool Timing,
+    IReadOnlyList<TreeNodeDto> Children);
 
 /// <summary>A search result: enough to show and act on a task without loading its whole tree.</summary>
 public sealed record SearchHitDto(
@@ -121,7 +162,8 @@ public sealed record DashboardDto(
     PomodoroDto Pomodoro,
     IReadOnlyList<LabelDto> Labels,
     IReadOnlyList<VaultProblem> Problems,
-    string? Query);
+    string? Query,
+    TimerDto? Timer = null);
 
 public sealed record ReportDto(ItemDto? Item, IReadOnlyList<TimelineDto> Timeline);
 
@@ -155,6 +197,7 @@ public static class Wire
 
         var filter = string.IsNullOrWhiteSpace(query) ? null : TaskQuery.Parse(query);
         var snapshot = Agenda.Build(board, now, recentNotes, groupId, filter);
+        var timing = board.RunningTimer(now)?.Item.Id;
         return new DashboardDto(
             now,
             groupId,
@@ -163,9 +206,9 @@ public static class Wire
                 var c = snapshot.GroupCounts[gr.Id];
                 return new GroupDto(gr.Id, gr.Name, gr.Color, c.Now, c.Waiting, c.Attention);
             }).ToList(),
-            snapshot.Focus is { } f ? Card(f, now, board) : null,
-            snapshot.Now.Select(e => Card(e, now, board)).ToList(),
-            snapshot.Waiting.Select(e => Card(e, now, board)).ToList(),
+            snapshot.Focus is { } f ? Card(f, now, board, timing) : null,
+            snapshot.Now.Select(e => Card(e, now, board, timing)).ToList(),
+            snapshot.Waiting.Select(e => Card(e, now, board, timing)).ToList(),
             snapshot.Overview.Select(o => new OverviewDto(
                 o.Item.Id,
                 o.Item.Title,
@@ -182,10 +225,52 @@ public static class Wire
             Pomodoro(board, now),
             Labels(board),
             links?.Vault.Problems ?? [],
-            string.IsNullOrWhiteSpace(query) ? null : query.Trim());
+            string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
+            Timer(board, now));
     }
 
-    public static CardDto Card(AgendaEntry e, DateTimeOffset now, TaskBoard board)
+    public static TimerDto Timer(TaskBoard board, DateTimeOffset now) =>
+        board.RunningTimer(now) is { } running
+            ? new TimerDto(true, running.Item.Id, running.Item.Title, running.Item.Path, running.Entry.Start, Of(running.Entry.Source), (long)running.Entry.Duration(now).TotalSeconds)
+            : new TimerDto(false);
+
+    /// <summary>The timer runs on this task or one of its subtasks (the same rule on cards and in the board).</summary>
+    private static bool IsTiming(WorkItem item, Guid? timing) => timing is { } t && item.SelfAndDescendants().Any(i => i.Id == t);
+
+    public static TimeEntryDto TimeEntry(WorkItem item, TimeEntry entry, DateTimeOffset now) =>
+        new(entry.Id, item.Id, entry.Start, entry.End, (long)entry.Duration(now).TotalSeconds, Of(entry.Source), entry.Device);
+
+    public static TreeNodeDto TreeNode(WorkItem item, DateTimeOffset now, TaskBoard board, Guid? timing)
+    {
+        var leaves = item.SelfAndDescendants().Skip(1).Where(i => i.Children.Count == 0).ToList();
+        return new TreeNodeDto(
+            item.Id,
+            item.Title,
+            Of(item.Priority),
+            Of(Agenda.StateOf(item, now)),
+            item.Parent is null ? Of(item.Stage) : null,
+            item.IsDone,
+            item.CreatedAt,
+            item.CompletedAt,
+            item.ArchivedAt,
+            item.Deadline,
+            item.NextActionAt,
+            item.Sequential,
+            item.GroupId,
+            item.Tags,
+            Labels(board, item),
+            !string.IsNullOrWhiteSpace(item.Details),
+            item.Notes.Count,
+            item.Attachments.Count,
+            leaves.Count(l => l.IsDone),
+            leaves.Count,
+            (long)item.TimeSpent(now).TotalSeconds,
+            IsTiming(item, timing),
+            item.Children.Select(c => TreeNode(c, now, board, timing)).ToList());
+    }
+
+    /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>
+    public static CardDto Card(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing = null)
     {
         ArgumentNullException.ThrowIfNull(e);
         ArgumentNullException.ThrowIfNull(board);
@@ -222,7 +307,9 @@ public static class Wire
             item.Details,
             item.Tags,
             Labels(board, item),
-            item.Attachments.Count);
+            item.Attachments.Count,
+            (long)item.TimeSpent(now).TotalSeconds,
+            IsTiming(item, timing));
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -248,7 +335,11 @@ public static class Wire
         item.Attachments.Select(a => Attachment(item, a)).ToList(),
         links?.HasRich(item) ?? false,
         links?.FileOf(item.Id),
-        links?.ObsidianUrlOf(item.Id));
+        links?.ObsidianUrlOf(item.Id),
+        item.Parent is null ? Of(item.Stage) : null,
+        item.ArchivedAt,
+        (long)item.TimeSpent(now).TotalSeconds,
+        item.TimeEntries.Select(e => TimeEntry(item, e, now)).ToList());
 
     public static SearchHitDto SearchHit(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
         item.Id,

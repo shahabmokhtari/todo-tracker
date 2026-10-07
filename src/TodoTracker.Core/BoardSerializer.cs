@@ -98,6 +98,9 @@ public static class BoardSerializer
         Tags = item.Tags.Count == 0 ? null : item.Tags.ToList(),
         Labels = item.Labels.Count == 0 ? null : item.Labels.ToList(),
         Attachments = item.Attachments.Count == 0 ? null : item.Attachments.Select(a => new AttachmentDocument { Id = a.Id, FileName = a.FileName, Path = a.Path, Size = a.Size, AddedAt = a.AddedAt, AddedBy = ToDocument(a.AddedBy) }).ToList(),
+        Stage = item.Parent is null && item.Stage != Stage.Next ? item.Stage : null,
+        ArchivedAt = item.ArchivedAt,
+        Time = item.TimeEntries.Count == 0 ? null : item.TimeEntries.Select(e => new TimeEntryDocument { Id = e.Id, Start = e.Start, End = e.End, Source = e.Source, Device = e.Device }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
 
@@ -160,7 +163,14 @@ public static class BoardSerializer
             Sequential = doc.Sequential ?? false,
             StepDelay = doc.StepDelayMinutes is > 0 and var m ? TimeSpan.FromMinutes(m) : null,
             OwnGroupId = doc.GroupId is { } g && board.Groups.Any(x => x.Id == g) ? g : board.DefaultGroupId,
+            Stage = doc.Stage ?? Stage.Next,
+            ArchivedAt = parent is null ? doc.ArchivedAt : null,
         };
+        foreach (var e in doc.Time ?? [])
+        {
+            TaskBoard.AddLoadedTimeEntry(item, TaskBoard.LoadedTimeEntry(e.Id, e.Start, e.End, e.Source, e.Device));
+        }
+
         foreach (var r in doc.Reminders ?? [])
         {
             item.ReminderList.Add(new Reminder(r.Id, r.DueAt, r.Message ?? string.Empty, r.Kind) { NotifiedAt = r.NotifiedAt, DismissedAt = r.DismissedAt });
@@ -261,7 +271,26 @@ public static class BoardSerializer
 
         public List<AttachmentDocument>? Attachments { get; set; }
 
+        public Stage? Stage { get; set; }
+
+        public DateTimeOffset? ArchivedAt { get; set; }
+
+        public List<TimeEntryDocument>? Time { get; set; }
+
         public List<ItemDocument>? Children { get; set; }
+    }
+
+    private sealed class TimeEntryDocument
+    {
+        public Guid Id { get; set; }
+
+        public DateTimeOffset Start { get; set; }
+
+        public DateTimeOffset? End { get; set; }
+
+        public TimeSource Source { get; set; }
+
+        public string? Device { get; set; }
     }
 
     private sealed class LabelDocument

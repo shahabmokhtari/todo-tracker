@@ -15,6 +15,7 @@ public static class McpInfo
         "- Log progress with add_note (\"did X, next Y\"); defer with schedule_next_action instead of leaving stale tasks in Now.\n" +
         "- Groups are tabs such as Work and Personal. Tags are free-form; labels are a curated colored set (list_labels).\n" +
         "- Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).\n" +
+        "- Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.\n" +
         "- Tasks are markdown files in a folder the user may also open in Obsidian; vault_info explains the format.";
 
     public static string Version => typeof(McpInfo).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";

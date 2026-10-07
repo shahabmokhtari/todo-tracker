@@ -9,6 +9,7 @@ public sealed class WorkItem
     internal readonly List<string> TagList = [];
     internal readonly List<string> LabelList = [];
     internal readonly List<Attachment> AttachmentList = [];
+    internal readonly List<TimeEntry> TimeEntryList = [];
 
     internal WorkItem(Guid id, string title, Priority priority, DateTimeOffset createdAt)
     {
@@ -62,6 +63,21 @@ public sealed class WorkItem
 
     public IReadOnlyList<Attachment> Attachments => AttachmentList;
 
+    /// <summary>Time spent on this item itself (not its subtasks), oldest first.</summary>
+    public IReadOnlyList<TimeEntry> TimeEntries => TimeEntryList;
+
+    /// <summary>Where a top-level task is on the board (subtasks follow their task). Tasks without one are in Next.</summary>
+    public Stage Stage { get; internal set; } = Stage.Next;
+
+    /// <summary>Put away (a finished top-level task): kept, searchable with <c>is:archived</c>, out of every list.</summary>
+    public DateTimeOffset? ArchivedAt { get; internal set; }
+
+    public bool IsArchived => Root.ArchivedAt is not null;
+
+    /// <summary>Time spent on this item (with its subtasks unless told otherwise), counting a running timer.</summary>
+    public TimeSpan TimeSpent(DateTimeOffset now, bool includeSubtasks = true) =>
+        (includeSubtasks ? SelfAndDescendants() : [this]).SelectMany(i => i.TimeEntryList).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration(now));
+
     public bool IsDone => CompletedAt is not null;
 
     public bool HasOpenChildren => ChildList.Exists(c => !c.IsDone);
@@ -111,6 +127,9 @@ public sealed record NewTask(string Title)
     public IReadOnlyList<string>? Tags { get; init; }
 
     public IReadOnlyList<string>? Labels { get; init; }
+
+    /// <summary>Where it starts on the board (top-level tasks); null: the inbox.</summary>
+    public Stage? Stage { get; init; }
 }
 
 public sealed record TaskChanges

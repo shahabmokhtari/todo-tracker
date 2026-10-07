@@ -161,5 +161,7 @@ make big things small, log progress, defer instead of piling up, never delete). 
 | `put_first` | Put tasks at the top of Do now (when the user says what matters most) |
 | `list_labels`, `vault_info`, `get_report` | Labels, where the files are (and their format), the timeline |
 | `task_history`, `restore_task_version` | Every change is a version; put a task back |
+| `move_card`, `archive_task`, `unarchive_task` | Board columns (inbox, next, doing); put finished tasks away |
+| `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time spent on tasks, and where the time went (per day, group, task) |
 
 There is deliberately no delete tool.

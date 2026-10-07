@@ -15,6 +15,40 @@ public sealed class BackgroundTests : IAsyncLifetime
     private ReminderLoop Loop => _server.App.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<ReminderLoop>().Single();
 
     [Fact]
+    public async Task A_timer_running_while_the_computer_slept_ends_when_it_was_last_seen()
+    {
+        // ServerFixture ticks every hour; a gap of more than 3 ticks means the app wasn't running (or was asleep).
+        var client = _server.Client();
+        var item = await client.PostJson("/api/items", new { title = "Write report" });
+        await client.PostJson("/api/timer/start", new { itemId = item.Id() });
+        _server.Time.Advance(TimeSpan.FromMinutes(20));
+        await Loop.RunOnceAsync(CancellationToken.None);
+
+        _server.Time.Advance(TimeSpan.FromHours(9));
+        await Loop.RunOnceAsync(CancellationToken.None);
+
+        var timer = await client.GetJson("/api/timer");
+        Assert.False(timer["running"]!.GetValue<bool>());
+        Assert.Equal(20 * 60, (await client.GetJson($"/api/items/{item.Id()}"))["timeSpentSeconds"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public async Task A_timer_seen_running_keeps_running()
+    {
+        var client = _server.Client();
+        var item = await client.PostJson("/api/items", new { title = "Write report" });
+        await client.PostJson("/api/timer/start", new { itemId = item.Id() });
+
+        for (var i = 0; i < 3; i++)
+        {
+            _server.Time.Advance(TimeSpan.FromHours(1));
+            await Loop.RunOnceAsync(CancellationToken.None);
+        }
+
+        Assert.True((await client.GetJson("/api/timer"))["running"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task Tick_dispatches_due_reminders_to_notifiers_once()
     {
         var client = _server.Client();

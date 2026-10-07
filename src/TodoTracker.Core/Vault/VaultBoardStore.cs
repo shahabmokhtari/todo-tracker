@@ -1046,13 +1046,12 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
         var layout = Layout(_caches, rel);
         return layout is not null && (layout.Layout.Exists(l => l.Kind is null) || layout.Leading.Count > 0 || layout.SubtasksTrailer is not null
-            || layout.NotesPreamble is not null || layout.AttachmentsPreamble is not null
+            || layout.NotesPreamble is not null || layout.AttachmentsPreamble is not null || layout.TimePreamble is not null
             || layout.Frontmatter.Blocks.Any(b => b.Key is null || !IsOwnedKey(b.Key, layout.IdKey)));
     }
 
     private static bool IsOwnedKey(string key, string idKey) =>
-        string.Equals(key, idKey, StringComparison.OrdinalIgnoreCase)
-        || key.ToLowerInvariant() is "status" or "priority" or "created" or "completed" or "due" or "scheduled" or "sequential" or "step-delay" or "tags" or "labels" or "reminders";
+        string.Equals(key, idKey, StringComparison.OrdinalIgnoreCase) || TaskMarkdown.IsOwnedProperty(key);
 
     private string NewFilePath(string folder, string stem, HashSet<string> reserved)
     {

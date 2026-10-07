@@ -2,7 +2,9 @@ namespace TodoTracker.Core;
 
 /// <summary>
 /// One search syntax for every surface (search box, CLI, MCP): words match the title or details; <c>#tag</c>
-/// (nested tags included), <c>label:name</c>, <c>group:name</c>, and <c>is:open</c>/<c>is:done</c> narrow it down.
+/// (nested tags included), <c>label:name</c>, <c>group:name</c>, <c>is:open</c>/<c>is:done</c>, <c>is:archived</c>
+/// (archived tasks are found only then), and the board column (<c>is:inbox</c>, <c>is:next</c>, <c>is:doing</c>, or
+/// <c>stage:doing</c>) narrow it down.
 /// Tags and labels are inherited, so <c>#release</c> also finds the steps of a tagged project. Quote multi-word
 /// values: <c>label:"deep work"</c>. All terms must match (case-insensitive).
 /// </summary>
@@ -13,6 +15,8 @@ public sealed class TaskQuery
     private readonly List<string> _labels = [];
     private readonly List<string> _groups = [];
     private bool? _done;
+    private bool _archived;
+    private Stage? _stage;
 
     private TaskQuery()
     {
@@ -20,10 +24,13 @@ public sealed class TaskQuery
 
     public static TaskQuery Empty { get; } = new();
 
-    /// <summary>Whether the query says which state it wants (<c>is:open</c> or <c>is:done</c>).</summary>
-    public bool HasState => _done is not null;
+    /// <summary>Whether the query says which state it wants (<c>is:open</c>, <c>is:done</c>, <c>is:archived</c>).</summary>
+    public bool HasState => _done is not null || _archived;
 
-    public bool IsEmpty => _words.Count == 0 && _tags.Count == 0 && _labels.Count == 0 && _groups.Count == 0 && _done is null;
+    /// <summary>The query asks for archived tasks (they're left out otherwise).</summary>
+    public bool WantsArchived => _archived;
+
+    public bool IsEmpty => _words.Count == 0 && _tags.Count == 0 && _labels.Count == 0 && _groups.Count == 0 && _done is null && !_archived && _stage is null;
 
     public static TaskQuery Parse(string? text)
     {
@@ -46,6 +53,14 @@ public sealed class TaskQuery
             {
                 query._done = state.Equals("done", StringComparison.OrdinalIgnoreCase);
             }
+            else if (TryValue(token, "is:", out var archived) && archived.Equals("archived", StringComparison.OrdinalIgnoreCase))
+            {
+                query._archived = true;
+            }
+            else if ((TryValue(token, "is:", out var stage) || TryValue(token, "stage:", out stage)) && Enum.TryParse<Stage>(stage, ignoreCase: true, out var parsed) && !int.TryParse(stage, out _))
+            {
+                query._stage = parsed;
+            }
             else
             {
                 query._words.Add(token);
@@ -67,6 +82,17 @@ public sealed class TaskQuery
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(board);
         if (_done is { } done && item.IsDone != done)
+        {
+            return false;
+        }
+
+        // Archived tasks are put away: found only when asked for (and then only they are).
+        if (item.IsArchived != _archived)
+        {
+            return false;
+        }
+
+        if (_stage is { } stage && (item.Root.Stage != stage || item.Root.IsDone))
         {
             return false;
         }

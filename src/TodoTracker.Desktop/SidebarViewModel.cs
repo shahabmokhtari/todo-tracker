@@ -425,16 +425,16 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     });
 
     [RelayCommand]
-    private Task PausePomodoro() => Pomo(t => t.Pause(_time.GetUtcNow()));
+    private Task PausePomodoro() => Pomo(b => b.PauseFocus(_time.GetUtcNow()));
 
     [RelayCommand]
-    private Task ResumePomodoro() => Pomo(t => t.Resume(_time.GetUtcNow()));
+    private Task ResumePomodoro() => Pomo(b => b.ResumeFocus(_time.GetUtcNow()));
 
     [RelayCommand]
-    private Task SkipPomodoro() => Pomo(t => t.Skip(_time.GetUtcNow()));
+    private Task SkipPomodoro() => Pomo(b => b.SkipFocus(_time.GetUtcNow()));
 
     [RelayCommand]
-    private Task ResetPomodoro() => Pomo(t => t.Reset());
+    private Task ResetPomodoro() => Pomo(b => b.ResetFocus(_time.GetUtcNow()));
 
     [RelayCommand]
     private void OpenDashboard() => _shell.OpenUrl(Launch("/"));
@@ -568,9 +568,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
-    private Task Pomo(Action<PomodoroTimer> action) => Run(async () =>
+    private Task Pomo(Action<TaskBoard> action) => Run(async () =>
     {
-        await _store.UpdateAsync(b => action(b.Pomodoro)).ConfigureAwait(true);
+        await _store.UpdateAsync(action).ConfigureAwait(true);
         return null;
     });
 

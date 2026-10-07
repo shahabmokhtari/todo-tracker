@@ -50,6 +50,14 @@ public sealed class ParsedTaskFile
 
     internal string? AttachmentsPreamble { get; set; }
 
+    internal string? TimePreamble { get; set; }
+
+    /// <summary>Text after the time lines (say a weekly total), kept after them.</summary>
+    internal string? TimeTrailer { get; set; }
+
+    /// <summary>Words people added to a time line (say <c>standup</c>), kept as they wrote them.</summary>
+    internal Dictionary<Guid, string> TimeExtras { get; } = [];
+
     /// <summary>Sections after the first app section, in file order: an app section kind, or raw text of another section.</summary>
     internal List<(string? Kind, string? Raw)> Layout { get; } = [];
 
@@ -71,8 +79,12 @@ public static partial class TaskMarkdown
     private const string Subtasks = "subtasks";
     private const string Notes = "notes";
     private const string Attachments = "attachments";
+    private const string Time = "time";
 
-    private static readonly string[] CanonicalKeys = ["status", "priority", "created", "completed", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "created", "completed", "archived", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
+
+    /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
+    internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
 
     public static ParsedTaskFile Parse(string text, string fileStem, TaskMarkdownContext context)
     {
@@ -116,7 +128,7 @@ public static partial class TaskMarkdown
             }
         }
 
-        foreach (var kind in new[] { Subtasks, Notes, Attachments })
+        foreach (var kind in new[] { Subtasks, Notes, Time, Attachments })
         {
             if (rendered.Add(kind) && RenderSection(kind, root, context, previous) is { } section)
             {
@@ -175,7 +187,7 @@ public static partial class TaskMarkdown
         // Sections: text before the first app section is the details; later unknown sections keep their place.
         string? title = null;
         var details = new List<string>();
-        var sections = new Dictionary<string, List<string>> { [Subtasks] = [], [Notes] = [], [Attachments] = [] };
+        var sections = new Dictionary<string, List<string>> { [Subtasks] = [], [Notes] = [], [Attachments] = [], [Time] = [] };
         var layout = new List<(string? Kind, List<string>? Lines)>();
         var current = details;
         var fence = new VaultText.Fence();
@@ -249,6 +261,12 @@ public static partial class TaskMarkdown
             state.NeedsWrite |= completed is not null;
         }
 
+        // Only a done task can be archived: one reopened by hand (status: open) is back in the lists.
+        var archived = ParseArchived(fm.Scalar("archived"), root.CompletedAt, tz, ctx.Now);
+        root.ArchivedAt = done ? archived : null;
+        state.NeedsWrite |= !done && archived is not null;
+
+        root.Stage = ParseStage(fm.Scalar("board"));
         root.TagList.AddRange(fm.List("tags").Select(t => t.TrimStart('#')).Where(t => t.Length > 0));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
@@ -264,6 +282,7 @@ public static partial class TaskMarkdown
         root.Sequential = ordered ?? IsTrue(fm.Scalar("sequential"));
         ParseNotes(sections[Notes], root, state);
         ParseAttachments(sections[Attachments], root, state);
+        ParseTimeEntries(sections[Time], root, state);
 
         foreach (var (kind, lines) in layout)
         {
@@ -295,6 +314,7 @@ public static partial class TaskMarkdown
         "subtasks" or "steps" or "tasks" or "checklist" => Subtasks,
         "notes" or "log" => Notes,
         "attachments" or "files" => Attachments,
+        "time" or "time log" or "time spent" or "time tracked" => Time,
         _ => null,
     };
 
@@ -765,6 +785,146 @@ public static partial class TaskMarkdown
         state.File.NotesPreamble = JoinKeep(preamble);
     }
 
+    /// <summary>
+    /// <c>archived:</c> as people may write it: a time, <c>true</c>/<c>yes</c> (archived when it was finished), or
+    /// anything else (not archived). Never fails: it's a common property in Obsidian notes.
+    /// </summary>
+    private static DateTimeOffset? ParseArchived(string? text, DateTimeOffset? completed, TimeZoneInfo tz, DateTimeOffset now)
+    {
+        var value = (text ?? string.Empty).Trim();
+        if (value.ToLowerInvariant() is "true" or "yes")
+        {
+            return completed ?? now;
+        }
+
+        try
+        {
+            return value.Length == 0 ? null : VaultText.ParseTime(value, tz, VaultText.DefaultDoneTime);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
+
+    private static Stage ParseStage(string? text) => (text ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "inbox" => Stage.Inbox,
+        "doing" or "in progress" or "in-progress" or "wip" => Stage.Doing,
+        _ => Stage.Next,
+    };
+
+    /// <summary>
+    /// <c>## Time</c>: one line per stretch of time, <c>- 2026-01-05 09:00–09:25 · 25 min · focus · [[#^bid|Subtask]]</c>,
+    /// or <c>→ running</c>. Lines typed by hand (<c>- 2026-01-05 9:00 to 10:30</c>) count too; other text stays put.
+    /// </summary>
+    private static void ParseTimeEntries(List<string> lines, WorkItem root, ParseState state)
+    {
+        var tz = state.Context.TimeZone;
+        var preamble = new List<string>();
+        var trailer = new List<string>();
+        var seenEntry = false;
+        var index = 0;
+        var touched = new HashSet<WorkItem>();
+
+        // A mistyped time (24:00, 09:75, Feb 30) leaves the line as text: one typo never breaks the whole task.
+        DateTimeOffset? TryTime(string day, string time)
+        {
+            try
+            {
+                return VaultText.ParseTime($"{day} {time.PadLeft(5, '0')}", tz, "00:00");
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
+        foreach (var line in lines)
+        {
+            var m = TimeLine().Match(line);
+            var start = m.Success ? TryTime(m.Groups["sd"].Value, m.Groups["st"].Value) : null;
+            DateTimeOffset? shown = null;
+            if (start is not null && !m.Groups["run"].Success)
+            {
+                shown = TryTime(m.Groups["ed"].Success ? m.Groups["ed"].Value : m.Groups["sd"].Value, m.Groups["et"].Value);
+                start = shown is null ? null : start;
+            }
+
+            if (start is null)
+            {
+                var text = seenEntry ? trailer : preamble;
+                if (line.Trim().Length > 0 || text.Count > 0)
+                {
+                    text.Add(line);
+                }
+
+                continue;
+            }
+
+            seenEntry = true;
+            var rest = m.Groups["rest"].Value;
+            JsonObject? meta = null;
+            if (HiddenMeta().Match(rest) is { Success: true } hidden)
+            {
+                meta = TryParseMeta(hidden.Groups["json"].Value);
+                rest = rest[..hidden.Index];
+            }
+
+            // The exact times (hidden) unless the visible ones were changed (in Obsidian, say). An end earlier on the
+            // clock than the start, without a date, is past midnight; the same minute is a short stretch.
+            var exactStart = VaultText.ParseInstant(Str(meta, "start"));
+            var exactEnd = VaultText.ParseInstant(Str(meta, "end"));
+            var startAt = exactStart is { } es && VaultText.LocalMinute(es, tz) == VaultText.LocalMinute(start.Value, tz) ? es : start.Value;
+            DateTimeOffset? endAt = null;
+            if (shown is { } visible)
+            {
+                var pastMidnight = !m.Groups["ed"].Success && visible < start.Value ? visible.AddDays(1) : visible;
+                endAt = exactEnd is { } ee && (VaultText.LocalMinute(ee, tz) == VaultText.LocalMinute(visible, tz) || VaultText.LocalMinute(ee, tz) == VaultText.LocalMinute(pastMidnight, tz))
+                    ? ee
+                    : pastMidnight;
+            }
+
+            state.NeedsWrite |= meta is null || exactStart != startAt || exactEnd != endAt;
+
+            var target = root;
+            var source = TimeSource.Manual;
+            var extras = new List<string>();
+            foreach (var part in rest.Split('·', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (part.Equals("focus", StringComparison.OrdinalIgnoreCase))
+                {
+                    source = TimeSource.Focus;
+                }
+                else if (BlockLink().Match(part) is { Success: true } link)
+                {
+                    target = state.ByBlockId.GetValueOrDefault(link.Groups["bid"].Value) ?? root;
+                }
+                else if (!DurationText().IsMatch(part))
+                {
+                    extras.Add(part);
+                }
+            }
+
+            var id = state.NewId(Guid.TryParse(Str(meta, "id"), out var g) ? g : null, $"time|{index++}|{m.Groups["sd"].Value} {m.Groups["st"].Value}");
+            TaskBoard.AddLoadedTimeEntry(target, TaskBoard.LoadedTimeEntry(id, startAt, endAt, source, Str(meta, "device")));
+            touched.Add(target);
+            if (extras.Count > 0)
+            {
+                state.File.TimeExtras[id] = string.Join(" · ", extras);
+            }
+        }
+
+        // Oldest first (lines merged from two devices can arrive out of order).
+        foreach (var item in touched)
+        {
+            item.TimeEntryList.Sort((a, b) => a.Start.CompareTo(b.Start));
+        }
+
+        state.File.TimePreamble = JoinKeep(preamble);
+        state.File.TimeTrailer = JoinKeep(trailer);
+    }
+
     private static void ParseAttachments(List<string> lines, WorkItem root, ParseState state)
     {
         var preamble = new List<string>();
@@ -849,6 +1009,8 @@ public static partial class TaskMarkdown
     private static Dictionary<string, string> Signatures(WorkItem root) => new(StringComparer.OrdinalIgnoreCase)
     {
         ["status"] = root.IsDone ? "done" : "open",
+        ["board"] = root.Stage.ToString(),
+        ["archived"] = root.ArchivedAt is { } a ? VaultText.Utc(a) : string.Empty,
         ["priority"] = root.Priority.ToString(),
         ["created"] = VaultText.Utc(root.CreatedAt),
         ["completed"] = root.CompletedAt is { } c ? VaultText.Utc(c) : string.Empty,
@@ -907,6 +1069,10 @@ public static partial class TaskMarkdown
         {
             case "status":
                 return $"status: {(root.IsDone ? "done" : "open")}\n";
+            case "board":
+                return root.Stage == Stage.Next ? null : $"board: {root.Stage.ToString().ToLowerInvariant()}\n";
+            case "archived":
+                return root.ArchivedAt is { } archived ? $"archived: {VaultText.Utc(archived)}\n" : null;
             case "priority":
                 return root.Priority == Priority.Normal ? null : $"priority: {root.Priority.ToString().ToLowerInvariant()}\n";
             case "created":
@@ -1008,6 +1174,18 @@ public static partial class TaskMarkdown
                 }
 
                 return Section("Notes", previous?.NotesPreamble, string.Join("\n\n", notes.Select(n => RenderNote(n.Item, n.Note, root, context.TimeZone, previous))));
+            }
+
+            case Time:
+            {
+                var entries = root.SelfAndDescendants().SelectMany(i => i.TimeEntries.Select(e => (Item: i, Entry: e))).OrderBy(e => e.Entry.Start).ToList();
+                if (entries.Count == 0 && previous?.TimePreamble is null)
+                {
+                    return null;
+                }
+
+                var section = Section("Time", previous?.TimePreamble, string.Join("\n", entries.Select(e => RenderTimeEntry(e.Item, e.Entry, root, context.TimeZone, previous))));
+                return previous?.TimeTrailer is { } trailer ? $"{section}\n\n{trailer}" : section;
             }
 
             default:
@@ -1178,6 +1356,60 @@ public static partial class TaskMarkdown
         }
 
         return sb.ToString();
+    }
+
+    private static string RenderTimeEntry(WorkItem item, TimeEntry entry, WorkItem root, TimeZoneInfo tz, ParsedTaskFile? previous)
+    {
+        var start = VaultText.ToLocal(entry.Start, tz);
+        var sb = new StringBuilder("- ").Append(start.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture));
+        if (entry.End is { } endAt)
+        {
+            // The end's date is shown when it's another day, or earlier on the clock (a DST change, a correction), so
+            // it can't be read as the next day.
+            var end = VaultText.ToLocal(endAt, tz);
+            var sameDay = end.Date == start.Date && new TimeSpan(end.Hour, end.Minute, 0) >= new TimeSpan(start.Hour, start.Minute, 0);
+            sb.Append('–').Append(end.ToString(sameDay ? "HH:mm" : "yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(" · ").Append(DurationLabel(endAt - entry.Start));
+        }
+        else
+        {
+            sb.Append(" → running");
+        }
+
+        if (entry.Source == TimeSource.Focus)
+        {
+            sb.Append(" · focus");
+        }
+
+        if (previous?.TimeExtras.GetValueOrDefault(entry.Id) is { } extra)
+        {
+            sb.Append(" · ").Append(extra);
+        }
+
+        if (item != root)
+        {
+            sb.Append(" · [[#^").Append(BlockIdOf(item, previous)).Append('|').Append(LinkAlias().Replace(item.Title, " ")).Append("]]");
+        }
+
+        var meta = new JsonObject { ["id"] = entry.Id.ToString(), ["start"] = VaultText.Utc(entry.Start) };
+        if (entry.End is { } e)
+        {
+            meta["end"] = VaultText.Utc(e);
+        }
+
+        if (entry.Device is { Length: > 0 } device)
+        {
+            meta["device"] = device;
+        }
+
+        return sb.Append(" %%").Append(VaultText.Hidden(meta)).Append("%%").ToString();
+    }
+
+    /// <summary>"25 min", or "2 h 05 min".</summary>
+    public static string DurationLabel(TimeSpan span)
+    {
+        var minutes = (int)Math.Round(span.TotalMinutes);
+        return minutes < 60 ? $"{minutes} min" : $"{minutes / 60} h {minutes % 60:00} min";
     }
 
     private static string RenderAttachment(Attachment attachment, TaskMarkdownContext ctx, ParsedTaskFile? previous)
@@ -1382,4 +1614,10 @@ public static partial class TaskMarkdown
 
     [GeneratedRegex(@"[\[\]|]")]
     private static partial Regex LinkAlias();
+
+    [GeneratedRegex(@"^[-*+] (?<sd>\d{4}-\d{2}-\d{2}) (?<st>\d{1,2}:\d{2})\s*(?:(?:–|—|-|to)\s*(?:(?<ed>\d{4}-\d{2}-\d{2})\s+)?(?<et>\d{1,2}:\d{2})|(?<run>→\s*(?:running|now)))(?<rest>.*)$", RegexOptions.IgnoreCase)]
+    private static partial Regex TimeLine();
+
+    [GeneratedRegex(@"^\d+\s*(?:min|m|h)(?:\s*\d{1,2}\s*min)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex DurationText();
 }

@@ -68,7 +68,7 @@ public static class Agenda
     public static DashboardSnapshot Build(TaskBoard board, DateTimeOffset now, int recentNoteCount = 5, Guid? groupId = null, TaskQuery? filter = null)
     {
         ArgumentNullException.ThrowIfNull(board);
-        var allOpen = board.AllItems().Where(i => !i.IsDone).Select(i => Describe(i, now)).ToList();
+        var allOpen = board.AllItems().Where(i => !i.IsDone && !i.IsArchived).Select(i => Describe(i, now)).ToList();
         var nowAll = allOpen.Where(e => e.State == ItemState.Actionable || (e.NeedsAttention && e.State is ItemState.Waiting or ItemState.Container)).ToList();
         var waitingAll = allOpen.Where(e => e.State == ItemState.Waiting && !e.NeedsAttention && e.Item.NextActionAt > now && !e.Item.Ancestors().Any(a => a.NextActionAt > now)).ToList();
 
@@ -98,7 +98,7 @@ public static class Agenda
 
         var notes = recentNoteCount <= 0
             ? []
-            : board.AllItems().Where(InScope)
+            : board.AllItems().Where(i => !i.IsArchived && InScope(i))
                 .SelectMany(i => i.Notes.Select(n => new RecentNote(i, n)))
                 .OrderByDescending(n => n.Note.At)
                 .Take(recentNoteCount)

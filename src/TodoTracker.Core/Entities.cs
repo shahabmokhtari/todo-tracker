@@ -54,6 +54,42 @@ public sealed class Note
 
 public sealed record ActivityEntry(DateTimeOffset At, Guid ItemId, ActivityKind Kind, string Summary, Actor Actor);
 
+/// <summary>
+/// A stretch of time spent on a task: from <see cref="Start"/> to <see cref="End"/>, or still running (no end).
+/// <see cref="Device"/> is the computer that runs the timer (a timer left running when that computer's app stopped
+/// is ended there, never by another computer).
+/// </summary>
+public sealed class TimeEntry
+{
+    internal TimeEntry(Guid id, DateTimeOffset start, DateTimeOffset? end, TimeSource source, string? device)
+    {
+        Id = id;
+        Start = start;
+        End = end;
+        Source = source;
+        Device = device;
+    }
+
+    public Guid Id { get; }
+
+    public DateTimeOffset Start { get; internal set; }
+
+    public DateTimeOffset? End { get; internal set; }
+
+    public TimeSource Source { get; }
+
+    public string? Device { get; }
+
+    public bool IsRunning => End is null;
+
+    /// <summary>How long it lasted (a running one: until <paramref name="now"/>, and at most <see cref="TaskBoard.ForgottenAfter"/>).</summary>
+    public TimeSpan Duration(DateTimeOffset now)
+    {
+        var end = End ?? (now - Start > TaskBoard.ForgottenAfter ? Start + TaskBoard.ForgottenAfter : now);
+        return end > Start ? end - Start : TimeSpan.Zero;
+    }
+}
+
 /// <summary>A file attached to a task. The bytes live in the store; <see cref="Path"/> is relative to the store root.</summary>
 public sealed class Attachment
 {
