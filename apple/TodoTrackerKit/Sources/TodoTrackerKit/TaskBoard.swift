@@ -215,7 +215,11 @@ public final class TaskBoard {
 
     public func resumeFocus(now: Date) { pomodoro.resume(now: now) }
 
-    public func skipFocus(now: Date) { pomodoro.skip(now: now) }
+    /// A session that has already run out ends on time first, so Skip skips the break that followed it.
+    public func skipFocus(now: Date) {
+        tickPomodoro(now: now)
+        pomodoro.skip(now: now)
+    }
 
     public func resetFocus() { pomodoro.reset() }
 

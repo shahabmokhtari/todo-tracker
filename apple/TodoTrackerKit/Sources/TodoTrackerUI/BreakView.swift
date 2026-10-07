@@ -1,0 +1,52 @@
+#if canImport(SwiftUI)
+import SwiftUI
+import TodoTrackerKit
+
+/// The full-screen break after a focus session: what to do, how long it lasts, "I'm taking it" and "Skip the break".
+/// The first moment after it appears is ignored, so a key still being typed can't answer it.
+public struct BreakView: View {
+    @ObservedObject var model: BoardModel
+    @State private var shownAt = Date()
+
+    public init(model: BoardModel) {
+        self.model = model
+    }
+
+    private var settled: Bool { Date().timeIntervalSince(shownAt) > Breaks.settleTime }
+
+    public var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).ignoresSafeArea()
+            Color.black.opacity(0.55).ignoresSafeArea()
+            if let prompt = model.breakPrompt {
+                VStack(spacing: 16) {
+                    Text("☕").font(.system(size: 48)).accessibilityHidden(true)
+                    Text(prompt.title).font(.largeTitle.bold()).multilineTextAlignment(.center)
+                    Text(prompt.tip).font(.title3).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
+                    Text(Breaks.clock(until: prompt.until, now: model.now))
+                        .font(.system(size: 76, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .accessibilityHint("Break time left")
+                    Text("Your focus session is done. Step away; the timer tells you when to come back.")
+                        .font(.callout).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center)
+                    HStack(spacing: 12) {
+                        Button("I’m taking it") { if settled { model.takeBreak() } }
+                            .buttonStyle(.borderedProminent)
+                            .keyboardShortcut(.cancelAction)
+                        Button("Skip the break") { if settled { model.skipBreak() } }
+                            .buttonStyle(.bordered)
+                    }
+                    .controlSize(.large)
+                    .padding(.top, 8)
+                }
+                .foregroundStyle(.white)
+                .padding(40)
+                .frame(maxWidth: 620)
+            }
+        }
+        .onAppear { shownAt = Date() }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Time for a break")
+    }
+}
+#endif
