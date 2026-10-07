@@ -84,7 +84,7 @@ public sealed class NotionRemoteTests : IDisposable
         Assert.Equal(id.ToString(), page["properties"]!["Todo Tracker ID"]!["rich_text"]![0]!["text"]!["content"]!.GetValue<string>());
         Assert.Equal(FakeNotion.Db, _notion.Requests.Last().Body!["parent"]!["database_id"]!.GetValue<string>());
 
-        await remote.UpdateAsync(created, new SyncedFields("Write report", true, null, Priority.Low, [], null), CancellationToken.None);
+        await remote.UpdateAsync(created, new SyncedFields("Write report", true, null, Priority.Low, [], null), null, CancellationToken.None);
         Assert.True(page["properties"]!["Done"]!["checkbox"]!.GetValue<bool>());
         Assert.Null(page["properties"]!["Due date"]!["date"]);
         Assert.Empty(page["properties"]!["Tags"]!["multi_select"]!.AsArray());
@@ -112,8 +112,51 @@ public sealed class NotionRemoteTests : IDisposable
         Assert.True((await remote.ListAsync(CancellationToken.None)).Single().Fields.Done);
         Assert.Equal(ConnectorFields.Title | ConnectorFields.Done, remote.Fields);
 
-        await remote.UpdateAsync("p1", new SyncedFields("Shipped", false, null, Priority.Normal, [], null), CancellationToken.None);
+        await remote.UpdateAsync("p1", new SyncedFields("Shipped", false, null, Priority.Normal, [], null), null, CancellationToken.None);
         Assert.Equal("Not started", _notion.Pages["p1"]["properties"]!["Status"]!["status"]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task An_update_writes_only_what_changed_so_values_this_app_doesnt_know_stay()
+    {
+        _notion.Database = FakeNotion.Schema(withStatus: true);
+        _notion.AddPage("p1", new JsonObject
+        {
+            ["Name"] = new JsonObject { ["type"] = "title", ["title"] = new JsonArray(new JsonObject { ["plain_text"] = "Ship" }) },
+            ["Status"] = new JsonObject { ["type"] = "status", ["status"] = new JsonObject { ["name"] = "In progress" } },
+        });
+        var remote = await NotionRemote.ConnectAsync(Api(), FakeNotion.Db, CancellationToken.None);
+        var before = (await remote.ListAsync(CancellationToken.None)).Single().Fields;
+
+        await remote.UpdateAsync("p1", before with { Title = "Ship it" }, before, CancellationToken.None);
+
+        Assert.Equal("In progress", _notion.Pages["p1"]["properties"]!["Status"]!["status"]!["name"]!.GetValue<string>());
+        Assert.Equal("Ship it", _notion.Pages["p1"]["properties"]!["Name"]!["title"]![0]!["text"]!["content"]!.GetValue<string>());
+        var sent = _notion.Requests.Last().Body!["properties"]!.AsObject();
+        Assert.Equal(["Name"], sent.Select(p => p.Key));
+
+        var requests = _notion.Requests.Count;
+        await remote.UpdateAsync("p1", before, before, CancellationToken.None);
+        Assert.Equal(requests, _notion.Requests.Count); // nothing changed: nothing sent
+    }
+
+    [Fact]
+    public async Task Columns_are_matched_by_name_never_by_being_the_first_of_their_kind()
+    {
+        _notion.Database = new JsonObject
+        {
+            ["id"] = FakeNotion.Db,
+            ["properties"] = new JsonObject
+            {
+                ["Name"] = new JsonObject { ["type"] = "title" },
+                ["Pinned"] = new JsonObject { ["type"] = "checkbox" },
+                ["Published"] = new JsonObject { ["type"] = "date" },
+            },
+        };
+
+        var remote = await NotionRemote.ConnectAsync(Api(), FakeNotion.Db, CancellationToken.None);
+
+        Assert.Equal(ConnectorFields.Title, remote.Fields);
     }
 
     [Fact]

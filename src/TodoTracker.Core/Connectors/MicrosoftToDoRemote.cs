@@ -14,7 +14,7 @@ public sealed record ToDoList(string Id, string Name);
 /// note. Each task carries its Todo Tracker id as a linked resource (so nothing is ever copied twice). To Do has no
 /// tags and no "critical": tags stay here, critical shows as high there.
 /// </summary>
-public sealed partial class MicrosoftToDoRemote(HttpClient http, Func<CancellationToken, Task<string>> token, string listId) : IConnectorRemote
+public sealed partial class MicrosoftToDoRemote(HttpClient http, Func<CancellationToken, Task<string>> token, string listId, TimeZoneInfo zone) : IConnectorRemote
 {
     public const string AppName = "Todo Tracker";
 
@@ -65,19 +65,19 @@ public sealed partial class MicrosoftToDoRemote(HttpClient http, Func<Cancellati
 
     public async Task<string> CreateAsync(Guid localId, SyncedFields fields, CancellationToken cancellationToken)
     {
-        var body = Write(fields, fields.Done ? "completed" : "notStarted");
+        var body = Write(fields, null);
         body["linkedResources"] = new JsonArray(Link(localId));
         var task = await SendAsync(http, token, HttpMethod.Post, Tasks, body, cancellationToken).ConfigureAwait(false);
         return task!["id"]!.GetValue<string>();
     }
 
-    public async Task UpdateAsync(string id, SyncedFields fields, CancellationToken cancellationToken)
+    public async Task UpdateAsync(string id, SyncedFields fields, SyncedFields? previous, CancellationToken cancellationToken)
     {
-        // "In progress" or "waiting" stay as they are unless the task is finished or reopened.
-        var current = await SendAsync(http, token, HttpMethod.Get, $"{Tasks}/{Uri.EscapeDataString(id)}", null, cancellationToken).ConfigureAwait(false);
-        var status = current?["status"]?.GetValue<string>() ?? "notStarted";
-        var next = fields.Done ? "completed" : status == "completed" ? "notStarted" : status;
-        await SendAsync(http, token, HttpMethod.Patch, $"{Tasks}/{Uri.EscapeDataString(id)}", Write(fields, next), cancellationToken).ConfigureAwait(false);
+        var body = Write(fields, previous);
+        if (body.Count > 0)
+        {
+            await SendAsync(http, token, HttpMethod.Patch, $"{Tasks}/{Uri.EscapeDataString(id)}", body, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>To Do has no archive: the task is finished (and can be reopened there).</summary>
@@ -89,19 +89,57 @@ public sealed partial class MicrosoftToDoRemote(HttpClient http, Func<Cancellati
 
     private static JsonObject Link(Guid localId) => new() { ["applicationName"] = AppName, ["displayName"] = AppName, ["externalId"] = localId.ToString() };
 
-    private static JsonObject Write(SyncedFields f, string status) => new()
+    /// <summary>All fields for a new task, else only those that changed ("In progress" stays unless it's finished or
+    /// reopened; a note with formatting stays unless the note changed).</summary>
+    private JsonObject Write(SyncedFields f, SyncedFields? previous)
     {
-        ["title"] = f.Title,
-        ["status"] = status,
-        ["importance"] = f.Priority switch { Priority.Low => "low", Priority.High or Priority.Critical => "high", _ => "normal" },
-        ["dueDateTime"] = f.Due is { } d ? new JsonObject { ["dateTime"] = d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "T00:00:00", ["timeZone"] = "UTC" } : null,
-        ["body"] = new JsonObject { ["content"] = f.Notes ?? string.Empty, ["contentType"] = "text" },
-    };
+        bool Changed(ConnectorFields field) => previous is null || !SyncedFields.Same(Normalize(f), Normalize(previous), field);
+        var body = new JsonObject();
+        if (Changed(ConnectorFields.Title))
+        {
+            body["title"] = f.Title;
+        }
 
-    private static RemoteItem Read(JsonObject task)
+        if (Changed(ConnectorFields.Done))
+        {
+            body["status"] = f.Done ? "completed" : "notStarted";
+        }
+
+        if (Changed(ConnectorFields.Priority))
+        {
+            body["importance"] = f.Priority switch { Priority.Low => "low", Priority.High or Priority.Critical => "high", _ => "normal" };
+        }
+
+        if (Changed(ConnectorFields.Due))
+        {
+            // Midday UTC is the same day in every time zone people live in.
+            body["dueDateTime"] = f.Due is { } d ? new JsonObject { ["dateTime"] = d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "T12:00:00", ["timeZone"] = "UTC" } : null;
+        }
+
+        if (Changed(ConnectorFields.Notes))
+        {
+            body["body"] = new JsonObject { ["content"] = f.Notes ?? string.Empty, ["contentType"] = "text" };
+        }
+
+        return body;
+    }
+
+    /// <summary>The day of a due date, in the person's time zone (To Do keeps a due date as local midnight, in UTC).</summary>
+    private DateOnly? DueOf(JsonNode? due)
     {
-        var dueText = task["dueDateTime"]?["dateTime"]?.GetValue<string>();
-        DateOnly? due = dueText is { Length: >= 10 } && DateOnly.TryParseExact(dueText[..10], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+        var text = due?["dateTime"]?.GetValue<string>();
+        if (text is null || !DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var at))
+        {
+            return null;
+        }
+
+        var utc = string.Equals(due?["timeZone"]?.GetValue<string>(), "UTC", StringComparison.OrdinalIgnoreCase);
+        return DateOnly.FromDateTime(utc ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(at, DateTimeKind.Utc), zone) : at);
+    }
+
+    private RemoteItem Read(JsonObject task)
+    {
+        var due = DueOf(task["dueDateTime"]);
         var priority = task["importance"]?.GetValue<string>() switch { "high" => Priority.High, "low" => Priority.Low, _ => Priority.Normal };
         var content = task["body"]?["content"]?.GetValue<string>() ?? string.Empty;
         var notes = string.Equals(task["body"]?["contentType"]?.GetValue<string>(), "html", StringComparison.OrdinalIgnoreCase) ? PlainText(content) : content.Trim();

@@ -74,6 +74,27 @@ public sealed class ConnectorApiTests
     }
 
     [Fact]
+    public async Task A_links_file_that_cant_be_read_is_reported_and_never_overwritten()
+    {
+        using var notion = new FakeNotion();
+        await using var server = await StartAsync("""{"connector-notion": true}""", s => s.AddHttpClient(NotionConnector.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => notion));
+        var client = server.Client();
+        var group = await GroupAsync(server, "Synced");
+        await (await client.PutAsJsonAsync($"{Base}/notion/token", new { token = "secret_token" })).Json();
+        await (await client.PutAsJsonAsync($"{Base}/notion", new { target = FakeNotion.Db, groupId = group })).Json();
+        var links = Path.Combine(server.DataDirectory, "connectors", "notion", "links.json");
+        await File.WriteAllTextAsync(links, "{ broken");
+
+        var view = (await client.GetJson(Base)).AsArray().Single()!;
+        Assert.StartsWith("Couldn't read", view["missing"]!.GetValue<string>(), StringComparison.Ordinal);
+        var sync = await client.PostAsync($"{Base}/notion/sync", null);
+
+        Assert.False(sync.IsSuccessStatusCode);
+        Assert.Equal("{ broken", await File.ReadAllTextAsync(links));
+        Assert.Empty(notion.Pages);
+    }
+
+    [Fact]
     public async Task Microsoft_To_Do_client_id_sign_in_list_and_sync()
     {
         using var graph = new FakeGraph();

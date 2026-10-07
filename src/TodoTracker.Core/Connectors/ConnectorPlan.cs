@@ -189,21 +189,31 @@ public static class ConnectorPlan
                 // Gone there: the task here stays as it is.
                 links.Add(link.State == LinkState.LocalDeleted ? link : link with { State = LinkState.RemoteGone });
             }
-            else
-            {
-                links.Add(link.State == LinkState.Active ? link with { State = LinkState.LocalDeleted } : link);
-            }
+
+            // Gone on both sides: nothing left to link (an item restored there later carries its id, so it isn't copied).
         }
 
         foreach (var there in input.Remote.Where(r => !linkedRemote.Contains(r.Id)))
         {
             var importId = ImportId(input.Connector, there.Id);
-            if (there.Marker is { } marker)
+            var canImport = input.Direction != ConnectorDirection.ExportOnly && !there.Fields.Done && !string.IsNullOrWhiteSpace(there.Fields.Title);
+            // A copy of a linked item (Notion's Duplicate copies the id column) is an item of its own.
+            var copied = there.Marker is { } m && m != importId && linkedLocal.Contains(m);
+            if (there.Marker is { } marker && !copied)
             {
-                // Ours: linked to its task (never copied). Its task isn't here: deleted, or not on this computer yet.
-                if (local.TryGetValue(marker, out var marked) && !marked.Archived && linkedLocal.Add(marker))
+                // Ours: linked to its task (never copied). Its task isn't here: deleted, or not on this computer yet, or
+                // (its own import id) the import failed after the mark was written: then it's tried again.
+                if (local.TryGetValue(marker, out var marked))
                 {
-                    Merge(marked, there, null, new ConnectorLink(marker, there.Id, null));
+                    if (!marked.Archived && linkedLocal.Add(marker))
+                    {
+                        Merge(marked, there, null, new ConnectorLink(marker, there.Id, null));
+                    }
+                }
+                else if (marker == importId && canImport && linkedLocal.Add(importId))
+                {
+                    ops.Add(new CreateLocal(importId, there.Id, there.Fields));
+                    links.Add(new ConnectorLink(importId, there.Id, there.Fields));
                 }
             }
             else if (local.TryGetValue(importId, out var imported))
@@ -214,7 +224,7 @@ public static class ConnectorPlan
                     Merge(imported, there, there.Fields, new ConnectorLink(importId, there.Id, null));
                 }
             }
-            else if (input.Direction != ConnectorDirection.ExportOnly && !there.Fields.Done)
+            else if (canImport)
             {
                 linkedLocal.Add(importId);
                 ops.Add(new CreateLocal(importId, there.Id, there.Fields));
@@ -289,7 +299,8 @@ public static class ConnectorPlan
             }
 
             var localChanged = !SyncedFields.Same(here, snapshot, field);
-            var remoteChanged = !SyncedFields.Same(n(there), n(snapshot), field);
+            // A title cleared there isn't taken (a task always has one).
+            var remoteChanged = !SyncedFields.Same(n(there), n(snapshot), field) && !(field == ConnectorFields.Title && string.IsNullOrWhiteSpace(there.Title));
             return remoteChanged && !localChanged ? get(there) : get(here);
         }
 

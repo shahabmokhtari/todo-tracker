@@ -237,6 +237,44 @@ public sealed class ConnectorPlanTests
     }
 
     [Fact]
+    public void An_import_that_failed_before_its_mark_was_written_is_tried_again()
+    {
+        // The task couldn't be created, but the outside item got its mark anyway (marks are written after creates).
+        var result = Plan(remote: [new RemoteItem("r1", F("Theirs"), ImportId("r1"))]);
+
+        Assert.Equal([new CreateLocal(ImportId("r1"), "r1", F("Theirs"))], result.Ops);
+    }
+
+    [Fact]
+    public void A_duplicated_outside_item_carrying_a_linked_task_id_comes_in_as_its_own_task()
+    {
+        // Duplicating a Notion page copies its "Todo Tracker ID".
+        var before = F("Report");
+        var result = Plan(
+            local: [Local(A, before)],
+            remote: [new RemoteItem("r1", before, A), new RemoteItem("r2", F("Report (copy)"), A)],
+            links: [new ConnectorLink(A, "r1", before)]);
+
+        Assert.Equal([new CreateLocal(ImportId("r2"), "r2", F("Report (copy)")), new MarkRemote("r2", ImportId("r2"))], result.Ops);
+    }
+
+    [Fact]
+    public void Untitled_outside_items_are_not_brought_in_and_a_cleared_title_there_keeps_the_one_here()
+    {
+        Assert.Empty(Plan(remote: [new RemoteItem("r1", F("  "), null)]).Ops);
+
+        var before = F("Report");
+        var cleared = Plan(local: [Local(A, before)], remote: [new RemoteItem("r1", F(""), A)], links: [new ConnectorLink(A, "r1", before)]);
+        Assert.Equal([new UpdateRemote("r1", A, before)], cleared.Ops);
+    }
+
+    [Fact]
+    public void A_link_whose_two_sides_are_both_gone_is_forgotten()
+    {
+        Assert.Empty(Plan(links: [new ConnectorLink(A, "r1", F("Report"), LinkState.RemoteGone)]).Links);
+    }
+
+    [Fact]
     public void Tags_compare_as_a_set_and_notes_ignore_trailing_space()
     {
         Assert.Equal(F("x", tags: ["a", "b"]), F("x", tags: ["b", "a"]));

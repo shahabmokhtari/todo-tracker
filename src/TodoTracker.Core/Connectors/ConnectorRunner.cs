@@ -17,7 +17,9 @@ public interface IConnectorRemote
     /// <summary>Creates an item carrying <paramref name="localId"/> as its marker; returns its id.</summary>
     Task<string> CreateAsync(Guid localId, SyncedFields fields, CancellationToken cancellationToken);
 
-    Task UpdateAsync(string id, SyncedFields fields, CancellationToken cancellationToken);
+    /// <summary>Writes the fields that differ from <paramref name="previous"/> (what the item had), so values this app
+    /// doesn't know (Notion's "In progress", a time of day) stay; null: writes them all.</summary>
+    Task UpdateAsync(string id, SyncedFields fields, SyncedFields? previous, CancellationToken cancellationToken);
 
     /// <summary>Archives the item (or finishes it, where nothing can be archived); it can be brought back there.</summary>
     Task ArchiveAsync(string id, CancellationToken cancellationToken);
@@ -29,9 +31,9 @@ public interface IConnectorRemote
 public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction);
 
 /// <summary>What a run did: the plan, how many changes went through, what went wrong, and the links to keep.</summary>
-public sealed record ConnectorRun(ConnectorPlanResult Plan, int Done, IReadOnlyList<string> Problems, IReadOnlyList<ConnectorLink> Links)
+public sealed record ConnectorRun(ConnectorPlanResult Plan, IReadOnlyList<ConnectorOpResult> Done, IReadOnlyList<string> Problems, IReadOnlyList<ConnectorLink> Links)
 {
-    public int Failed => Plan.Ops.Count - Done;
+    public int Failed => Problems.Count;
 }
 
 /// <summary>
@@ -49,7 +51,10 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     private readonly Actor _actor = new(ActorKind.Connector, name);
 
     /// <summary>What a run would do, without doing it.</summary>
-    public async Task<ConnectorPlanResult> PlanAsync(IConnectorRemote remote, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, CancellationToken cancellationToken)
+    public async Task<ConnectorPlanResult> PlanAsync(IConnectorRemote remote, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, CancellationToken cancellationToken) =>
+        (await PlanWithItemsAsync(remote, target, links, cancellationToken).ConfigureAwait(false)).Plan;
+
+    private async Task<(ConnectorPlanResult Plan, Dictionary<string, RemoteItem> Items)> PlanWithItemsAsync(IConnectorRemote remote, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(remote);
         ArgumentNullException.ThrowIfNull(target);
@@ -58,9 +63,10 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         var local = await store.ReadAsync(b => LocalItems(b, target, links, now), cancellationToken).ConfigureAwait(false);
         var items = (await remote.ListAsync(cancellationToken).ConfigureAwait(false)).ToList();
 
-        // A linked item that isn't in the list (a filtered view, archived) is looked up before it counts as gone.
+        // A linked item that isn't in the list (a filtered view, archived) is looked up before it counts as gone. Items
+        // already known to be gone aren't looked up every run: they come back when they're in the list again.
         var listed = items.Select(i => i.Id).ToHashSet(StringComparer.Ordinal);
-        foreach (var link in links.Where(l => l.State != LinkState.LocalDeleted && !listed.Contains(l.RemoteId)))
+        foreach (var link in links.Where(l => l.State == LinkState.Active && !listed.Contains(l.RemoteId)))
         {
             if (await remote.FindAsync(link.RemoteId, cancellationToken).ConfigureAwait(false) is { } found)
             {
@@ -68,29 +74,58 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             }
         }
 
-        return ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize });
+        var plan = ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize });
+        return (plan, items.GroupBy(i => i.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// Syncs once. Never throws for something going wrong on either side (only when <paramref name="cancellationToken"/>
+    /// is cancelled): it's in <see cref="ConnectorRun.Problems"/>, and what didn't go through is tried next time.
+    /// </summary>
     public async Task<ConnectorRun> RunAsync(IConnectorRemote remote, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, CancellationToken cancellationToken)
     {
-        var plan = await PlanAsync(remote, target, links, cancellationToken).ConfigureAwait(false);
+        ConnectorPlanResult plan;
+        Dictionary<string, RemoteItem> items;
+        try
+        {
+            (plan, items) = await PlanWithItemsAsync(remote, target, links, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsProblem(ex, cancellationToken))
+        {
+            return new ConnectorRun(new ConnectorPlanResult([], links), [], [ex.Message], links);
+        }
+
         var done = new List<ConnectorOpResult>();
         var problems = new List<string>();
+        var notImported = new HashSet<string>(StringComparer.Ordinal);
         foreach (var op in plan.Ops)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (op is MarkRemote m && notImported.Contains(m.RemoteId))
+            {
+                continue; // its task wasn't created: no mark (so the import is tried again)
+            }
+
             try
             {
-                done.Add(new ConnectorOpResult(op, await ApplyAsync(op, remote, target, cancellationToken).ConfigureAwait(false)));
+                done.Add(new ConnectorOpResult(op, await ApplyAsync(op, remote, target, items, cancellationToken).ConfigureAwait(false)));
             }
-            catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidOperationException or ArgumentException or KeyNotFoundException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            catch (Exception ex) when (IsProblem(ex, cancellationToken))
             {
                 problems.Add($"{Describe(op)}: {ex.Message}");
+                if (op is CreateLocal c)
+                {
+                    notImported.Add(c.RemoteId);
+                }
             }
         }
 
-        return new ConnectorRun(plan, done.Count, problems, ConnectorPlan.Commit(links, plan, done));
+        return new ConnectorRun(plan, done, problems, ConnectorPlan.Commit(links, plan, done));
     }
+
+    /// <summary>Anything going wrong with a sync is reported, not thrown (except running out of memory, or being asked to stop).</summary>
+    public static bool IsProblem(Exception ex, CancellationToken cancellationToken) =>
+        ex is not OutOfMemoryException && !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested);
 
     private static string Describe(ConnectorOp op) => op switch
     {
@@ -103,14 +138,14 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         _ => op.GetType().Name,
     };
 
-    private async Task<string?> ApplyAsync(ConnectorOp op, IConnectorRemote remote, ConnectorTarget target, CancellationToken cancellationToken)
+    private async Task<string?> ApplyAsync(ConnectorOp op, IConnectorRemote remote, ConnectorTarget target, Dictionary<string, RemoteItem> items, CancellationToken cancellationToken)
     {
         switch (op)
         {
             case CreateRemote c:
                 return await remote.CreateAsync(c.LocalId, c.Fields, cancellationToken).ConfigureAwait(false);
             case UpdateRemote u:
-                await remote.UpdateAsync(u.RemoteId, u.Fields, cancellationToken).ConfigureAwait(false);
+                await remote.UpdateAsync(u.RemoteId, u.Fields, items.GetValueOrDefault(u.RemoteId)?.Fields, cancellationToken).ConfigureAwait(false);
                 return null;
             case ArchiveRemote a:
                 await remote.ArchiveAsync(a.RemoteId, cancellationToken).ConfigureAwait(false);
@@ -180,7 +215,8 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             board.SetTags(u.LocalId, f.Tags, _actor, now);
         }
 
-        if (fields.HasFlag(ConnectorFields.Done) && current.Done != f.Done)
+        // A step that's waiting for the one before it can't be finished yet: it is next time it can.
+        if (fields.HasFlag(ConnectorFields.Done) && current.Done != f.Done && (!f.Done || TaskBoard.FindBlockingStep(board.Find(u.LocalId)!) is null))
         {
             if (f.Done)
             {
@@ -213,13 +249,15 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     {
         var linked = links.Select(l => l.LocalId).ToHashSet();
         var result = new List<LocalItem>();
-        foreach (var item in board.Items)
+        // Every task (a linked one may have become a subtask); only top-level ones are new candidates. Archiving is
+        // kept on the top-level task, so a subtask counts as archived with it.
+        foreach (var item in board.AllItems())
         {
-            var discoverable = item.Parent is null && item.GroupId == target.GroupId && item.ArchivedAt is null
+            var discoverable = item.Parent is null && item.GroupId == target.GroupId && !item.IsArchived
                 && (item.CompletedAt is null || now - item.CompletedAt < RecentlyDone);
             if (discoverable || linked.Contains(item.Id))
             {
-                result.Add(new LocalItem(item.Id, FieldsOf(item), discoverable, item.ArchivedAt is not null));
+                result.Add(new LocalItem(item.Id, FieldsOf(item), discoverable, item.IsArchived));
             }
         }
 

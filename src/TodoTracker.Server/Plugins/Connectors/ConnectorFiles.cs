@@ -35,7 +35,10 @@ public static class SecretFile
         var bytes = Encoding.UTF8.GetBytes(secret);
         if (OperatingSystem.IsWindows())
         {
-            File.WriteAllBytes(path, ProtectedData.Protect(bytes, Entropy, DataProtectionScope.CurrentUser));
+            // Whole or not at all: a half-written token cache would mean signing in again.
+            var temp = path + ".tmp";
+            File.WriteAllBytes(temp, ProtectedData.Protect(bytes, Entropy, DataProtectionScope.CurrentUser));
+            File.Move(temp, path, overwrite: true);
             return;
         }
 
@@ -145,17 +148,24 @@ public sealed class ConnectorFiles(string dataDirectory, string id)
         }
     }
 
+    /// <summary>Null when the file isn't there yet; a file that can't be read is an error (never taken as empty, which
+    /// would forget every link and then save that).</summary>
     private T? ReadJson<T>(string name)
         where T : class
     {
         var path = Path.Combine(Folder, name);
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
         try
         {
-            return File.Exists(path) ? JsonSerializer.Deserialize<T>(File.ReadAllText(path), Json) : null;
+            return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Json);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
-            return null;
+            throw new IOException($"Couldn't read {path} ({ex.Message}). Nothing was changed.", ex);
         }
     }
 

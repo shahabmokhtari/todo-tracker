@@ -209,14 +209,20 @@ public sealed partial class NotionRemote : IConnectorRemote, IDisposable
 
     public async Task<string> CreateAsync(Guid localId, SyncedFields fields, CancellationToken cancellationToken)
     {
-        var properties = Write(fields);
+        var properties = Write(fields, null);
         properties[MarkerColumn] = Marker(localId);
         var page = await _api.SendAsync(HttpMethod.Post, "v1/pages", new JsonObject { ["parent"] = new JsonObject { ["database_id"] = _database }, ["properties"] = properties }, cancellationToken).ConfigureAwait(false);
         return page!["id"]!.GetValue<string>();
     }
 
-    public Task UpdateAsync(string id, SyncedFields fields, CancellationToken cancellationToken) =>
-        _api.SendAsync(HttpMethod.Patch, $"v1/pages/{Uri.EscapeDataString(id)}", new JsonObject { ["properties"] = Write(fields) }, cancellationToken);
+    public async Task UpdateAsync(string id, SyncedFields fields, SyncedFields? previous, CancellationToken cancellationToken)
+    {
+        var properties = Write(fields, previous);
+        if (properties.Count > 0)
+        {
+            await _api.SendAsync(HttpMethod.Patch, $"v1/pages/{Uri.EscapeDataString(id)}", new JsonObject { ["properties"] = properties }, cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>Archived pages are in Notion's trash (restorable for 30 days).</summary>
     public Task ArchiveAsync(string id, CancellationToken cancellationToken) =>
@@ -264,25 +270,29 @@ public sealed partial class NotionRemote : IConnectorRemote, IDisposable
         return new RemoteItem(page["id"]!.GetValue<string>(), new SyncedFields(NotionApi.PlainText(p[_columns.Title]?["title"]), done, due, priority, tags, null), marker);
     }
 
-    private JsonObject Write(SyncedFields f)
+    /// <summary>The columns to write: all of them for a new page, else only those whose value changed.</summary>
+    private JsonObject Write(SyncedFields f, SyncedFields? previous)
     {
-        var properties = new JsonObject
+        bool Changed(ConnectorFields field) => previous is null || !SyncedFields.Same(f, previous, field);
+        var properties = new JsonObject();
+        if (Changed(ConnectorFields.Title))
         {
-            [_columns.Title] = new JsonObject { ["title"] = new JsonArray(new JsonObject { ["text"] = new JsonObject { ["content"] = f.Title } }) },
-        };
-        if (_columns.Done is { } done)
+            properties[_columns.Title] = new JsonObject { ["title"] = new JsonArray(new JsonObject { ["text"] = new JsonObject { ["content"] = f.Title } }) };
+        }
+
+        if (_columns.Done is { } done && Changed(ConnectorFields.Done))
         {
             properties[done] = _columns.DoneIsStatus
                 ? new JsonObject { ["status"] = new JsonObject { ["name"] = f.Done ? _columns.DoneOption : _columns.OpenOption } }
                 : new JsonObject { ["checkbox"] = f.Done };
         }
 
-        if (_columns.Due is { } due)
+        if (_columns.Due is { } due && Changed(ConnectorFields.Due))
         {
             properties[due] = new JsonObject { ["date"] = f.Due is { } d ? new JsonObject { ["start"] = d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) } : null };
         }
 
-        if (_columns.Priority is { } priority)
+        if (_columns.Priority is { } priority && Changed(ConnectorFields.Priority))
         {
             // An existing option that means the same is reused; otherwise Notion adds the option.
             var name = _columns.PriorityOptions.FirstOrDefault(o => PriorityOf(o) == f.Priority && (f.Priority != Priority.Normal || o.Contains("normal", StringComparison.OrdinalIgnoreCase) || o.Contains("medium", StringComparison.OrdinalIgnoreCase)))
@@ -290,7 +300,7 @@ public sealed partial class NotionRemote : IConnectorRemote, IDisposable
             properties[priority] = new JsonObject { ["select"] = new JsonObject { ["name"] = name } };
         }
 
-        if (_columns.Tags is { } tags)
+        if (_columns.Tags is { } tags && Changed(ConnectorFields.Tags))
         {
             properties[tags] = new JsonObject { ["multi_select"] = new JsonArray([.. f.Tags.Select(t => (JsonNode)new JsonObject { ["name"] = t.Replace(",", " ", StringComparison.Ordinal) })]) };
         }
@@ -309,7 +319,8 @@ public sealed partial class NotionRemote : IConnectorRemote, IDisposable
             }
 
             var title = Find("title") ?? throw new InvalidOperationException("This Notion database has no title column.");
-            var checkbox = Find("checkbox", DoneName());
+            // By name only (a "Pinned" checkbox or a "Published" date must never be taken for done or due).
+            var checkbox = Find("checkbox", DoneName(), fallback: false);
             string? status = checkbox is null ? Find("status", StatusName()) : null;
             var complete = new HashSet<string>(StringComparer.Ordinal);
             string? doneOption = null;
@@ -332,7 +343,7 @@ public sealed partial class NotionRemote : IConnectorRemote, IDisposable
 
             var priority = Find("select", PriorityName(), fallback: false);
             IReadOnlyList<string> priorityOptions = priority is null ? [] : [.. properties[priority]?["select"]?["options"]?.AsArray().Select(o => o?["name"]?.GetValue<string>()).OfType<string>() ?? []];
-            return new Columns(title, checkbox ?? status, status is not null, complete, doneOption, openOption, Find("date", DueName()), priority, priorityOptions, Find("multi_select", TagsName(), fallback: false));
+            return new Columns(title, checkbox ?? status, status is not null, complete, doneOption, openOption, Find("date", DueName(), fallback: false), priority, priorityOptions, Find("multi_select", TagsName(), fallback: false));
         }
     }
 

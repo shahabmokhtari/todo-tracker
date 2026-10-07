@@ -151,6 +151,48 @@ public sealed class ConnectorRunnerTests : IDisposable
         Assert.Contains(_links, l => l.LocalId == task.Id && l.State == LinkState.Active);
     }
 
+    [Fact]
+    public async Task A_linked_task_that_becomes_a_subtask_keeps_syncing_and_is_never_archived_there()
+    {
+        var parent = await AddAsync("Parent");
+        var task = await AddAsync("Report");
+        await RunAsync();
+        var remoteId = _remote.Items.Single(r => r.Value.Marker == task.Id).Key;
+
+        await _store.UpdateAsync(b => { b.Move(task.Id, parent.Id, null, null, Actor.User, T0); return 0; });
+        await _store.UpdateAsync(b => { b.Update(task.Id, new TaskChanges { Title = "Report (moved)" }, Actor.User, T0); return 0; });
+        await RunAsync();
+
+        Assert.DoesNotContain(remoteId, _remote.Archived);
+        Assert.Equal("Report (moved)", _remote.Items[remoteId].Fields.Title);
+        Assert.Contains(_links, l => l.LocalId == task.Id && l.State == LinkState.Active);
+    }
+
+    [Fact]
+    public async Task An_import_that_fails_is_reported_and_tried_again_once_it_can_succeed()
+    {
+        _remote.Add("r1", F(new string('x', 301))); // too long for a task here: the board refuses it
+
+        var failed = await RunAsync();
+
+        Assert.Single(failed.Problems);
+        Assert.Null(_remote.Items["r1"].Marker); // no mark without its task
+        _remote.Items["r1"] = _remote.Items["r1"] with { Fields = F("From outside") };
+        await RunAsync();
+        Assert.NotNull(await _store.ReadAsync(b => b.Find(ConnectorPlan.ImportId("notion", "r1"))));
+    }
+
+    [Fact]
+    public async Task A_failure_nobody_planned_for_is_reported_not_thrown()
+    {
+        await AddAsync("Report");
+        _remote.Throw = new FormatException("odd answer");
+
+        var run = await RunAsync();
+
+        Assert.Contains("odd answer", Assert.Single(run.Problems), StringComparison.Ordinal);
+    }
+
     private sealed class FakeRemote : IConnectorRemote
     {
         private int _next;
@@ -163,12 +205,15 @@ public sealed class ConnectorRunnerTests : IDisposable
 
         public bool FailUpdates { get; set; }
 
+        public Exception? Throw { get; set; }
+
         public ConnectorFields Fields => ConnectorFields.Title | ConnectorFields.Done | ConnectorFields.Due | ConnectorFields.Priority;
 
         public void Add(string id, SyncedFields fields) => Items[id] = new RemoteItem(id, fields, null);
 
-        public Task<IReadOnlyList<RemoteItem>> ListAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<RemoteItem>>([.. Items.Values.Where(r => !Archived.Contains(r.Id) && !HiddenFromList.Contains(r.Id))]);
+        public Task<IReadOnlyList<RemoteItem>> ListAsync(CancellationToken cancellationToken) => Throw is { } ex
+            ? Task.FromException<IReadOnlyList<RemoteItem>>(ex)
+            : Task.FromResult<IReadOnlyList<RemoteItem>>([.. Items.Values.Where(r => !Archived.Contains(r.Id) && !HiddenFromList.Contains(r.Id))]);
 
         public Task<RemoteItem?> FindAsync(string id, CancellationToken cancellationToken) =>
             Task.FromResult(Items.TryGetValue(id, out var item) && !Archived.Contains(id) ? item : null);
@@ -180,7 +225,7 @@ public sealed class ConnectorRunnerTests : IDisposable
             return Task.FromResult(id);
         }
 
-        public Task UpdateAsync(string id, SyncedFields fields, CancellationToken cancellationToken)
+        public Task UpdateAsync(string id, SyncedFields fields, SyncedFields? previous, CancellationToken cancellationToken)
         {
             if (FailUpdates)
             {

@@ -19,9 +19,19 @@ public interface IMicrosoftSignIn
     void SignOut();
 }
 
+/// <summary>Sign-in states (the panel reads these names).</summary>
+public static class SignInStates
+{
+    public const string SignedOut = "signedOut";
+    public const string Waiting = "waiting";
+    public const string SignedIn = "signedIn";
+    public const string Failed = "failed";
+}
+
 /// <summary>
 /// Microsoft sign-in with MSAL: work, school or personal accounts ("common"), the To Do permission only
-/// (Tasks.ReadWrite), and MSAL's token cache stored encrypted in the connector's folder.
+/// (Tasks.ReadWrite), and MSAL's token cache stored encrypted in the connector's folder. Only the latest sign-in
+/// counts: starting another (or signing out) cancels the one before, and a late answer from it is ignored.
 /// </summary>
 public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
 {
@@ -30,6 +40,8 @@ public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
     private IPublicClientApplication? _app;
     private string? _clientId;
     private MicrosoftSignInView? _view;
+    private CancellationTokenSource? _pending;
+    private int _attempt;
 
     public MicrosoftSignInView View
     {
@@ -37,16 +49,27 @@ public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
         {
             lock (_lock)
             {
-                return _view ??= File.Exists(files.SecretPath) ? new MicrosoftSignInView("signedIn") : new MicrosoftSignInView("signedOut");
+                return _view ??= File.Exists(files.SecretPath) ? new MicrosoftSignInView(SignInStates.SignedIn) : new MicrosoftSignInView(SignInStates.SignedOut);
             }
         }
     }
 
-    public bool SignedIn => View.State == "signedIn";
+    /// <summary>Signed in when there's a token cache (a sign-in still waiting or one that failed doesn't change that).</summary>
+    public bool SignedIn => File.Exists(files.SecretPath) && View.State != SignInStates.SignedOut;
 
     public async Task<MicrosoftSignInView> StartAsync(string clientId, CancellationToken cancellationToken)
     {
         var app = App(clientId);
+        CancellationTokenSource cancel;
+        int attempt;
+        lock (_lock)
+        {
+            _pending?.Cancel();
+            _pending?.Dispose();
+            _pending = cancel = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+            attempt = ++_attempt;
+        }
+
         var shown = new TaskCompletionSource<MicrosoftSignInView>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Task.Run(async () =>
         {
@@ -54,21 +77,28 @@ public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
             {
                 var result = await app.AcquireTokenWithDeviceCode(Scopes, code =>
                 {
-                    var waiting = new MicrosoftSignInView("waiting", UserCode: code.UserCode, VerificationUri: code.VerificationUrl, Message: code.Message);
-                    Set(waiting);
+                    var waiting = new MicrosoftSignInView(SignInStates.Waiting, UserCode: code.UserCode, VerificationUri: code.VerificationUrl, Message: code.Message);
+                    Set(waiting, attempt);
                     shown.TrySetResult(waiting);
                     return Task.CompletedTask;
-                }).ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
-                Set(new MicrosoftSignInView("signedIn", result.Account?.Username));
+                }).ExecuteAsync(cancel.Token).ConfigureAwait(false);
+                Set(new MicrosoftSignInView(SignInStates.SignedIn, result.Account?.Username), attempt);
             }
             catch (Exception ex) when (ex is MsalException or HttpRequestException or OperationCanceledException)
             {
-                var failed = new MicrosoftSignInView("failed", Message: ex.Message);
-                Set(failed);
+                var failed = new MicrosoftSignInView(SignedIn ? SignInStates.SignedIn : SignInStates.Failed, Message: ex is OperationCanceledException ? "Sign-in stopped." : ex.Message);
+                Set(failed, attempt);
                 shown.TrySetResult(failed);
             }
         }, CancellationToken.None);
-        return await shown.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await shown.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            throw new InvalidOperationException("Microsoft didn't answer. Check the connection and the client id, then try again.");
+        }
     }
 
     public async Task<string> TokenAsync(CancellationToken cancellationToken)
@@ -80,13 +110,17 @@ public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
         try
         {
             var result = await app.AcquireTokenSilent(Scopes, account).ExecuteAsync(cancellationToken).ConfigureAwait(false);
-            Set(new MicrosoftSignInView("signedIn", result.Account?.Username));
             return result.AccessToken;
         }
         catch (MsalUiRequiredException)
         {
-            Set(new MicrosoftSignInView("signedOut", Message: "Sign in to Microsoft again."));
+            Set(new MicrosoftSignInView(SignInStates.SignedOut, Message: "Sign in to Microsoft again."), null);
             throw new InvalidOperationException("Sign in to Microsoft again.");
+        }
+        catch (MsalException ex)
+        {
+            // Offline after sleep, or Microsoft busy: the sync says so and tries again later.
+            throw new InvalidOperationException($"Couldn't reach Microsoft sign-in: {ex.Message}", ex);
         }
     }
 
@@ -94,21 +128,29 @@ public sealed class MsalSignIn(ConnectorFiles files) : IMicrosoftSignIn
     {
         lock (_lock)
         {
+            _pending?.Cancel();
+            _pending?.Dispose();
+            _pending = null;
+            _attempt++;
             if (File.Exists(files.SecretPath))
             {
                 File.Delete(files.SecretPath);
             }
 
             _app = null;
-            _view = new MicrosoftSignInView("signedOut");
+            _view = new MicrosoftSignInView(SignInStates.SignedOut);
         }
     }
 
-    private void Set(MicrosoftSignInView view)
+    /// <summary>Records what a sign-in came to, unless a newer one started since (null: whatever is current).</summary>
+    private void Set(MicrosoftSignInView view, int? attempt)
     {
         lock (_lock)
         {
-            _view = view;
+            if (attempt is null || attempt == _attempt)
+            {
+                _view = view;
+            }
         }
     }
 

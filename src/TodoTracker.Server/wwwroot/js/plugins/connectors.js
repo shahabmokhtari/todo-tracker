@@ -74,7 +74,14 @@ export function activate(host) {
     const buttons = h('div', { class: 'row buttons' },
       h('button', { class: 'btn', type: 'button', disabled: !ready, onclick: async () => { preview[v.id] = await run(host.post(`${base}/${v.id}/preview`)); render(); } }, 'Preview'),
       h('button', { class: 'btn primary', type: 'button', disabled: !ready, onclick: () => run(host.post(`${base}/${v.id}/sync`), 'Synced') }, v.enabled ? 'Sync now' : 'Start syncing'),
-      h('button', { class: 'btn ghost danger', type: 'button', onclick: () => { if (confirm(`Disconnect ${v.name}? Nothing is deleted on either side.`)) run(host.del(`${base}/${v.id}`), 'Disconnected'); } }, 'Disconnect'));
+      h('button', { class: 'btn ghost danger', type: 'button', onclick: () => {
+        if (!confirm(`Disconnect ${v.name}? Nothing is deleted on either side.`)) return;
+        // Another account may connect next: forget this one's databases and lists.
+        extras.notion.databases = null;
+        extras.mstodo.lists = null;
+        delete preview[v.id];
+        run(host.del(`${base}/${v.id}`), 'Disconnected');
+      } }, 'Disconnect'));
     return [
       ...rows,
       v.missing ? h('p', { class: 'hint' }, v.missing) : h('p', { class: 'muted small' }, v.enabled ? `Syncs every few minutes · ${v.linked} linked` : 'Look at the preview, then start syncing.'),
@@ -134,7 +141,7 @@ export function activate(host) {
       v.clientId ? null : h('p', { class: 'muted small' }, 'Microsoft sign-in needs an app registration (free, about two minutes): ', h('a', { href: docs, target: '_blank', rel: 'noopener' }, 'how to make one'), '.'),
       v.clientId && signIn.state !== 'signedIn'
         ? (signIn.state === 'waiting'
-          ? h('p', { class: 'signin', role: 'status' }, 'Open ', h('a', { href: signIn.verificationUri, target: '_blank', rel: 'noopener' }, signIn.verificationUri), ' and enter ', h('strong', null, signIn.userCode), '. This updates by itself.')
+          ? h('p', { class: 'signin', role: 'status' }, 'Open ', /^https:\/\//.test(signIn.verificationUri ?? '') ? h('a', { href: signIn.verificationUri, target: '_blank', rel: 'noopener' }, signIn.verificationUri) : 'microsoft.com/devicelogin', ' and enter ', h('strong', null, signIn.userCode), '. This updates by itself.')
           : h('div', { class: 'row' }, h('button', { class: 'btn primary', type: 'button', onclick: startSignIn }, 'Sign in to Microsoft'), signIn.message ? h('span', { class: 'muted small' }, signIn.message) : null))
         : null,
       signIn.state === 'signedIn' ? h('p', { class: 'muted small' }, `Signed in${signIn.account ? ` as ${signIn.account}` : ''}.`) : null,
