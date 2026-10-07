@@ -14,7 +14,7 @@ async function open(page, request, hash = '') {
   await page.goto(launch.url);
   await expect(page.locator('#board')).toBeVisible();
   // Only this file's tasks: its own group.
-  await page.locator('#tabs .tab', { hasText: 'Views' }).click();
+  await page.locator('#tabs .tab', { hasText: group.name }).click();
   if (hash) await page.evaluate((h) => { location.hash = h; }, hash);
 }
 
@@ -29,8 +29,10 @@ function watchErrors(page) {
   return errors;
 }
 
-test.beforeAll(async ({ request }) => {
-  group = await (await request.post('/api/groups', { headers: auth, data: { name: 'Views' } })).json();
+// Each attempt (CI retries the whole serial file) gets its own group, so it never sees the last attempt's tasks.
+test.beforeAll(async ({ request }, testInfo) => {
+  const name = testInfo.retry ? `Again ${testInfo.retry}` : 'Views';
+  group = await (await request.post('/api/groups', { headers: auth, data: { name } })).json();
 });
 
 test('Board: cards move between columns by drag and drop and Alt+arrows; Doing shows its limit', async ({ page, request }) => {

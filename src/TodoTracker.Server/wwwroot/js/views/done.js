@@ -2,7 +2,7 @@
 // Archive tab shows what was put away, to bring back or delete for good.
 
 import { byDay, duration } from '../timefmt.js';
-import { latest, serial, sameAs, send, treeUrl } from './common.js';
+import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
 
 const AUTO_DAYS = [7, 14, 30];
 
@@ -113,14 +113,14 @@ export function createDoneView(ctx) {
         e.target.value = '';
         if (days) run([{ method: 'POST', url: '/api/archive', body: { olderThanDays: days, groupId: ctx.state.group } }], 'Archived');
       } }, h('option', { value: '' }, 'more than…'), ...AUTO_DAYS.map((d) => h('option', { value: d }, `${d} days ago`)))) : null;
-    root.replaceChildren(
+    keepToolbarFocus(root, () => root.replaceChildren(
       h('div', { class: 'view-toolbar' },
         tabs,
         h('input', { type: 'search', class: 'small-search', placeholder: 'Find…', value: filter, 'aria-label': 'Find a finished task', oninput: (e) => { filter = e.target.value; renderList(); } }),
         autoArchive,
         count),
       bulk,
-      results);
+      results));
     renderList();
   }
 

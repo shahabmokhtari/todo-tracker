@@ -48,3 +48,11 @@ export const treeUrl = (ctx, extra = '') => {
   const query = params.toString();
   return `/api/tree${query ? `?${query}` : ''}`;
 };
+
+/** Redraws, keeping keyboard focus on the same toolbar control (the toolbar is rebuilt with the rest). */
+export function keepToolbarFocus(root, draw) {
+  const controls = () => [...root.querySelectorAll('.view-toolbar button, .view-toolbar input, .view-toolbar select')];
+  const at = controls().indexOf(document.activeElement);
+  draw();
+  if (at >= 0) controls()[at]?.focus({ preventScroll: true });
+}

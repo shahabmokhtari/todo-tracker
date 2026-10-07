@@ -4,7 +4,7 @@
 
 import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
-import { latest, serial, sameAs, send, treeUrl } from './common.js';
+import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
 
 const EXPANDED_KEY = 'tt.outline.expanded';
 const DONE_KEY = 'tt.outline.showDone';
@@ -320,14 +320,14 @@ export function createOutlineView(ctx) {
 
     if (!rows.length && !adding) tree.append(h('p', { class: 'empty-state' }, 'No tasks here yet. Press ', h('kbd', null, 'Insert'), ' or the button to add one.'));
     const doneToggle = h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showDone, onchange: (e) => { showDone = e.target.checked; localStorage.setItem(DONE_KEY, showDone ? '1' : '0'); render(); } }), 'Show finished');
-    root.replaceChildren(
+    keepToolbarFocus(root, () => root.replaceChildren(
       h('div', { class: 'view-toolbar' },
         h('button', { class: 'btn primary', type: 'button', onclick: () => { adding = { afterId: null, parentId: null }; render(); } }, icon('plus', { size: 16 }), 'New task'),
         h('button', { class: 'btn ghost', type: 'button', onclick: () => { roots.forEach(function walk(n) { if (n.children?.length) { expanded.add(n.id); n.children.forEach(walk); } }); saveExpanded(); render(); } }, 'Expand all'),
         h('button', { class: 'btn ghost', type: 'button', onclick: () => { expanded.clear(); saveExpanded(); render(); } }, 'Collapse all'),
         doneToggle,
         h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave')),
-      tree);
+      tree));
     if (keep && focusHere && !root.querySelector('.orow.adding')) focusRow(keep);
   }
 
