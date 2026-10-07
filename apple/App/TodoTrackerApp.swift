@@ -9,6 +9,7 @@ import Combine
 @main
 struct TodoTrackerApp: App {
     @StateObject private var model = BoardModel.live()
+    @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
     #if os(macOS)
     @State private var breakWindows: BreakWindows?
     #endif
@@ -24,7 +25,7 @@ struct TodoTrackerApp: App {
 
         // Always-available glance from the menu bar: what to do now and quick capture.
         MenuBarExtra {
-            MenuBarGlance(model: model)
+            MenuBarGlance(model: model).followsAppTheme(theme)
         } label: {
             Label("\(model.dashboard.now.count)", systemImage: model.dashboard.now.contains(where: \.needsAttention) ? "bell.badge" : "checklist")
                 // The menu bar item is always there (even with no window open): breaks start with it.
@@ -40,6 +41,7 @@ struct TodoTrackerApp: App {
 
     private var dashboard: some View {
         DashboardView(model: model)
+            .followsAppTheme(theme)
             .onAppear { BoardModel.requestNotificationPermission() }
     }
 }

@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import TodoTrackerKit
 @testable import TodoTrackerUI
@@ -63,5 +64,16 @@ final class PresentationTests: XCTestCase {
                 try data.write(to: URL(fileURLWithPath: dir).appendingPathComponent(dark ? "swiftui-dark.png" : "swiftui-light.png"))
             }
         }
+    }
+
+    func testAppearanceChoiceMatchesTheOtherApps() {
+        // Same values as the Windows and web apps' theme setting.
+        XCTAssertEqual(AppTheme.allCases.map(\.rawValue), ["system", "light", "dark"])
+        XCTAssertEqual(AppTheme.named("dark").colorScheme, .dark)
+        XCTAssertEqual(AppTheme.named("light").colorScheme, .light)
+        XCTAssertNil(AppTheme.named("system").colorScheme)
+        // Nothing chosen yet, or a value from a newer version: as the system is.
+        XCTAssertEqual(AppTheme.named(nil), .system)
+        XCTAssertEqual(AppTheme.named("sepia"), .system)
     }
 }
