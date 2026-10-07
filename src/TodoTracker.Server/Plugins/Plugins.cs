@@ -42,6 +42,9 @@ public sealed class PluginSettings
     private readonly string _path;
     private readonly Lock _lock = new();
 
+    // Read once and kept in memory (live plugins ask on every request); changed only through SetEnabled.
+    private JsonObject? _known;
+
     public PluginSettings(string dataDirectory)
     {
         _path = Path.Combine(dataDirectory, "plugins.json");
@@ -64,17 +67,24 @@ public sealed class PluginSettings
             all[id] = enabled;
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             File.WriteAllText(_path, all.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _known = all;
         }
     }
 
     private JsonObject Read()
     {
+        if (_known is not null)
+        {
+            return _known;
+        }
+
         try
         {
-            return File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? o : [];
+            return _known = File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? o : [];
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
+            // Not remembered: read again next time rather than keep "everything off" for good.
             return [];
         }
     }

@@ -178,7 +178,8 @@ public static partial class QuickCaptureParser
     [GeneratedRegex("^([1-9][0-9]{0,2})d$")]
     private static partial Regex DaysPattern();
 
-    [GeneratedRegex(@"(?<=^|\s)#""([^""]+)""")]
+    // Straight or curly quotes (smart punctuation on iPhone, iPad and Mac curls them as you type).
+    [GeneratedRegex(@"(?<=^|\s)#[""\u201C\u201D]([^""\u201C\u201D]+)[""\u201C\u201D]")]
     private static partial Regex QuotedTag();
 }
 

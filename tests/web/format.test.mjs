@@ -148,3 +148,8 @@ test('the tag & label picker adds a term to the filter and takes it out again', 
   assert.ok(hasTerm('a label:"next up" b', 'label:"Next up"'));
   assert.ok(!hasTerm('#workshop', '#work'));
 });
+test('curly quotes (smart punctuation on iPhone, iPad and Mac) group words like straight ones', () => {
+  assert.deepEqual(parseTags('#\u201Cdeep work\u201D #q3'), ['deep work', 'q3']);
+  assert.ok(hasTerm('report #\u201Cdeep work\u201D', '#"deep work"'));
+  assert.equal(toggleTerm('report #\u201Cdeep work\u201D', '#"deep work"'), 'report');
+});

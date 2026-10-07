@@ -128,16 +128,19 @@ export function taskHtml(item, { image = () => null, includeDone = true } = {}) 
 }
 
 const MAX_PICTURE_BYTES = 4 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 12 * 1024 * 1024;
 
-/** The task's pictures as data: URLs (each at most 4 MB; ones that fail are left out). */
+/** The task's pictures as data: URLs (each at most 4 MB, 12 MB in all; the rest are named instead). */
 async function loadPictures(item) {
   const found = new Map();
-  await Promise.all(taskPictures(item).map(async (p) => {
+  let total = 0;
+  for (const p of taskPictures(item)) {
     try {
       const res = await fetch(p.url, { credentials: 'same-origin' });
-      if (!res.ok) return;
+      if (!res.ok) continue;
       const blob = await res.blob();
-      if (blob.size > MAX_PICTURE_BYTES) return;
+      if (blob.size > MAX_PICTURE_BYTES || total + blob.size > MAX_TOTAL_BYTES) continue;
+      total += blob.size;
       found.set(p.url, await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
@@ -145,31 +148,39 @@ async function loadPictures(item) {
         reader.readAsDataURL(blob);
       }));
     } catch { /* named instead */ }
-  }));
+  }
   return found;
 }
 
 /**
- * Copies one task: rich text with its pictures (Loop, Teams, OneNote, Word, mail) and markdown as plain text. The
- * clipboard gets promises, so the click still counts as the user's even though the pictures load first (Safari).
+ * Copies one task: rich text with its pictures (Loop, Teams, OneNote, Word, mail) and markdown as plain text.
+ * Not async on purpose: the clipboard is written right away, inside the click (Safari insists), with contents that
+ * arrive once the task and its pictures have loaded.
  */
-export async function copyTask(host, id, { includeDone = true } = {}) {
-  const item = await host.api(`/api/items/${id}`);
-  const markdown = taskMarkdown(item, { includeDone });
+export function copyTask(host, id, { includeDone = true } = {}) {
+  const item = host.api(`/api/items/${id}`);
+  const markdown = item.then((it) => taskMarkdown(it, { includeDone }));
   let pictures = 0;
-  const html = loadPictures(item).then((found) => {
+  const html = item.then(async (it) => {
+    const found = await loadPictures(it);
     pictures = found.size;
-    return new Blob([taskHtml(item, { image: (url) => found.get(url) ?? null, includeDone })], { type: 'text/html' });
+    return taskHtml(it, { image: (url) => found.get(url) ?? null, includeDone });
   });
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ 'text/html': html, 'text/plain': new Blob([markdown], { type: 'text/plain' }) })]);
-  } catch {
-    await navigator.clipboard.writeText(markdown);
+  const blob = (text, type) => text.then((t) => new Blob([t], { type }));
+  const plainOnly = () => markdown.then((t) => {
     pictures = 0;
+    return navigator.clipboard.writeText(t);
+  });
+  let written;
+  try {
+    written = navigator.clipboard.write([new ClipboardItem({ 'text/html': blob(html, 'text/html'), 'text/plain': blob(markdown, 'text/plain') })]);
+  } catch {
+    written = plainOnly();
   }
-  return { item, markdown, pictures };
+  return written
+    .catch(() => plainOnly())
+    .then(async () => ({ item: await item, markdown: await markdown, pictures }));
 }
-
 export function activate(host) {
   host.addTaskAction?.({
     iconName: 'list',

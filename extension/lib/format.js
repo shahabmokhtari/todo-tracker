@@ -137,7 +137,7 @@ export function fileSize(bytes) {
 export function parseTags(text) {
   const seen = new Set();
   const tags = [];
-  for (const m of String(text ?? '').matchAll(/#?"([^"]*)"|[^\s,]+/g)) {
+  for (const m of straightQuotes(text).matchAll(/#?"([^"]*)"|[^\s,]+/g)) {
     const tag = (m[1] ?? m[0]).replace(/^#+/, '').replace(/\s+/g, ' ').trim();
     if (!tag || seen.has(tag.toLowerCase())) continue;
     seen.add(tag.toLowerCase());
@@ -156,7 +156,10 @@ export function queryFor({ tag, label }) {
   return /\s/.test(label) ? `label:"${label}"` : `label:${label}`;
 }
 
-const terms = (query) => String(query ?? '').match(/[^\s"]*"[^"]*"?|\S+/g) ?? [];
+/** Smart punctuation (iPhone, iPad, Mac) curls quotes as they're typed: “deep work” means "deep work". */
+const straightQuotes = (text) => String(text ?? '').replace(/[\u201C\u201D]/g, '"');
+
+const terms = (query) => straightQuotes(query).match(/[^\s"]*"[^"]*"?|\S+/g) ?? [];
 
 /** True when the filter already has this term (#tag, label:x; case-insensitive). */
 export const hasTerm = (query, term) => terms(query).some((t) => t.toLowerCase() === term.toLowerCase());

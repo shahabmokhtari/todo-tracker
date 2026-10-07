@@ -10,7 +10,7 @@ import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
 import { createReportsView } from './views/reports.js';
 import { createSettingsView } from './views/settings.js';
-import { applyTheme } from './themes.js';
+import { followTheme as follow } from './themes.js';
 import { duration, toLocalInput as localInput } from './timefmt.js';
 
 /** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
@@ -249,22 +249,40 @@ function setQuery(q) {
   refreshAll();
 }
 
-/** The tag & label picker next to the filter: click one to add it to the filter (again to take it out). */
+/**
+ * The tag & label picker next to the filter: a small panel of toggles (click one to add it to the filter, again to
+ * take it out). Esc closes it and goes back to its button.
+ */
 async function toggleFilterMenu() {
   const menu = $('#filter-menu');
-  const button = $('#filter-pick');
-  if (!menu.hidden) {
-    menu.hidden = true;
-    button.setAttribute('aria-expanded', 'false');
-    return;
-  }
+  if (!menu.hidden) return closeFilterMenu();
   closeMenus();
   let tags = [];
   try { tags = await api('/api/tags'); } catch { /* labels alone still help */ }
+  renderFilterMenu(tags);
+  menu.hidden = false;
+  $('#filter-pick').setAttribute('aria-expanded', 'true');
+  menu.querySelector('button')?.focus();
+}
+
+function closeFilterMenu({ focusButton = false } = {}) {
+  $('#filter-menu').hidden = true;
+  $('#filter-pick').setAttribute('aria-expanded', 'false');
+  if (focusButton) $('#filter-pick').focus();
+}
+
+function renderFilterMenu(tags) {
+  const menu = $('#filter-menu');
   const labels = state.dashboard?.labels ?? [];
+  // Redrawn after each click, so what's on shows at once (and focus stays on the same toggle).
+  const pick = (term) => {
+    setQuery(toggleTerm(state.query, term));
+    renderFilterMenu(tags);
+    menu.querySelector(`button[data-term="${CSS.escape(term)}"]`)?.focus();
+  };
   const entry = (term, content, title) => {
     const on = hasTerm(state.query, term);
-    return h('button', { role: 'menuitemcheckbox', 'aria-checked': String(on), class: on ? 'on' : '', title, onclick: () => setQuery(toggleTerm(state.query, term)) },
+    return h('button', { type: 'button', 'aria-pressed': String(on), class: on ? 'on' : '', title, dataset: { term }, onclick: () => pick(term) },
       h('span', { class: 'check', 'aria-hidden': 'true' }, on ? '✓' : ''), ...content);
   };
   const swatch = (color) => {
@@ -273,13 +291,11 @@ async function toggleFilterMenu() {
     return s;
   };
   menu.replaceChildren(
-    h('p', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
+    h('h2', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
     ...(labels.length ? labels.map((l) => entry(queryFor({ label: l.name }), [swatch(l.color), l.name], `Show tasks labeled "${l.name}"`)) : [h('p', { class: 'menu-empty' }, 'No labels yet: add them in a task\'s details.')]),
-    h('p', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type: #word or #"two words"')),
+    h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type: #word or #"two words"')),
     ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: type #word in a task.')]),
-    state.query ? h('button', { class: 'menu-clear', onclick: () => setQuery('') }, 'Clear the filter') : null);
-  menu.hidden = false;
-  button.setAttribute('aria-expanded', 'true');
+    state.query ? h('button', { type: 'button', class: 'menu-clear', onclick: () => { setQuery(''); renderFilterMenu(tags); } }, 'Clear the filter') : null);
 }
 
 function renderVault() {
@@ -1322,6 +1338,7 @@ $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#filter-pick').append(icon('tag', { size: 15 }));
   $('#filter-pick').addEventListener('click', (e) => { e.stopPropagation(); toggleFilterMenu(); });
 $('#filter-menu').addEventListener('click', (e) => e.stopPropagation());
+$('#filter-menu').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFilterMenu({ focusButton: true }); } });
 $('#search-icon').append(icon('search', { size: 16 }));
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
@@ -1368,12 +1385,14 @@ function refreshViewQuietly() {
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
 /** The shared theme, changed elsewhere (the sidebar's menu, another window). */
-const followTheme = () => api('/api/settings').then((s) => applyTheme(s.theme)).catch(() => {});
+const followTheme = () => follow(() => api('/api/settings').then((s) => s.theme)).catch(() => {});
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') followTheme(); });
+// Coming back to this window (from the sidebar, where the theme may have just changed).
+window.addEventListener('focus', followTheme);
 setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); followTheme(); } }, 15000);
 refresh().then(() => {
   // The theme every window shares (js/theme.js already applied the one remembered here).
-  api('/api/settings').then((s) => applyTheme(s.theme)).catch(() => {});
+  followTheme();
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   loadPlugins();
   const params = new URLSearchParams(location.search);

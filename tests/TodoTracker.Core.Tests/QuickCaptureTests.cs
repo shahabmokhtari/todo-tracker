@@ -59,6 +59,17 @@ public class QuickCaptureTests
 
         Assert.Equal(["A"], TaskQuery.Parse("#\"deep work\"").Apply(board).Select(i => i.Title));
         Assert.Equal(["B"], TaskQuery.Parse("#deep").Apply(board).Select(i => i.Title));
+        // Typed on an iPhone or iPad (smart punctuation curls the quotes).
+        Assert.Equal(["A"], TaskQuery.Parse("#\u201Cdeep work\u201D").Apply(board).Select(i => i.Title));
+    }
+
+    [Fact]
+    public void Curly_quotes_make_a_multi_word_tag_too()
+    {
+        var capture = QuickCaptureParser.Parse("Write the plan #\u201Cdeep work\u201D", Now, TimeZoneInfo.Utc);
+
+        Assert.Equal("Write the plan", capture.Title);
+        Assert.Equal(["deep work"], capture.Tags);
     }
 
     [Theory]

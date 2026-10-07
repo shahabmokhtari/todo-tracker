@@ -92,6 +92,7 @@ export function createShell(ctx) {
 
   function show(id) {
     const changed = current !== id;
+    if (changed && current) ctx.views[current]?.hide?.();
     current = id;
     localStorage.setItem('tt.view', id);
     const def = VIEWS.find((v) => v.id === id);

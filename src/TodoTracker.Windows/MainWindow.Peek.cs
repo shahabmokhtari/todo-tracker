@@ -18,7 +18,8 @@ public partial class MainWindow
     private DateTime _hoverSince;
     private DateTime? _outsideSince;
     private bool _peekGrewLeft;
-    private bool? _topmostBeforePeek;
+    private bool _raisedForPeek;
+    private double _peekWidthPixels;
 
     private void InitPeek()
     {
@@ -68,6 +69,15 @@ public partial class MainWindow
             return;
         }
 
+        if (_appBar.WindowBoundsPixels().Width < _peekWidthPixels * 0.9)
+        {
+            // Docked again meanwhile (the taskbar or a display changed): it's the strip again.
+            _peekTimer.Stop();
+            _vm.IsPeeking = false;
+            RestoreAfterPeek();
+            return;
+        }
+
         if (inside || IsBusy())
         {
             _outsideSince = null;
@@ -101,12 +111,14 @@ public partial class MainWindow
         var peek = PlacementMath.PeekBounds(strip, width, area, docked);
         _peekGrewLeft = peek.Left < strip.Left;
 
+        _peekWidthPixels = peek.Width;
         _vm.IsPeeking = true;
         CollapseButton.ToolTip = "Keep the sidebar open";
+        System.Windows.Automation.AutomationProperties.SetName(CollapseButton, "Keep the sidebar open");
         if (!Topmost)
         {
             // Over the other windows while it's open.
-            _topmostBeforePeek = Topmost;
+            _raisedForPeek = true;
             Topmost = true;
         }
 
@@ -134,10 +146,12 @@ public partial class MainWindow
     {
         _peekTimer.Stop();
         CollapseButton.ToolTip = "Collapse to a thin strip";
-        if (_topmostBeforePeek is { } topmost)
+        System.Windows.Automation.AutomationProperties.SetName(CollapseButton, "Collapse");
+        if (_raisedForPeek)
         {
-            Topmost = topmost;
-            _topmostBeforePeek = null;
+            // What the placement says now ("Always on top" may have been switched on while it was open).
+            Topmost = Placement.IsTopmost;
+            _raisedForPeek = false;
         }
     }
 }

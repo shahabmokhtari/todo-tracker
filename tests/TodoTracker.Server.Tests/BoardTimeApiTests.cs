@@ -22,6 +22,20 @@ public sealed class BoardTimeApiTests : IAsyncLifetime
         (await (await _client.PostAsJsonAsync("/api/items", new { title, parentId = parent })).Json()).Id();
 
     [Fact]
+    public async Task A_task_moves_right_after_a_sibling()
+    {
+        var trip = await Create("Trip");
+        var flights = await Create("Flights", trip);
+        await Create("Hotel", trip);
+        var visa = await Create("Visa", trip);
+
+        await _client.PostJson($"/api/items/{visa}/reorder", new { after = flights });
+
+        var item = await _client.GetJson($"/api/items/{trip}");
+        Assert.Equal(["Flights", "Visa", "Hotel"], item["children"]!.AsArray().Select(c => c!["title"]!.GetValue<string>()));
+    }
+
+    [Fact]
     public async Task The_tree_can_be_filtered_like_the_dashboard_keeping_parents_for_context()
     {
         var launch = await Create("Launch");

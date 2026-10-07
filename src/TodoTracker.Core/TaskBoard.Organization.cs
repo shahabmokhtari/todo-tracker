@@ -165,6 +165,10 @@ public sealed partial class TaskBoard
     /// <summary>A tag as typed: no #, no spaces at the edges, one space between words.</summary>
     internal static string CleanTag(string? raw) => Spaces().Replace((raw ?? string.Empty).Trim().TrimStart('#').Trim(), " ");
 
+    /// <summary>Tags read from a file (maybe edited by hand): cleaned, invalid ones left out, so later edits don't fail on them.</summary>
+    internal static IEnumerable<string> ReadTags(IEnumerable<string?> tags) =>
+        tags.Select(CleanTag).Where(IsValidTag).DistinctBy(t => t, StringComparer.OrdinalIgnoreCase);
+
     internal static List<string> NormalizeTags(IEnumerable<string>? tags)
     {
         var result = new List<string>();

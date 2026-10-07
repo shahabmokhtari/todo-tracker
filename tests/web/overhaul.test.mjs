@@ -88,25 +88,28 @@ test('the outline hides collapsed and (optionally) finished subtasks', () => {
 test('Tab makes a task a subtask of the one above it; Shift+Tab takes it out again, right after its parent', () => {
   const roots = [node('a', { children: [node('a1'), node('a2')] }), node('b'), node('c')];
   const map = index(roots);
-  assert.deepEqual(indentRequests(map, 'b'), [{ method: 'POST', url: '/api/items/b/move', body: { parentId: 'a', index: 2 } }]);
+  assert.deepEqual(indentRequests(map, 'b'), [{ method: 'POST', url: '/api/items/b/move', body: { parentId: 'a' } }]);
   assert.equal(indentRequests(map, 'a'), null);
-  assert.deepEqual(indentRequests(map, 'a2'), [{ method: 'POST', url: '/api/items/a2/move', body: { parentId: 'a1', index: 0 } }]);
+  assert.deepEqual(indentRequests(map, 'a2'), [{ method: 'POST', url: '/api/items/a2/move', body: { parentId: 'a1' } }]);
   assert.deepEqual(outdentRequests(map, 'a1', 'g1'), [
     { method: 'POST', url: '/api/items/a1/move', body: { toTopLevel: true, groupId: 'g1' } },
-    { method: 'POST', url: '/api/items/a1/reorder', body: { before: 'b' } },
+    { method: 'POST', url: '/api/items/a1/reorder', body: { after: 'a' } },
   ]);
   assert.equal(outdentRequests(map, 'b'), null);
 });
 
 test('a nested task outdents into its grandparent right after its parent', () => {
   const roots = [node('a', { children: [node('a1', { children: [node('x')] }), node('a2')] })];
-  assert.deepEqual(outdentRequests(index(roots), 'x'), [{ method: 'POST', url: '/api/items/x/move', body: { parentId: 'a', index: 1 } }]);
+  assert.deepEqual(outdentRequests(index(roots), 'x'), [
+    { method: 'POST', url: '/api/items/x/move', body: { parentId: 'a' } },
+    { method: 'POST', url: '/api/items/x/reorder', body: { after: 'a1' } },
+  ]);
 });
 
 test('Alt+Up/Down swap a task with its neighbour', () => {
   const map = index([node('a'), node('b'), node('c')]);
   assert.deepEqual(stepRequests(map, 'b', -1), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: 'a' } }]);
-  assert.deepEqual(stepRequests(map, 'b', 1), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: null } }]);
+  assert.deepEqual(stepRequests(map, 'b', 1), [{ method: 'POST', url: '/api/items/b/reorder', body: { after: 'c' } }]);
   assert.equal(stepRequests(map, 'a', -1), null);
 });
 
@@ -114,7 +117,7 @@ test('Alt+Up/Down step over finished tasks that are hidden', () => {
   const map = index([node('a'), node('d', { done: true }), node('b'), node('e', { done: true }), node('c')]);
   // Shown: a, b, c. Up from b goes above a; down from b goes below c (past the hidden ones).
   assert.deepEqual(stepRequests(map, 'b', -1, false), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: 'a' } }]);
-  assert.deepEqual(stepRequests(map, 'b', 1, false), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: null } }]);
+  assert.deepEqual(stepRequests(map, 'b', 1, false), [{ method: 'POST', url: '/api/items/b/reorder', body: { after: 'c' } }]);
   assert.deepEqual(stepRequests(map, 'c', -1, false), [{ method: 'POST', url: '/api/items/c/reorder', body: { before: 'b' } }]);
   assert.equal(stepRequests(map, 'c', 1, false), null);
   // Shown too: plain neighbours.
@@ -127,12 +130,18 @@ test('drops go before, inside or after a row, never into the task itself', () =>
   assert.equal(dropZone(38, 40), 'after');
   const roots = [node('a', { children: [node('a1'), node('a2')] }), node('b')];
   const map = index(roots);
-  assert.deepEqual(outlineDrop(map, 'b', 'a1', 'after'), [{ method: 'POST', url: '/api/items/b/move', body: { parentId: 'a', index: 1 } }]);
-  assert.deepEqual(outlineDrop(map, 'a2', 'a1', 'before'), [{ method: 'POST', url: '/api/items/a2/move', body: { parentId: 'a', index: 0 } }]);
-  assert.deepEqual(outlineDrop(map, 'b', 'a', 'inside'), [{ method: 'POST', url: '/api/items/b/move', body: { parentId: 'a', index: 2 } }]);
+  assert.deepEqual(outlineDrop(map, 'b', 'a1', 'after'), [
+    { method: 'POST', url: '/api/items/b/move', body: { parentId: 'a' } },
+    { method: 'POST', url: '/api/items/b/reorder', body: { after: 'a1' } },
+  ]);
+  assert.deepEqual(outlineDrop(map, 'a2', 'a1', 'before'), [
+    { method: 'POST', url: '/api/items/a2/move', body: { parentId: 'a' } },
+    { method: 'POST', url: '/api/items/a2/reorder', body: { before: 'a1' } },
+  ]);
+  assert.deepEqual(outlineDrop(map, 'b', 'a', 'inside'), [{ method: 'POST', url: '/api/items/b/move', body: { parentId: 'a' } }]);
   assert.deepEqual(outlineDrop(map, 'a1', 'b', 'after', 'g'), [
     { method: 'POST', url: '/api/items/a1/move', body: { toTopLevel: true, groupId: 'g' } },
-    { method: 'POST', url: '/api/items/a1/reorder', body: { before: null } },
+    { method: 'POST', url: '/api/items/a1/reorder', body: { after: 'b' } },
   ]);
   assert.equal(outlineDrop(map, 'a', 'a1', 'inside'), null);
   assert.equal(outlineDrop(map, 'a', 'a', 'before'), null);
@@ -231,4 +240,14 @@ test('routes: views, a task full size, and panels a plugin opens over the view',
   assert.deepEqual(parseRoute('#/ask'), { view: null, task: null, panel: 'ask' });
   assert.deepEqual(parseRoute('#/nope'), { view: 'today', task: null });
   assert.deepEqual(parseRoute(''), { view: 'today', task: null });
+});
+test('moves name the neighbouring task, not a position, so they land right when a filter hides some subtasks', () => {
+  // Shown under P: only D (A, B and C are hidden by the filter). "After D" means after D, wherever D is.
+  const map = index([node('p', { children: [node('d')] }), node('x')]);
+  assert.deepEqual(outlineDrop(map, 'x', 'd', 'after'), [
+    { method: 'POST', url: '/api/items/x/move', body: { parentId: 'p' } },
+    { method: 'POST', url: '/api/items/x/reorder', body: { after: 'd' } },
+  ]);
+  // Tab: last under the task above, after every subtask (shown or not).
+  assert.deepEqual(indentRequests(map, 'x'), [{ method: 'POST', url: '/api/items/x/move', body: { parentId: 'p' } }]);
 });

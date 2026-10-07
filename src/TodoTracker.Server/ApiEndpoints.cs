@@ -54,7 +54,8 @@ public sealed record MoveRequest(Guid? GroupId = null, Guid? ParentId = null, in
 public sealed record OrderRequest(IReadOnlyList<Guid>? Ids);
 
 /// <summary>Put the task before this sibling (null: last).</summary>
-public sealed record ReorderRequest(Guid? Before = null);
+/// <summary>Put the task before <c>Before</c> (null: last), or right after <c>After</c>: a task next to it.</summary>
+public sealed record ReorderRequest(Guid? Before = null, Guid? After = null);
 
 public sealed record LabelRequest(string? Name, string? Color = null);
 
@@ -298,7 +299,15 @@ internal static class ApiEndpoints
         api.MapPost("/items/{id:guid}/reorder", (Guid id, ReorderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             Mutate(store, time, http, (b, _, _) =>
             {
-                b.Reorder(id, request.Before);
+                if (request.After is { } after)
+                {
+                    b.ReorderAfter(id, after);
+                }
+                else
+                {
+                    b.Reorder(id, request.Before);
+                }
+
                 return b.Get(id);
             }));
 

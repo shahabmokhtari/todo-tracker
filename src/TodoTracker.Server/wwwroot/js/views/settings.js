@@ -2,7 +2,7 @@
 // Microsoft To Do: switch on, sign in, pick what to keep in step), sync, which extras are on, and the keyboard.
 
 import { createConnectorsPanel } from '../plugins/connectors.js';
-import { THEMES, applyTheme } from '../themes.js';
+import { THEMES, chooseTheme } from '../themes.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
 
@@ -29,11 +29,9 @@ export function createSettingsView(ctx) {
 
   function appearance(theme) {
     const choose = async (value) => {
-      applyTheme(value);
-      render.theme = value;
       root.querySelectorAll('.theme-choice').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === value)));
       try {
-        await ctx.api('/api/settings/theme', { method: 'PUT', body: { theme: value } });
+        await chooseTheme(value, () => ctx.api('/api/settings/theme', { method: 'PUT', body: { theme: value } }));
       } catch (err) {
         ctx.toast(err.message, 'error');
       }
@@ -66,7 +64,11 @@ export function createSettingsView(ctx) {
   function sync(list) {
     const on = list.some((p) => p.id.startsWith('sync-') && p.enabled);
     return section('sync', 'Sync', on ? 'Your tasks folder stays in step with your other computers.' : 'Switch on a sync extra below (OneDrive, iCloud Drive or a GitHub gist).',
-      on ? h('button', { class: 'btn', type: 'button', onclick: () => document.querySelector('.sync-btn')?.click() }, icon('cloud', { size: 16 }), 'Sync settings') : null);
+      on ? h('button', { class: 'btn', type: 'button', onclick: () => {
+        const open = document.querySelector('.sync-btn');
+        if (open) open.click();
+        else ctx.toast('Sync is still starting. Try again in a moment.', 'error');
+      } }, icon('cloud', { size: 16 }), 'Sync settings') : null);
   }
 
   function render(settings, list) {
@@ -90,5 +92,7 @@ export function createSettingsView(ctx) {
     }
   }
 
-  return { root, show: load, refresh: load, poll: () => {}, title: 'Settings' };
+  // Task changes elsewhere (a timer, quick add, the filter) don't touch settings: no reload that would wipe a token
+  // being typed. Leaving the view stops a sign-in that's waiting.
+  return { root, show: load, refresh: () => {}, hide: () => connectors?.stop(), poll: () => {}, title: 'Settings' };
 }

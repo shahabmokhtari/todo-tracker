@@ -39,6 +39,9 @@ public sealed class ParsedTaskFile
 
     internal Dictionary<Guid, string> PriorityEmoji { get; } = [];
 
+    /// <summary>Hidden subtask data this version doesn't know (written by a newer one): kept as it was.</summary>
+    internal Dictionary<Guid, JsonObject> UnknownMeta { get; } = [];
+
     internal Dictionary<Guid, (string Raw, string Path, string Name)> RawLinks { get; } = [];
 
     /// <summary>Headings or text right above a top-level subtask (e.g. <c>### Phase 1</c>).</summary>
@@ -80,6 +83,9 @@ public static partial class TaskMarkdown
     private const string Notes = "notes";
     private const string Attachments = "attachments";
     private const string Time = "time";
+
+    /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "seq", "delay", "labels", "tags", "reminders"];
 
     private static readonly string[] CanonicalKeys = ["status", "board", "priority", "created", "completed", "archived", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
 
@@ -267,7 +273,7 @@ public static partial class TaskMarkdown
         state.NeedsWrite |= !done && archived is not null;
 
         root.Stage = ParseStage(fm.Scalar("board"));
-        root.TagList.AddRange(fm.List("tags").Select(t => t.TrimStart('#')).Where(t => t.Length > 0));
+        root.TagList.AddRange(TaskBoard.ReadTags(fm.List("tags")));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
         foreach (var map in fm.Maps("reminders"))
@@ -612,10 +618,15 @@ public static partial class TaskMarkdown
             Sequential = meta?["seq"] is JsonValue seq && seq.TryGetValue<bool>(out var s) && s,
             StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
         };
+        if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
+        {
+            state.File.UnknownMeta[id] = new JsonObject(unknown.Select(p => KeyValuePair.Create(p.Key, p.Value?.DeepClone())));
+        }
+
         item.TagList.AddRange(tags);
         if (meta?["tags"] is JsonArray moreTags)
         {
-            item.TagList.AddRange(moreTags.OfType<JsonValue>().Select(t => t.TryGetValue<string>(out var v) ? v : null).OfType<string>()
+            item.TagList.AddRange(TaskBoard.ReadTags(moreTags.OfType<JsonValue>().Select(t => t.TryGetValue<string>(out var v) ? v : null))
                 .Where(t => !item.TagList.Contains(t, StringComparer.OrdinalIgnoreCase)));
         }
 
@@ -1341,6 +1352,11 @@ public static partial class TaskMarkdown
             }
 
             meta["reminders"] = reminders;
+        }
+
+        foreach (var (key, value) in previous?.UnknownMeta.GetValueOrDefault(item.Id) ?? [])
+        {
+            meta[key] = value?.DeepClone();
         }
 
         sb.Append(" %%").Append(VaultText.Hidden(meta)).Append("%%");

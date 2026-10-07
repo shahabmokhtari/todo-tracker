@@ -179,6 +179,31 @@ public class TaskMarkdownTests
     }
 
     [Fact]
+    public void Tags_typed_by_hand_are_cleaned_and_unusable_ones_left_out()
+    {
+        // Otherwise every later tag change on the task would fail on them.
+        var parsed = TaskMarkdown.Parse("---\ntags:\n  - ok\n  - \"#deep   work\"\n  - \"12\"\n  - \"c++\"\n  - OK\n---\n# Trip\n", "Trip", Utc);
+
+        Assert.Equal(["ok", "deep work"], parsed.Root.Tags);
+    }
+
+    [Fact]
+    public void Hidden_data_a_newer_version_wrote_is_kept_when_this_one_rewrites_the_line()
+    {
+        // Forward compatible: an older app must not drop what it doesn't know (multi-word tags were once such a key).
+        var text = "# Trip\n\n## Subtasks\n\n- [ ] Book flights ^a1b2c3 %%{\"id\":\"8b0f2c1e-1111-4a6b-9c1d-000000000001\",\"created\":\"2026-01-05T09:00:00.000Z\",\"future\":{\"x\":[1,2]},\"mood\":\"calm\"}%%\n";
+        var parsed = TaskMarkdown.Parse(text, "Trip", Utc);
+        var step = parsed.Root.Children.Single();
+        step.Title = "Book cheap flights";
+
+        var written = TaskMarkdown.Render(parsed.Root, Utc, parsed);
+
+        Assert.Contains("Book cheap flights", written, StringComparison.Ordinal);
+        Assert.Contains("\"future\":{\"x\":[1,2]}", written, StringComparison.Ordinal);
+        Assert.Contains("\"mood\":\"calm\"", written, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_ordered_list_makes_the_steps_sequential()
     {
         var parsed = TaskMarkdown.Parse("# Rollout\n\n1. [ ] Ring 0\n2. [ ] Ring 1\n   1. [ ] Prep\n   2. [ ] Go\n", "Rollout", Utc);

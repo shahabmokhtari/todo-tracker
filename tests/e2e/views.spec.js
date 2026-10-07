@@ -374,10 +374,17 @@ test('Settings: light or dark for every window, and connected apps switch on at 
   await open(page, request);
 
   await page.getByRole('button', { name: 'Filter by tag or label' }).click();
-  const menu = page.getByRole('menu', { name: 'Tags and labels' });
+  const menu = page.getByRole('dialog', { name: 'Tags and labels' });
   await expect(menu).toContainText('Labels');
-  await menu.getByRole('menuitemcheckbox', { name: /#deep work/ }).click();
+  const deep = menu.getByRole('button', { name: /#deep work/ });
+  await deep.click();
   await expect(page.locator('#filter')).toHaveValue('#"deep work"');
+  // Shows as on right away, and keeps focus for the next pick; Esc goes back to the button.
+  await expect(deep).toHaveAttribute('aria-pressed', 'true');
+  await expect(deep).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Filter by tag or label' })).toBeFocused();
 
   // The board follows the filter too.
   await page.locator('#nav-views').getByRole('link', { name: /Board/ }).click();
@@ -387,8 +394,9 @@ test('Settings: light or dark for every window, and connected apps switch on at 
 
   // Picked again: out of the filter.
   await page.getByRole('button', { name: 'Filter by tag or label' }).click();
-  await expect(menu.getByRole('menuitemcheckbox', { name: /#deep work/ })).toHaveAttribute('aria-checked', 'true');
-  await menu.getByRole('menuitemcheckbox', { name: /#deep work/ }).click();
+  await expect(deep).toHaveAttribute('aria-pressed', 'true');
+  await deep.click();
+  await expect(deep).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#filter')).toHaveValue('');
   await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toBeVisible();
 
