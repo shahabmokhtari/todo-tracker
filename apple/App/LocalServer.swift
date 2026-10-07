@@ -19,6 +19,7 @@ final class LocalServer {
     private var started = false
     private var quitting = false
     private var restarts = 0
+    private var opening = false
     private var quitObserver: NSObjectProtocol?
 
     enum Failure: Error {
@@ -41,18 +42,40 @@ final class LocalServer {
         started = true
         self.model = model
         model.beginConnecting()
+        Self.rotateLog()
         quitObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated { LocalServer.shared.stop() }
         }
+        // A server found already running isn't this app's process: if reads keep failing, it's gone.
+        model.onServerLost = { [weak self] in self?.reconnect() }
         Task { await self.open() }
     }
 
+    /// One at a time: start (or find) the server; on success the model uses it, else it goes back to the board on
+    /// this Mac (or, once that moved into the folder, shows it without changes).
     private func open() async {
-        guard let model else { return }
+        guard !opening, let model else { return }
+        opening = true
+        defer { opening = false }
         switch await start() {
-        case let .success(client): model.use(server: client)
-        case let .failure(failure): model.reportLocalOnly(failure.reason)
+        case let .success(client):
+            restarts = 0
+            if let process { watch(process) }
+            model.use(server: client)
+        case let .failure(failure):
+            model.reportLocalOnly(failure.reason)
         }
+    }
+
+    private func reconnect() {
+        guard !quitting, !opening, let model else { return }
+        restarts += 1
+        guard restarts <= 3 else {
+            model.reportLocalOnly("Todo Tracker's server keeps stopping; see ~/Library/Logs/TodoTracker/server.log, then quit and open the app again")
+            return
+        }
+        model.serverLost("Reconnecting to your tasks folder…")
+        Task { await self.open() }
     }
 
     private func stop() {
@@ -60,18 +83,15 @@ final class LocalServer {
         process?.terminate()
     }
 
-    /// It stopped while the app runs: start it again (a few times), and say what's happening meanwhile.
-    private func stopped(_ which: Process) {
-        guard !quitting, which === process, let model else { return }
-        restarts += 1
-        guard restarts <= 3 else {
-            model.serverLost("Todo Tracker's server keeps stopping (see ~/Library/Logs/TodoTracker/server.log). Quit and open the app again.")
-            return
+    /// Only once it's up: a start that fails is retried by `start` itself.
+    private func watch(_ process: Process) {
+        process.terminationHandler = { [weak self] ended in
+            Task { @MainActor in
+                guard let self, ended === self.process else { return }
+                self.reconnect()
+            }
         }
-        model.serverLost("Reconnecting to your tasks folder…")
-        Task { await self.open() }
     }
-
     private func start() async -> Result<ServerClient, Failure> {
         #if arch(arm64)
         let probe = ServerClient(baseURL: Self.base, token: "")
@@ -93,9 +113,6 @@ final class LocalServer {
         // A server that just stopped may still hold the folder for a moment: a few tries.
         for _ in 0..<3 {
             let process = Self.makeProcess(executable)
-            process.terminationHandler = { [weak self] ended in
-                Task { @MainActor in self?.stopped(ended) }
-            }
             do {
                 try process.run()
             } catch {
@@ -123,7 +140,7 @@ final class LocalServer {
     private static func makeProcess(_ executable: URL) -> Process {
         let process = Process()
         process.executableURL = executable
-        var arguments = ["--port", String(port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
+        var arguments = ["--port", String(port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier), "--import-legacy"]
         if !hasGit { arguments.append("--no-history") }
         process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
@@ -152,19 +169,29 @@ final class LocalServer {
         return token.isEmpty ? nil : ServerClient(baseURL: base, token: token)
     }
 
-    /// `server.log` (this run) and `server.previous.log` (the one before: why it stopped, after a crash).
-    private static func logFile() -> FileHandle {
+    /// `server.log` (this run of the app) and `server.previous.log` (the run before: why it stopped, after a crash).
+    private static var logURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TodoTracker/server.log")
+    }
+
+    private static func rotateLog() {
         let fm = FileManager.default
-        let folder = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TodoTracker", isDirectory: true)
-        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
-        let file = folder.appendingPathComponent("server.log")
-        let previous = folder.appendingPathComponent("server.previous.log")
-        if fm.fileExists(atPath: file.path) {
+        try? fm.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let previous = logURL.deletingLastPathComponent().appendingPathComponent("server.previous.log")
+        if fm.fileExists(atPath: logURL.path) {
             try? fm.removeItem(at: previous)
-            try? fm.moveItem(at: file, to: previous)
+            try? fm.moveItem(at: logURL, to: previous)
         }
-        fm.createFile(atPath: file.path, contents: nil)
-        return (try? FileHandle(forWritingTo: file)) ?? FileHandle.nullDevice
+    }
+
+    /// Appends (every start of this run goes in the same log).
+    private static func logFile() -> FileHandle {
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+            FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: logURL) else { return FileHandle.nullDevice }
+        handle.seekToEndOfFile()
+        return handle
     }
 }
 #endif

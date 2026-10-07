@@ -39,6 +39,10 @@ public final class BoardModel: ObservableObject {
     private var changesInFlight = 0
     private var readsInFlight = 0
     private var readFailed = false
+    private var unansweredReads = 0
+
+    /// Called when the server stops answering (the Mac app then starts it again).
+    public var onServerLost: (() -> Void)?
     private var etag: String?
     private var themeSettled = false
 
@@ -93,6 +97,7 @@ public final class BoardModel: ObservableObject {
         serverURL = client.baseURL
         isConnecting = false
         isReadOnly = false
+        unansweredReads = 0
         etag = nil
         themeSettled = false
         status = nil
@@ -161,11 +166,17 @@ public final class BoardModel: ObservableObject {
                 readFailed = false
                 status = nil
             }
+            unansweredReads = 0
             refresh()
         } catch {
             guard mine == generation else { return }
             readFailed = true
             status = Self.describe(error)
+            if let failure = error as? ServerError, case .unreachable(_) = failure {
+                unansweredReads += 1
+                // Not answering for a while (about 15 s): it's gone; whoever started it starts it again.
+                if unansweredReads == 3 { onServerLost?() }
+            }
         }
     }
 
@@ -388,7 +399,9 @@ public final class BoardModel: ObservableObject {
     @discardableResult
     private func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
         guard !isReadOnly else {
-            status = "Your saved board couldn't be opened, so changes are disabled to protect it."
+            status = store?.wasMigrated == true
+                ? "Your tasks are in your tasks folder, and Todo Tracker's server isn't running: changes are off until it is."
+                : "Your saved board couldn't be opened, so changes are disabled to protect it."
             return false
         }
         var ok = true

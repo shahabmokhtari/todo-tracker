@@ -17,6 +17,10 @@ for (var i = 0; i < args.Length; i++)
         case "--port" when i + 1 < args.Length:
             options.Port = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
+        case "--import-legacy":
+            // Started by the Mac app: the tasks it kept on its own join the tasks folder, even one that has tasks.
+            options.ImportLegacyIntoExisting = true;
+            break;
         case "--no-history":
             // No version history (it needs git; on a Mac without the developer tools, git asks to install them).
             options.EnableHistory = false;

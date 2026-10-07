@@ -24,6 +24,13 @@ public sealed record VaultOptions(string Root)
     /// <summary>A <c>board.json</c> from earlier versions to import into an empty vault (then renamed to <c>.migrated</c>).</summary>
     public string? LegacyBoardPath { get; init; }
 
+    /// <summary>
+    /// Also bring that board's tasks into a vault that already has tasks (beside them). Only for an app whose own board
+    /// was in use until now (the Mac app); elsewhere an old board.json next to a synced vault is left alone (its tasks
+    /// may have been finished or deleted since).
+    /// </summary>
+    public bool ImportLegacyIntoExisting { get; init; }
+
     /// <summary>Watch the folder for edits made outside the app (Obsidian, editors, agents, sync clients).</summary>
     public bool Watch { get; init; } = true;
 

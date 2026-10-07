@@ -98,6 +98,7 @@ public static class TodoTrackerHost
 
             // An old board.json moves into the app's own folder only, never into a folder named for one command.
             LegacyBoardPath = options.IsVaultOverridden ? null : Path.Combine(options.DataDirectory, "board.json"),
+            ImportLegacyIntoExisting = options.ImportLegacyIntoExisting,
             Watch = options.WatchVault,
             LockDirectory = options.LockDirectory,
         });

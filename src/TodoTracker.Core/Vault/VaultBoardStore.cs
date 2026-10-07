@@ -264,9 +264,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             Directory.CreateDirectory(_root);
             var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && !EnumerateTaskFiles().Any();
-            if (fresh && _options.LegacyBoardPath is { } legacy && File.Exists(legacy))
+            if (fresh && _options.LegacyBoardPath is { } legacy && ReadLegacy(legacy) is { } legacyBoard)
             {
-                Migrate(legacy);
+                Migrate(legacy, legacyBoard);
             }
             else if (fresh)
             {
@@ -292,9 +292,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
             PurgeOldTrash();
             Reload();
-            if (!fresh && _options.LegacyBoardPath is { } older && File.Exists(older))
+            if (!fresh && _options.ImportLegacyIntoExisting && _options.LegacyBoardPath is { } older && ReadLegacy(older) is { } olderBoard)
             {
-                ImportBeside(older);
+                ImportBeside(older, olderBoard);
             }
         }
 
@@ -304,9 +304,27 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
     }
 
-    private void Migrate(string legacyPath)
+    /// <summary>An old board file, or null when there's none or it can't be read (then it's left where it is, untouched).</summary>
+    private static TaskBoard? ReadLegacy(string path)
     {
-        _board = BoardSerializer.Deserialize(File.ReadAllText(legacyPath));
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return BoardSerializer.Deserialize(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private void Migrate(string legacyPath, TaskBoard legacy)
+    {
+        _board = legacy;
         var folders = new Dictionary<Guid, string>();
         foreach (var group in _board.Groups)
         {
@@ -327,19 +345,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     /// has tasks (another computer's, synced): added beside them, never replacing any (a task already here is kept as
     /// it is), into the tab of the same name (else the first one). Then the file is set aside.
     /// </summary>
-    private void ImportBeside(string legacyPath)
+    private void ImportBeside(string legacyPath, TaskBoard legacy)
     {
-        TaskBoard legacy;
-        try
-        {
-            legacy = BoardSerializer.Deserialize(File.ReadAllText(legacyPath));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or ArgumentException)
-        {
-            // Unreadable: left where it is (nothing is lost, nothing half-imported).
-            return;
-        }
-
         foreach (var root in legacy.Items.ToList())
         {
             if (_board.HasAnyId(root))

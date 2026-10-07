@@ -28,9 +28,9 @@ public sealed class VaultStoreTests : IDisposable
         }
     }
 
-    private VaultBoardStore Open(string? legacy = null)
+    private VaultBoardStore Open(string? legacy = null, bool importBeside = false)
     {
-        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, Watch = false, EditSettleTime = TimeSpan.Zero });
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, ImportLegacyIntoExisting = importBeside, Watch = false, EditSettleTime = TimeSpan.Zero });
         _stores.Add(store);
         return store;
     }
@@ -67,7 +67,7 @@ public sealed class VaultStoreTests : IDisposable
         await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
         await File.WriteAllTextAsync(legacy + ".bak", BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
 
-        var store = Open(legacy);
+        var store = Open(legacy, importBeside: true);
 
         var (titles, steps, group) = await store.ReadAsync(b => (
             b.Items.Select(i => i.Title).Order().ToList(),
@@ -86,9 +86,41 @@ public sealed class VaultStoreTests : IDisposable
         // Next start: nothing imported twice.
         store.Dispose();
         await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
-        var again = Open(legacy);
+        var again = Open(legacy, importBeside: true);
         Assert.Equal(2, await again.ReadAsync(b => b.Items.Count));
         _ = fromWindows;
+    }
+
+    [Fact]
+    public async Task Elsewhere_an_old_board_next_to_a_folder_with_tasks_is_left_alone()
+    {
+        // A second PC whose Documents came with the synced folder: its old board.json may hold tasks deleted since.
+        var shared = Open();
+        await Add(shared, "From the folder");
+        shared.Dispose();
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        var old = new TaskBoard();
+        old.AddTask(new NewTask("Deleted long ago"), Actor.User, T0);
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(old), TestContext.Current.CancellationToken);
+
+        var store = Open(legacy);
+
+        Assert.Equal(["From the folder"], await store.ReadAsync(b => b.Items.Select(i => i.Title).ToList()));
+        Assert.True(File.Exists(legacy));
+    }
+
+    [Fact]
+    public async Task An_unreadable_old_board_is_left_where_it_is_and_the_folder_still_opens()
+    {
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        await File.WriteAllTextAsync(legacy, "{\"schemaVersion\": 99, \"items\": []}", TestContext.Current.CancellationToken);
+
+        var store = Open(legacy, importBeside: true);
+
+        Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+        Assert.True(File.Exists(legacy));
     }
 
     [Fact]
