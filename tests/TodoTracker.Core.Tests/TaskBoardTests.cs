@@ -22,6 +22,20 @@ public class TaskBoardTests
         Assert.Equal(Actor.User, entry.Actor);
     }
 
+    [Fact]
+    public void AddTask_can_take_a_chosen_id_once()
+    {
+        // Connectors import an outside item under an id made from its outside id (so an import is never doubled).
+        var id = Guid.Parse("0b5e7a5c-1111-4222-8333-944455556666");
+        var item = _board.AddTask(new NewTask("From Notion") { Id = id }, new Actor(ActorKind.Connector, "Notion"), T0);
+
+        Assert.Equal(id, item.Id);
+        Assert.Equal(ActorKind.Connector, Assert.Single(_board.Activity).Actor.Kind);
+        Assert.Throws<InvalidOperationException>(() => _board.AddTask(new NewTask("Again") { Id = id }, Actor.User, T0));
+        Assert.Throws<ArgumentException>(() => _board.AddTask(new NewTask("Empty id") { Id = Guid.Empty }, Actor.User, T0));
+        Assert.Single(_board.Items);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

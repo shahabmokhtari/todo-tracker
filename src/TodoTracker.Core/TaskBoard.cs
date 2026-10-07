@@ -58,7 +58,14 @@ public sealed partial class TaskBoard
         var parent = spec.ParentId is { } parentId ? Get(parentId) : null;
         var groupId = parent is null ? (spec.GroupId is { } g ? GetGroup(g).Id : DefaultGroupId) : parent.GroupId;
 
-        var item = new WorkItem(Guid.NewGuid(), title, spec.Priority, now)
+        if (spec.Id is { } chosen && (chosen == Guid.Empty || Find(chosen) is not null))
+        {
+            throw chosen == Guid.Empty
+                ? new ArgumentException("A task id can't be empty.", nameof(spec))
+                : new InvalidOperationException("There is already a task with this id.");
+        }
+
+        var item = new WorkItem(spec.Id ?? Guid.NewGuid(), title, spec.Priority, now)
         {
             Details = OptionalText(spec.Details, MaxTextLength),
             Deadline = spec.Deadline,

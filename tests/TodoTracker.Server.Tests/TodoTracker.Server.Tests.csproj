@@ -10,6 +10,8 @@
     <ProjectReference Include="..\..\src\TodoTracker.Server\TodoTracker.Server.csproj" />
     <!-- A scripted ACP agent the agent chat tests launch as a child process. -->
     <ProjectReference Include="..\FakeAcpAgent\FakeAcpAgent.csproj" />
+    <!-- The pretend Notion and Microsoft Graph the connector tests in Core use. -->
+    <Compile Include="..\TodoTracker.Core.Tests\Connectors\Fake*.cs" LinkBase="Connectors" />
   </ItemGroup>
 </Project>
 
