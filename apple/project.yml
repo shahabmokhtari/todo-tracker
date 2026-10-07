@@ -49,7 +49,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos
         PRODUCT_NAME: TodoTracker
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Todo Tracker puts your tasks in a note when you choose Copy to Apple Notes.
         ENABLE_HARDENED_RUNTIME: YES
+    entitlements:
+      path: App/TodoTracker-macOS.entitlements
+      properties:
+        com.apple.security.automation.apple-events: true
 schemes:
   TodoTracker-iOS:
     build:

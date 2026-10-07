@@ -142,6 +142,33 @@ public final class BoardModel: ObservableObject {
 
     public func resetPomodoro() { mutate(nil) { _ in board.resetFocus() } }
 
+    // MARK: Full-screen break
+
+    /// Shows a full-screen break when a focus session ends (on by default; the user can turn it off).
+    @Published public var fullScreenBreaks = UserDefaults.standard.object(forKey: "fullScreenBreaks") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(fullScreenBreaks, forKey: "fullScreenBreaks") }
+    }
+
+    /// The end of the break the user already hid or skipped (it stays hidden for that break).
+    @Published private var dismissedBreak: Date?
+
+    /// The break to show now, or nil.
+    public var breakPrompt: BreakPrompt? {
+        guard fullScreenBreaks, let due = Breaks.due(board.pomodoro, now: now), due.until != dismissedBreak else { return nil }
+        return due
+    }
+
+    /// "I'm taking it": the screen goes away; the break timer keeps running.
+    public func takeBreak() {
+        dismissedBreak = Breaks.due(board.pomodoro, now: now)?.until ?? dismissedBreak
+    }
+
+    /// Back to work now: the break ends.
+    public func skipBreak() {
+        takeBreak()
+        skipPomodoro()
+    }
+
     public var pomodoroText: String {
         let seconds = Int(board.pomodoro.remaining(now).rounded(.up))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)

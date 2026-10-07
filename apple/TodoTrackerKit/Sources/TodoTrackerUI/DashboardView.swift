@@ -140,6 +140,12 @@ public struct DashboardView: View {
         .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id })) { wrapped in
             TaskDetailView(model: model, itemId: wrapped.id)
         }
+        #if os(iOS)
+        // The Mac covers every screen with its own windows (see the app); here the break covers the app.
+        .fullScreenCover(isPresented: Binding(get: { model.breakPrompt != nil }, set: { if !$0 { model.takeBreak() } })) {
+            BreakView(model: model)
+        }
+        #endif
         .alert("New group", isPresented: $addingGroup) {
             TextField("Name", text: $newGroupName)
             Button("Add") {
@@ -611,6 +617,10 @@ struct PomodoroBar: View {
                 Text(label(p)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
+            Toggle(isOn: $model.fullScreenBreaks) { Image(systemName: "rectangle.inset.filled") }
+                .toggleStyle(.button)
+                .help("Full-screen breaks: when a focus session ends, a reminder to rest covers the screen (you can skip it)")
+                .accessibilityLabel("Full-screen breaks")
             Group {
                 if p.phase == .idle {
                     Button { model.startFocus(nil) } label: { Image(systemName: "play.fill") }.accessibilityLabel("Start focus")
