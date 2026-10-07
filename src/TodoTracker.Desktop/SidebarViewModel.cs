@@ -33,7 +33,14 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         _shell = shell;
         _options = options;
         _store.Changed += OnStoreChanged;
-        _clockTimer = time.CreateTimer(_ => _shell.RunOnUi(() => Pomodoro.Tick(_time.GetUtcNow())), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        Break = new BreakScreenViewModel(SkipPomodoro);
+        _clockTimer = time.CreateTimer(_ => _shell.RunOnUi(() =>
+        {
+            var now = _time.GetUtcNow();
+            Pomodoro.Tick(now);
+            Break.Tick(now);
+            Timer.Tick(now);
+        }), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         _refreshTimer = time.CreateTimer(_ => _shell.RunOnUi(QueueRefresh), null, RefreshInterval, RefreshInterval);
     }
 
@@ -48,6 +55,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     public ObservableCollection<NoteViewModel> RecentNotes { get; } = [];
 
     public PomodoroViewModel Pomodoro { get; } = new();
+
+    /// <summary>The full-screen break when a focus session ends.</summary>
+    public BreakScreenViewModel Break { get; }
+
+    public TaskTimerViewModel Timer { get; } = new();
 
     public IReadOnlyList<SnoozeOption> SnoozeOptions { get; } = SnoozeOption.Defaults;
 
@@ -134,6 +146,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         NextUpText = snapshot.NextUp;
         Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
+        Break.Update(snapshot.Pomodoro, now);
+        Timer.Update(snapshot.Timer, now);
     }
 
     [RelayCommand]
@@ -424,6 +438,32 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return null;
     });
 
+    /// <summary>Starts timing the card (moving the timer off any other task), or stops it when it's already timing.</summary>
+    [RelayCommand]
+    private Task ToggleTimer(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
+    {
+        var started = await _store.UpdateAsync(b =>
+        {
+            var now = _time.GetUtcNow();
+            if (b.RunningTimer(now) is { } running && running.Item.Id == card.Id)
+            {
+                b.StopTimer(now);
+                return false;
+            }
+
+            b.StartTimer(card.Id, Actor.User, now);
+            return true;
+        }).ConfigureAwait(true);
+        return started ? $"Timing {card.Title}" : "Timer stopped";
+    });
+
+    [RelayCommand]
+    private Task StopTimer() => Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.StopTimer(_time.GetUtcNow())).ConfigureAwait(true);
+        return "Timer stopped";
+    });
+
     [RelayCommand]
     private Task PausePomodoro() => Pomo(b => b.PauseFocus(_time.GetUtcNow()));
 
@@ -436,8 +476,21 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task ResetPomodoro() => Pomo(b => b.ResetFocus(_time.GetUtcNow()));
 
+    /// <summary>The whole app: in the app window when there is one, else in the browser.</summary>
     [RelayCommand]
-    private void OpenDashboard() => _shell.OpenUrl(Launch("/"));
+    private void OpenDashboard() => OpenApp("/");
+
+    private void OpenApp(string path)
+    {
+        if (_options.OpenApp is { } open)
+        {
+            open(path);
+        }
+        else
+        {
+            _shell.OpenUrl(Launch(path));
+        }
+    }
 
     [RelayCommand]
     private void OpenReport(CardViewModel? card) => _shell.OpenUrl(Launch(card is null ? "/report.html" : $"/report.html?id={card.Id}"));
@@ -449,7 +502,17 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void EditInBrowser(CardViewModel? card)
     {
-        if (card is not null)
+        if (card is null)
+        {
+            return;
+        }
+
+        // The app window shows the task full size; the browser opens it in the dashboard's panel.
+        if (_options.OpenApp is { } open)
+        {
+            open($"/#/task/{card.Id}");
+        }
+        else
         {
             _shell.OpenUrl(Launch($"/?item={card.Id}"));
         }
@@ -607,13 +670,16 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         int Reminders,
         PomodoroState Pomodoro,
         string? PomodoroItem,
-        bool GroupMissing);
+        bool GroupMissing,
+        RunningTimerState? Timer = null);
 
     private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
     {
+        // The timer isn't tied to a group: it shows whatever group is picked.
+        var timer = board.RunningTimer(now) is { } t ? new RunningTimerState(t.Item.Id, t.Item.Title, t.Entry.Start) : null;
         if (groupId is { } g && !board.Groups.Any(x => x.Id == g))
         {
-            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true);
+            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true, timer);
         }
 
         var d = Agenda.Build(board, now, recentNoteCount: 6, groupId: groupId);
@@ -637,13 +703,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             ? Selected(keep, t.IsSelected)
             : t).ToList();
 
-        var cards = d.Now.Select(e => ToCard(e, now, board)).ToList();
+        var cards = d.Now.Select(e => ToCard(e, now, board, timer?.ItemId)).ToList();
         var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
         return new Snapshot(
             reusedTabs,
             cards.FirstOrDefault(),
             cards.Skip(1).ToList(),
-            d.Waiting.Select(e => ToCard(e, now, board)).ToList(),
+            d.Waiting.Select(e => ToCard(e, now, board, timer?.ItemId)).ToList(),
             // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
             d.Overview.Where(o => o.Item.Children.Count > 0).Select(o => new WorkstreamViewModel(
                 o.Item.Id,
@@ -658,7 +724,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             d.Now.Count(e => e.NeedsAttention),
             PomodoroState.Of(board.Pomodoro, now),
             board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
-            GroupMissing: false);
+            GroupMissing: false,
+            timer);
     }
 
     private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)
@@ -667,7 +734,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return tab;
     }
 
-    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board)
+    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing)
     {
         var item = e.Item;
         var meta = new List<string>();
@@ -704,6 +771,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             ReminderMessage = e.DueReminder?.Message,
             IsWaiting = e.State == ItemState.Waiting && !e.NeedsAttention,
             CanComplete = e.State == ItemState.Actionable,
+            IsTiming = item.Id == timing,
             LastNote = item.Notes.Count > 0 ? item.Notes[^1].Text : null,
             Chips = ChipsFor(e, now),
             Tags = item.Tags.Select(t => "#" + t).ToList(),

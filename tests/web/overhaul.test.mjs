@@ -224,3 +224,11 @@ test('views notice when a refresh brought nothing new, and ask for the group on 
   assert.equal(treeUrl({ state: { group: null } }), '/api/tree');
   assert.equal(treeUrl({ state: { group: 'g1' } }, 'archived=true'), '/api/tree?archived=true&group=g1');
 });
+test('routes: views, a task full size, and panels a plugin opens over the view', async () => {
+  const { parseRoute } = await import('../../src/TodoTracker.Server/wwwroot/js/shell.js');
+  assert.deepEqual(parseRoute('#/board'), { view: 'board', task: null });
+  assert.deepEqual(parseRoute('#/task/abc'), { view: null, task: 'abc' });
+  assert.deepEqual(parseRoute('#/ask'), { view: null, task: null, panel: 'ask' });
+  assert.deepEqual(parseRoute('#/nope'), { view: 'today', task: null });
+  assert.deepEqual(parseRoute(''), { view: 'today', task: null });
+});

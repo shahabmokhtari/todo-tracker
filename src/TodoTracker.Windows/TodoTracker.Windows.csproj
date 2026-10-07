@@ -14,6 +14,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+    <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\TodoTracker.Server\TodoTracker.Server.csproj" />
     <ProjectReference Include="..\TodoTracker.Desktop\TodoTracker.Desktop.csproj" />
     <!-- Ships tt.exe next to the app, so AI apps can launch "tt mcp" without installing anything else. -->

@@ -1,0 +1,184 @@
+[
+  {
+    "name": "focus just ended: a short break",
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:00:00Z"
+    },
+    "now": "2026-01-05T10:00:10Z",
+    "dismissed": null,
+    "expect": {
+      "show": true,
+      "until": "2026-01-05T10:05:00.000Z",
+      "long": false,
+      "tip": "Take five slow breaths."
+    }
+  },
+  {
+    "name": "the fourth session: a long break",
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 3,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:00:00Z"
+    },
+    "now": "2026-01-05T10:00:10Z",
+    "dismissed": null,
+    "expect": {
+      "show": true,
+      "until": "2026-01-05T10:15:00.000Z",
+      "long": true,
+      "tip": "Step outside or open a window."
+    }
+  },
+  {
+    "name": "long breaks every second session",
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 2,
+      "endsAt": "2026-01-05T10:00:00Z"
+    },
+    "now": "2026-01-05T10:00:10Z",
+    "dismissed": null,
+    "expect": {
+      "show": true,
+      "until": "2026-01-05T10:15:00.000Z",
+      "long": true,
+      "tip": "Step outside or open a window."
+    }
+  },
+  {
+    "name": "during a break",
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:05:00Z"
+    },
+    "now": "2026-01-05T10:01:00Z",
+    "dismissed": null,
+    "expect": {
+      "show": true,
+      "until": "2026-01-05T10:05:00.000Z",
+      "long": false,
+      "tip": "Take five slow breaths."
+    }
+  },
+  {
+    "name": "a break already hidden",
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:05:00Z"
+    },
+    "now": "2026-01-05T10:01:00Z",
+    "dismissed": "2026-01-05T10:05:00Z",
+    "expect": {
+      "show": false
+    }
+  },
+  {
+    "name": "hidden while predicted, then the real break",
+    "pomodoro": {
+      "phase": "longBreak",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:15:00Z"
+    },
+    "now": "2026-01-05T10:01:00Z",
+    "dismissed": "2026-01-05T10:15:00Z",
+    "expect": {
+      "show": false
+    }
+  },
+  {
+    "name": "focus still running",
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:10:00Z"
+    },
+    "now": "2026-01-05T10:00:00Z",
+    "dismissed": null,
+    "expect": {
+      "show": false
+    }
+  },
+  {
+    "name": "a paused break",
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": false,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:05:00Z"
+    },
+    "now": "2026-01-05T10:01:00Z",
+    "dismissed": null,
+    "expect": {
+      "show": false
+    }
+  },
+  {
+    "name": "focus ended so long ago the break is over",
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:00:00Z"
+    },
+    "now": "2026-01-05T11:00:00Z",
+    "dismissed": null,
+    "expect": {
+      "show": false
+    }
+  },
+  {
+    "name": "idle",
+    "pomodoro": {
+      "phase": "idle",
+      "running": false,
+      "completedFocusCount": 0,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null
+    },
+    "now": "2026-01-05T11:00:00Z",
+    "dismissed": null,
+    "expect": {
+      "show": false
+    }
+  }
+]

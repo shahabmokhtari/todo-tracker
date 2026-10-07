@@ -156,9 +156,10 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   await nested.focus();
   await page.keyboard.press('Space');
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Launch website')?.children[0]?.done).toBe(true);
+  // Finished tasks are hidden: the keyboard moves to the row above, not off the page.
+  await expect(rowOf('Launch website')).toBeFocused();
 
   // The tree is one stop for Tab; Escape leaves it without changing anything.
-  await rowOf('Launch website').focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'New task' })).toBeFocused();
   await expect(outline.locator('.orow[data-id][tabindex="0"]')).toHaveCount(1);
@@ -305,5 +306,27 @@ test('Break: when a focus session ends, a full-screen break shows and can be ski
   await expect.poll(async () => (await (await request.get('/api/dashboard', { headers: auth })).json()).pomodoro.phase).not.toBe('focus');
   await page.clock.fastForward('00:20');
   await expect(screen).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test('Desktop app window: #/ask opens the chat over the view, and the desktop breaks turn the web one off', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => { window.__ttNativeBreaks = true; });
+  await page.clock.install();
+  const task = await add(request, 'Native break block');
+  await request.post('/api/pomodoro/start', { headers: auth, data: { itemId: task.id } });
+  await open(page, request, '#/board');
+  await expect(page.locator('#view-title')).toHaveText('Board');
+
+  await page.evaluate(() => { location.hash = '#/ask'; });
+  await expect(page.locator('#drawer .chat')).toBeVisible();
+  await expect(page).toHaveURL(/#\/board$/);
+  await expect(page.locator('#view-title')).toHaveText('Board');
+
+  // The desktop covers every screen itself: no second break inside the window.
+  await page.clock.fastForward('25:05');
+  await page.clock.fastForward('00:02');
+  await expect(page.locator('#break')).toBeHidden();
+  await request.post('/api/pomodoro/reset', { headers: auth });
   expect(errors).toEqual([]);
 });

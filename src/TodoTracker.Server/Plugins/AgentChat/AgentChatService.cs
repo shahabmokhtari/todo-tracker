@@ -169,6 +169,9 @@ public sealed partial class AgentChatService : IAsyncDisposable
     /// <summary>The kept chats, newest first.</summary>
     public IReadOnlyList<ChatSummary> Chats => _options.History?.List() ?? [];
 
+    /// <summary>The models reached with an API key (null: agents only).</summary>
+    public ApiModelStore? Models => _options.Models;
+
     public IReadOnlyList<ChatSummary> Search(string query) => _options.History?.Search(query) ?? [];
 
     /// <summary>Looks for installed agents again (searching the PATH is slow: only when the chat is opened).</summary>

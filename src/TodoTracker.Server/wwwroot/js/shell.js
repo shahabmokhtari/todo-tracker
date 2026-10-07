@@ -17,6 +17,8 @@ export const VIEWS = [
 export function parseRoute(hash) {
   const parts = String(hash ?? '').replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'task' && parts[1]) return { view: null, task: decodeURIComponent(parts[1]) };
+  // A panel a plugin opens over the view on screen (#/ask: the chat).
+  if (parts[0] === 'ask') return { view: null, task: null, panel: parts[0] };
   return { view: VIEWS.some((v) => v.id === parts[0]) ? parts[0] : 'today', task: null };
 }
 
@@ -67,7 +69,12 @@ export function createShell(ctx) {
   // ---- routing ---------------------------------------------------------------------------------------------------
 
   async function route() {
-    const { view, task } = parseRoute(location.hash);
+    const { view, task, panel } = parseRoute(location.hash);
+    if (panel) {
+      if (!current) show(localStorage.getItem('tt.view') || 'today');
+      return;
+    }
+
     if (task) {
       if (!current) show(localStorage.getItem('tt.view') || 'today');
       await ctx.openDrawer(task, { full: true });
@@ -138,8 +145,10 @@ export function createShell(ctx) {
   }
 
   function renderBreak(p) {
-    // The focus timer is a plugin: switched off, there are no breaks either.
-    const s = ctx.pluginOn('focus-timer') ? breakState(p, Date.now(), dismissedBreak) : { show: false };
+    // The focus timer is a plugin: switched off, there are no breaks either. In the Windows app's window, with
+    // full-screen breaks on, the app itself shows the break on every screen (it sets this flag).
+    const native = window.__ttNativeBreaks === true;
+    const s = ctx.pluginOn('focus-timer') && !native ? breakState(p, Date.now(), dismissedBreak) : { show: false };
     if (!s.show) {
       if (shown) {
         screen.hidden = true;

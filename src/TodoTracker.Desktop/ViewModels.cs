@@ -23,6 +23,9 @@ public sealed record SidebarOptions(string BaseUrl, Func<string, string> LaunchU
 {
     /// <summary>Stores a file as one of a task's attachments and returns its file name (for pasted images).</summary>
     public Func<Guid, string, byte[], Task<string>>? Attach { get; init; }
+
+    /// <summary>Shows a path of the app ("/", "/#/task/&lt;id&gt;") in the app window; null: the browser is used.</summary>
+    public Action<string>? OpenApp { get; init; }
 }
 
 public enum ToastAction
@@ -94,6 +97,10 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanComplete { get; set; }
 
+    /// <summary>The timer is running on this task.</summary>
+    [ObservableProperty]
+    public partial bool IsTiming { get; set; }
+
     [ObservableProperty]
     public partial string? LastNote { get; set; }
 
@@ -144,6 +151,7 @@ public sealed partial class CardViewModel : ObservableObject
         ReminderMessage = other.ReminderMessage;
         IsWaiting = other.IsWaiting;
         CanComplete = other.CanComplete;
+        IsTiming = other.IsTiming;
         LastNote = other.LastNote;
         Chips = other.Chips;
         Tags = other.Tags;
@@ -262,13 +270,52 @@ public sealed partial class PomodoroViewModel : ObservableObject
     }
 }
 
+/// <summary>The task timer (one at a time, shared with the web app and the CLI).</summary>
+public sealed partial class TaskTimerViewModel : ObservableObject
+{
+    private DateTimeOffset _start;
+
+    [ObservableProperty]
+    public partial bool IsRunning { get; set; }
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TimeText { get; set; } = "0:00";
+
+    public Guid? ItemId { get; private set; }
+
+    internal void Update(RunningTimerState? timer, DateTimeOffset now)
+    {
+        IsRunning = timer is not null;
+        ItemId = timer?.ItemId;
+        Title = timer?.Title ?? string.Empty;
+        _start = timer?.Start ?? now;
+        Tick(now);
+    }
+
+    internal void Tick(DateTimeOffset now)
+    {
+        if (!IsRunning)
+        {
+            return;
+        }
+
+        var seconds = (long)Math.Max(0, (now - _start).TotalSeconds);
+        TimeText = seconds >= 3600 ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}" : $"{seconds / 60}:{seconds % 60:00}";
+    }
+}
+
+public sealed record RunningTimerState(Guid ItemId, string Title, DateTimeOffset Start);
+
 /// <summary>Immutable copy of the timer taken inside the store lock (the live timer must not leave the lock).</summary>
-public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration)
+public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration, int CompletedFocusCount = 0, PomodoroSettings? Settings = null)
 {
     public static PomodoroState Of(PomodoroTimer timer, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(timer);
-        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase));
+        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase), timer.CompletedFocusCount, timer.Settings);
     }
 }
 

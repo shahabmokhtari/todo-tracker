@@ -46,10 +46,12 @@ export function createOutlineView(ctx) {
   /** Changes go one at a time; `build` makes the requests from the tree as it is when the change's turn comes. */
   const run = (build, message, focusId = null) => queue(() => send(ctx, typeof build === 'function' ? build() : build, message, focusId));
 
+  /** Focuses a task's row (or its title); false when the row isn't shown. */
   function focusRow(id, field = 'row') {
     const row = root.querySelector(`.orow[data-id="${CSS.escape(id)}"]`);
     (field === 'title' ? row?.querySelector('.otitle') : row)?.focus({ preventScroll: true });
     row?.scrollIntoView?.({ block: 'nearest' });
+    return !!row;
   }
 
   /** Names read out for the row and its buttons follow its title (no redraw: typing elsewhere is kept). */
@@ -292,6 +294,8 @@ export function createOutlineView(ctx) {
     const keep = ctx.state.refocus ?? document.activeElement?.closest?.('#view-tasks .orow')?.dataset.id;
     // A redraw after a change puts focus back only if the keyboard hasn't moved on (to the toolbar, say).
     const focusHere = document.activeElement === document.body || !!root.querySelector('.outline')?.contains(document.activeElement);
+    // Where that row was, for when it's no longer shown (finished with "Show finished" off).
+    const keptAt = keep ? [...root.querySelectorAll('.orow[data-id]')].findIndex((r) => r.dataset.id === keep) : -1;
     const rows = flatten(roots, expanded, showDone);
     if (keep) activeId = keep;
     if (!rows.some((r) => r.node.id === activeId)) activeId = rows[0]?.node.id ?? null;
@@ -328,7 +332,12 @@ export function createOutlineView(ctx) {
         doneToggle,
         h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave')),
       tree));
-    if (keep && focusHere && !root.querySelector('.orow.adding')) focusRow(keep);
+    if (keep && focusHere && !root.querySelector('.orow.adding') && !focusRow(keep) && keptAt >= 0) {
+      // Its row is gone: the keyboard goes to the row above it (like deleting a line), never off the page.
+      const shown = root.querySelectorAll('.orow[data-id]');
+      const next = shown[Math.max(0, Math.min(keptAt - 1, shown.length - 1))];
+      if (next) focusRow(next.dataset.id);
+    }
   }
 
   return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks' };
