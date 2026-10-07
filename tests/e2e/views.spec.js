@@ -397,4 +397,39 @@ test('Settings: light or dark for every window, and connected apps switch on at 
   await expect(page.locator('#drawer').getByRole('textbox', { name: 'Tags' })).toHaveValue('#"deep work"');
   await expect(page.locator('#drawer')).toContainText('Labels are colored categories');
   expect(errors).toEqual([]);
+});test('Copy for Loop on a task: its details, subtasks, notes and pictures, from its details panel', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const task = await add(request, 'Ship the brochure');
+  await add(request, 'Proof read', { parentId: task.id });
+  await request.post(`/api/items/${task.id}/notes`, { headers: auth, data: { text: 'Printer booked for Friday' } });
+  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: `/?item=${task.id}` } })).json();
+  await page.goto(launch.url);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Ship the brochure');
+
+  // A screenshot pasted into the details.
+  await page.evaluate(() => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    const box = document.querySelector('#drawer textarea[data-field="details"]');
+    box.focus();
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(drawer.locator('.embeds img')).toHaveCount(1);
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  await drawer.getByRole('button', { name: 'Copy for Loop' }).click();
+  await expect(page.locator('#toast')).toContainText('with 1 picture');
+  const copied = await page.evaluate(async () => {
+    const [item] = await navigator.clipboard.read();
+    return { types: item.types, html: await (await item.getType('text/html')).text(), text: await (await item.getType('text/plain')).text() };
+  });
+  expect(copied.text).toContain('## Ship the brochure');
+  expect(copied.text).toContain('- [ ] Proof read');
+  expect(copied.text).toMatch(/Printer booked for Friday/);
+  expect(copied.html).toContain('src="data:image/png;base64,');
+
+  expect(errors).toEqual([]);
 });

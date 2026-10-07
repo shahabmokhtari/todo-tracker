@@ -903,6 +903,7 @@ async function openDrawer(id, { full = null } = {}) {
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
       h('button', {
         class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),
         onclick: () => setDrawerFull(!showFull, id),
@@ -1038,6 +1039,10 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
   return true;
 }
 
+/** Buttons plugins add to every task's details (Copy for Loop…): onClick gets the task's id. */
+const taskActions = [];
+const taskActionButton = (a, id) => h('button', { class: 'icon-btn', type: 'button', 'aria-label': a.label, title: a.title ?? a.label, onclick: () => a.onClick(id) }, icon(a.iconName));
+
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
 const pluginHost = {
   api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
@@ -1049,6 +1054,12 @@ const pluginHost = {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
     $('#plugin-buttons').append(button);
     return button;
+  },
+  addTaskAction(action) {
+    taskActions.push(action);
+    // A task opened from a link shows before the plugins load: it gets the button too.
+    const id = $('#drawer').dataset.itemId;
+    if (id) $('#drawer .task-actions')?.append(taskActionButton(action, id));
   },
 };
 

@@ -585,6 +585,7 @@ button.focus-title:hover { color: var(--accent); text-decoration: underline; tex
 }
 @keyframes slide { from { opacity: 0; transform: translateX(24px); } }
 .drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.task-actions { display: contents; }
 .crumbs { color: var(--text-3); font-size: 13px; }
 .title-input { font-size: 22px; font-weight: 700; letter-spacing: -.02em; border-color: transparent; background: transparent; padding: 6px 8px; margin: -6px -8px; }
 .title-input:hover { border-color: var(--border-strong); }
