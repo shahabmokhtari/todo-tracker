@@ -65,6 +65,7 @@ public sealed partial class TaskBoard
             Sequential = spec.Sequential,
             StepDelay = spec.StepDelay,
             OwnGroupId = groupId,
+            Stage = spec.Stage ?? Stage.Inbox,
         };
         item.TagList.AddRange(tags);
         item.LabelList.AddRange(labels.Select(l => EnsureLabel(l).Name));
@@ -112,6 +113,9 @@ public sealed partial class TaskBoard
     public void Delete(Guid id, Actor actor, DateTimeOffset now)
     {
         var item = Get(id);
+
+        // A timer on what's deleted ends now (its time goes with the task).
+        StopTimers(item.SelfAndDescendants(), now);
         if (item.Parent is { } parent)
         {
             parent.ChildList.Remove(item);
@@ -188,6 +192,7 @@ public sealed partial class TaskBoard
             descendant.CompletedAt = now;
         }
 
+        StopTimers(item.SelfAndDescendants(), now);
         Log(now, id, ActivityKind.Completed, $"Completed \"{item.Title}\"", actor);
         AdvanceSequence(item, actor, now);
     }
@@ -202,6 +207,7 @@ public sealed partial class TaskBoard
 
         var completedAt = item.CompletedAt;
         item.CompletedAt = null;
+        item.Root.ArchivedAt = null;
 
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         foreach (var descendant in item.SelfAndDescendants().Skip(1).Where(d => d.CompletedAt == completedAt))
@@ -340,14 +346,58 @@ public sealed partial class TaskBoard
 
     // ---- Pomodoro -----------------------------------------------------------------------
 
-    public void StartFocus(Guid? itemId, Actor actor, DateTimeOffset now)
+    /// <summary>Starts a focus session (on a task, timed as focus time on this <paramref name="device"/>).</summary>
+    public void StartFocus(Guid? itemId, Actor actor, DateTimeOffset now, string? device = null)
     {
         var item = itemId is { } id ? Get(id) : null;
+        if (item is { IsDone: true })
+        {
+            throw new InvalidOperationException($"\"{item.Title}\" is already done.");
+        }
+
+        StopFocusTimer(now);
         Pomodoro.StartFocus(now, item?.Id);
         if (item is not null)
         {
+            StartTimerCore(item, TimeSource.Focus, now, device);
             Log(now, item.Id, ActivityKind.FocusStarted, $"Focus started on \"{item.Title}\"", actor);
         }
+    }
+
+    public void PauseFocus(DateTimeOffset now)
+    {
+        if (Pomodoro.Phase == PomodoroPhase.Focus)
+        {
+            StopFocusTimer(now);
+        }
+
+        Pomodoro.Pause(now);
+    }
+
+    public void ResumeFocus(DateTimeOffset now, string? device = null)
+    {
+        var resuming = Pomodoro.Phase == PomodoroPhase.Focus && !Pomodoro.IsRunning;
+        Pomodoro.Resume(now);
+        if (resuming && Pomodoro.ItemId is { } id && Find(id) is { IsDone: false } item)
+        {
+            StartTimerCore(item, TimeSource.Focus, now, device);
+        }
+    }
+
+    public void SkipFocus(DateTimeOffset now)
+    {
+        if (Pomodoro.Phase == PomodoroPhase.Focus)
+        {
+            StopFocusTimer(now);
+        }
+
+        Pomodoro.Skip(now);
+    }
+
+    public void ResetFocus(DateTimeOffset now)
+    {
+        StopFocusTimer(now);
+        Pomodoro.Reset();
     }
 
     public IReadOnlyList<PomodoroEvent> TickPomodoro(DateTimeOffset now)
@@ -356,9 +406,14 @@ public sealed partial class TaskBoard
         while (Pomodoro.Tick(now) is { } evt)
         {
             events.Add(evt);
-            if (evt.Kind == PomodoroEventKind.FocusCompleted && evt.ItemId is { } id && Find(id) is { } item)
+            if (evt.Kind == PomodoroEventKind.FocusCompleted)
             {
-                Log(evt.At, id, ActivityKind.FocusCompleted, $"Focus session completed on \"{item.Title}\"", Actor.System);
+                // The session ended at its end time, whenever this runs (after sleep, say).
+                StopFocusTimer(evt.At);
+                if (evt.ItemId is { } id && Find(id) is { } item)
+                {
+                    Log(evt.At, id, ActivityKind.FocusCompleted, $"Focus session completed on \"{item.Title}\"", Actor.System);
+                }
             }
         }
 

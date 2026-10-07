@@ -3,7 +3,7 @@ namespace TodoTracker.Core.Vault;
 /// <summary>The <c>AGENTS.md</c> written at the vault root so any AI tool reading the folder knows the format.</summary>
 internal static class VaultGuide
 {
-    public const string Marker = "<!-- todo-tracker-guide v1 -->";
+    public const string Marker = "<!-- todo-tracker-guide v2 -->";
 
     public const string Text = Marker + """
 
@@ -28,6 +28,7 @@ internal static class VaultGuide
         ---
         id: 7b0c2f9e-…            # keep as is; omit in new files (the app adds it)
         status: open              # open | done
+        stage: doing              # board column: inbox | next | doing (omit = next)
         priority: high            # low | normal | high | critical (omit = normal)
         due: 2026-01-07T17:00     # local time; a date alone means 17:00
         scheduled: 2026-01-06     # "not before": the task waits until then (09:00 for a date alone)
@@ -50,6 +51,10 @@ internal static class VaultGuide
         > [!note] 2026-01-05 10:00 · Agent: copilot · [[#^t1a2b3c|Roll out A]]
         > deployed ring 0
 
+        ## Time
+
+        - 2026-01-05 09:00–09:25 · 25 min · focus · [[#^t1a2b3c|Roll out A]]
+
         ## Attachments
 
         - [plan.pdf](../_attachments/7b0c2f9e/plan.pdf)
@@ -59,7 +64,9 @@ internal static class VaultGuide
           done **in order** (the next one unlocks only after the previous is done, after `step-delay` if set).
         - Line tokens follow the Obsidian Tasks plugin: priority `🔺` critical, `⏫` high, `🔽` low; `📅` due date,
           `⏳` scheduled date, `✅` done date; `#tags`. `^id` at the end is a block id for links.
-        - To **complete** something, check its box (`[x]`) or set `status: done` for the whole task.
+        - To **complete** something, check its box (`[x]`) or set `status: done` for the whole task. `archived: <time>`
+          on a done task puts it away (out of lists; `is:archived` finds it).
+        - To **log time**, add a line to `## Time`: `- 2026-01-05 9:00 to 10:30`, optionally `· [[#^id|subtask]]`.
         - To **add a note**, append a callout to `## Notes` with the local time and who you are
           (`> [!note] 2026-01-05 10:00 · Agent: <your name>`), optionally linking a subtask with `[[#^id|title]]`.
         - Leave `%%{…}%%` comments alone: they hold exact times, reminders, and ids for the app (hidden in Obsidian).

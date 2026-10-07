@@ -422,4 +422,25 @@ public sealed class CliCommandTests : IDisposable
         Assert.Contains("Unknown group", result.Error, StringComparison.Ordinal);
         Assert.DoesNotContain("Parameter", result.Error, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Work_can_be_timed_moved_along_the_board_archived_and_reported()
+    {
+        var id = (await _tt.Json("add", "Write report")).Id().ToString();
+
+        Assert.Contains("Timing \"Write report\"", await _tt.Ok("start", id), StringComparison.Ordinal);
+        Assert.True((await _tt.Json("start", "report"))["running"]!.GetValue<bool>());
+        Assert.Contains("Stopped", await _tt.Ok("stop"), StringComparison.Ordinal);
+        Assert.Equal("next", (await _tt.Json("stage", id, "next"))["stage"]!.GetValue<string>());
+        Assert.NotEqual(0, (await _tt.Run("stage", id, "someday")).ExitCode);
+
+        await _tt.Ok("done", id);
+        Assert.NotNull((await _tt.Json("archive", id))["archivedAt"]);
+        Assert.DoesNotContain("Write report", await _tt.Ok("list", "--all"), StringComparison.Ordinal);
+        Assert.Contains("Write report", await _tt.Ok("list", "is:archived"), StringComparison.Ordinal);
+
+        var report = await _tt.Json("time");
+        Assert.Equal(28, report["days"]!.AsArray().Count);
+        Assert.Contains("tracked", await _tt.Ok("time", "--days", "7"), StringComparison.Ordinal);
+    }
 }

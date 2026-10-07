@@ -38,6 +38,11 @@ internal static class CliCommands
         new CliCommand("labels", "tt labels", "The curated labels", null, Labels),
         new CliCommand("vault", "tt vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", null, Vault),
         new CliCommand("mcp", "tt mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
+        new CliCommand("start", "tt start <task>", "Start timing a task (any other timer stops)", "The task's card moves to Doing. tt stop stops it.", Start),
+        new CliCommand("stop", "tt stop", "Stop the timer", null, Stop),
+        new CliCommand("stage", "tt stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (tt done) to move it to Done.", Stage),
+        new CliCommand("archive", "tt archive <task> | tt archive --done-before <days>", "Put finished tasks away (tt list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
+        new CliCommand("time", "tt time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -193,6 +198,90 @@ internal static class CliCommands
         }).ConfigureAwait(false);
         await s.Print(item, (o, i) => o.Changed("Reopened", i)).ConfigureAwait(false);
     }
+
+    private static async Task Start(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        var reference = a.WordsFrom(0, "which task");
+        var timer = await s.Store.UpdateAsync(b =>
+        {
+            b.StartTimer(TaskResolver.Resolve(b, reference, i => !i.IsDone).Id, s.Actor, s.Now);
+            return Wire.Timer(b, s.Now);
+        }).ConfigureAwait(false);
+        await s.SaveVersion().ConfigureAwait(false);
+        await s.Print(timer, (o, t) => o.Line($"Timing \"{t.Title}\" (tt stop stops it)")).ConfigureAwait(false);
+    }
+
+    private static async Task Stop(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        var (stopped, timer) = await s.Store.UpdateAsync(b =>
+        {
+            var running = b.StopTimer(s.Now);
+            return (running, Wire.Timer(b, s.Now));
+        }).ConfigureAwait(false);
+        await s.SaveVersion().ConfigureAwait(false);
+        await s.Print(timer, (o, _) => o.Line(stopped is { } r
+            ? $"Stopped \"{r.Item.Title}\" after {TaskMarkdownDuration(r.Entry.Duration(s.Now))}"
+            : "No timer was running")).ConfigureAwait(false);
+    }
+
+    private static async Task Stage(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        var reference = a.Word(0, "which task");
+        var stage = BoardTimeEndpoints.ParseStage(a.Word(1, "which column (inbox, next or doing)"));
+        var item = await s.Change((b, now) =>
+        {
+            var found = TaskResolver.Resolve(b, reference, i => i.Parent is null);
+            b.SetStage(found.Id, stage, s.Actor, now);
+            return found;
+        }).ConfigureAwait(false);
+        await s.Print(item, (o, i) => o.Changed($"Moved to {stage}:", i)).ConfigureAwait(false);
+    }
+
+    private static async Task Archive(CliSession s, CliArgs a)
+    {
+        a.Allow("done-before");
+        if (a.Value("done-before") is { } days)
+        {
+            var older = int.TryParse(days.TrimEnd('d'), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : throw new ArgumentException("--done-before takes a number of days, e.g. 14.");
+            var archived = await s.Store.UpdateAsync(b => new ArchiveResult(b.ArchiveCompleted(s.Now.AddDays(-older).AddTicks(1), null, s.Actor, s.Now))).ConfigureAwait(false);
+            await s.SaveVersion().ConfigureAwait(false);
+            await s.Print(archived, (o, r) => o.Line(r.Archived.Count == 0 ? "Nothing to archive" : $"Archived {r.Archived.Count} finished task(s)")).ConfigureAwait(false);
+            return;
+        }
+
+        var reference = a.WordsFrom(0, "which task");
+        var item = await s.Change((b, now) =>
+        {
+            var found = TaskResolver.Resolve(b, reference, i => i.IsDone && i.Parent is null);
+            b.Archive(found.Id, s.Actor, now);
+            return found;
+        }).ConfigureAwait(false);
+        await s.Print(item, (o, i) => o.Changed("Archived", i)).ConfigureAwait(false);
+    }
+
+    private static async Task Time(CliSession s, CliArgs a)
+    {
+        a.Allow("days", "group");
+        var days = a.Value("days") is { } text ? int.Parse(text, NumberStyles.None, CultureInfo.InvariantCulture) : 28;
+        var report = await s.Read(b =>
+        {
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(s.Now, s.Zone).DateTime);
+            return TimeReport.Build(b, today.AddDays(-(Math.Max(1, days) - 1)), today, s.Zone, s.Now, TodoTools.ResolveGroup(b, a.Value("group")));
+        }).ConfigureAwait(false);
+        await s.Print(report, (o, r) =>
+        {
+            o.Line($"Last {r.Days.Count} days: {TaskMarkdownDuration(TimeSpan.FromSeconds(r.TrackedSeconds))} tracked · {r.FocusSessions} focus sessions · {r.Completed} done · longest streak {r.LongestStreak} day(s)");
+            foreach (var task in r.Tasks)
+            {
+                o.Line($"  {TaskMarkdownDuration(TimeSpan.FromSeconds(task.TrackedSeconds)),12}  {task.Title}{(task.Done ? " ✓" : string.Empty)}");
+            }
+        }).ConfigureAwait(false);
+    }
+
+    private static string TaskMarkdownDuration(TimeSpan span) => TodoTracker.Core.Vault.TaskMarkdown.DurationLabel(span);
 
     private static async Task Note(CliSession s, CliArgs a)
     {

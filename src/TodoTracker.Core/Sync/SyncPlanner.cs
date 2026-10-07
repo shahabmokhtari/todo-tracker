@@ -376,6 +376,11 @@ public static partial class SyncPlanner
             {
                 keys[i] = "^" + block.Groups[1].Value;
             }
+            else if (!inFrontmatter && HiddenId().Match(text) is { Success: true } hidden)
+            {
+                // Time and attachment lines carry their id: two devices adding different ones never collide.
+                keys[i] = "id:" + hidden.Groups[1].Value;
+            }
         }
 
         return keys;
@@ -383,6 +388,9 @@ public static partial class SyncPlanner
 
     [GeneratedRegex(@"\s\^([A-Za-z0-9-]+)(?:\s+%%.*%%)?\s*$")]
     private static partial Regex BlockId();
+
+    [GeneratedRegex(@"^[-*+] .*%%\{""id"":""([0-9a-fA-F-]{36})""")]
+    private static partial Regex HiddenId();
 
     [GeneratedRegex(@"^([A-Za-z][\w-]*):(?:\s|$)")]
     private static partial Regex FrontmatterKey();

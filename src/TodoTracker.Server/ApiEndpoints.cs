@@ -20,7 +20,8 @@ public sealed record CreateItemRequest(
     int? StepDelayMinutes = null,
     int? DeferMinutes = null,
     IReadOnlyList<string>? Tags = null,
-    IReadOnlyList<string>? Labels = null);
+    IReadOnlyList<string>? Labels = null,
+    string? Stage = null);
 
 public sealed record PatchItemRequest(
     string? Title = null,
@@ -118,7 +119,7 @@ internal static class ApiEndpoints
             store.ReadAsync(b => Search(b, q, time.GetUtcNow(), links)));
 
         api.MapGet("/items", (bool? includeDone, HttpContext http, IBoardStore store, TimeProvider time) =>
-            store.ReadAsync(b => b.Items.Where(i => includeDone == true || !i.IsDone).Select(i => Wire.Item(i, time.GetUtcNow(), b, http.RequestServices.GetRequiredService<VaultLinks>())).ToList()));
+            store.ReadAsync(b => b.Items.Where(i => !i.IsArchived && (includeDone == true || !i.IsDone)).Select(i => Wire.Item(i, time.GetUtcNow(), b, http.RequestServices.GetRequiredService<VaultLinks>())).ToList()));
 
         api.MapGet("/items/{id:guid}", (Guid id, IBoardStore store, TimeProvider time, VaultLinks links) =>
             store.ReadAsync(b => Wire.Item(b.Get(id), time.GetUtcNow(), b, links)));
@@ -139,6 +140,7 @@ internal static class ApiEndpoints
                         StepDelay = Minutes(request.StepDelayMinutes),
                         Tags = request.Tags,
                         Labels = request.Labels,
+                        Stage = request.Stage is null ? null : BoardTimeEndpoints.ParseStage(request.Stage),
                     },
                     actor,
                     now);
@@ -354,6 +356,7 @@ internal static class ApiEndpoints
         api.MapPost("/pomodoro/{action}", (string action, FocusRequest? request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
             {
+                // Through the board: a focus session on a task is timed as focus time on that task.
                 var now = time.GetUtcNow();
                 switch (action.ToLowerInvariant())
                 {
@@ -361,16 +364,16 @@ internal static class ApiEndpoints
                         b.StartFocus(request?.ItemId, Security.ActorOf(http), now);
                         break;
                     case "pause":
-                        b.Pomodoro.Pause(now);
+                        b.PauseFocus(now);
                         break;
                     case "resume":
-                        b.Pomodoro.Resume(now);
+                        b.ResumeFocus(now);
                         break;
                     case "skip":
-                        b.Pomodoro.Skip(now);
+                        b.SkipFocus(now);
                         break;
                     case "reset":
-                        b.Pomodoro.Reset();
+                        b.ResetFocus(now);
                         break;
                     default:
                         throw new ArgumentException($"Unknown pomodoro action \"{action}\".", nameof(action));
@@ -385,6 +388,7 @@ internal static class ApiEndpoints
         MapLabels(api);
         MapFiles(api);
         MapHistory(api);
+        BoardTimeEndpoints.Map(api);
 
         api.MapGet("/vault", async (VaultLinks links) =>
         {
@@ -443,7 +447,7 @@ internal static class ApiEndpoints
             : "/";
 
     /// <summary>Applies the change, then reads the task back (so file links reflect where it was saved).</summary>
-    private static async Task<ItemDto> Mutate(IBoardStore store, TimeProvider time, HttpContext http, Func<TaskBoard, DateTimeOffset, Actor, WorkItem> mutate)
+    internal static async Task<ItemDto> Mutate(IBoardStore store, TimeProvider time, HttpContext http, Func<TaskBoard, DateTimeOffset, Actor, WorkItem> mutate)
     {
         var id = await store.UpdateAsync(b => mutate(b, time.GetUtcNow(), Security.ActorOf(http)).Id).ConfigureAwait(false);
         var links = http.RequestServices.GetRequiredService<VaultLinks>();

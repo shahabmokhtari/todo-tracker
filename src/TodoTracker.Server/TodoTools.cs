@@ -13,7 +13,7 @@ namespace TodoTracker.Server;
 /// destroy data. Tasks also live as markdown files (see <c>vault_info</c>), so agents with file tools can work there.
 /// </summary>
 [McpServerToolType]
-public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history)
+public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history, TodoTrackerServerOptions options)
 {
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
@@ -261,6 +261,74 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             var id = taskId is null ? (Guid?)null : ParseId(taskId);
             return new ReportDto(id is { } i ? Wire.Item(b.Get(i), time.GetUtcNow(), b, links) : null, Wire.Timeline(b, id, limit));
         }));
+
+    [McpServerTool(Name = "move_card"), Description("Move a top-level task to a board column: inbox (just captured), next (ready), or doing (being worked on). Finish a task with complete_task to move it to done.")]
+    public Task<ItemDto> MoveCard(McpServer server, string taskId, [Description("inbox, next or doing")] string stage) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            b.SetStage(id, BoardTimeEndpoints.ParseStage(stage), actor, now);
+            return b.Get(id);
+        });
+
+    [McpServerTool(Name = "archive_task", Idempotent = true), Description("Put a finished top-level task away: it leaves every list but is kept (search is:archived). Only done tasks can be archived.")]
+    public Task<ItemDto> ArchiveTask(McpServer server, string taskId) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            b.Archive(id, actor, now);
+            return b.Get(id);
+        });
+
+    [McpServerTool(Name = "unarchive_task", Idempotent = true), Description("Bring an archived task back to the done list.")]
+    public Task<ItemDto> UnarchiveTask(McpServer server, string taskId) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            b.Unarchive(id, actor, now);
+            return b.Get(id);
+        });
+
+    [McpServerTool(Name = "start_timer"), Description("Start timing work on a task (any other timer stops; one runs at a time). The task's card moves to doing.")]
+    public Task<TimerDto> StartTimer(McpServer server, string taskId) =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            b.StartTimer(ParseId(taskId), ActorOf(server), now);
+            return Wire.Timer(b, now);
+        }));
+
+    [McpServerTool(Name = "stop_timer", Idempotent = true), Description("Stop the timer (whatever task it is on).")]
+    public Task<TimerDto> StopTimer() =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            b.StopTimer(now);
+            return Wire.Timer(b, now);
+        }));
+
+    [McpServerTool(Name = "log_time"), Description("Record time already spent on a task (e.g. a meeting): when it started and for how many minutes (at most 24 hours).")]
+    public Task<TimeEntryDto> LogTime(McpServer server, string taskId, [Description("When it started (ISO-8601).")] DateTimeOffset start, int minutes) =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            var id = ParseId(taskId);
+            return Wire.TimeEntry(b.Get(id), b.AddTime(id, start, start.AddMinutes(minutes), ActorOf(server), now), now);
+        }));
+
+    [McpServerTool(Name = "get_time_report", ReadOnly = true), Description("Where the time went between two local dates (yyyy-MM-dd, inclusive; default the last 4 weeks): seconds tracked per day, group and task, focus sessions, tasks done, streaks, and a timeline.")]
+    public Task<TimeReport> GetTimeReport(string? from = null, string? to = null, string? group = null) =>
+        Guard(() => store.ReadAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            var end = to is null ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, options.TimeZone).DateTime) : ParseDate(to);
+            return TimeReport.Build(b, from is null ? end.AddDays(-27) : ParseDate(from), end, options.TimeZone, now, ResolveGroup(b, group));
+        }));
+
+    private static DateOnly ParseDate(string text) =>
+        DateOnly.TryParseExact(text.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var d)
+            ? d
+            : throw new ArgumentException($"\"{text}\" isn't a date; use yyyy-MM-dd.", nameof(text));
 
     private Task<ItemDto> Mutate(McpServer server, Func<TaskBoard, DateTimeOffset, Actor, WorkItem> mutate) =>
         Guard(async () =>

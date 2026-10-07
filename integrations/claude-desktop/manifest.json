@@ -58,7 +58,14 @@
     { "name": "vault_info", "description": "Where the markdown files live and their format" },
     { "name": "task_history", "description": "Saved versions of a task" },
     { "name": "restore_task_version", "description": "Put a task back the way it was" },
-    { "name": "get_report", "description": "Timeline of what happened" }
+    { "name": "get_report", "description": "Timeline of what happened" },
+    { "name": "move_card", "description": "Move a task to a board column (inbox, next, doing)" },
+    { "name": "archive_task", "description": "Put a finished task away" },
+    { "name": "unarchive_task", "description": "Bring an archived task back" },
+    { "name": "start_timer", "description": "Start timing work on a task" },
+    { "name": "stop_timer", "description": "Stop the timer" },
+    { "name": "log_time", "description": "Record time already spent on a task" },
+    { "name": "get_time_report", "description": "Where the time went: per day, group and task" }
   ],
   "compatibility": {
     "platforms": ["win32", "darwin", "linux"]

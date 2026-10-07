@@ -76,6 +76,12 @@ public static class TextMerge
                 output.AddRange(keyed.Lines);
                 conflicted |= keyed.Conflicted;
             }
+            else if (ko is not null && co.Length == 0 && DistinctKeyed(ka![ia..ea], kb![ib..eb]))
+            {
+                // Both added lines that each carry their own identity (say, time logged on two devices): both stay.
+                output.AddRange(ca);
+                output.AddRange(cb);
+            }
             else
             {
                 conflicted = true;
@@ -136,6 +142,9 @@ public static class TextMerge
 
         return (lines, conflicted);
     }
+
+    private static bool DistinctKeyed(string?[] a, string?[] b) =>
+        a.Length > 0 && b.Length > 0 && a.All(k => k is not null) && b.All(k => k is not null) && !a.Intersect(b).Any();
 
     /// <summary>Lines with their line endings (the last may have none).</summary>
     private static string[] Split(string text)

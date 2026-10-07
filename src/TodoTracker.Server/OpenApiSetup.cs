@@ -49,6 +49,15 @@ internal static partial class OpenApiSetup
         ["GET api/items/{id}/rich"] = ("getRichHtml", "A task's rich HTML version"),
         ["PUT api/items/{id}/rich"] = ("setRichHtml", "Save a rich HTML version of a top-level task"),
         ["POST api/pomodoro/{action}"] = ("controlFocusTimer", "Start, pause, resume, skip or stop the focus timer"),
+        ["GET api/tree"] = ("getBoard", "Top-level tasks with their board column (inbox, next, doing), progress, time spent and subtasks"),
+        ["POST api/items/{id}/stage"] = ("moveCard", "Move a top-level task to a board column (inbox, next, doing)"),
+        ["POST api/items/{id}/archive"] = ("archiveTask", "Put a finished top-level task away (out of every list)"),
+        ["POST api/items/{id}/unarchive"] = ("unarchiveTask", "Bring an archived task back"),
+        ["GET api/timer"] = ("getTimer", "What is being timed and for how long"),
+        ["POST api/timer/start"] = ("startTimer", "Start timing a task (stops any other timer)"),
+        ["POST api/timer/stop"] = ("stopTimer", "Stop the timer"),
+        ["POST api/items/{id}/time"] = ("logTime", "Add time spent on a task (start and end)"),
+        ["GET api/reports"] = ("getReport", "Time tracked per day, group and task, tasks done, and a timeline (from/to local dates)"),
     };
 
     // Sign-in plumbing, settings, deletes, binary uploads/downloads and the event stream stay out of the AI surface.
@@ -60,6 +69,7 @@ internal static partial class OpenApiSetup
         "POST api/labels", "PATCH api/labels/{name}", "DELETE api/labels/{name}",
         "GET api/history", "POST api/history/commit",
         "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",
+        "POST api/archive", "PUT api/items/{id}/time/{entryId}", "DELETE api/items/{id}/time/{entryId}",
     };
 
     public static void AddServices(IServiceCollection services)

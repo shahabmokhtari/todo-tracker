@@ -53,6 +53,34 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Board_column_time_and_archive_are_kept_in_the_file_and_read_back()
+    {
+        var store = Open();
+        var task = await Add(store, "Ship release 2.3");
+        var step = await Add(store, "Roll out A", task.Id);
+        await store.UpdateAsync(b => b.StartTimer(step.Id, Actor.User, T0, "laptop"));
+        _time.Advance(TimeSpan.FromMinutes(25));
+        await store.UpdateAsync(b => b.StopTimer(_time.GetUtcNow()));
+        await store.UpdateAsync(b => b.Complete(task.Id, Actor.User, _time.GetUtcNow()));
+        await store.UpdateAsync(b => b.Archive(task.Id, Actor.User, _time.GetUtcNow()));
+
+        var text = await File.ReadAllTextAsync(P("Work", "Ship release 2.3.md"));
+        Assert.Contains("stage: doing", text, StringComparison.Ordinal);
+        Assert.Contains("archived:", text, StringComparison.Ordinal);
+        Assert.Contains("## Time\n\n- 2026-01-05 09:00–09:25 · 25 min · [[#^", text.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+
+        // Archiving keeps the file where it is (links to it keep working).
+        Assert.Equal("Work/Ship release 2.3.md", store.PathOf(task.Id));
+
+        store.Dispose();
+        var reopened = Open();
+        var (stage, archived, spent) = await reopened.ReadAsync(b => (b.Get(task.Id).Stage, b.Get(task.Id).ArchivedAt, b.Get(task.Id).TimeSpent(_time.GetUtcNow())));
+        Assert.Equal(Stage.Doing, stage);
+        Assert.NotNull(archived);
+        Assert.Equal(TimeSpan.FromMinutes(25), spent);
+    }
+
+    [Fact]
     public async Task Each_top_level_task_is_one_markdown_file_in_its_group_folder()
     {
         var store = Open();

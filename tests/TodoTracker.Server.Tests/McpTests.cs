@@ -91,6 +91,40 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_move_cards_time_work_and_read_the_time_report()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Write report" });
+        var id = task.GetProperty("id").GetString()!;
+        Assert.Equal("inbox", task.GetProperty("stage").GetString());
+
+        var moved = await Call("move_card", new() { ["taskId"] = id, ["stage"] = "next" });
+        var timer = await Call("start_timer", new() { ["taskId"] = id });
+        _server.Time.Advance(TimeSpan.FromMinutes(30));
+        var stopped = await Call("stop_timer", new());
+        await Call("log_time", new() { ["taskId"] = id, ["start"] = ServerFixture.T0.AddHours(-2), ["minutes"] = 45 });
+        var report = await Call("get_time_report", new() { ["from"] = "2026-01-05", ["to"] = "2026-01-05" });
+
+        Assert.Equal("next", moved.GetProperty("stage").GetString());
+        Assert.True(timer.GetProperty("running").GetBoolean());
+        Assert.False(stopped.GetProperty("running").GetBoolean());
+        Assert.Equal((30 + 45) * 60, report.GetProperty("trackedSeconds").GetInt64());
+    }
+
+    [Fact]
+    public async Task Agent_can_archive_finished_tasks()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Old trip" });
+        var id = task.GetProperty("id").GetString()!;
+        await Call("complete_task", new() { ["taskId"] = id });
+
+        var archived = await Call("archive_task", new() { ["taskId"] = id });
+        var back = await Call("unarchive_task", new() { ["taskId"] = id });
+
+        Assert.Equal(JsonValueKind.String, archived.GetProperty("archivedAt").ValueKind);
+        Assert.False(back.TryGetProperty("archivedAt", out var cleared) && cleared.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task Tool_errors_are_reported_not_thrown()
     {
         var result = await _mcp.CallToolAsync("complete_task", new Dictionary<string, object?> { ["taskId"] = Guid.NewGuid().ToString() });

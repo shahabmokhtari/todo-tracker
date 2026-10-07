@@ -12,7 +12,7 @@ internal sealed class CliArgs
     public static readonly HashSet<string> FlagNames = ["json", "all", "top", "help", "version", "no-history"];
 
     public static readonly HashSet<string> ValueNames =
-        ["vault", "data", "as", "group", "under", "details", "tag", "label", "due", "snooze", "delay", "title", "priority", "index"];
+        ["vault", "data", "as", "group", "under", "details", "tag", "label", "due", "snooze", "delay", "title", "priority", "index", "days", "done-before"];
 
     public static readonly HashSet<string> GlobalNames = ["vault", "data", "as", "json", "help", "no-history"];
 

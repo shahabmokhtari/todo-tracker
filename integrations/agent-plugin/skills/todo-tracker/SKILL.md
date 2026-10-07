@@ -27,6 +27,10 @@ Use the `todo-tracker` MCP tools. If they aren't available, use the `tt` command
 | Reorganize | `move_task` | `tt move <task> --under <task>` |
 | Decide what comes first | `put_first` | `tt first <task>` |
 | Undo a change | `task_history`, `restore_task_version` | `tt history <task>`, `tt restore <task> <version>` |
+| Move along the board | `move_card` | `tt stage <task> doing` |
+| Time work | `start_timer`, `stop_timer`, `log_time` | `tt start <task>`, `tt stop` |
+| Where did the time go | `get_time_report` | `tt time --days 7` |
+| Put finished work away | `archive_task` | `tt archive <task>`, `tt archive --done-before 14` |
 
 `<task>` in the CLI is an id prefix (as `tt` prints it) or words from the title.
 

@@ -136,12 +136,23 @@ public sealed partial class TaskBoard
 
         var group = parent is null ? GetGroup(groupId ?? item.GroupId) : null;
         var siblings = parent?.ChildList ?? RootList;
+        var wasRoot = item.Parent is null;
         (item.Parent?.ChildList ?? RootList).Remove(item);
         siblings.Insert(Math.Clamp(index ?? siblings.Count, 0, siblings.Count), item);
         item.Parent = parent;
         if (group is not null)
         {
             item.OwnGroupId = group.Id;
+        }
+
+        if (parent is null && !wasRoot)
+        {
+            // A subtask that becomes a task of its own is a card: ready, in Next.
+            item.Stage = Stage.Next;
+        }
+        else if (parent is not null)
+        {
+            item.ArchivedAt = null;
         }
 
         Log(now, id, ActivityKind.Moved, parent is null ? $"Moved \"{item.Title}\" to {group!.Name}" : $"Moved \"{item.Title}\" under \"{parent.Title}\"", actor);

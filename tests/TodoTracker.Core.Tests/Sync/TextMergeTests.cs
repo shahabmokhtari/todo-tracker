@@ -98,6 +98,20 @@ public class TextMergeTests
     }
 
     [Fact]
+    public void Time_logged_on_two_devices_is_kept_from_both_without_a_conflict()
+    {
+        // Each device appended its own time line at the same place: different ids, so both stay.
+        const string a = "- 2026-01-05 09:00–09:25 · 25 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000d1\",\"start\":\"x\"}%%";
+        const string b = "- 2026-01-05 10:00–10:30 · 30 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000d2\",\"start\":\"y\"}%%";
+        var start = L("---", "status: open", "---", "# Report", "", "## Time", "");
+
+        var result = TextMerge.Merge(start, start + L(a), start + L(b), SyncPlanner.TaskLineKeys);
+
+        Assert.False(result.Conflicted);
+        Assert.Equal(start + L(a, b), result.Text);
+    }
+
+    [Fact]
     public void Task_lines_are_keyed_by_frontmatter_key_inside_the_frontmatter_and_block_id_below()
     {
         var keys = SyncPlanner.TaskLineKeys([
