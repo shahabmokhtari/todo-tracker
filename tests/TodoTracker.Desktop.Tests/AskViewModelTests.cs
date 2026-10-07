@@ -110,6 +110,18 @@ public sealed class AskViewModelTests
     }
 
     [Fact]
+    public void An_online_model_says_where_messages_go_and_a_local_one_doesnt()
+    {
+        _agent.Set(new AskState("ready", true, "GPT", null, null, null, null) { SentTo = "api.openai.com" });
+        using var vm = Create();
+
+        Assert.Equal("Your messages, and the tasks GPT looks at, are sent to api.openai.com.", vm.Privacy);
+
+        _agent.Set(new AskState("ready", true, "GitHub Copilot", null, null, null, null));
+        Assert.Null(vm.Privacy);
+    }
+
+    [Fact]
     public async Task Busy_errors_are_shown_and_stop_and_full_chat_work()
     {
         using var vm = Create();

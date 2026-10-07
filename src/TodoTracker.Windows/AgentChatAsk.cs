@@ -16,7 +16,7 @@ internal sealed class AgentChatAsk : IAskAgent, IDisposable
 
     public event EventHandler<AskState>? Changed;
 
-    public AskState State => Map(_chat.State);
+    public AskState State => Map(_chat.State, HostOf);
 
     public Task SendAsync(string text) => _chat.SendAsync(text);
 
@@ -26,7 +26,11 @@ internal sealed class AgentChatAsk : IAskAgent, IDisposable
 
     public void Dispose() => _chat.Changed -= OnChanged;
 
-    internal static AskState Map(ChatState state)
+    /// <summary>The host an online API model sends to (null for agents and models on this computer).</summary>
+    private string? HostOf(string agentId) =>
+        _chat.Models?.List().FirstOrDefault(m => $"api:{m.Id}" == agentId) is { IsLocal: false } model && Uri.TryCreate(model.BaseUrl, UriKind.Absolute, out var uri) ? uri.Host : null;
+
+    internal static AskState Map(ChatState state, Func<string, string?> hostOf)
     {
         var agent = state.Agents.FirstOrDefault(a => a.Id == state.Agent);
         var lastUser = state.Entries.ToList().FindLastIndex(e => e.Kind == "user");
@@ -40,8 +44,11 @@ internal sealed class AgentChatAsk : IAskAgent, IDisposable
             reply,
             question is null ? null : new AskQuestion(question.Id, question.Text, question.Choices!),
             state.Problem,
-            state.Version);
+            state.Version)
+        {
+            SentTo = agent is { Kind: "api", Local: false } ? hostOf(agent.Id) ?? "the model’s service" : null,
+        };
     }
 
-    private void OnChanged(object? sender, ChatState state) => Changed?.Invoke(this, Map(state));
+    private void OnChanged(object? sender, ChatState state) => Changed?.Invoke(this, Map(state, HostOf));
 }

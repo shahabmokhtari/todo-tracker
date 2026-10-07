@@ -481,6 +481,21 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task With_an_app_window_the_dashboard_and_a_task_open_there_instead_of_the_browser()
+    {
+        var opened = new List<string>();
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://127.0.0.1:5317", path => $"launch:{path}", "{}", TimeZoneInfo.Utc, "secret-token") { OpenApp = opened.Add });
+        var task = await Seed("Ship");
+        await vm.RefreshAsync();
+
+        vm.OpenDashboardCommand.Execute(null);
+        vm.EditInBrowserCommand.Execute(vm.Focus);
+
+        Assert.Equal(["/", $"/#/task/{task.Id}"], opened);
+        Assert.Empty(_shell.OpenedUrls);
+    }
+
+    [Fact]
     public async Task Pomodoro_start_pause_and_tick_update_the_clock()
     {
         await Seed("Deep work");

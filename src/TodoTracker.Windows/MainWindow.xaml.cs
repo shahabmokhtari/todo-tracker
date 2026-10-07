@@ -32,6 +32,9 @@ public partial class MainWindow : Window
     /// <summary>Where the tasks live (set by the app once the server is up).</summary>
     internal TodoTracker.Core.Vault.VaultBoardStore? Vault { get; set; }
 
+    /// <summary>The app window (null in automated runs: the browser is used).</summary>
+    internal AppWindowHost? AppHost { get; set; }
+
     /// <summary>Which features (plugins) are on; null: all.</summary>
     internal TodoTracker.Server.Plugins.PluginHost? Plugins { get; set; }
 
@@ -470,8 +473,22 @@ public partial class MainWindow : Window
     private void OnMenuClick(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
-        menu.Items.Add(new MenuItem { Header = "Open dashboard", Command = _vm.OpenDashboardCommand });
+        menu.Items.Add(new MenuItem { Header = "Open the app", Command = _vm.OpenDashboardCommand, InputGestureText = "Board, outline, reports" });
+        if (AppHost is { } appHost)
+        {
+            var inBrowser = new MenuItem { Header = "Open in the browser" };
+            inBrowser.Click += (_, _) => appHost.OpenInBrowser("/");
+            menu.Items.Add(inBrowser);
+        }
+
         menu.Items.Add(new MenuItem { Header = "Full timeline", Command = _vm.OpenReportCommand });
+        if (AppHost is { } host && _vm.ShowFocusTimer)
+        {
+            var breaks = new MenuItem { Header = "Full-screen breaks", IsCheckable = true, IsChecked = host.State.FullScreenBreaks, ToolTip = "When a focus session ends, cover every screen with a reminder to rest (you can skip it)." };
+            breaks.Checked += (_, _) => host.SetFullScreenBreaks(true);
+            breaks.Unchecked += (_, _) => host.SetFullScreenBreaks(false);
+            menu.Items.Add(breaks);
+        }
         menu.Items.Add(new Separator());
         menu.Items.Add(PositionMenu());
         var onTop = new MenuItem

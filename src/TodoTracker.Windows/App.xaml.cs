@@ -25,6 +25,8 @@ public partial class App : Application
     private SingleInstance? _instance;
     private AgentChatAsk? _ask;
     private MainWindow? _window;
+    private AppWindowHost? _appHost;
+    private BreakOverlay? _breaks;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -106,6 +108,8 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _toasts?.Dispose();
+        _breaks?.Dispose();
+        _appHost?.Dispose();
         _viewModel?.Ask?.Dispose();
         _ask?.Dispose();
         _viewModel?.Dispose();
@@ -150,6 +154,15 @@ public partial class App : Application
         var services = _server.Services;
         var connection = TodoTrackerHost.GetConnection(services);
         var mcpConfig = JsonSerializer.Serialize(connection.McpConfig, Indented);
+        // The whole app in its own window (automated runs keep using the browser path and never save anything).
+        _appHost = interactive
+            ? new AppWindowHost(
+                new AppWindowStateStore(Path.Combine(options.DataDirectory, "app-window.json")),
+                new Uri(connection.BaseUrl),
+                path => TodoTrackerHost.CreateLaunchUrl(services, path),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TodoTracker", "WebView2"))
+            : null;
+        var appHost = _appHost;
         _viewModel = new SidebarViewModel(
             services.GetRequiredService<IBoardStore>(),
             TimeProvider.System,
@@ -162,6 +175,7 @@ public partial class App : Application
                     var vault = services.GetRequiredService<TodoTracker.Core.Vault.VaultBoardStore>();
                     return Path.GetFileName((await vault.AddAttachmentAsync(taskId, name, content, TodoTracker.Core.Actor.User).ConfigureAwait(false)).Path);
                 },
+                OpenApp = appHost is null ? null : appHost.Open,
             });
 
         // Automated runs start floating and never touch the user's saved placement; --no-dock is a
@@ -178,7 +192,17 @@ public partial class App : Application
         {
             _ask = new AgentChatAsk(chat);
             var shell = new WpfShell();
-            _viewModel.Ask = new AskViewModel(_ask, run => Dispatcher.BeginInvoke(run), () => shell.OpenUrl(TodoTrackerHost.CreateLaunchUrl(services, "/?ask=1")));
+            _viewModel.Ask = new AskViewModel(_ask, run => Dispatcher.BeginInvoke(run), () =>
+            {
+                if (appHost is not null)
+                {
+                    appHost.Open("/?ask=1");
+                }
+                else
+                {
+                    shell.OpenUrl(TodoTrackerHost.CreateLaunchUrl(services, "/?ask=1"));
+                }
+            });
         }
 
         var window = new MainWindow(_viewModel, services.GetRequiredService<SettingsStore>(), placementStore, placement, interactive);
@@ -187,8 +211,19 @@ public partial class App : Application
         window.Plugins = plugins;
         window.Sync = services.GetService<TodoTracker.Server.Plugins.Sync.SyncService>();
         _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
+        window.AppHost = _appHost;
         MainWindow = window;
         _window = window;
+        if (interactive)
+        {
+            // Full-screen breaks on every monitor (the focus timer plugin, and the user's choice in the menu).
+            var viewModel = _viewModel;
+            _breaks = new BreakOverlay(viewModel.Break, () => viewModel.ShowFocusTimer && (appHost?.State.FullScreenBreaks ?? true));
+            if (appHost is not null)
+            {
+                appHost.Changed += (_, _) => _breaks.Sync();
+            }
+        }
 
         var events = services.GetRequiredService<ServerEvents>();
         if (toasts)

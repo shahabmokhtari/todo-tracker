@@ -10,7 +10,11 @@ public sealed record AskQuestion(string Id, string Text, IReadOnlyList<string> C
 /// What the sidebar shows of the chat: the latest answer, a question waiting for you, or what to install. A state with
 /// a lower <paramref name="Version"/> than one already shown is older (it arrived late) and is ignored.
 /// </summary>
-public sealed record AskState(string Status, bool HasAgent, string? AgentName, string? Hint, string? Reply, AskQuestion? Question, string? Problem, long Version = 0);
+public sealed record AskState(string Status, bool HasAgent, string? AgentName, string? Hint, string? Reply, AskQuestion? Question, string? Problem, long Version = 0)
+{
+    /// <summary>The online service an API model sends messages to (its host); null for agents and local models.</summary>
+    public string? SentTo { get; init; }
+}
 
 /// <summary>The in-app agent chat (the Ask AI plugin), as the sidebar needs it.</summary>
 public interface IAskAgent
@@ -77,6 +81,10 @@ public sealed partial class AskViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsProblem { get; set; }
 
+    /// <summary>Where messages go when the model is an online service (same wording as the web chat).</summary>
+    [ObservableProperty]
+    public partial string? Privacy { get; set; }
+
     [ObservableProperty]
     public partial string? QuestionText { get; set; }
 
@@ -136,6 +144,7 @@ public sealed partial class AskViewModel : ObservableObject, IDisposable
         HasAgent = state.HasAgent;
         IsBusy = state.Status is "busy" or "starting";
         Placeholder = state.HasAgent ? $"Ask {state.AgentName ?? "AI"}… e.g. add: call the bank tomorrow" : "Ask AI (install Copilot CLI or Claude Code)";
+        Privacy = state.HasAgent && state.SentTo is { Length: > 0 } host ? $"Your messages, and the tasks {state.AgentName ?? "the model"} looks at, are sent to {host}." : null;
         if (!state.HasAgent)
         {
             Message = state.Hint;
