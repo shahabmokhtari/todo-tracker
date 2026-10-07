@@ -2,6 +2,7 @@
 // Archive tab shows what was put away, to bring back or delete for good.
 
 import { byDay, duration } from '../timefmt.js';
+import { latest, serial, sameAs, send, treeUrl } from './common.js';
 
 const AUTO_DAYS = [7, 14, 30];
 
@@ -13,21 +14,29 @@ export function createDoneView(ctx) {
   let archived = [];
   let filter = '';
   const selected = new Set();
+  const fetchBoth = latest(() => Promise.all([ctx.api(treeUrl(ctx, 'archived=false')), ctx.api(treeUrl(ctx, 'archived=true'))]));
+  const queue = serial();
+  let shown = null;
 
-  async function load() {
+  /** `quiet`: a background refresh, which leaves the list alone when nothing changed. */
+  async function load({ quiet = false } = {}) {
     try {
-      const group = ctx.state.group ? `&group=${ctx.state.group}` : '';
-      const [tree, archive] = await Promise.all([ctx.api(`/api/tree?archived=false${group}`), ctx.api(`/api/tree?archived=true${group}`)]);
+      const reply = await fetchBoth();
+      if (!reply.current) return;
+      const { same, text } = sameAs(shown, reply.value);
+      shown = text;
+      if (quiet && same) return;
+      const [tree, archive] = reply.value;
       done = tree.filter((n) => n.done).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
       archived = archive.sort((a, b) => new Date(b.archivedAt ?? b.completedAt) - new Date(a.archivedAt ?? a.completedAt));
       for (const id of [...selected]) if (![...done, ...archived].some((n) => n.id === id)) selected.delete(id);
       render();
     } catch (err) {
-      ctx.toast(err.message, 'error');
+      if (!quiet) ctx.toast(err.message, 'error');
     }
   }
 
-  const run = (requests, message) => ctx.act((async () => { for (const r of requests) await ctx.api(r.url, { method: r.method, body: r.body }); })(), message);
+  const run = (requests, message) => queue(() => send(ctx, requests, message));
 
   function remove(nodes) {
     const what = nodes.length === 1 ? `"${nodes[0].title}"` : `${nodes.length} tasks`;
@@ -74,10 +83,25 @@ export function createDoneView(ctx) {
       h('button', { class: 'link small', type: 'button', onclick: () => { selected.clear(); render(); } }, 'Clear'));
   }
 
-  function render() {
+  // Typing in the search box only redraws the list under it (the box keeps its caret and any IME composition).
+  const results = h('div', { class: 'done-results' });
+  const count = h('span', { class: 'muted small push-right', role: 'status' });
+
+  function renderList() {
     const list = (tab === 'done' ? done : archived).filter((n) => !filter || n.title.toLowerCase().includes(filter.toLowerCase()));
     const days = byDay(list, (n) => n.completedAt);
     const total = list.reduce((s, n) => s + (n.timeSpentSeconds ?? 0), 0);
+    count.textContent = list.length ? `${list.length} task${list.length > 1 ? 's' : ''}${total ? ` · ${duration(total)} spent` : ''}` : '';
+    results.replaceChildren(list.length
+      ? h('div', { class: 'done-days' }, ...days.map((d) => h('section', { class: 'done-day' },
+        h('h3', null, d.label, h('span', { class: 'muted small' }, ` · ${d.items.length}`)),
+        h('ul', { class: 'done-list' }, ...d.items.map(row)))))
+      : h('div', { class: 'empty-state' }, icon(tab === 'done' ? 'check' : 'archive', { size: 28 }),
+        h('p', null, filter ? 'Nothing matches.' : tab === 'done' ? 'Nothing finished yet. It will show up here, day by day.' : 'Nothing archived. Archive finished tasks to keep Done short.')));
+    renderBulk();
+  }
+
+  function render() {
     const tabs = h('div', { class: 'seg', role: 'tablist', 'aria-label': 'Done or archived' },
       ...[['done', `Done (${done.length})`], ['archive', `Archive (${archived.length})`]].map(([id, label]) => h('button', {
         type: 'button', role: 'tab', 'aria-selected': String(tab === id),
@@ -92,18 +116,13 @@ export function createDoneView(ctx) {
     root.replaceChildren(
       h('div', { class: 'view-toolbar' },
         tabs,
-        h('input', { type: 'search', class: 'small-search', placeholder: 'Find…', value: filter, 'aria-label': 'Find a finished task', oninput: (e) => { filter = e.target.value; render(); const box = root.querySelector('.small-search'); box.focus(); box.setSelectionRange(box.value.length, box.value.length); } }),
+        h('input', { type: 'search', class: 'small-search', placeholder: 'Find…', value: filter, 'aria-label': 'Find a finished task', oninput: (e) => { filter = e.target.value; renderList(); } }),
         autoArchive,
-        h('span', { class: 'muted small push-right' }, list.length ? `${list.length} task${list.length > 1 ? 's' : ''}${total ? ` · ${duration(total)} spent` : ''}` : '')),
+        count),
       bulk,
-      list.length
-        ? h('div', { class: 'done-days' }, ...days.map((d) => h('section', { class: 'done-day' },
-          h('h3', null, d.label, h('span', { class: 'muted small' }, ` · ${d.items.length}`)),
-          h('ul', { class: 'done-list' }, ...d.items.map(row)))))
-        : h('div', { class: 'empty-state' }, icon(tab === 'done' ? 'check' : 'archive', { size: 28 }),
-          h('p', null, tab === 'done' ? 'Nothing finished yet. It will show up here, day by day.' : 'Nothing archived. Archive finished tasks to keep Done short.')));
-    renderBulk();
+      results);
+    renderList();
   }
 
-  return { root, show: load, refresh: load, title: 'Done' };
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Done' };
 }

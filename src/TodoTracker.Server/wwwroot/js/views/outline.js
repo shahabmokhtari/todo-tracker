@@ -1,8 +1,10 @@
 // Tasks: every task of a group as an outline. Click a title to rename it; Enter adds the next task, Tab and Shift+Tab
-// nest and un-nest, Alt+Up/Down reorder, Space or the checkbox finishes; drag a row before, after or into another.
+// (or Alt+Shift+Right/Left) nest and un-nest, Alt+Up/Down reorder, Space or the checkbox finishes, Escape leaves the
+// tree; drag a row before, after or into another (or use a row's Move menu on a touch screen).
 
 import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
+import { latest, serial, sameAs, send, treeUrl } from './common.js';
 
 const EXPANDED_KEY = 'tt.outline.expanded';
 const DONE_KEY = 'tt.outline.showDone';
@@ -19,51 +21,63 @@ export function createOutlineView(ctx) {
   let adding = null;
 
   const saveExpanded = () => localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded].slice(-500)));
+  const fetchTree = latest(() => ctx.api(treeUrl(ctx)));
+  const queue = serial();
+  let shown = null;
+  // The row the keyboard comes back to (the tree is one Tab stop; arrows move inside it).
+  let activeId = null;
 
-  async function load() {
+  /** `quiet`: a background refresh, which leaves the outline alone when nothing changed. */
+  async function load({ quiet = false } = {}) {
     try {
-      roots = await ctx.api(`/api/tree${ctx.state.group ? `?group=${ctx.state.group}` : ''}`);
+      const reply = await fetchTree();
+      if (!reply.current) return;
+      const { same, text } = sameAs(shown, reply.value);
+      shown = text;
+      if (quiet && same) return;
+      roots = reply.value;
       map = index(roots);
       render();
     } catch (err) {
-      ctx.toast(err.message, 'error');
+      if (!quiet) ctx.toast(err.message, 'error');
     }
   }
 
-  async function run(requests, message, focusId = null) {
-    if (!requests?.length) return false;
-    ctx.state.refocus = focusId;
-    const ok = await ctx.act((async () => { for (const r of requests) await ctx.api(r.url, { method: r.method, body: r.body }); })(), message);
-    ctx.state.refocus = null;
-    return ok;
-  }
+  /** Changes go one at a time; `build` makes the requests from the tree as it is when the change's turn comes. */
+  const run = (build, message, focusId = null) => queue(() => send(ctx, typeof build === 'function' ? build() : build, message, focusId));
 
   function focusRow(id, field = 'row') {
     const row = root.querySelector(`.orow[data-id="${CSS.escape(id)}"]`);
-    (field === 'title' ? row?.querySelector('.otitle') : row)?.focus();
+    (field === 'title' ? row?.querySelector('.otitle') : row)?.focus({ preventScroll: true });
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  /** Names read out for the row and its buttons follow its title (no redraw: typing elsewhere is kept). */
+  function relabel(row, from, to) {
+    for (const el of row ? [row, ...row.querySelectorAll('[aria-label]')] : []) {
+      const label = el.getAttribute('aria-label');
+      if (label === from) el.setAttribute('aria-label', to);
+      else if (label.endsWith(` ${from}`)) el.setAttribute('aria-label', label.slice(0, -from.length) + to);
+    }
   }
 
   async function rename(node, input) {
     const title = input.value.trim();
-    if (!title || title === node.title) {
-      input.value = node.title;
+    const old = node.title;
+    if (!title || title === old) {
+      input.value = old;
       return;
     }
 
+    // Shown right away (Enter draws the next row at once); put back if the save fails.
+    node.title = title;
+    relabel(input.closest('.orow'), old, title);
     try {
       await ctx.api(`/api/items/${node.id}`, { method: 'PATCH', body: { title } });
-      // Names read out for the row and its buttons follow the new title (no redraw: typing elsewhere is kept).
-      const old = node.title;
-      const row = input.closest('.orow');
-      for (const el of row ? [row, ...row.querySelectorAll('[aria-label]')] : []) {
-        const label = el.getAttribute('aria-label');
-        if (label === old) el.setAttribute('aria-label', title);
-        else if (label.endsWith(` ${old}`)) el.setAttribute('aria-label', label.slice(0, -old.length) + title);
-      }
-
-      node.title = title;
     } catch (err) {
-      input.value = node.title;
+      node.title = old;
+      input.value = old;
+      relabel(input.closest('.orow'), title, old);
       ctx.toast(err.message, 'error');
     }
   }
@@ -137,9 +151,10 @@ export function createOutlineView(ctx) {
       'aria-level': depth + 1,
       'aria-expanded': hasChildren ? String(open) : null,
       'aria-label': node.title,
-      tabindex: 0,
+      tabindex: node.id === activeId ? 0 : -1,
       draggable: 'true',
       dataset: { id: node.id },
+      onfocus: (e) => { if (e.target === el) setActive(node.id); },
       onkeydown: (e) => onRowKey(e, node, hasChildren, open),
       ondragstart: (e) => {
         if (e.target === title) { e.preventDefault(); return; }
@@ -163,11 +178,10 @@ export function createOutlineView(ctx) {
         const zone = dropZone(e.clientY - r.top, r.height);
         const moved = dragging;
         clearMarks();
-        const requests = dropRequests(map, moved, node.id, zone, ctx.state.group);
-        if (!requests) return ctx.toast('A task can’t go inside itself', 'error');
+        if (!dropRequests(map, moved, node.id, zone, ctx.state.group)) return ctx.toast('A task can’t go inside itself', 'error');
         if (zone === 'inside') expanded.add(node.id);
         saveExpanded();
-        run(requests, 'Moved', moved);
+        run(() => dropRequests(map, moved, node.id, zone, ctx.state.group), 'Moved', moved);
       },
     },
     h('button', {
@@ -185,11 +199,45 @@ export function createOutlineView(ctx) {
       node.done ? null : h('button', { class: `icon-btn small${node.timing ? ' on' : ''}`, type: 'button', tabindex: -1, title: node.timing ? 'Stop the timer' : 'Start the timer', 'aria-label': node.timing ? `Stop timing ${node.title}` : `Start timing ${node.title}`,
         onclick: () => run([node.timing ? { method: 'POST', url: '/api/timer/stop' } : { method: 'POST', url: '/api/timer/start', body: { itemId: node.id } }], null, node.id) }, icon(node.timing ? 'stop' : 'play', { size: 13 })),
       h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Add a subtask', 'aria-label': `Add a subtask to ${node.title}`, onclick: () => { expanded.add(node.id); adding = { parentId: node.id }; render(); } }, icon('plus', { size: 13 })),
-      h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Open (Ctrl+Enter)', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 13 }))));
+      h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Open (Ctrl+Enter)', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 13 })),
+      moveMenu(node)));
     el.style.setProperty('--depth', depth);
-    title.addEventListener('focus', () => { title.tabIndex = 0; });
     title.addEventListener('mousedown', (e) => e.stopPropagation());
     return el;
+  }
+
+  /** The tree is a single Tab stop: the row last used keeps it. */
+  function setActive(id) {
+    if (activeId === id) return;
+    activeId = id;
+    root.querySelectorAll('.orow[data-id]').forEach((r) => { r.tabIndex = r.dataset.id === id ? 0 : -1; });
+  }
+
+  /** The same moves as the keys, as a menu (touch screens can't drag, and have no Tab or Alt). */
+  function moveMenu(node) {
+    return h('select', {
+      class: 'move-select', tabindex: -1, 'aria-label': `Move ${node.title}`,
+      onchange: (e) => {
+        const key = e.target.value;
+        e.target.value = '';
+        if (key) move(node.id, key);
+      },
+    }, ...[['', 'Move…'], ['up', 'Up'], ['down', 'Down'], ['in', 'Into the task above'], ['out', 'Out one level']].map(([value, label]) => h('option', { value }, label)));
+  }
+
+  /** Up/down among the rows shown, into the task above, or out one level; built from the tree when its turn comes. */
+  function move(id, how) {
+    const build = {
+      up: () => stepRequests(map, id, -1, showDone),
+      down: () => stepRequests(map, id, 1, showDone),
+      in: () => {
+        const requests = indentRequests(map, id, showDone);
+        if (requests) { expanded.add(requests[0].body.parentId); saveExpanded(); }
+        return requests;
+      },
+      out: () => outdentRequests(map, id, ctx.state.group),
+    }[how];
+    return run(build, null, id);
   }
 
   function complete(node) {
@@ -212,8 +260,17 @@ export function createOutlineView(ctx) {
     const rows = [...root.querySelectorAll('.orow[data-id]')];
     const i = rows.findIndex((r) => r.dataset.id === node.id);
     const go = (k) => rows[k]?.focus();
-    if (e.key === 'ArrowDown' && e.altKey) { e.preventDefault(); run(stepRequests(map, node.id, 1), null, node.id); }
-    else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); run(stepRequests(map, node.id, -1), null, node.id); }
+    const nest = (e.key === 'Tab' && !e.shiftKey) || (e.key === 'ArrowRight' && e.altKey && e.shiftKey);
+    const unnest = (e.key === 'Tab' && e.shiftKey) || (e.key === 'ArrowLeft' && e.altKey && e.shiftKey);
+    if (nest || unnest) {
+      // Tab only nests when it can; otherwise it moves on like Tab anywhere else.
+      if (nest ? indentRequests(map, node.id, showDone) : outdentRequests(map, node.id, ctx.state.group)) {
+        e.preventDefault();
+        move(node.id, nest ? 'in' : 'out');
+      }
+    } else if (e.key === 'Escape') { e.preventDefault(); root.querySelector('.view-toolbar .btn')?.focus(); }
+    else if (e.key === 'ArrowDown' && e.altKey) { e.preventDefault(); move(node.id, 'down'); }
+    else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); move(node.id, 'up'); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); go(i - 1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); if (hasChildren && !open) toggle(node.id, true); else go(i + 1); }
@@ -221,12 +278,6 @@ export function createOutlineView(ctx) {
       e.preventDefault();
       if (hasChildren && open) toggle(node.id, false);
       else if (map.get(node.id)?.parent) focusRow(map.get(node.id).parent.id);
-    } else if (e.key === 'Tab' && !e.shiftKey) {
-      const requests = indentRequests(map, node.id, showDone);
-      if (requests) { e.preventDefault(); expanded.add(requests[0].body.parentId); saveExpanded(); run(requests, null, node.id); }
-    } else if (e.key === 'Tab' && e.shiftKey) {
-      const requests = outdentRequests(map, node.id, ctx.state.group);
-      if (requests) { e.preventDefault(); run(requests, null, node.id); }
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ctx.openDrawer(node.id); }
     else if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); const t = e.currentTarget.querySelector('.otitle'); t.focus(); t.select(); }
     else if (e.key === ' ') { e.preventDefault(); complete(node); }
@@ -239,7 +290,11 @@ export function createOutlineView(ctx) {
 
   function render() {
     const keep = ctx.state.refocus ?? document.activeElement?.closest?.('#view-tasks .orow')?.dataset.id;
+    // A redraw after a change puts focus back only if the keyboard hasn't moved on (to the toolbar, say).
+    const focusHere = document.activeElement === document.body || !!root.querySelector('.outline')?.contains(document.activeElement);
     const rows = flatten(roots, expanded, showDone);
+    if (keep) activeId = keep;
+    if (!rows.some((r) => r.node.id === activeId)) activeId = rows[0]?.node.id ?? null;
     const tree = h('div', { class: 'outline', role: 'tree', 'aria-label': 'Tasks' });
     if (adding && !adding.afterId && !adding.parentId) tree.append(newRowEditor(0, adding));
     for (const r of rows) {
@@ -271,10 +326,10 @@ export function createOutlineView(ctx) {
         h('button', { class: 'btn ghost', type: 'button', onclick: () => { roots.forEach(function walk(n) { if (n.children?.length) { expanded.add(n.id); n.children.forEach(walk); } }); saveExpanded(); render(); } }, 'Expand all'),
         h('button', { class: 'btn ghost', type: 'button', onclick: () => { expanded.clear(); saveExpanded(); render(); } }, 'Collapse all'),
         doneToggle,
-        h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done')),
+        h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave')),
       tree);
-    if (keep && !root.querySelector('.orow.adding')) focusRow(keep);
+    if (keep && focusHere && !root.querySelector('.orow.adding')) focusRow(keep);
   }
 
-  return { root, show: load, refresh: load, title: 'Tasks' };
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks' };
 }

@@ -69,6 +69,15 @@ test('Board: cards move between columns by drag and drop and Alt+arrows; Doing s
   await page.keyboard.press('Alt+ArrowRight');
   await expect(lane('done').locator('.kcard')).toHaveText([/Book hotel/]);
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Book hotel')?.done).toBe(true);
+
+  // Two quick presses move a card two columns (each move starts from where the last one left it).
+  await lane('inbox').getByRole('textbox', { name: 'Add a task to Inbox' }).fill('Quick mover');
+  await lane('inbox').getByRole('textbox', { name: 'Add a task to Inbox' }).press('Enter');
+  await lane('inbox').locator('.kcard', { hasText: 'Quick mover' }).focus();
+  await page.keyboard.press('Alt+ArrowRight');
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(lane('doing').locator('.kcard', { hasText: 'Quick mover' })).toHaveCount(1);
+  await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Quick mover')?.stage).toBe('doing');
   expect(errors).toEqual([]);
 });
 
@@ -145,6 +154,12 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   await nested.focus();
   await page.keyboard.press('Space');
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Launch website')?.children[0]?.done).toBe(true);
+
+  // The tree is one stop for Tab; Escape leaves it without changing anything.
+  await rowOf('Launch website').focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'New task' })).toBeFocused();
+  await expect(outline.locator('.orow[data-id][tabindex="0"]')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
@@ -164,7 +179,25 @@ test('Full-size task: opens from a link, logs time by hand, and closes back to t
   await expect(time.locator('.time-total')).toContainText('45 min');
   await expect(time.locator('.time-list li')).toHaveCount(1);
 
-  // Back to the side panel and closed: the address goes back to the view.
+  // Back closes it (it had its own address).
+  await page.goBack();
+  await expect(drawer).toBeHidden();
+  await expect(page).toHaveURL(/#\/board$/);
+
+  // A link opens just that task full size; other tasks still open in the side panel.
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, task.id);
+  await expect(drawer).toHaveClass(/full/);
+  await page.keyboard.press('Alt+2'); // (full size covers the navigation; Alt+number still switches views)
+  await expect(drawer).toBeHidden();
+  await page.locator('.kcard', { hasText: 'Quarterly taxes' }).click();
+  await expect(drawer).toBeVisible();
+  await expect(drawer).not.toHaveClass(/full/);
+  await expect(page).toHaveURL(/#\/board$/);
+
+  // Full size and back to the side panel, then closed: the address follows.
+  await drawer.getByRole('button', { name: 'Full size' }).click();
+  await expect(drawer).toHaveClass(/full/);
+  await expect(page).toHaveURL(new RegExp(`#/task/${task.id}$`));
   await drawer.getByRole('button', { name: 'Smaller' }).click();
   await expect(drawer).not.toHaveClass(/full/);
   await drawer.getByRole('button', { name: 'Close' }).click();
@@ -215,11 +248,12 @@ test('Command palette: Ctrl+K finds a task and runs commands', async ({ page, re
   await page.keyboard.press('Control+k');
   const palette = page.locator('#palette');
   await expect(palette).toBeVisible();
-  await page.keyboard.type('quarterly');
-  await expect(palette.getByRole('option', { name: /Quarterly taxes/ })).toBeVisible();
+  // Typed fast and Enter right away: the existing task opens (no copy is added).
+  await page.keyboard.type('Quarterly taxes');
   await page.keyboard.press('Enter');
   await expect(palette).toBeHidden();
   await expect(page.locator('#drawer .title-input')).toHaveValue('Quarterly taxes');
+  expect((await tree(request)).filter((n) => n.title === 'Quarterly taxes')).toHaveLength(1);
   await page.keyboard.press('Escape');
   await expect(page.locator('#drawer')).toBeHidden();
 
@@ -246,15 +280,24 @@ test('Break: when a focus session ends, a full-screen break shows and can be ski
   const screen = page.locator('#break');
   await expect(screen).toBeVisible();
   await expect(screen.getByRole('heading')).toHaveText(/Time for a/);
-  await expect(screen.getByRole('button', { name: 'I’m taking it' })).toBeFocused();
+
+  // A key still being typed when it appears doesn't answer it, and nothing behind it reacts.
+  await expect(screen.locator('.break-card')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('n');
+  await expect(screen).toBeVisible();
+  await expect(page.locator('#capture-input')).not.toBeFocused();
 
   // Focus stays inside it.
+  await page.keyboard.press('Tab');
+  await expect(screen.getByRole('button', { name: 'I’m taking it' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(screen.getByRole('button', { name: 'Skip the break' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(screen.getByRole('button', { name: 'I’m taking it' })).toBeFocused();
 
   // Skipped, it stays away (the server-side catch-up is covered by the core tests).
+  await page.clock.fastForward('00:02');
   await screen.getByRole('button', { name: 'Skip the break' }).click();
   await expect(screen).toBeHidden();
   await expect.poll(async () => (await (await request.get('/api/dashboard', { headers: auth })).json()).pomodoro.phase).not.toBe('focus');

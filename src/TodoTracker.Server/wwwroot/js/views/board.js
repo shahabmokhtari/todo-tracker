@@ -3,6 +3,7 @@
 
 import { COLUMNS, WIP_LIMIT, columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../boardmodel.js';
 import { duration } from '../timefmt.js';
+import { latest, serial, sameAs, send, treeUrl } from './common.js';
 
 export function createBoardView(ctx) {
   const { h, icon } = ctx;
@@ -10,19 +11,54 @@ export function createBoardView(ctx) {
   let nodes = [];
   let columns = { inbox: [], next: [], doing: [], done: [] };
   let dragging = null;
+  let shown = null;
+  const fetchTree = latest(() => ctx.api(treeUrl(ctx)));
+  const queue = serial();
 
-  async function load() {
+  /** `quiet`: a background refresh, which leaves the board alone when nothing changed. */
+  async function load({ quiet = false } = {}) {
     try {
-      nodes = await ctx.api(`/api/tree${ctx.state.group ? `?group=${ctx.state.group}` : ''}`);
+      const reply = await fetchTree();
+      if (!reply.current) return;
+      const { same, text } = sameAs(shown, reply.value);
+      shown = text;
+      if (quiet && same) return;
+      nodes = reply.value;
       render();
     } catch (err) {
-      ctx.toast(err.message, 'error');
+      if (!quiet) ctx.toast(err.message, 'error');
     }
   }
 
-  async function run(requests, message) {
-    if (!requests?.length) return;
-    await ctx.act((async () => { for (const r of requests) await ctx.api(r.url, { method: r.method, body: r.body }); })(), message);
+  /** Changes go one at a time; `build` makes the requests from the board as it is when the change's turn comes. */
+  const run = (build, message, focusId = null) => queue(() => send(ctx, typeof build === 'function' ? build() : build, message, focusId));
+  const fresh = (id) => nodes.find((n) => n.id === id);
+
+  function moveTo(node, column, before = null) {
+    return run(() => { const n = fresh(node.id); return n ? dropRequests(n, column, before, columns) : null; }, column === 'done' ? 'Done' : 'Moved', node.id);
+  }
+
+  /** A Move menu (for touch screens, where cards can't be dragged): another column, or up/down in this one. */
+  function moveMenu(node, column) {
+    const options = [['', 'Move…'], ...COLUMNS.filter((c) => c.id !== column).map((c) => [c.id, `To ${c.name}`])];
+    if (column !== 'done') options.push(['up', 'Up'], ['down', 'Down']);
+    return h('select', {
+      class: 'move-select', 'aria-label': `Move ${node.title}`,
+      onclick: (e) => e.stopPropagation(),
+      onchange: (e) => {
+        const to = e.target.value;
+        e.target.value = '';
+        if (to === 'up' || to === 'down') {
+          run(() => {
+            const n = fresh(node.id);
+            const move = n && keyboardMove(n, to === 'up' ? 'ArrowUp' : 'ArrowDown', columns);
+            return move ? dropRequests(n, move.column, move.before, columns) : null;
+          }, null, node.id);
+        } else if (to) {
+          moveTo(node, to);
+        }
+      },
+    }, ...options.map(([value, label]) => h('option', { value }, label)));
   }
 
   function fact(f) {
@@ -72,7 +108,8 @@ export function createBoardView(ctx) {
         }, icon(node.timing ? 'stop' : 'play', { size: 14 })),
         column === 'done'
           ? h('button', { class: 'icon-btn small', type: 'button', title: 'Archive', 'aria-label': `Archive ${node.title}`, onclick: () => run([{ method: 'POST', url: `/api/items/${node.id}/archive` }], 'Archived') }, icon('archive', { size: 14 }))
-          : h('button', { class: 'icon-btn small', type: 'button', title: 'Done', 'aria-label': `Complete ${node.title}`, onclick: () => run([{ method: 'POST', url: `/api/items/${node.id}/complete` }], 'Done') }, icon('check', { size: 14 })))),
+          : h('button', { class: 'icon-btn small', type: 'button', title: 'Done', 'aria-label': `Complete ${node.title}`, onclick: () => run([{ method: 'POST', url: `/api/items/${node.id}/complete` }], 'Done') }, icon('check', { size: 14 })),
+        moveMenu(node, column))),
     node.labels.length || node.tags.length ? h('div', { class: 'card-chips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 3).map((t) => h('span', { class: 'chip tag' }, `#${t}`))) : null,
     h('div', { class: 'card-meta' }, due, ...facts.map(fact)));
     return el;
@@ -88,10 +125,13 @@ export function createBoardView(ctx) {
 
     if (!e.altKey || !e.key.startsWith('Arrow')) return;
     e.preventDefault();
-    const move = keyboardMove(node, e.key, columns);
-    if (!move) return;
-    ctx.state.refocus = node.id;
-    run(dropRequests(node, move.column, move.before, columns), move.column === 'done' ? 'Done' : null).then(() => { ctx.state.refocus = null; });
+    // Built when its turn comes: holding the key moves the card step by step from where it really is.
+    const key = e.key;
+    run(() => {
+      const n = fresh(node.id);
+      const move = n && keyboardMove(n, key, columns);
+      return move ? dropRequests(n, move.column, move.before, columns) : null;
+    }, null, node.id);
   }
 
   function clearMarks() {
@@ -125,7 +165,7 @@ export function createBoardView(ctx) {
       },
     }, h('input', { placeholder: `Add to ${def.name}…`, maxlength: 300, 'aria-label': `Add a task to ${def.name}` }));
     const list = h('div', { class: 'column-cards', role: 'list', 'aria-label': def.name }, ...items.map((n) => card(n, def.id)));
-    if (!items.length) list.append(h('p', { class: 'column-empty' }, { inbox: 'Nothing new. Press N to capture.', next: 'Pick something from the inbox.', doing: 'Start one thing.', done: 'Finished cards land here.' }[def.id]));
+    if (!items.length) list.append(h('p', { class: 'column-empty' }, { inbox: 'Nothing new. Type below to add one.', next: 'Pick something from the inbox.', doing: 'Start one thing.', done: 'Finished cards land here.' }[def.id]));
     const el = h('section', {
       class: `lane wip-${fill}`,
       dataset: { column: def.id },
@@ -145,7 +185,7 @@ export function createBoardView(ctx) {
         const before = def.id === 'done' ? null : beforeAt(list, e.clientY);
         const moved = dragging;
         clearMarks();
-        run(dropRequests(moved, def.id, before?.dataset.id ?? null, columns), def.id === 'done' ? 'Done' : null);
+        moveTo(moved, def.id, before?.dataset.id ?? null);
       },
     },
     h('header', { class: 'column-head' },
@@ -162,11 +202,17 @@ export function createBoardView(ctx) {
   function render() {
     columns = columnsOf(nodes, new Date());
     const focusId = ctx.state.refocus ?? document.activeElement?.closest?.('#view-board .kcard')?.dataset.id;
+    // A redraw after a change puts focus back only if the keyboard hasn't moved on.
+    const focusHere = document.activeElement === document.body || !!root.querySelector('.board')?.contains(document.activeElement);
+    // On phones the columns scroll sideways: stay on the column being looked at.
+    const scrolled = root.querySelector('.board')?.scrollLeft ?? 0;
+    const board = h('div', { class: 'board' }, ...COLUMNS.map(column));
     root.replaceChildren(
       h('p', { class: 'view-intro muted' }, 'Drag cards along, or use Alt + arrow keys. Starting a timer moves a card to Doing.'),
-      h('div', { class: 'board' }, ...COLUMNS.map(column)));
-    if (focusId) root.querySelector(`.kcard[data-id="${CSS.escape(focusId)}"]`)?.focus();
+      board);
+    board.scrollLeft = scrolled;
+    if (focusId && focusHere) root.querySelector(`.kcard[data-id="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });
   }
 
-  return { root, show: load, refresh: load, title: 'Board' };
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Board' };
 }

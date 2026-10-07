@@ -4,6 +4,7 @@
 
 import { barChart, donutChart, hourHeatmap, ganttChart, calendarHeatmap } from '../charts.js';
 import { duration, hours, dayOffset } from '../timefmt.js';
+import { latest, sameAs } from './common.js';
 
 const RANGES = [[7, '7 days'], [28, '4 weeks'], [90, '3 months'], [365, 'Year']];
 const FALLBACK_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9', '#8b5cf6', '#14b8a6'];
@@ -13,15 +14,24 @@ export function createReportsView(ctx) {
   const root = document.getElementById('view-reports');
   let days = Number(localStorage.getItem('tt.reports.days')) || 28;
   let report = null;
+  let shown = null;
+  // A slow year report that arrives after a later click on "7 days" is dropped.
+  const fetchReport = latest((url) => ctx.api(url));
 
-  async function load() {
+  /** `quiet`: a background refresh, which leaves the charts alone when nothing changed. */
+  async function load({ quiet = false } = {}) {
     const today = dayOffset(new Date(), 0);
     const from = dayOffset(new Date(), -(days - 1));
     try {
-      report = await ctx.api(`/api/reports?from=${from}&to=${today}${ctx.state.group ? `&group=${ctx.state.group}` : ''}`);
+      const reply = await fetchReport(`/api/reports?from=${from}&to=${today}${ctx.state.group ? `&group=${ctx.state.group}` : ''}`);
+      if (!reply.current) return;
+      const { same, text } = sameAs(shown, reply.value);
+      shown = text;
+      if (quiet && same) return;
+      report = reply.value;
       render();
     } catch (err) {
-      ctx.toast(err.message, 'error');
+      if (!quiet) ctx.toast(err.message, 'error');
     }
   }
 
@@ -95,5 +105,5 @@ export function createReportsView(ctx) {
               : h('p', { class: 'muted' }, 'No task was worked on or finished in this range.'))));
   }
 
-  return { root, show: load, refresh: load, title: 'Reports' };
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Reports' };
 }

@@ -6,6 +6,7 @@ import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone
 import { breakState, tipFor } from '../../src/TodoTracker.Server/wwwroot/js/breaks.js';
 import { score, rank } from '../../src/TodoTracker.Server/wwwroot/js/palette.js';
 import { niceScale, barLayout, donutSlices, arcPath, ganttLayout, heatLevel } from '../../src/TodoTracker.Server/wwwroot/js/charts.js';
+import { latest, serial, sameAs, treeUrl } from '../../src/TodoTracker.Server/wwwroot/js/views/common.js';
 
 const node = (id, extra = {}) => ({ id, title: id, stage: 'next', done: false, children: [], ...extra });
 
@@ -109,6 +110,17 @@ test('Alt+Up/Down swap a task with its neighbour', () => {
   assert.equal(stepRequests(map, 'a', -1), null);
 });
 
+test('Alt+Up/Down step over finished tasks that are hidden', () => {
+  const map = index([node('a'), node('d', { done: true }), node('b'), node('e', { done: true }), node('c')]);
+  // Shown: a, b, c. Up from b goes above a; down from b goes below c (past the hidden ones).
+  assert.deepEqual(stepRequests(map, 'b', -1, false), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: 'a' } }]);
+  assert.deepEqual(stepRequests(map, 'b', 1, false), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: null } }]);
+  assert.deepEqual(stepRequests(map, 'c', -1, false), [{ method: 'POST', url: '/api/items/c/reorder', body: { before: 'b' } }]);
+  assert.equal(stepRequests(map, 'c', 1, false), null);
+  // Shown too: plain neighbours.
+  assert.deepEqual(stepRequests(map, 'b', -1, true), [{ method: 'POST', url: '/api/items/b/reorder', body: { before: 'd' } }]);
+});
+
 test('drops go before, inside or after a row, never into the task itself', () => {
   assert.equal(dropZone(2, 40), 'before');
   assert.equal(dropZone(20, 40), 'inside');
@@ -181,4 +193,34 @@ test('the timeline puts life, work, deadline and finish on one scale', () => {
   assert.equal(g.deadline, 70);
   assert.equal(g.done, 50);
   assert.deepEqual([0, 1, 50, 100].map((v) => heatLevel(v, 100)), [0, 1, 2, 4]);
+});
+
+test('a late answer to an older load is dropped', async () => {
+  const replies = [];
+  const load = latest((ms, value) => new Promise((resolve) => { setTimeout(() => resolve(value), ms); }));
+  const slow = load(30, 'year');
+  const fast = load(1, 'week');
+  replies.push(await fast, await slow);
+  assert.deepEqual(replies, [{ current: true, value: 'week' }, { current: false }]);
+});
+
+test('changes run one at a time, in order, even when one fails', async () => {
+  const run = serial();
+  const log = [];
+  const a = run(async () => { await new Promise((r) => { setTimeout(r, 20); }); log.push('a'); });
+  const b = run(async () => { log.push('b'); throw new Error('nope'); });
+  const c = run(async () => { log.push('c'); });
+  await a;
+  await assert.rejects(b);
+  await c;
+  assert.deepEqual(log, ['a', 'b', 'c']);
+});
+
+test('views notice when a refresh brought nothing new, and ask for the group on screen', () => {
+  const first = sameAs(null, [{ id: 'a' }]);
+  assert.equal(first.same, false);
+  assert.equal(sameAs(first.text, [{ id: 'a' }]).same, true);
+  assert.equal(sameAs(first.text, [{ id: 'b' }]).same, false);
+  assert.equal(treeUrl({ state: { group: null } }), '/api/tree');
+  assert.equal(treeUrl({ state: { group: 'g1' } }, 'archived=true'), '/api/tree?archived=true&group=g1');
 });

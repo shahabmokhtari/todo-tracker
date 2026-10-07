@@ -715,8 +715,12 @@ function drawerDraft() {
   return { note: note?.value ?? '', noteFocused: !!note && active === note, noteStart: note?.selectionStart, noteEnd: note?.selectionEnd, focused };
 }
 
+/**
+ * Opens a task in the panel. `full` overrides the size for this task only (a #/task/ link opens it full size without
+ * changing the size other tasks open at); re-opening the same task (after a change) keeps its size.
+ */
 async function openDrawer(id, { full = null } = {}) {
-  if (full !== null) state.drawerFull = full;
+  const showFull = full ?? (state.drawerId === id && !$('#drawer').hidden ? state.drawerShownFull : state.drawerFull);
   // Anything still being typed is saved first. Re-opening the same task keeps the note being written (same note);
   // another task finishes it so the next keystrokes can't overwrite it.
   const same = state.drawerId === id && !$('#drawer').hidden;
@@ -861,9 +865,9 @@ async function openDrawer(id, { full = null } = {}) {
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
       h('button', {
-        class: 'icon-btn', type: 'button', 'aria-label': state.drawerFull ? 'Smaller' : 'Full size', title: state.drawerFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(!!state.drawerFull),
-        onclick: () => setDrawerFull(!state.drawerFull, id),
-      }, icon(state.drawerFull ? 'shrink' : 'expand')),
+        class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),
+        onclick: () => setDrawerFull(!showFull, id),
+      }, icon(showFull ? 'shrink' : 'expand')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
     title,
     // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
@@ -924,8 +928,17 @@ async function openDrawer(id, { full = null } = {}) {
     pluginOn('history') ? historySection(item) : null));
   $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
-  drawer.classList.toggle('full', !!state.drawerFull);
+  state.drawerShownFull = showFull;
+  drawer.classList.toggle('full', showFull);
   drawer.hidden = false;
+  // Full size has its own address (#/task/<id>): Back closes it. The side panel stays on the view's address.
+  const taskHash = `#/task/${id}`;
+  if (showFull && location.hash !== taskHash) {
+    if (location.hash.startsWith('#/task/')) history.replaceState(null, '', taskHash);
+    else history.pushState(null, '', taskHash);
+  } else if (!showFull && location.hash.startsWith('#/task/')) {
+    history.replaceState(null, '', `#/${shell.current() ?? 'today'}`);
+  }
   restoreDrawerDraft(drawer, draft, noteInput);
   if (state.refocus) focusOrderControl(state.refocus, null, drawer);
 
@@ -1099,11 +1112,11 @@ function parentPicker(item) {
 }
 
 /** Full size gives a task the whole window (its own address, #/task/<id>); the side panel keeps the view in sight. */
+/** The size button: this task changes size now, and tasks open at that size from now on. */
 function setDrawerFull(full, id) {
   state.drawerFull = full;
   localStorage.setItem('tt.drawer.full', full ? '1' : '0');
-  history.replaceState(null, '', full ? `#/task/${id}` : `#/${shell.current() ?? 'today'}`);
-  openDrawer(id);
+  openDrawer(id, { full });
 }
 
 /** Time spent: the timer for this task, the total (with subtasks), every stretch (fix or remove), and time to add by hand. */
@@ -1261,6 +1274,7 @@ function focusCapture() {
 }
 
 document.addEventListener('keydown', (e) => {
+  if (!$('#break').hidden) return; // nothing behind the break screen reacts to keys
   const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
   if (e.key === 'Escape') { closeMenus(); shell.closeNav(); if (!$('#drawer').hidden) closeDrawer(); }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1298,6 +1312,9 @@ const ctx = {
   signedIn: () => !!state.signedIn,
   setGroup: (id) => { setGroup(id); refreshAll(); },
   capture: focusCapture,
+  closeDrawer,
+  drawerOpen: () => !$('#drawer').hidden,
+  pluginOn: (id) => pluginOn(id),
   saveFocus: () => { lastFocused = document.activeElement; },
   restoreFocus: () => { lastFocused?.focus?.(); lastFocused = null; },
   views: {},
@@ -1311,7 +1328,7 @@ function refreshViewQuietly() {
   const view = currentView();
   const active = document.activeElement;
   if (!view || (active && view.root.contains(active) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) || view.root.querySelector('.dragging')) return;
-  view.refresh();
+  (view.poll ?? view.refresh)();
 }
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });

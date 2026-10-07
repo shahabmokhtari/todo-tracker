@@ -34,9 +34,11 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
   border-right: 1px solid var(--border);
   overflow-y: auto;
   transform: translateX(-102%);
-  transition: transform .22s var(--ease);
+  /* Closed, it's also out of the Tab order (hidden once it has slid away). */
+  visibility: hidden;
+  transition: transform .22s var(--ease), visibility 0s linear .22s;
 }
-.sidenav.open { transform: none; box-shadow: var(--shadow-lg); }
+.sidenav.open { transform: none; box-shadow: var(--shadow-lg); visibility: visible; transition: transform .22s var(--ease); }
 .nav-scrim { position: fixed; inset: 0; z-index: 34; background: rgb(15 23 42 / .3); }
 .sidenav .brand { padding: 4px 8px 12px; }
 
@@ -109,7 +111,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 
 @media (min-width: 900px) {
   .app { grid-template-columns: var(--nav-w) 1fr; }
-  .sidenav { position: sticky; top: 0; z-index: 15; height: 100vh; width: var(--nav-w); transform: none; box-shadow: none; }
+  .sidenav { position: sticky; top: 0; z-index: 15; height: 100vh; width: var(--nav-w); transform: none; box-shadow: none; visibility: visible; }
   .nav-toggle, .nav-scrim, .bottom-nav { display: none !important; }
   .layout { padding: var(--space-6) var(--space-6) 64px; }
 }
@@ -234,7 +236,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 
 /* ---------- outline (tasks) ---------- */
 
-.outline { display: grid; gap: 1px; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.outline { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .orow {
   --depth: 0;
   position: relative;
@@ -264,7 +266,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .orow.is-done .ocheck { background: var(--ok); border-color: var(--ok); }
 .orow.prio-critical .ocheck { border-color: #ef4444; }
 .orow.prio-high .ocheck { border-color: #f59e0b; }
-.otitle { flex: 1 1 auto; min-width: 80px; padding: 5px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; font-size: 14.5px; }
+.otitle { flex: 1 1 auto; min-width: 0; padding: 5px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; font-size: 14.5px; }
 .otitle:hover { border-color: var(--border); }
 .otitle:focus { background: var(--surface-solid); }
 .orow.is-done .otitle { color: var(--text-3); text-decoration: line-through; }
@@ -276,7 +278,13 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .oactions { display: flex; opacity: 0; transition: opacity .15s var(--ease); }
 .orow:hover .oactions, .orow:focus-within .oactions, .orow.is-timing .oactions { opacity: 1; }
 @media (hover: none) { .oactions { opacity: 1; } }
-@media (max-width: 640px) { .ochips, .kbd-hints { display: none; } .orow { padding-left: calc(4px + var(--depth) * 14px); } }
+@media (max-width: 640px) {
+  .ochips, .kbd-hints { display: none; }
+  .orow { padding-left: calc(4px + var(--depth) * 14px); }
+  /* Phones: the row opens with a tap on its arrow button; moves are in the Move menu. */
+  .oactions .icon-btn:not(:last-of-type) { display: none; }
+  .ofacts .ofact:not(:first-child) { display: none; }
+}
 .kbd-hints kbd { font-size: 11px; padding: 0 5px; border: 1px solid var(--border); border-radius: 5px; }
 
 /* ---------- done ---------- */
@@ -297,6 +305,12 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .row-actions { display: flex; gap: 4px; opacity: 0; }
 .done-row:hover .row-actions, .done-row:focus-within .row-actions { opacity: 1; }
 @media (hover: none) { .row-actions { opacity: 1; } }
+/* Phones: the title gets the line; time, group and actions go under it. */
+@media (max-width: 640px) {
+  .done-row { flex-wrap: wrap; row-gap: 2px; }
+  .done-title { flex: 1 1 calc(100% - 64px); min-width: 0; }
+  .row-actions { margin-left: auto; }
+}
 .btn.small { padding: 4px 10px; font-size: 13px; }
 .btn.danger, .icon-btn.danger:hover { color: var(--danger); }
 
@@ -437,3 +451,10 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 @media print {
   .sidenav, .bottom-nav, .palette, .break-screen, .timer-chip { display: none !important; }
 }
+
+/* Move menus: for touch screens, where cards and rows can't be dragged (keys and drag cover the rest). */
+.move-select { display: none; }
+@media (pointer: coarse) {
+  .move-select { display: inline-block; max-width: 92px; height: 32px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-solid); color: var(--text); font: inherit; font-size: 12px; }
+}
+.done-results { display: contents; }

@@ -64,14 +64,15 @@ export function outdentRequests(map, id, groupId) {
   ];
 }
 
-/** Alt+Up/Down: swap with the previous/next sibling. */
-export function stepRequests(map, id, delta) {
+/** Alt+Up/Down: swap with the previous/next sibling on screen (finished ones may be hidden: they're stepped over). */
+export function stepRequests(map, id, delta, showDone = true) {
   const at = map.get(id);
   if (!at) return null;
-  const i = at.siblings.indexOf(at.node);
-  const to = i + delta;
-  if (to < 0 || to >= at.siblings.length) return null;
-  const before = delta < 0 ? at.siblings[to].id : at.siblings[to + 1]?.id ?? null;
+  const visible = at.siblings.filter((n) => showDone || !n.done || n.id === id);
+  const to = visible.indexOf(at.node) + delta;
+  if (to < 0 || to >= visible.length) return null;
+  const neighbour = visible[to];
+  const before = delta < 0 ? neighbour.id : at.siblings[at.siblings.indexOf(neighbour) + 1]?.id ?? null;
   return [{ method: 'POST', url: `/api/items/${id}/reorder`, body: { before } }];
 }
 

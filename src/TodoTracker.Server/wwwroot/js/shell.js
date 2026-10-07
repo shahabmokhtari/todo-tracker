@@ -74,6 +74,8 @@ export function createShell(ctx) {
       return;
     }
 
+    // Another view, or Back from a task's own address: the panel closes (it would cover the view).
+    if (ctx.drawerOpen()) await ctx.closeDrawer();
     show(view);
   }
 
@@ -101,15 +103,20 @@ export function createShell(ctx) {
 
   const chip = $('#timer');
   let timer = null;
+  let timerKey = null;
 
+  /** Redrawn only when another task starts timing (a redraw would drop keyboard focus on its Stop button). */
   function renderTimer(t) {
     timer = t?.running ? { ...t, since: Date.now() - t.elapsedSeconds * 1000 } : null;
     chip.hidden = !timer;
+    const key = timer ? `${timer.itemId}|${timer.title}` : null;
+    if (key === timerKey) return;
+    timerKey = key;
     if (!timer) return;
     chip.replaceChildren(
       h('span', { class: 'timer-dot', 'aria-hidden': 'true' }),
       h('button', { class: 'timer-title', type: 'button', title: `Open ${timer.title}`, onclick: () => ctx.openDrawer(timer.itemId) },
-        h('span', { class: 'timer-clock', id: 'timer-clock' }, clock(timer.elapsedSeconds)),
+        h('span', { class: 'timer-clock', id: 'timer-clock', role: 'timer', 'aria-live': 'off' }, clock(timer.elapsedSeconds)),
         h('span', { class: 'timer-task' }, timer.title)),
       h('button', { class: 'icon-btn small', type: 'button', title: 'Stop the timer', 'aria-label': `Stop timing ${timer.title}`, onclick: () => ctx.act(ctx.post('/api/timer/stop'), 'Timer stopped') }, icon('stop', { size: 14 })));
   }
@@ -118,6 +125,9 @@ export function createShell(ctx) {
 
   const screen = $('#break');
   let shown = null;
+  let shownAt = 0;
+  // The screen can appear mid-sentence: keys and clicks in the first moment are typing, not an answer.
+  const settled = () => Date.now() - shownAt > 800;
 
   function hideBreak(key) {
     dismissedBreak = key;
@@ -128,11 +138,13 @@ export function createShell(ctx) {
   }
 
   function renderBreak(p) {
-    const s = breakState(p, Date.now(), dismissedBreak);
+    // The focus timer is a plugin: switched off, there are no breaks either.
+    const s = ctx.pluginOn('focus-timer') ? breakState(p, Date.now(), dismissedBreak) : { show: false };
     if (!s.show) {
       if (shown) {
         screen.hidden = true;
         shown = null;
+        ctx.restoreFocus?.();
       }
 
       return;
@@ -146,24 +158,26 @@ export function createShell(ctx) {
     }
 
     shown = s.key;
-    const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { hideBreak(s.key); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
+    shownAt = Date.now();
+    const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { if (!settled()) return; hideBreak(s.key); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
     screen.replaceChildren(
-      h('div', { class: 'break-card' },
+      h('div', { class: 'break-card', tabindex: -1 },
         h('span', { class: 'break-icon' }, icon('coffee', { size: 40 })),
         h('h2', { id: 'break-title' }, s.long ? 'Time for a longer break' : 'Time for a break'),
         h('p', { class: 'break-tip' }, tipFor(s.key)),
         h('div', { class: 'break-clock', id: 'break-clock', role: 'timer', 'aria-live': 'off' }, clock(left)),
         h('p', { class: 'break-sub' }, 'Your focus session is done. Step away; the timer tells you when to come back.'),
         h('div', { class: 'break-actions' },
-          h('button', { class: 'btn primary', type: 'button', onclick: () => hideBreak(s.key) }, 'I’m taking it'),
+          h('button', { class: 'btn primary', type: 'button', onclick: () => { if (settled()) hideBreak(s.key); } }, 'I’m taking it'),
           skip)));
     ctx.saveFocus?.();
     screen.hidden = false;
-    screen.querySelector('.btn.primary')?.focus();
+    // The card takes focus (not a button): a key pressed while typing can't answer for the user.
+    screen.querySelector('.break-card')?.focus();
   }
 
   screen.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideBreak(shown); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (settled()) hideBreak(shown); }
     // Focus stays inside the break screen while it's shown.
     if (e.key === 'Tab') {
       const items = [...screen.querySelectorAll('button')];
@@ -188,7 +202,7 @@ export function createShell(ctx) {
       { title: 'New task', keywords: 'add capture create', icon: 'plus', hint: 'N', run: () => ctx.capture() },
       d?.timer?.running ? { title: `Stop the timer (${d.timer.title})`, keywords: 'timer stop', icon: 'stop', run: () => ctx.act(ctx.post('/api/timer/stop'), 'Timer stopped') } : null,
       d?.focus ? { title: `Start the timer on “${d.focus.title}”`, keywords: 'timer start track', icon: 'timer', run: () => ctx.act(ctx.post('/api/timer/start', { itemId: d.focus.id }), 'Timer started') } : null,
-      d?.pomodoro?.phase === 'idle' ? { title: 'Start a focus session', keywords: 'pomodoro focus', icon: 'target', run: () => ctx.act(ctx.post('/api/pomodoro/start', { itemId: d.focus?.id })) } : null,
+      d?.pomodoro?.phase === 'idle' && ctx.pluginOn('focus-timer') ? { title: 'Start a focus session', keywords: 'pomodoro focus', icon: 'target', run: () => ctx.act(ctx.post('/api/pomodoro/start', { itemId: d.focus?.id })) } : null,
       ...(d?.groups ?? []).map((g) => ({ title: `Show ${g.name}`, keywords: 'group tab switch', icon: 'folder', run: () => ctx.setGroup(g.id) })),
       { title: 'Show all groups', keywords: 'group all', icon: 'layers', run: () => ctx.setGroup(null) },
       { title: 'Plugins', keywords: 'settings features', icon: 'settings', run: () => ctx.openPlugins() },
@@ -221,29 +235,42 @@ export function createShell(ctx) {
 
   function openPalette() {
     lastFocus = document.activeElement;
+    // Tasks found for the text in the box (never an older text's); `pending` is a search not answered yet.
     let tasks = [];
+    let pending = null;
+    const search = async (q) => {
+      clearTimeout(searchTimer);
+      try {
+        const found = await ctx.api(`/api/search?q=${encodeURIComponent(q)}`);
+        if (input.value.trim() !== q) return;
+        tasks = found;
+      } catch {
+        // Commands still work.
+      }
+
+      if (input.value.trim() === q) {
+        pending = null;
+        renderResults(q, tasks);
+      }
+    };
     const input = h('input', {
       type: 'text', placeholder: 'Find a task or a command…', 'aria-label': 'Find a task or a command', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palette-list', autocomplete: 'off',
       oninput: () => {
         active = 0;
-        renderResults(input.value, []);
+        tasks = [];
+        renderResults(input.value, tasks);
         clearTimeout(searchTimer);
         const q = input.value.trim();
-        if (!q) return;
-        searchTimer = setTimeout(async () => {
-          try {
-            tasks = await ctx.api(`/api/search?q=${encodeURIComponent(q)}`);
-            if (input.value.trim() === q) renderResults(q, tasks);
-          } catch {
-            // Commands still work.
-          }
-        }, 120);
+        pending = q || null;
+        if (q) searchTimer = setTimeout(() => search(q), 120);
       },
-      onkeydown: (e) => {
+      onkeydown: async (e) => {
         if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(results.length - 1, active + 1); renderResults(input.value, tasks); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); renderResults(input.value, tasks); }
         else if (e.key === 'Enter') {
           e.preventDefault();
+          // Typed fast: wait for the tasks, so an existing task opens instead of a copy being added.
+          if (pending) await search(pending);
           if (results.length) choose(active);
           else if (input.value.trim()) { const text = input.value.trim(); closePalette(); ctx.act(ctx.post('/api/capture', { text, groupId: ctx.state.group }), 'Added'); }
         } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closePalette(); }
@@ -269,6 +296,8 @@ export function createShell(ctx) {
   // ---- keyboard --------------------------------------------------------------------------------------------------
 
   document.addEventListener('keydown', (e) => {
+    // Nothing behind the break screen reacts to keys.
+    if (!screen.hidden) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       if (palette.hidden) openPalette();
