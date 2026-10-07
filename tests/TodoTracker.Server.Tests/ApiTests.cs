@@ -299,6 +299,26 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_theme_is_one_choice_for_every_window()
+    {
+        var store = _server.App.Services.GetRequiredService<SettingsStore>();
+        var told = new List<string>();
+        store.ThemeChanged += (_, theme) => told.Add(theme);
+        Assert.Equal("system", (await _client.GetJson("/api/settings"))["theme"]!.GetValue<string>());
+
+        var saved = await (await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "dark" })).Json();
+
+        Assert.Equal("dark", saved["theme"]!.GetValue<string>());
+        Assert.Equal("dark", (await _client.GetJson("/api/settings"))["theme"]!.GetValue<string>());
+        Assert.Equal(["dark"], told); // the desktop sidebar follows
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "purple" })).StatusCode);
+        // Changing the theme leaves other settings alone.
+        await _client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "https://prod.example.webhook.office.com/hook" });
+        await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "light" });
+        Assert.True((await _client.GetJson("/api/settings"))["teamsConfigured"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task Connection_info_exposes_mcp_config_for_agents()
     {
         var info = await _client.GetJson("/api/connection");

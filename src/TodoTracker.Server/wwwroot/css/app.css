@@ -55,8 +55,27 @@
   font-feature-settings: "cv11", "ss01";
 }
 
+/* Dark: the system's choice unless the person picked one (Settings › Appearance sets data-theme). */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark;
+    --bg: #0a0d1a;
+    --bg-glow-1: rgb(99 102 241 / .22);
+    --bg-glow-2: rgb(236 72 153 / .12);
+    --surface: rgb(20 24 43 / .72);
+    --surface-solid: #141a2e;
+    --surface-2: #1b2240;
+    --surface-hover: rgb(129 140 248 / .08);
+    --border: rgb(148 163 184 / .12);
+    --border-strong: rgb(148 163 184 / .22);
+    --text: #e8ecf8;
+    --text-2: #a7b0c8;
+    --text-3: #8a93ad;
+    --accent-soft: rgb(129 140 248 / .16);
+    --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 32px -12px rgb(0 0 0 / .6);
+    --shadow-lg: 0 24px 64px -12px rgb(0 0 0 / .7);
+  }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) { color-scheme: dark;
     --bg: #0a0d1a;
     --bg-glow-1: rgb(99 102 241 / .22);
     --bg-glow-2: rgb(236 72 153 / .12);
@@ -185,7 +204,8 @@ button.link:hover { color: var(--accent); }
 .chip.warn { background: var(--warn-soft); color: #b45309; }
 .chip.danger { background: var(--danger-soft); color: var(--danger); }
 .chip.muted { background: transparent; color: var(--text-3); }
-@media (prefers-color-scheme: dark) { .chip.warn { color: var(--warn); } }
+:root[data-theme="dark"] .chip.warn { color: var(--warn); } 
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.warn { color: var(--warn); } }
 
 /* ---------- top bar ---------- */
 
@@ -406,7 +426,8 @@ button.focus-title:hover { color: var(--accent); }
   color: #92400e;
   font-weight: 600;
 }
-@media (prefers-color-scheme: dark) { .reminder-banner { color: #fcd34d; } }
+:root[data-theme="dark"] .reminder-banner { color: #fcd34d; } 
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .reminder-banner { color: #fcd34d; } }
 .last-note { margin: 0; padding: 10px 14px; border-left: 3px solid var(--accent-soft); color: var(--text-2); font-style: italic; }
 .empty-illustration { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 18px; background: var(--ok-soft); color: var(--ok); }
 .empty-row { display: flex; align-items: center; gap: 16px; }
@@ -466,7 +487,8 @@ button.focus-title:hover { color: var(--accent); }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .meta:empty { display: none; }
 .reminder { display: flex; align-items: center; gap: 6px; color: #b45309; font-weight: 600; font-size: 13px; }
-@media (prefers-color-scheme: dark) { .reminder { color: var(--warn); } }
+:root[data-theme="dark"] .reminder { color: var(--warn); } 
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .reminder { color: var(--warn); } }
 
 .action-wrap { display: grid; gap: 8px; justify-items: end; }
 .actions { display: flex; gap: 2px; }
@@ -567,6 +589,8 @@ button.focus-title:hover { color: var(--accent); }
 .field > input, .field > select, .field > textarea { color: var(--text); font-size: 14.5px; font-weight: 400; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 500; color: var(--text); }
 .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+/* A checkbox never shrinks next to long text (it did in the Plugins list). */
+input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .drawer-section { display: grid; gap: 10px; padding: 16px; border-radius: var(--radius); background: var(--surface-2); }
 .drawer-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
 .drawer-section details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
@@ -754,7 +778,7 @@ button.focus-title:hover { color: var(--accent); }
 .plugin-buttons { display: inline-flex; gap: 2px; align-items: center; }
 .plugins { display: grid; gap: 10px; }
 .plugin-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: var(--surface-solid); cursor: pointer; }
-.plugin-row input { margin-top: 3px; }
+.plugin-row input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--accent); }
 .plugin-row > span { display: grid; gap: 2px; }
 
 /* ---------- sync ---------- */

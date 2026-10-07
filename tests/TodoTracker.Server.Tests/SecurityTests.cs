@@ -122,6 +122,16 @@ public sealed class SecurityTests : IAsyncLifetime
         AssertGrantsNoSession(await _server.App.GetTestClientWithoutRedirects().GetAsync("/auth?code=bad"));
     }
 
+    [Fact]
+    public void Sign_in_links_go_to_auth()
+    {
+        // The Windows app window keeps exactly this path in the window (TodoTracker.Desktop AppNavigation); anything
+        // else it opens in the browser. Changing it here needs the same change there.
+        var url = new Uri(TodoTrackerHost.CreateLaunchUrl(_server.App.Services, "/#/board"));
+
+        Assert.Equal("/auth", url.AbsolutePath);
+    }
+
     private static void AssertGrantsNoSession(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);

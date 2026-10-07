@@ -14,6 +14,9 @@ public interface IConnectorKind
 {
     string Id { get; }
 
+    /// <summary>The plugin that switches it on and off.</summary>
+    string PluginId { get; }
+
     string Name { get; }
 
     ConnectorFiles Files { get; }
@@ -29,6 +32,8 @@ public sealed class NotionConnector(IHttpClientFactory http, TodoTrackerServerOp
     public const string HttpClientName = "notion";
 
     public string Id => "notion";
+
+    public string PluginId => NotionConnectorPlugin.Definition.Id;
 
     public string Name => "Notion";
 
@@ -83,6 +88,8 @@ public sealed class MicrosoftToDoConnector : IConnectorKind
     }
 
     public string Id => "mstodo";
+
+    public string PluginId => MicrosoftToDoConnectorPlugin.Definition.Id;
 
     public string Name => "Microsoft To Do";
 

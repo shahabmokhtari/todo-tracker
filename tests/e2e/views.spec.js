@@ -342,3 +342,29 @@ test('Copy for Loop: a group as a checklist to paste into a Loop page', async ({
   await expect(out).toHaveValue(/- \[x\] Book hotel/);
   expect(errors).toEqual([]);
 });
+test('Settings: light or dark for every window, and connected apps switch on at once', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await open(page, request);
+  await page.keyboard.press('Alt+6');
+  await expect(page).toHaveURL(/#\/settings$/);
+  const settings = page.locator('#view-settings');
+
+  await settings.getByRole('button', { name: 'Dark' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect.poll(async () => (await (await request.get('/api/settings', { headers: auth })).json()).theme).toBe('dark');
+  // Kept (no flash of the other theme on the next load).
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('#view-settings').getByRole('button', { name: 'Light' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.locator('#view-settings').getByRole('button', { name: 'System' }).click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /./);
+
+  // Notion: switched on here, its setup shows right away (no restart).
+  const use = page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' });
+  await use.check();
+  await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toBeVisible();
+  await page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' }).uncheck();
+  await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

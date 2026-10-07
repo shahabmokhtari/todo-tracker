@@ -458,3 +458,17 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
   .move-select { display: inline-block; max-width: 92px; height: 32px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-solid); color: var(--text); font: inherit; font-size: 12px; }
 }
 .done-results { display: contents; }
+
+/* ---------- settings ---------- */
+.settings { display: grid; gap: var(--space-5); max-width: 760px; }
+.settings-section { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.settings-section h2 { font-size: 17px; }
+.settings-section > p { margin: 0; }
+.theme-seg button { display: inline-flex; align-items: center; gap: 6px; }
+.connector-head { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.connector-head input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--accent); }
+.connector-head > span { display: grid; gap: 2px; }
+.connector.off { opacity: .85; }
+.shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; align-items: center; }
+.shortcuts dd { margin: 0; color: var(--text-2); }
+.settings-section > .btn { justify-self: start; }

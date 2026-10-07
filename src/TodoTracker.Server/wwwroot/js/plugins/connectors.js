@@ -4,7 +4,6 @@
 
 const base = '/api/plugins/connectors';
 const docs = 'https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/connectors.md';
-let started = false;
 
 /** What a first sync will do, said plainly. */
 export function previewText(p) {
@@ -17,17 +16,15 @@ export function previewText(p) {
   return parts.length ? `It will ${parts.join(', ')}.` : 'Nothing to change: they already match.';
 }
 
-export function activate(host) {
-  if (started) return; // one module for every connector plugin
-  started = true;
+/** Settings › Connected apps: a card per connector, with its own switch, then its setup. */
+export function createConnectorsPanel(host) {
   const { h, icon } = host;
   let views = [];
   let preview = {};
-  let open = false;
+  const open = true;
   const extras = { notion: { databases: null }, mstodo: { lists: null } };
   let poll = null;
 
-  host.addHeaderButton({ iconName: 'link', label: 'Connectors (Notion, To Do)', onClick: () => show() });
   const panel = h('div', { class: 'connectors' });
 
   async function load() {
@@ -148,16 +145,40 @@ export function activate(host) {
       ...(signIn.state === 'signedIn' ? common(v, extras.mstodo.lists, 'To Do list') : []));
   }
 
-  function render() {
-    panel.replaceChildren(
-      h('p', { class: 'muted' }, 'Tasks stay in step both ways. Nothing is ever deleted: a task deleted here is archived there, and one gone there stays here.'),
-      ...views.map((v) => (v.id === 'notion' ? notion(v) : mstodo(v))));
+  const about = {
+    notion: 'Keep a group in step with a Notion database, both ways.',
+    mstodo: 'Keep a group in step with a Microsoft To Do list, both ways.',
+  };
+
+  /** A connector's card: its switch (applies at once), then its setup while it's on. */
+  function card(v) {
+    const toggle = h('input', {
+      type: 'checkbox', checked: v.on, 'aria-label': `Use ${v.name}`,
+      onchange: () => run(host.put(`/api/plugins/${encodeURIComponent(v.pluginId)}`, { enabled: toggle.checked }), toggle.checked ? `${v.name} is on` : `${v.name} is off`),
+    });
+    const head = h('label', { class: 'connector-head' }, toggle, h('span', null, h('strong', null, v.name), h('span', { class: 'muted small' }, about[v.id] ?? '')));
+    if (!v.on) return h('section', { class: 'connector off' }, head);
+    const body = v.id === 'notion' ? notion(v) : mstodo(v);
+    body.prepend(head);
+    body.querySelector('h3')?.remove();
+    return body;
   }
 
-  async function show() {
-    open = true;
-    await load();
-    render();
-    await host.openPanel('Connectors', panel, { iconName: 'link', onClose: () => { open = false; clearInterval(poll); poll = null; } });
+  function render() {
+    panel.replaceChildren(
+      h('p', { class: 'muted' }, 'Tasks stay in step both ways. Nothing is ever deleted: a task deleted here is archived there, and one gone there stays here. ', h('a', { href: docs, target: '_blank', rel: 'noopener' }, 'How it works')),
+      ...views.map(card));
   }
+
+  return {
+    element: panel,
+    async load() {
+      await load();
+      render();
+    },
+    stop() {
+      clearInterval(poll);
+      poll = null;
+    },
+  };
 }

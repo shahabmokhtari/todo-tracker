@@ -9,6 +9,8 @@ import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
 import { createReportsView } from './views/reports.js';
+import { createSettingsView } from './views/settings.js';
+import { applyTheme } from './themes.js';
 import { duration, toLocalInput as localInput } from './timefmt.js';
 
 /** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
@@ -1038,31 +1040,9 @@ async function loadPlugins() {
 // ---------- plugins panel ----------
 
 /** Every optional feature is a plugin: switch them on or off here (applies after a restart). */
-async function openPlugins() {
-  let plugins;
-  try {
-    plugins = await api('/api/plugins');
-  } catch (err) {
-    return toast(err.message, 'error');
-  }
-  const note = h('p', { class: 'muted small', hidden: true }, 'Restart Todo Tracker to apply the change.');
-  const row = (p) => {
-    const toggle = h('input', { type: 'checkbox', checked: p.enabled, 'aria-label': p.name, onchange: async () => {
-      try {
-        const result = await api(`/api/plugins/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: toggle.checked } });
-        note.hidden = !result.restartRequired && note.hidden;
-        if (result.restartRequired) note.hidden = false;
-      } catch (err) {
-        toggle.checked = !toggle.checked;
-        toast(err.message, 'error');
-      }
-    } });
-    return h('label', { class: 'plugin-row' }, toggle, h('span', null, h('strong', null, p.name), h('span', { class: 'muted small' }, p.description)));
-  };
-  openPanel('Plugins', h('div', { class: 'plugins' },
-    h('p', { class: 'muted' }, 'Every extra is a plugin. Turn off what you don’t use to keep Todo Tracker calm.'),
-    ...plugins.map(row),
-    note), { iconName: 'layers' });
+/** The extras are in Settings (with appearance and connected apps). */
+function openPlugins() {
+  location.hash = '#/settings/plugins';
 }
 
 function subtaskTree(children, parentId) {
@@ -1291,7 +1271,6 @@ $('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filter
 $('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
 $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#search-icon').append(icon('search', { size: 16 }));
-$('#plugins-btn').addEventListener('click', openPlugins);
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
 const flushAll = () => {
@@ -1323,7 +1302,8 @@ const ctx = {
   views: {},
 };
 const shell = createShell(ctx);
-ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx) };
+ctx.pluginHost = pluginHost;
+ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), settings: createSettingsView(ctx) };
 state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';
 
 /** A view's own background refresh waits while something in it is being typed in or dragged. */
@@ -1335,8 +1315,13 @@ function refreshViewQuietly() {
 }
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
-setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } }, 15000);
+/** The shared theme, changed elsewhere (the sidebar's menu, another window). */
+const followTheme = () => api('/api/settings').then((s) => applyTheme(s.theme)).catch(() => {});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') followTheme(); });
+setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); followTheme(); } }, 15000);
 refresh().then(() => {
+  // The theme every window shares (js/theme.js already applied the one remembered here).
+  api('/api/settings').then((s) => applyTheme(s.theme)).catch(() => {});
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   loadPlugins();
   const params = new URLSearchParams(location.search);

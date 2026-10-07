@@ -65,7 +65,7 @@ internal static partial class OpenApiSetup
     {
         "GET api/health", "GET api/auth", "POST api/login", "GET api/connection", "POST api/launch", "GET api/events",
         "DELETE api/items/{id}", "PATCH api/groups/{id}", "DELETE api/groups/{id}", "GET api/export",
-        "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings",
+        "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings", "PUT api/settings/theme",
         "POST api/labels", "PATCH api/labels/{name}", "DELETE api/labels/{name}",
         "GET api/history", "POST api/history/commit",
         "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",

@@ -406,6 +406,12 @@ internal static class ApiEndpoints
 
         api.MapGet("/settings", (SettingsStore settings) => settings.ToDto());
 
+        api.MapPut("/settings/theme", (ThemeRequest request, SettingsStore settings) =>
+        {
+            settings.SetTheme(request.Theme);
+            return settings.ToDto();
+        });
+
         api.MapPut("/settings", (SettingsRequest request, SettingsStore settings) =>
         {
             settings.SetTeamsWebhook(request.TeamsWebhookUrl);

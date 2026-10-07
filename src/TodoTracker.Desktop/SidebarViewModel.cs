@@ -480,6 +480,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenDashboard() => OpenApp("/");
 
+    /// <summary>Settings: appearance, connected apps (Notion, To Do), sync and extras.</summary>
+    [RelayCommand]
+    private void OpenSettings() => OpenApp("/#/settings");
+
     private void OpenApp(string path)
     {
         if (_options.OpenApp is { } open)

@@ -47,7 +47,8 @@ public static class AppNavigation
 
         if (uri.Scheme is "http" or "https" && Uri.Compare(uri, origin, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0)
         {
-            return IsShell(uri) || uri.AbsolutePath.StartsWith("/api/launch", StringComparison.Ordinal) ? AppLink.App : AppLink.OwnPageInBrowser;
+            // The page, and its sign-in link (/auth?code=…, ApiEndpoints.LaunchUrl), stay in the window.
+            return IsShell(uri) || uri.AbsolutePath is "/auth" ? AppLink.App : AppLink.OwnPageInBrowser;
         }
 
         return uri.Scheme switch
