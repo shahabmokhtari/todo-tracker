@@ -234,7 +234,9 @@ enum NotificationScheduler {
 
     static func sync(_ board: TaskBoard) {
         #if canImport(UserNotifications)
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        // Only inside the app: the notification center crashes in a bare process (like the test runner, which still
+        // has a bundle id).
+        guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
         let now = Date()
         let pending = board.allItems.filter { !$0.isDone }
             .flatMap { item in item.reminders.filter { $0.isPending && $0.notifiedAt == nil && $0.dueAt > now }.map { (item, $0) } }
