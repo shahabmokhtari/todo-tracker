@@ -116,4 +116,19 @@ final class ServerModeTests: XCTestCase {
         XCTAssertTrue(model.isReadOnly)
         XCTAssertTrue(model.status?.contains("Your tasks are in your tasks folder") == true)
     }
+
+    func testGivingUpOnTheServerLeavesItCompletely() async throws {
+        let remote = TaskBoard()
+        _ = try remote.addTask(NewTask("On the server"), now: Date())
+        FakeServer.board = try BoardCodec.encode(remote)
+        let model = BoardModel(store: nil)
+        model.use(server: client())
+        try await waitUntil { !model.board.items.isEmpty }
+
+        model.reportLocalOnly("it keeps stopping")
+
+        XCTAssertFalse(model.usesServer, "nothing is sent to a server that's gone")
+        XCTAssertTrue(model.board.items.isEmpty, "this Mac's own board again")
+        XCTAssertFalse(model.isConnecting)
+    }
 }

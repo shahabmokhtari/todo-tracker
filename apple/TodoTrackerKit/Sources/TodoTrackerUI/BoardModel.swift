@@ -114,6 +114,14 @@ public final class BoardModel: ObservableObject {
     /// folder (then it's an old copy: shown, but not changed, so nothing goes astray).
     public func reportLocalOnly(_ reason: String) {
         isConnecting = false
+        if server != nil {
+            // Leaving the server (it's gone for good): back to this Mac's board, nothing sent anywhere.
+            server = nil
+            serverURL = nil
+            etag = nil
+            board = (try? store?.load()) ?? TaskBoard()
+            refresh()
+        }
         if store?.wasMigrated == true {
             isReadOnly = true
             status = "Your tasks are in your tasks folder, but Todo Tracker's server isn't running (\(reason)). Changes are off until it is."

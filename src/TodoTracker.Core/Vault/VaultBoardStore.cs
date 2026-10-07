@@ -76,10 +76,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             lock (_problems)
             {
-                return _problems.ToList();
+                return _legacyProblem is null ? _problems.ToList() : [.. _problems, _legacyProblem];
             }
         }
     }
+
+    /// <summary>An old board.json that couldn't be brought in (its tasks aren't here; the file is left as it is).</summary>
+    private VaultProblem? _legacyProblem;
 
     private DateTimeOffset Now => _options.Time.GetUtcNow();
 
@@ -305,7 +308,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     }
 
     /// <summary>An old board file, or null when there's none or it can't be read (then it's left where it is, untouched).</summary>
-    private static TaskBoard? ReadLegacy(string path)
+    private TaskBoard? ReadLegacy(string path)
     {
         if (!File.Exists(path))
         {
@@ -318,6 +321,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or NotSupportedException or ArgumentException)
         {
+            // Said where problems are shown (the dashboard's "needs fixing" line), not skipped in silence.
+            _legacyProblem = new VaultProblem(path, $"These tasks couldn't be brought into the tasks folder: {ex.Message}");
             return null;
         }
     }

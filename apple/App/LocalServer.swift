@@ -20,6 +20,8 @@ final class LocalServer {
     private var quitting = false
     private var restarts = 0
     private var opening = false
+    private var reconnecting = false
+    private static var logHandle: FileHandle?
     private var quitObserver: NSObjectProtocol?
 
     enum Failure: Error {
@@ -68,14 +70,19 @@ final class LocalServer {
     }
 
     private func reconnect() {
-        guard !quitting, !opening, let model else { return }
+        // Once per loss (the process ending and the reads failing may both report it).
+        guard !quitting, !opening, !reconnecting, let model else { return }
+        reconnecting = true
         restarts += 1
         guard restarts <= 3 else {
             model.reportLocalOnly("Todo Tracker's server keeps stopping; see ~/Library/Logs/TodoTracker/server.log, then quit and open the app again")
             return
         }
         model.serverLost("Reconnecting to your tasks folder…")
-        Task { await self.open() }
+        Task {
+            await self.open()
+            self.reconnecting = false
+        }
     }
 
     private func stop() {
@@ -184,13 +191,15 @@ final class LocalServer {
         }
     }
 
-    /// Appends (every start of this run goes in the same log).
+    /// Appends (every start of this run goes in the same log, through one handle).
     private static func logFile() -> FileHandle {
+        if let logHandle { return logHandle }
         if !FileManager.default.fileExists(atPath: logURL.path) {
             FileManager.default.createFile(atPath: logURL.path, contents: nil)
         }
         guard let handle = try? FileHandle(forWritingTo: logURL) else { return FileHandle.nullDevice }
         handle.seekToEndOfFile()
+        logHandle = handle
         return handle
     }
 }

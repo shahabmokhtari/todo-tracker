@@ -121,6 +121,8 @@ public sealed class VaultStoreTests : IDisposable
 
         Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
         Assert.True(File.Exists(legacy));
+        // Said, not skipped in silence.
+        Assert.Contains(store.Problems, p => p.Path == legacy && p.Message.Contains("couldn't be brought into the tasks folder", StringComparison.Ordinal));
     }
 
     [Fact]
