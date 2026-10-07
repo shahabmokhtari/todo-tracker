@@ -11,6 +11,10 @@ namespace TodoTracker.Desktop;
 /// </summary>
 public sealed partial class BreakScreenViewModel : ObservableObject
 {
+    /// <summary>Clicks and keys this soon after the screen appears are typing still going on, not an answer.</summary>
+    public static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(800);
+
+    // Same tips, in the same order, as the web app (tests/fixtures/breaks.json checks both).
     private static readonly string[] Tips =
     [
         "Stand up and stretch for a minute.",
@@ -72,6 +76,18 @@ public sealed partial class BreakScreenViewModel : ObservableObject
         return null;
     }
 
+    /// <summary>The tip for a break (stable while it lasts): the web app's tipFor, on the break's end in milliseconds.</summary>
+    public static string TipFor(DateTimeOffset until)
+    {
+        var hash = 7;
+        foreach (var c in until.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture))
+        {
+            hash = unchecked((hash * 31) + c);
+        }
+
+        return Tips[(int)(Math.Abs((long)hash) % Tips.Length)];
+    }
+
     internal void Update(PomodoroState state, DateTimeOffset now)
     {
         _state = state;
@@ -92,7 +108,7 @@ public sealed partial class BreakScreenViewModel : ObservableObject
             _until = d.Until;
             IsLong = d.Long;
             Title = d.Long ? "Time for a longer break" : "Time for a break";
-            Tip = Tips[(int)(Math.Abs(d.Until.ToUnixTimeSeconds()) % Tips.Length)];
+            Tip = TipFor(d.Until);
         }
 
         var seconds = (int)Math.Ceiling((d.Until - now).TotalSeconds);

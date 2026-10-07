@@ -473,7 +473,7 @@ public partial class MainWindow : Window
     private void OnMenuClick(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
-        menu.Items.Add(new MenuItem { Header = "Open the app", Command = _vm.OpenDashboardCommand, InputGestureText = "Board, outline, reports" });
+        menu.Items.Add(new MenuItem { Header = "Open the app", Command = _vm.OpenDashboardCommand, ToolTip = "Board, outline, reports and more, in their own window" });
         if (AppHost is { } appHost)
         {
             var inBrowser = new MenuItem { Header = "Open in the browser" };

@@ -20,11 +20,15 @@ internal sealed partial class BreakOverlay : IDisposable
 {
     private const uint SwpNoActivate = 0x0010;
     private static readonly IntPtr TopMost = new(-1);
+    private static readonly Color Scrim = Color.FromArgb(0xE0, 0x0B, 0x10, 0x20);
+    private static readonly Color Accent = Color.FromRgb(0x63, 0x66, 0xF1);
+    private static readonly TimeSpan FadeIn = TimeSpan.FromMilliseconds(250);
     private readonly BreakScreenViewModel _vm;
     private readonly Func<bool> _enabled;
     private readonly List<Window> _windows = [];
     private DateTime _shownAt;
     private bool _closing;
+    private bool _disposed;
 
     public BreakOverlay(BreakScreenViewModel vm, Func<bool> enabled)
     {
@@ -37,6 +41,11 @@ internal sealed partial class BreakOverlay : IDisposable
     /// <summary>Shows or hides the windows to match the break (and the settings).</summary>
     public void Sync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (_vm.IsShown && _enabled())
         {
             if (_windows.Count == 0)
@@ -52,6 +61,7 @@ internal sealed partial class BreakOverlay : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _vm.PropertyChanged -= OnChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaysChanged;
         CloseAll();
@@ -65,13 +75,12 @@ internal sealed partial class BreakOverlay : IDisposable
         }
     }
 
+    // Raised on another thread. Monitors came or went: cover the screens there are now (or show a break that found
+    // no monitor a moment ago).
     private void OnDisplaysChanged(object? sender, EventArgs e) => Application.Current?.Dispatcher.BeginInvoke(() =>
     {
-        if (_windows.Count > 0)
-        {
-            CloseAll();
-            Sync();
-        }
+        CloseAll();
+        Sync();
     });
 
     private void Open()
@@ -88,25 +97,52 @@ internal sealed partial class BreakOverlay : IDisposable
         // The main screen's card takes focus (not a button): a key typed elsewhere a moment ago can't answer it.
         if (_windows.FirstOrDefault() is { } first)
         {
+            BringForward(new WindowInteropHelper(first).Handle);
             first.Activate();
             Keyboard.Focus((first.Content as Grid)?.Children.OfType<Border>().FirstOrDefault());
         }
     }
 
-    private void CloseAll()
+    /// <summary>
+    /// Windows keeps a background app from taking the keyboard. The person asked for this screen (focus timer, full-screen
+    /// breaks on), so it borrows the foreground app's input for a moment, the usual way to come forward.
+    /// </summary>
+    private static void BringForward(IntPtr handle)
     {
-        _closing = true;
-        foreach (var window in _windows)
+        var foreground = GetForegroundWindow();
+        var theirs = GetWindowThreadProcessId(foreground, IntPtr.Zero);
+        var ours = GetCurrentThreadId();
+        if (theirs != 0 && theirs != ours && AttachThreadInput(ours, theirs, true))
         {
-            window.Close();
+            SetForegroundWindow(handle);
+            AttachThreadInput(ours, theirs, false);
         }
-
-        _windows.Clear();
-        _closing = false;
+        else
+        {
+            SetForegroundWindow(handle);
+        }
     }
 
-    /// <summary>Clicks and keys in the first moment are typing that was going on, not an answer.</summary>
-    private bool Settled => DateTime.UtcNow - _shownAt > TimeSpan.FromMilliseconds(800);
+    private void CloseAll()
+    {
+        // A window closing (Alt+F4, sign-out) can bring us here: never close one twice, and always finish.
+        var windows = _windows.ToList();
+        _windows.Clear();
+        _closing = true;
+        try
+        {
+            foreach (var window in windows)
+            {
+                window.Close();
+            }
+        }
+        finally
+        {
+            _closing = false;
+        }
+    }
+
+    private bool Settled => DateTime.UtcNow - _shownAt > BreakScreenViewModel.SettleTime;
 
     private Window Create(DisplayMonitor monitor)
     {
@@ -115,7 +151,7 @@ internal sealed partial class BreakOverlay : IDisposable
             Title = "Time for a break",
             WindowStyle = WindowStyle.None,
             AllowsTransparency = true,
-            Background = new SolidColorBrush(Color.FromArgb(0xE0, 0x0B, 0x10, 0x20)),
+            Background = new SolidColorBrush(Scrim),
             Topmost = true,
             ShowInTaskbar = false,
             ResizeMode = ResizeMode.NoResize,
@@ -134,7 +170,7 @@ internal sealed partial class BreakOverlay : IDisposable
         {
             if (window.Opacity < 1)
             {
-                window.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
+                window.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, FadeIn));
             }
         };
         window.PreviewKeyDown += (_, e) =>
@@ -148,10 +184,11 @@ internal sealed partial class BreakOverlay : IDisposable
                 }
             }
         };
-        // Alt+F4 means "I'm taking it" (the break itself goes on).
+        // Alt+F4 means "I'm taking it" (the break itself goes on). The window stays; hiding happens after this close
+        // attempt is over (closing a window from its own Closing throws).
         window.Closing += (_, e) =>
         {
-            if (_closing)
+            if (_closing || _disposed)
             {
                 return;
             }
@@ -159,7 +196,7 @@ internal sealed partial class BreakOverlay : IDisposable
             e.Cancel = true;
             if (Settled)
             {
-                _vm.TakeBreakCommand.Execute(null);
+                window.Dispatcher.BeginInvoke(() => _vm.TakeBreakCommand.Execute(null));
             }
         };
         return window;
@@ -183,7 +220,8 @@ internal sealed partial class BreakOverlay : IDisposable
         var clock = Text(nameof(BreakScreenViewModel.TimeText), 76, white, FontWeights.SemiBold);
         clock.FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
         System.Windows.Documents.Typography.SetNumeralAlignment(clock, FontNumeralAlignment.Tabular);
-        System.Windows.Automation.AutomationProperties.SetName(clock, "Break time left");
+        // Its text (the time) is what's read out; the help text says what it is.
+        System.Windows.Automation.AutomationProperties.SetHelpText(clock, "Break time left");
 
         Button Action(string label, Func<Task> run, bool primary)
         {
@@ -196,7 +234,7 @@ internal sealed partial class BreakOverlay : IDisposable
                 FontSize = 15,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = primary ? white : soft,
-                Background = primary ? new SolidColorBrush(Color.FromRgb(0x63, 0x66, 0xF1)) : new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
+                Background = primary ? new SolidColorBrush(Accent) : new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)),
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
             };
@@ -232,4 +270,21 @@ internal sealed partial class BreakOverlay : IDisposable
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr GetForegroundWindow();
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+    [LibraryImport("kernel32.dll")]
+    private static partial uint GetCurrentThreadId();
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AttachThreadInput(uint attach, uint attachTo, [MarshalAs(UnmanagedType.Bool)] bool doAttach);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetForegroundWindow(IntPtr hWnd);
 }

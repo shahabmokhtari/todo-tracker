@@ -675,12 +675,12 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
     private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
     {
+        // The timer isn't tied to a group: it shows whatever group is picked.
+        var timer = board.RunningTimer(now) is { } t ? new RunningTimerState(t.Item.Id, t.Item.Title, t.Entry.Start) : null;
         if (groupId is { } g && !board.Groups.Any(x => x.Id == g))
         {
-            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true);
+            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true, timer);
         }
-
-        var timer = board.RunningTimer(now) is { } t ? new RunningTimerState(t.Item.Id, t.Item.Title, t.Entry.Start) : null;
 
         var d = Agenda.Build(board, now, recentNoteCount: 6, groupId: groupId);
         var total = d.GroupCounts.Values.Sum(c => c.Now);

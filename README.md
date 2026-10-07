@@ -9,7 +9,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 
 | | |
 |---|---|
-| **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture |
+| **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window (**⋯ › Open the app**), a task timer in the sidebar, and a full-screen break on every monitor when a focus session ends (**⋯ › Full-screen breaks**) |
 | **Web** | The whole app at `http://127.0.0.1:5317`: Today, a Board (Inbox → Next → Doing → Done), a Tasks outline, Done & Archive, Reports with charts and a timeline; works on phones too |
 | **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
 | **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance) |

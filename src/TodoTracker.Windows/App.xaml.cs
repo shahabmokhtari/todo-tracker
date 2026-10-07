@@ -196,7 +196,7 @@ public partial class App : Application
             {
                 if (appHost is not null)
                 {
-                    appHost.Open("/?ask=1");
+                    appHost.Open("/#/ask");
                 }
                 else
                 {
@@ -218,11 +218,23 @@ public partial class App : Application
         {
             // Full-screen breaks on every monitor (the focus timer plugin, and the user's choice in the menu).
             var viewModel = _viewModel;
-            _breaks = new BreakOverlay(viewModel.Break, () => viewModel.ShowFocusTimer && (appHost?.State.FullScreenBreaks ?? true));
+            var breaks = new BreakOverlay(viewModel.Break, () => viewModel.ShowFocusTimer && (appHost?.State.FullScreenBreaks ?? true));
+            _breaks = breaks;
+            viewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(SidebarViewModel.ShowFocusTimer))
+                {
+                    breaks.Sync();
+                }
+            };
             if (appHost is not null)
             {
-                appHost.Changed += (_, _) => _breaks.Sync();
+                appHost.NativeBreaks = () => viewModel.ShowFocusTimer && appHost.State.FullScreenBreaks;
+                appHost.Changed += (_, _) => breaks.Sync();
             }
+
+            // Quitting: the break windows go first, before shutdown closes every window.
+            window.Closing += (_, _) => breaks.Dispose();
         }
 
         var events = services.GetRequiredService<ServerEvents>();

@@ -307,3 +307,25 @@ test('Break: when a focus session ends, a full-screen break shows and can be ski
   await expect(screen).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('Desktop app window: #/ask opens the chat over the view, and the desktop breaks turn the web one off', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.addInitScript(() => { window.__ttNativeBreaks = true; });
+  await page.clock.install();
+  const task = await add(request, 'Native break block');
+  await request.post('/api/pomodoro/start', { headers: auth, data: { itemId: task.id } });
+  await open(page, request, '#/board');
+  await expect(page.locator('#view-title')).toHaveText('Board');
+
+  await page.evaluate(() => { location.hash = '#/ask'; });
+  await expect(page.locator('#drawer .chat')).toBeVisible();
+  await expect(page).toHaveURL(/#\/board$/);
+  await expect(page.locator('#view-title')).toHaveText('Board');
+
+  // The desktop covers every screen itself: no second break inside the window.
+  await page.clock.fastForward('25:05');
+  await page.clock.fastForward('00:02');
+  await expect(page.locator('#break')).toBeHidden();
+  await request.post('/api/pomodoro/reset', { headers: auth });
+  expect(errors).toEqual([]);
+});

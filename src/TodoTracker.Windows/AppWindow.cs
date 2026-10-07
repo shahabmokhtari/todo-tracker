@@ -13,13 +13,14 @@ namespace TodoTracker.Windows;
 
 /// <summary>
 /// The whole app (board, outline, reports…) in its own window next to the sidebar. There is one, reused: closing it
-/// only hides it, so it comes back instantly. It remembers where it was. Without the WebView2 runtime the browser is
-/// used instead.
+/// only hides it, so it comes back instantly. It remembers where it was. Without a working WebView2 the browser is used
+/// instead (and stays used until the app restarts).
 /// </summary>
 internal sealed class AppWindowHost : IDisposable
 {
     private readonly AppWindowStateStore _store;
     private AppWindow? _window;
+    private bool _broken;
 
     public AppWindowHost(AppWindowStateStore store, Uri origin, Func<string, string> launchUrl, string userDataFolder)
     {
@@ -30,6 +31,7 @@ internal sealed class AppWindowHost : IDisposable
         State = store.Load();
     }
 
+    /// <summary>The window's place or the break choice changed.</summary>
     public event EventHandler? Changed;
 
     public Uri Origin { get; }
@@ -40,6 +42,9 @@ internal sealed class AppWindowHost : IDisposable
     public string UserDataFolder { get; }
 
     public AppWindowState State { get; private set; }
+
+    /// <summary>Whether the desktop shows breaks itself (then the app in the window doesn't show its own).</summary>
+    public Func<bool> NativeBreaks { get; set; } = () => false;
 
     public static bool IsAvailable
     {
@@ -73,10 +78,10 @@ internal sealed class AppWindowHost : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Shows a path of the app ("/", "/#/task/&lt;id&gt;", "/?ask=1").</summary>
+    /// <summary>Shows a path of the app ("/", "/#/task/&lt;id&gt;", "/#/ask").</summary>
     public void Open(string path)
     {
-        if (!IsAvailable)
+        if (_broken || !IsAvailable)
         {
             OpenInBrowser(path);
             return;
@@ -87,6 +92,17 @@ internal sealed class AppWindowHost : IDisposable
     }
 
     public void OpenInBrowser(string path) => Process.Start(new ProcessStartInfo(LaunchUrl(path)) { UseShellExecute = true });
+
+    /// <summary>The window couldn't start (or its browser died): it's gone; the next open builds a new one.</summary>
+    internal void Lost(AppWindow window, bool useBrowser)
+    {
+        if (_window == window)
+        {
+            _window = null;
+        }
+
+        _broken |= useBrowser;
+    }
 
     public void Dispose()
     {
@@ -100,12 +116,14 @@ internal sealed partial class AppWindow : Window
 {
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private static readonly System.Drawing.Color DarkBackdrop = System.Drawing.Color.FromArgb(11, 16, 32);
     private readonly AppWindowHost _host;
     private readonly WebView2 _web;
     private bool _ready;
     private bool _loaded;
     private bool _closingForGood;
     private string _pending = "/";
+    private string? _breakScript;
     private PlacementBounds? _normalBounds;
 
     public AppWindow(AppWindowHost host)
@@ -119,13 +137,14 @@ internal sealed partial class AppWindow : Window
         WindowStartupLocation = host.State.Bounds is null ? WindowStartupLocation.CenterScreen : WindowStartupLocation.Manual;
         // Same backdrop as the app's theme, so there is no white flash while the page loads.
         var dark = IsDarkTheme();
-        Background = dark ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(11, 16, 32)) : System.Windows.Media.Brushes.White;
-        _web = new WebView2 { DefaultBackgroundColor = dark ? System.Drawing.Color.FromArgb(11, 16, 32) : System.Drawing.Color.White };
+        Background = dark ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(DarkBackdrop.R, DarkBackdrop.G, DarkBackdrop.B)) : System.Windows.Media.Brushes.White;
+        _web = new WebView2 { DefaultBackgroundColor = dark ? DarkBackdrop : System.Drawing.Color.White };
         Content = _web;
         SourceInitialized += (_, _) => RestorePlacement();
         LocationChanged += (_, _) => RememberNormalBounds();
         SizeChanged += (_, _) => RememberNormalBounds();
         Closing += OnClosing;
+        _host.Changed += OnHostChanged;
         _ = InitializeAsync();
     }
 
@@ -148,24 +167,30 @@ internal sealed partial class AppWindow : Window
             return;
         }
 
-        if (_loaded && path == "/")
+        var plan = AppNavigation.Plan(_web.CoreWebView2.Source, _loaded, path);
+        switch (plan.Kind)
         {
-            return; // already showing the app: just bring it to the front
+            case "focus":
+                break;
+            case "hash":
+                // A view, task or panel of the app already open: no reload, so nothing being typed is lost.
+                _ = RunScriptAsync($"location.hash = {JsonSerializer.Serialize(plan.Value)}", path);
+                break;
+            default:
+                Navigate(path);
+                break;
         }
-
-        if (_loaded && path.StartsWith("/#", StringComparison.Ordinal))
-        {
-            // A view or task inside the app already open: no reload.
-            _ = _web.CoreWebView2.ExecuteScriptAsync($"location.hash = {JsonSerializer.Serialize(path[1..])}");
-            return;
-        }
-
-        Navigate(path);
     }
 
     public void CloseForGood()
     {
+        if (_closingForGood)
+        {
+            return;
+        }
+
         _closingForGood = true;
+        _host.Changed -= OnHostChanged;
         SavePlacement();
         Close();
         _web.Dispose();
@@ -187,6 +212,7 @@ internal sealed partial class AppWindow : Window
         return key?.GetValue("AppsUseLightTheme") is int light && light == 0;
     }
 
+#pragma warning disable CA1031 // Last resort: whatever stops WebView2 from starting, the browser takes over.
     private async Task InitializeAsync()
     {
         try
@@ -194,25 +220,89 @@ internal sealed partial class AppWindow : Window
             Directory.CreateDirectory(_host.UserDataFolder);
             var environment = await CoreWebView2Environment.CreateAsync(null, _host.UserDataFolder).ConfigureAwait(true);
             await _web.EnsureCoreWebView2Async(environment).ConfigureAwait(true);
+            var core = _web.CoreWebView2;
+            core.Settings.IsStatusBarEnabled = false;
+            core.Settings.AreDevToolsEnabled = Debugger.IsAttached;
+            core.NewWindowRequested += OnNewWindowRequested;
+            core.NavigationStarting += OnNavigationStarting;
+            core.NavigationCompleted += (_, e) => _loaded = e.IsSuccess && AppNavigation.Classify(_host.Origin, core.Source) == AppLink.App;
+            core.DocumentTitleChanged += (_, _) => Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "Todo Tracker" : core.DocumentTitle;
+            core.ProcessFailed += OnProcessFailed;
+            await SetNativeBreaksAsync().ConfigureAwait(true);
         }
-        catch (Exception ex) when (ex is WebView2RuntimeNotFoundException or COMException or IOException or UnauthorizedAccessException)
+        catch (Exception)
         {
-            // No usable WebView2: the browser it is.
             var path = _pending;
+            _host.Lost(this, useBrowser: true);
             CloseForGood();
             _host.OpenInBrowser(path);
             return;
         }
 
-        var core = _web.CoreWebView2;
-        core.Settings.IsStatusBarEnabled = false;
-        core.Settings.AreDevToolsEnabled = Debugger.IsAttached;
-        core.NewWindowRequested += OnNewWindowRequested;
-        core.NavigationStarting += OnNavigationStarting;
-        core.NavigationCompleted += (_, e) => _loaded = e.IsSuccess && IsOurs(core.Source);
-        core.DocumentTitleChanged += (_, _) => Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "Todo Tracker" : core.DocumentTitle;
         _ready = true;
         Navigate(_pending);
+    }
+
+    private async Task RunScriptAsync(string script, string fallbackPath)
+    {
+        try
+        {
+            await _web.CoreWebView2.ExecuteScriptAsync(script).ConfigureAwait(true);
+        }
+        catch (Exception)
+        {
+            // The page isn't answering: load it again.
+            Navigate(fallbackPath);
+        }
+    }
+
+    /// <summary>The app's own break screen stays off in this window while the desktop shows breaks on every monitor.</summary>
+    private async Task SetNativeBreaksAsync()
+    {
+        try
+        {
+            var core = _web.CoreWebView2;
+            var script = $"window.__ttNativeBreaks = {(_host.NativeBreaks() ? "true" : "false")};";
+            if (_breakScript is not null)
+            {
+                core.RemoveScriptToExecuteOnDocumentCreated(_breakScript);
+            }
+
+            _breakScript = await core.AddScriptToExecuteOnDocumentCreatedAsync(script).ConfigureAwait(true);
+            if (_loaded)
+            {
+                await core.ExecuteScriptAsync(script).ConfigureAwait(true);
+            }
+        }
+        catch (Exception) when (_ready)
+        {
+            // A page that isn't answering gets the setting when it loads again.
+        }
+    }
+#pragma warning restore CA1031
+
+    private void OnHostChanged(object? sender, EventArgs e)
+    {
+        if (_ready && !_closingForGood)
+        {
+            _ = SetNativeBreaksAsync();
+        }
+    }
+
+    private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
+        {
+            // The whole WebView is gone: a new window next time.
+            _host.Lost(this, useBrowser: false);
+            CloseForGood();
+            return;
+        }
+
+        if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+        {
+            Navigate("/");
+        }
     }
 
     private void Navigate(string path)
@@ -221,41 +311,40 @@ internal sealed partial class AppWindow : Window
         _web.CoreWebView2.Navigate(_host.LaunchUrl(path));
     }
 
-    private bool IsOurs(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) && Uri.Compare(uri, _host.Origin, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
-
-    /// <summary>Links elsewhere open in the browser; the app's own pages that ask for a new window (the printable
-    /// report) open there too, signed in with a single-use link.</summary>
+    /// <summary>Requests for a new window: the app's other pages (the printable report) and links elsewhere open in the
+    /// browser; nothing opens a bare popup.</summary>
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
         e.Handled = true;
-        if (IsOurs(e.Uri))
-        {
-            _host.OpenInBrowser(new Uri(e.Uri).PathAndQuery);
-        }
-        else
-        {
-            OpenOutside(e.Uri);
-        }
+        Follow(e.Uri, e.IsUserInitiated, inWindow: false);
     }
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        if (IsOurs(e.Uri) || e.Uri.StartsWith("about:", StringComparison.Ordinal) || e.Uri.StartsWith("data:", StringComparison.Ordinal))
+        if (AppNavigation.Classify(_host.Origin, e.Uri) == AppLink.App)
         {
             return;
         }
 
-        // The window only ever shows the app; anything else goes to the browser (or the app that handles it).
+        // The window only ever shows the app itself.
         e.Cancel = true;
-        OpenOutside(e.Uri);
+        Follow(e.Uri, e.IsUserInitiated, inWindow: true);
     }
 
-    private static void OpenOutside(string url)
+    private void Follow(string url, bool userInitiated, bool inWindow)
     {
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" or "mailto" or "obsidian")
+        switch (AppNavigation.Classify(_host.Origin, url))
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+            case AppLink.App when !inWindow && url != "about:blank":
+            case AppLink.OwnPageInBrowser:
+                _host.OpenInBrowser(AppNavigation.PathOf(url));
+                break;
+            case AppLink.Outside:
+            case AppLink.OutsideIfAsked when userInitiated:
+                Process.Start(new ProcessStartInfo(new Uri(url).AbsoluteUri) { UseShellExecute = true });
+                break;
+            default:
+                break; // data:, javascript:, file:, or another app the person didn't ask for
         }
     }
 
