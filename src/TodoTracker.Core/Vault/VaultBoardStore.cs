@@ -76,10 +76,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             lock (_problems)
             {
-                return _problems.ToList();
+                return _legacyProblem is null ? _problems.ToList() : [.. _problems, _legacyProblem];
             }
         }
     }
+
+    /// <summary>An old board.json that couldn't be brought in (its tasks aren't here; the file is left as it is).</summary>
+    private VaultProblem? _legacyProblem;
 
     private DateTimeOffset Now => _options.Time.GetUtcNow();
 
@@ -264,9 +267,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             Directory.CreateDirectory(_root);
             var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && !EnumerateTaskFiles().Any();
-            if (fresh && _options.LegacyBoardPath is { } legacy && File.Exists(legacy))
+            if (fresh && _options.LegacyBoardPath is { } legacy && ReadLegacy(legacy) is { } legacyBoard)
             {
-                Migrate(legacy);
+                Migrate(legacy, legacyBoard);
             }
             else if (fresh)
             {
@@ -292,6 +295,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
             PurgeOldTrash();
             Reload();
+            if (!fresh && _options.ImportLegacyIntoExisting && _options.LegacyBoardPath is { } older && ReadLegacy(older) is { } olderBoard)
+            {
+                ImportBeside(older, olderBoard);
+            }
         }
 
         if (_options.Watch)
@@ -300,9 +307,29 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
     }
 
-    private void Migrate(string legacyPath)
+    /// <summary>An old board file, or null when there's none or it can't be read (then it's left where it is, untouched).</summary>
+    private TaskBoard? ReadLegacy(string path)
     {
-        _board = BoardSerializer.Deserialize(File.ReadAllText(legacyPath));
+        if (!File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return BoardSerializer.Deserialize(File.ReadAllText(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException or NotSupportedException or ArgumentException)
+        {
+            // Said where problems are shown (the dashboard's "needs fixing" line), not skipped in silence.
+            _legacyProblem = new VaultProblem(path, $"These tasks couldn't be brought into the tasks folder: {ex.Message}");
+            return null;
+        }
+    }
+
+    private void Migrate(string legacyPath, TaskBoard legacy)
+    {
+        _board = legacy;
         var folders = new Dictionary<Guid, string>();
         foreach (var group in _board.Groups)
         {
@@ -314,8 +341,43 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _caches = new Caches { GroupFolders = folders };
         _loadedOnce = true;
         Persist();
-        File.Move(legacyPath, legacyPath + ".migrated", overwrite: true);
+        SetAside(legacyPath);
         _loadedOnce = false;
+    }
+
+    /// <summary>
+    /// The tasks an app kept on its own before it used this folder (the Mac app's board.json) when the folder already
+    /// has tasks (another computer's, synced): added beside them, never replacing any (a task already here is kept as
+    /// it is), into the tab of the same name (else the first one). Then the file is set aside.
+    /// </summary>
+    private void ImportBeside(string legacyPath, TaskBoard legacy)
+    {
+        foreach (var root in legacy.Items.ToList())
+        {
+            if (_board.HasAnyId(root))
+            {
+                continue;
+            }
+
+            var tab = legacy.Groups.FirstOrDefault(g => g.Id == root.GroupId)?.Name;
+            var group = _board.Groups.FirstOrDefault(g => string.Equals(g.Name, tab, StringComparison.OrdinalIgnoreCase)) ?? _board.Groups[0];
+            _board.AttachLoaded(root, group.Id);
+        }
+
+        Persist();
+        SetAside(legacyPath);
+    }
+
+    /// <summary>The old board file and its backups are renamed <c>.migrated</c>: kept, and never read again.</summary>
+    private static void SetAside(string legacyPath)
+    {
+        foreach (var path in new[] { legacyPath, legacyPath + ".bak", legacyPath + ".restoring" })
+        {
+            if (File.Exists(path))
+            {
+                File.Move(path, path + ".migrated", overwrite: true);
+            }
+        }
     }
 
     private void StartWatching()

@@ -51,6 +51,12 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Todo Tracker puts your tasks in a note when you choose Copy to Apple Notes.
         ENABLE_HARDENED_RUNTIME: YES
+    # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only).
+    info:
+      path: Support/Info-macOS.plist
+      properties:
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     entitlements:
       path: App/TodoTracker-macOS.entitlements
       properties:

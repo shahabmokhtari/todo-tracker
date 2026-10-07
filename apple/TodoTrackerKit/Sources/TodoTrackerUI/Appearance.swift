@@ -35,12 +35,20 @@ public enum AppTheme: String, CaseIterable, Identifiable, Sendable {
 /// The appearance button in the header: System, Light or Dark.
 public struct ThemeMenu: View {
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
+    private let onChoose: ((String) -> Void)?
 
-    public init() {}
+    /// `onChoose`: also tell the others (the server, so every window follows).
+    public init(onChoose: ((String) -> Void)? = nil) {
+        self.onChoose = onChoose
+    }
 
     public var body: some View {
         Menu {
-            Picker("Appearance", selection: $theme) {
+            // Only a pick made here is passed on (not the theme changing because another window changed it).
+            Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
+                theme = chosen
+                onChoose?(chosen)
+            })) {
                 ForEach(AppTheme.allCases) { Text($0.label).tag($0.rawValue) }
             }
             .pickerStyle(.inline)

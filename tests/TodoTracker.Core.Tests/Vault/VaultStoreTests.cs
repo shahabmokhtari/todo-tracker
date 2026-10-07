@@ -28,9 +28,9 @@ public sealed class VaultStoreTests : IDisposable
         }
     }
 
-    private VaultBoardStore Open(string? legacy = null)
+    private VaultBoardStore Open(string? legacy = null, bool importBeside = false)
     {
-        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, Watch = false, EditSettleTime = TimeSpan.Zero });
+        var store = VaultBoardStore.Open(new VaultOptions(_root) { TimeZone = TimeZoneInfo.Utc, Time = _time, LockDirectory = _locks, LegacyBoardPath = legacy, ImportLegacyIntoExisting = importBeside, Watch = false, EditSettleTime = TimeSpan.Zero });
         _stores.Add(store);
         return store;
     }
@@ -50,6 +50,79 @@ public sealed class VaultStoreTests : IDisposable
         Assert.True(File.Exists(P(".todo-tracker", "config.json")));
         Assert.Contains("Todo Tracker vault", await File.ReadAllTextAsync(P("AGENTS.md")), StringComparison.Ordinal);
         Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+    }
+
+    [Fact]
+    public async Task Tasks_an_app_kept_on_its_own_join_a_folder_that_already_has_tasks()
+    {
+        // The Mac app's board.json, when the tasks folder already came from another computer (synced).
+        var shared = Open();
+        var fromWindows = await Add(shared, "From Windows");
+        shared.Dispose();
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        var mac = new TaskBoard();
+        var macTask = mac.AddTask(new NewTask("From the Mac") { GroupId = mac.Groups.Single(g => g.Name == "Personal").Id }, Actor.User, T0);
+        mac.AddTask(new NewTask("Its step") { ParentId = macTask.Id }, Actor.User, T0);
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(legacy + ".bak", BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+
+        var store = Open(legacy, importBeside: true);
+
+        var (titles, steps, group) = await store.ReadAsync(b => (
+            b.Items.Select(i => i.Title).Order().ToList(),
+            b.Get(macTask.Id).Children.Select(c => c.Title).ToList(),
+            b.Groups.Single(g => g.Id == b.Get(macTask.Id).GroupId).Name));
+        Assert.Equal(["From the Mac", "From Windows"], titles);
+        Assert.Equal(["Its step"], steps);
+        Assert.Equal("Personal", group);
+        Assert.True(File.Exists(P("Personal", "From the Mac.md")));
+        // Set aside with its backup, so neither is read (or restored) again.
+        Assert.False(File.Exists(legacy));
+        Assert.False(File.Exists(legacy + ".bak"));
+        Assert.True(File.Exists(legacy + ".migrated"));
+        Assert.True(File.Exists(legacy + ".bak.migrated"));
+
+        // Next start: nothing imported twice.
+        store.Dispose();
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(mac), TestContext.Current.CancellationToken);
+        var again = Open(legacy, importBeside: true);
+        Assert.Equal(2, await again.ReadAsync(b => b.Items.Count));
+        _ = fromWindows;
+    }
+
+    [Fact]
+    public async Task Elsewhere_an_old_board_next_to_a_folder_with_tasks_is_left_alone()
+    {
+        // A second PC whose Documents came with the synced folder: its old board.json may hold tasks deleted since.
+        var shared = Open();
+        await Add(shared, "From the folder");
+        shared.Dispose();
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        var old = new TaskBoard();
+        old.AddTask(new NewTask("Deleted long ago"), Actor.User, T0);
+        await File.WriteAllTextAsync(legacy, BoardSerializer.Serialize(old), TestContext.Current.CancellationToken);
+
+        var store = Open(legacy);
+
+        Assert.Equal(["From the folder"], await store.ReadAsync(b => b.Items.Select(i => i.Title).ToList()));
+        Assert.True(File.Exists(legacy));
+    }
+
+    [Fact]
+    public async Task An_unreadable_old_board_is_left_where_it_is_and_the_folder_still_opens()
+    {
+        var legacy = Path.Combine(_locks, "board.json");
+        Directory.CreateDirectory(_locks);
+        await File.WriteAllTextAsync(legacy, "{\"schemaVersion\": 99, \"items\": []}", TestContext.Current.CancellationToken);
+
+        var store = Open(legacy, importBeside: true);
+
+        Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+        Assert.True(File.Exists(legacy));
+        // Said, not skipped in silence.
+        Assert.Contains(store.Problems, p => p.Path == legacy && p.Message.Contains("couldn't be brought into the tasks folder", StringComparison.Ordinal));
     }
 
     [Fact]

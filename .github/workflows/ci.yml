@@ -210,6 +210,33 @@ jobs:
           xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-macOS
           -destination 'platform=macOS' -configuration Release
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Put the sync server in the Mac app (the tasks folder, synced with the other computers)
+        run: |
+          dotnet publish src/TodoTracker.Web --configuration Release --runtime osx-arm64 --self-contained -p:PublishSingleFile=true --output artifacts/mac-server
+          app=apple/DerivedData/Build/Products/Release/TodoTracker.app
+          mkdir -p "$app/Contents/Resources/Server"
+          cp -R artifacts/mac-server/. "$app/Contents/Resources/Server/"
+          rm -f "$app/Contents/Resources/Server/"*.pdb
+          # Changed after the build: sign the whole app again (ad hoc, as before).
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep "$app"
+      - name: The bundled server starts and stops with the app that started it
+        run: |
+          server=apple/DerivedData/Build/Products/Release/TodoTracker.app/Contents/Resources/Server/TodoTracker.Web
+          data=$(mktemp -d)
+          sleep 600 & parent=$!
+          TODOTRACKER_CLOUD=off TODOTRACKER_DATA="$data" TODOTRACKER_VAULT="$data/vault" TODOTRACKER_TOKEN=ci-token-0123456789abcdefghijklmnop \
+            "$server" --port 5399 --parent-pid "$parent" > "$data/server.log" 2>&1 &
+          server_pid=$!
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5399/health > /dev/null && break; sleep 1; done
+          curl -fsS http://127.0.0.1:5399/health || { cat "$data/server.log"; exit 1; }
+          curl -fsS -H 'Authorization: Bearer ci-token-0123456789abcdefghijklmnop' http://127.0.0.1:5399/api/export | head -c 200; echo
+          kill "$parent"
+          for i in $(seq 1 20); do kill -0 "$server_pid" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$server_pid" 2>/dev/null; then echo 'The server outlived its app'; cat "$data/server.log"; exit 1; fi
       - name: Package macOS app
         working-directory: apple
         run: ditto -c -k --keepParent DerivedData/Build/Products/Release/TodoTracker.app TodoTracker-macOS.zip

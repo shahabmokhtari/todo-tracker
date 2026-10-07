@@ -220,14 +220,20 @@ public final class BoardFileStore {
         return base.appendingPathComponent("TodoTracker", isDirectory: true).appendingPathComponent("board.json")
     }
 
+    /// The board moved into the tasks folder (Todo Tracker's server imported it and set it aside as `.migrated`).
+    public var wasMigrated: Bool {
+        FileManager.default.fileExists(atPath: url.appendingPathExtension("migrated").path)
+    }
+
     /// Loads the board. A newer-schema file is never replaced by a backup; a corrupt file is set aside
     /// (`board.json.corrupt-<timestamp>`) and the backup restored, mirroring the C# store.
     public func load() throws -> TaskBoard {
         let fm = FileManager.default
         let backup = url.appendingPathExtension("bak")
         guard fm.fileExists(atPath: url.path) else {
-            // A missing board next to a backup means an interrupted recovery, not a fresh start.
-            if fm.fileExists(atPath: backup.path) { return try restoreBackup() }
+            // A missing board next to a backup means an interrupted recovery, not a fresh start (unless the board
+            // moved into the tasks folder: then the backup is an old copy, never to come back).
+            if fm.fileExists(atPath: backup.path) && !wasMigrated { return try restoreBackup() }
             return TaskBoard()
         }
         do {

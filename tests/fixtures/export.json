@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {
+      "id": "e5caec2a-cf5f-4a1e-8a83-f90a5ef1216d",
+      "name": "Work",
+      "color": "#3b82f6"
+    },
+    {
+      "id": "f7f7fd5f-fa56-4b56-b017-9bbd0a9c9ff2",
+      "name": "Personal",
+      "color": "#22c55e"
+    },
+    {
+      "id": "2456383d-e724-47a9-ad6f-0f3119a92359",
+      "name": "Launch team",
+      "color": "#3b82f6"
+    }
+  ],
+  "labels": [
+    {
+      "name": "Urgent",
+      "color": "#e11d48"
+    }
+  ],
+  "items": [
+    {
+      "id": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "title": "Launch the site",
+      "details": "Hero copy first.",
+      "priority": "high",
+      "createdAt": "2026-01-05T09:00:00.000Z",
+      "deadline": "2026-01-08T09:00:00.000Z",
+      "nextActionAt": "2026-01-05T11:00:00.000Z",
+      "groupId": "2456383d-e724-47a9-ad6f-0f3119a92359",
+      "reminders": [
+        {
+          "id": "065f7fc4-bd02-4fb4-b2da-f08e35f53795",
+          "dueAt": "2026-01-05T11:00:00.000Z",
+          "message": "Time to act on: Launch the site",
+          "kind": "nextAction"
+        }
+      ],
+      "notes": [
+        {
+          "id": "58356d18-4bf3-4036-bcb3-8f47e37aa3bb",
+          "at": "2026-01-05T09:05:00.000Z",
+          "text": "Edited in Obsidian",
+          "author": {
+            "kind": "vault",
+            "name": "Obsidian"
+          }
+        },
+        {
+          "id": "0cde0625-9490-45f3-ab9e-b90fdead30cd",
+          "at": "2026-01-05T09:06:00.000Z",
+          "text": "From Notion",
+          "author": {
+            "kind": "connector",
+            "name": "Notion"
+          }
+        }
+      ],
+      "tags": [
+        "deep work",
+        "q3"
+      ],
+      "labels": [
+        "Urgent"
+      ],
+      "stage": "doing",
+      "children": [
+        {
+          "id": "dd271758-c502-4270-96a0-27eddd259606",
+          "title": "Write the copy",
+          "priority": "normal",
+          "createdAt": "2026-01-05T09:00:00.000Z",
+          "reminders": [
+            {
+              "id": "98e136da-afe7-4876-9a50-939fdb622be5",
+              "dueAt": "2026-01-06T09:00:00.000Z",
+              "message": "Send the draft",
+              "kind": "manual"
+            }
+          ],
+          "notes": [
+            {
+              "id": "d1c48b7f-a8a1-4db3-a0e8-5104199459a5",
+              "at": "2026-01-05T09:07:00.000Z",
+              "text": "Draft 1",
+              "author": {
+                "kind": "system"
+              }
+            }
+          ],
+          "tags": [
+            "writing"
+          ],
+          "time": [
+            {
+              "id": "2749bd2a-30d2-4787-bd6c-bee4fe5f5194",
+              "start": "2026-01-05T09:00:00.000Z",
+              "end": "2026-01-05T09:25:00.000Z",
+              "source": "manual"
+            }
+          ]
+        },
+        {
+          "id": "ac46d77b-0d40-4610-b84d-19b7d6bef5bb",
+          "title": "Pick images",
+          "priority": "normal",
+          "createdAt": "2026-01-05T09:00:00.000Z",
+          "completedAt": "2026-01-05T10:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "a7ea2bef-82a2-4016-bf16-6ac874ec8f30",
+      "title": "Old task",
+      "priority": "normal",
+      "createdAt": "2026-01-05T09:00:00.000Z",
+      "completedAt": "2026-01-05T09:00:00.000Z",
+      "groupId": "2456383d-e724-47a9-ad6f-0f3119a92359",
+      "stage": "inbox",
+      "archivedAt": "2026-01-05T09:00:00.000Z"
+    }
+  ],
+  "activity": [
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "00000000-0000-0000-0000-000000000000",
+      "kind": "groupChanged",
+      "summary": "Added group \u0022Launch team\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "00000000-0000-0000-0000-000000000000",
+      "kind": "labelChanged",
+      "summary": "Added label \u0022Urgent\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "kind": "created",
+      "summary": "Created \u0022Launch the site\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "dd271758-c502-4270-96a0-27eddd259606",
+      "kind": "created",
+      "summary": "Added \u0022Write the copy\u0022 to \u0022Launch the site\u0022",
+      "actor": {
+        "kind": "agent",
+        "name": "copilot"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "ac46d77b-0d40-4610-b84d-19b7d6bef5bb",
+      "kind": "created",
+      "summary": "Added \u0022Pick images\u0022 to \u0022Launch the site\u0022",
+      "actor": {
+        "kind": "browser",
+        "name": "edge"
+      }
+    },
+    {
+      "at": "2026-01-05T10:00:00.000Z",
+      "itemId": "ac46d77b-0d40-4610-b84d-19b7d6bef5bb",
+      "kind": "completed",
+      "summary": "Completed \u0022Pick images\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "dd271758-c502-4270-96a0-27eddd259606",
+      "kind": "reminderAdded",
+      "summary": "Reminder at 2026-01-06 09:00:00Z: Send the draft",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "kind": "scheduled",
+      "summary": "Next action 2026-01-05 11:00:00Z (with reminder)",
+      "actor": {
+        "kind": "teams",
+        "name": "Teams"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "kind": "moved",
+      "summary": "Moved \u0022Launch the site\u0022 to Doing",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:05:00.000Z",
+      "itemId": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "kind": "noteAdded",
+      "summary": "Edited in Obsidian",
+      "actor": {
+        "kind": "vault",
+        "name": "Obsidian"
+      }
+    },
+    {
+      "at": "2026-01-05T09:06:00.000Z",
+      "itemId": "dca596c8-a5fd-465c-bff5-9d1031726fa1",
+      "kind": "noteAdded",
+      "summary": "From Notion",
+      "actor": {
+        "kind": "connector",
+        "name": "Notion"
+      }
+    },
+    {
+      "at": "2026-01-05T09:07:00.000Z",
+      "itemId": "dd271758-c502-4270-96a0-27eddd259606",
+      "kind": "noteAdded",
+      "summary": "Draft 1",
+      "actor": {
+        "kind": "system"
+      }
+    },
+    {
+      "at": "2026-01-05T09:25:00.000Z",
+      "itemId": "dd271758-c502-4270-96a0-27eddd259606",
+      "kind": "timeLogged",
+      "summary": "Logged 25 min on \u0022Write the copy\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "a7ea2bef-82a2-4016-bf16-6ac874ec8f30",
+      "kind": "created",
+      "summary": "Created \u0022Old task\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "a7ea2bef-82a2-4016-bf16-6ac874ec8f30",
+      "kind": "completed",
+      "summary": "Completed \u0022Old task\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    },
+    {
+      "at": "2026-01-05T09:00:00.000Z",
+      "itemId": "a7ea2bef-82a2-4016-bf16-6ac874ec8f30",
+      "kind": "archived",
+      "summary": "Archived \u0022Old task\u0022",
+      "actor": {
+        "kind": "user"
+      }
+    }
+  ],
+  "pomodoro": {
+    "settings": {
+      "focusMinutes": 25,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4
+    },
+    "phase": "idle",
+    "completedFocusCount": 0
+  }
+}

@@ -42,6 +42,9 @@ public sealed class TodoTrackerServerOptions
     /// <summary>Keep version history of the vault in a private git repository (needs git on the PATH).</summary>
     public bool EnableHistory { get; set; } = true;
 
+    /// <summary>The Mac app's own board.json joins the vault even when the vault already has tasks (see VaultOptions).</summary>
+    public bool ImportLegacyIntoExisting { get; set; }
+
     /// <summary>Per-vault locks and version history (default: local app data). Tests point it at a temp folder.</summary>
     public string? LockDirectory { get; set; }
 

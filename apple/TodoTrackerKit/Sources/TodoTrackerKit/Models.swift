@@ -32,6 +32,14 @@ public enum Priority: String, Codable, CaseIterable, Comparable, Sendable {
 
 public enum ActorKind: String, Codable, Sendable {
     case user, agent, browser, teams, system
+    /// Edited in the markdown files (Obsidian, an editor); a connected app (Notion, Microsoft To Do).
+    case vault, connector
+
+    /// A kind from a newer version reads as `system` rather than failing the whole board.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = ActorKind(rawValue: raw) ?? .system
+    }
 }
 
 public struct Actor: Codable, Equatable, Sendable {

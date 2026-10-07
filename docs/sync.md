@@ -55,6 +55,25 @@ Every computer remembers what it last agreed on with each other computer, and me
 When two computers had to choose (both moved the same task, say), they make the same choice, so they always end up
 with the same files.
 
+## On a Mac
+
+The Mac app comes with Todo Tracker's server inside. It starts in the background with the app (and stops when the app
+quits), so the Mac uses the same tasks folder as everywhere else, `~/Documents/Todo Tracker`, and syncs it like a
+Windows computer does:
+
+* **With Windows:** both need the same cloud. Install OneDrive on the Mac (it's used first, a work or school account
+  before a personal one), or iCloud for Windows on the PC. Both meet in `Apps/TodoTrackerSync/<library>`.
+* **The first time,** the tasks the Mac app kept on its own (before it synced) move into the tasks folder and sync
+  from there. They are added to the other computers' tasks, never replace them (a task already there stays as it
+  is). The old file is kept as `board.json.migrated`. While the folder opens, changes wait a moment.
+* Version history needs git (Xcode's command line tools, or Homebrew's git); without it, history is off on the Mac.
+* **More:** the menu bar glance shows where the tasks are and **Open Todo Tracker…** opens the full window in the
+  browser (board, reports, Settings, the Sync panel).
+* The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
+  (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need
+  `xattr -dr com.apple.quarantine "/Applications/TodoTracker.app"` once.
+* **iPhone and iPad** keep their tasks on the device for now: they can't run the server, and reading the tasks folder
+  directly needs the vault format in Swift (planned).
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,

@@ -393,8 +393,14 @@ internal static class ApiEndpoints
                 return Wire.Pomodoro(b, now);
             }));
 
-        api.MapGet("/export", async (IBoardStore store) =>
-            Results.Text(await store.ReadAsync(BoardSerializer.Serialize).ConfigureAwait(false), "application/json"));
+        // With an ETag: the Mac app asks every few seconds, and an unchanged board is just "304 Not Modified".
+        api.MapGet("/export", async (HttpContext http, IBoardStore store) =>
+        {
+            var json = await store.ReadAsync(BoardSerializer.Serialize).ConfigureAwait(false);
+            var tag = $"\"{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json)))[..32]}\"";
+            http.Response.Headers.ETag = tag;
+            return http.Request.Headers.IfNoneMatch.Contains(tag) ? Results.StatusCode(StatusCodes.Status304NotModified) : Results.Text(json, "application/json");
+        });
 
         MapLabels(api);
         MapFiles(api);
