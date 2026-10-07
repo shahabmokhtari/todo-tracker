@@ -72,6 +72,32 @@ public sealed class WindowPlacementTests : IDisposable
         Assert.Equal(onSecond, PlacementMath.EnsureVisible(onSecond, monitors));
     }
 
+    [Theory]
+    // Docked right: the strip opens toward the screen (left), over the windows, from its own edge.
+    [InlineData(DockEdge.Right, 1864, 1560)]
+    // Docked left: it opens to the right.
+    [InlineData(DockEdge.Left, 0, 0)]
+    public void A_docked_strip_opens_over_the_screen_from_its_edge(DockEdge edge, double stripLeft, double expectedLeft)
+    {
+        var screen = new PlacementBounds(0, 0, 1920, 1080);
+        var strip = new PlacementBounds(stripLeft, 0, 56, 1080);
+
+        var peek = PlacementMath.PeekBounds(strip, 360, screen, edge);
+
+        Assert.Equal(new PlacementBounds(expectedLeft, 0, 360, 1080), peek);
+    }
+
+    [Fact]
+    public void A_floating_strip_opens_where_there_is_room()
+    {
+        var screen = new PlacementBounds(0, 0, 1920, 1040);
+
+        Assert.Equal(new PlacementBounds(100, 50, 380, 700), PlacementMath.PeekBounds(new PlacementBounds(100, 50, 56, 700), 380, screen, docked: null));
+        // Near the right edge: it opens to the left instead, keeping the strip where it is.
+        Assert.Equal(new PlacementBounds(1476, 50, 380, 700), PlacementMath.PeekBounds(new PlacementBounds(1800, 50, 56, 700), 380, screen, docked: null));
+        // Wider than the screen allows: it stays on screen.
+        Assert.Equal(new PlacementBounds(0, 50, 1920, 700), PlacementMath.PeekBounds(new PlacementBounds(1800, 50, 56, 700), 4000, screen, docked: null));
+    }
     [Fact]
     public void Floating_bounds_on_a_disconnected_monitor_move_back_to_the_primary()
     {

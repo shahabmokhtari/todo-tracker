@@ -70,6 +70,7 @@ public partial class MainWindow : Window
             RememberFloatingBounds();
         };
         SourceInitialized += OnSourceInitialized;
+        InitPeek();
         LocationChanged += (_, _) => QueueSave();
         SizeChanged += (_, _) => QueueSave();
         Closing += OnClosing;
@@ -84,6 +85,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            _peekTimer.Stop();
             _hotKey?.Dispose();
             _appBar.Dispose();
             _vm.PropertyChanged -= OnViewModelPropertyChanged;
@@ -312,6 +314,12 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(SidebarViewModel.IsCompact))
         {
+            if (!_vm.IsCompact)
+            {
+                // Kept open while peeking ("Keep the sidebar open").
+                RestoreAfterPeek();
+            }
+
             if (Placement.Mode == PlacementMode.Docked)
             {
                 _appBar.WidthInDips = _vm.IsCompact ? CompactWidth : Placement.DockWidth;

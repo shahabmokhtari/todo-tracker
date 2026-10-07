@@ -241,7 +241,7 @@
     <Grid>
         <!-- Full sidebar -->
         <Grid x:Name="FullView" Margin="12,10,12,10"
-              Visibility="{Binding IsCompact, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+              Visibility="{Binding ShowsStrip, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -524,8 +524,13 @@
         </Grid>
 
         <!-- Compact strip -->
-        <StackPanel x:Name="CompactView" Margin="4,12" HorizontalAlignment="Center"
-                    Visibility="{Binding IsCompact, Converter={StaticResource VisibleWhen}}">
+        <Grid x:Name="CompactView" Margin="4,12" Background="Transparent"
+              Visibility="{Binding ShowsStrip, Converter={StaticResource VisibleWhen}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+        <StackPanel HorizontalAlignment="Center">
             <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" Margin="0,0,0,12">
                 <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
             </Border>
@@ -541,5 +546,15 @@
             <TextBlock Text="{Binding Pomodoro.TimeText}" FontSize="10.5" Margin="0,4,0,0" HorizontalAlignment="Center"
                        Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
         </StackPanel>
+            <!-- The task at hand, written down the strip (rest the pointer on the strip to open the sidebar). In a
+                 star row: rotated text needs a finite length to measure against, else it's cut to the strip's width. -->
+            <TextBlock Grid.Row="1" x:Name="ActiveTask" Text="{Binding ActiveTitle}" FontSize="13" FontWeight="SemiBold" Margin="0,16,0,0"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" TextTrimming="CharacterEllipsis"
+                       AutomationProperties.Name="Task at hand" ToolTip="{Binding ActiveTitle}">
+                <TextBlock.LayoutTransform>
+                    <RotateTransform Angle="90" />
+                </TextBlock.LayoutTransform>
+            </TextBlock>
+        </Grid>
     </Grid>
 </Window>

@@ -101,6 +101,26 @@ public static class PlacementMath
         return new PlacementBounds(left, top, width, height);
     }
 
+    /// <summary>
+    /// Where the collapsed strip opens while the pointer is over it (it opens over other windows; the strip's reserved
+    /// screen space stays as it is). Docked: away from its edge. Floating: to the right, or to the left when there's no
+    /// room. Always on <paramref name="area"/> (the monitor). Physical pixels.
+    /// </summary>
+    public static PlacementBounds PeekBounds(PlacementBounds strip, double width, PlacementBounds area, DockEdge? docked)
+    {
+        ArgumentNullException.ThrowIfNull(strip);
+        ArgumentNullException.ThrowIfNull(area);
+        width = Math.Min(width, area.Width);
+        var growLeft = docked switch
+        {
+            DockEdge.Right => true,
+            DockEdge.Left => false,
+            _ => strip.Left + width > area.Right,
+        };
+        var left = growLeft ? strip.Right - width : strip.Left;
+        return strip with { Left = Math.Clamp(left, area.Left, area.Right - width), Width = width };
+    }
+
     /// <summary>Default floating window near <paramref name="edge"/>; all values in the monitor's physical pixels.</summary>
     public static PlacementBounds DefaultFloating(PlacementBounds workArea, DockEdge edge, double scale = 1)
     {
