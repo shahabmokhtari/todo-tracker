@@ -15,6 +15,9 @@ applies after a restart; the sidebar offers to restart right away.
 | **OneDrive sync** | Sync with your other computers through OneDrive (work or school account first, then personal) ([`sync.md`](sync.md)) | Yes |
 | **iCloud Drive sync** | Sync with your Mac, iPhone and iPad through iCloud Drive | Yes |
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
+| **Notion** | Keep a group in step with a Notion database, both ways ([`connectors.md`](connectors.md)) | No |
+| **Microsoft To Do** | Keep a group in step with a To Do list, both ways ([`connectors.md`](connectors.md)) | No |
+| **Copy for Loop** | Copy a group's tasks as a checklist to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
 
 The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in

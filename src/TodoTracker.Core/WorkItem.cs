@@ -110,6 +110,9 @@ public sealed class WorkItem
 
 public sealed record NewTask(string Title)
 {
+    /// <summary>A chosen id (connectors importing an outside item); null: a new one.</summary>
+    public Guid? Id { get; init; }
+
     public Guid? ParentId { get; init; }
 
     public Guid? GroupId { get; init; }

@@ -1002,6 +1002,9 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
 const pluginHost = {
   api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
   refresh: () => refresh({ background: true }),
+  /** The group picked in the tabs (null: all), and every group. */
+  group: () => state.group,
+  groups: () => state.dashboard?.groups ?? [],
   addHeaderButton({ iconName, label, onClick }) {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
     $('#plugin-buttons').append(button);

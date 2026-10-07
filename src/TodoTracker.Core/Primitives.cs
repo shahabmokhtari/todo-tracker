@@ -18,6 +18,9 @@ public enum ActorKind
 
     /// <summary>Someone edited the markdown files directly (Obsidian, an editor, or an agent with file tools).</summary>
     Vault,
+
+    /// <summary>A connected app (Notion, Microsoft To Do) brought a change in.</summary>
+    Connector,
 }
 
 /// <summary>Who made a change. Used for attribution in notes and the activity timeline.</summary>

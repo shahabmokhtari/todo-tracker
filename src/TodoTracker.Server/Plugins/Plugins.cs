@@ -98,6 +98,9 @@ public sealed class PluginHost
         new Sync.OneDriveSyncPlugin(),
         new Sync.ICloudSyncPlugin(),
         new Sync.GistSyncPlugin(),
+        new Connectors.NotionConnectorPlugin(),
+        new Connectors.MicrosoftToDoConnectorPlugin(),
+        new Connectors.LoopPlugin(),
         new TeamsPlugin(),
     ];
 
@@ -155,8 +158,9 @@ public sealed class PluginHost
             }
         }
 
-        // Shared by every sync provider plugin.
+        // Shared by every sync provider plugin, and by every connector plugin.
         Sync.SyncEndpoints.Map(app);
+        Connectors.ConnectorEndpoints.Map(app);
     }
 }
 
