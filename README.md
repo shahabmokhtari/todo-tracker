@@ -12,7 +12,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window (**⋯ › Open the app**), a task timer in the sidebar, and a full-screen break on every monitor when a focus session ends (**⋯ › Full-screen breaks**) |
 | **Web** | The whole app at `http://127.0.0.1:5317`: Today, a Board (Inbox → Next → Doing → Done), a Tasks outline, Done & Archive, Reports with charts and a timeline; works on phones too |
 | **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
-| **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance) |
+| **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance and syncs with your other computers) |
 | **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
 | **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |

@@ -184,6 +184,7 @@ blocks the others.
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
+* The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps a board on the device.
 
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.

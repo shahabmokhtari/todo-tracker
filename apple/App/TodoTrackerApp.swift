@@ -18,7 +18,7 @@ struct TodoTrackerApp: App {
         #if os(macOS)
         WindowGroup("Todo Tracker") {
             dashboard.frame(minWidth: 320, idealWidth: 380, minHeight: 480)
-                .onAppear { if breakWindows == nil { breakWindows = BreakWindows(model: model) } }
+                .onAppear { startOnce() }
         }
         .defaultSize(width: 380, height: 820)
         .windowResizability(.contentMinSize)
@@ -29,7 +29,7 @@ struct TodoTrackerApp: App {
         } label: {
             Label("\(model.dashboard.now.count)", systemImage: model.dashboard.now.contains(where: \.needsAttention) ? "bell.badge" : "checklist")
                 // The menu bar item is always there (even with no window open): breaks start with it.
-                .onAppear { if breakWindows == nil { breakWindows = BreakWindows(model: model) } }
+                .onAppear { startOnce() }
         }
         .menuBarExtraStyle(.window)
         #else
@@ -38,6 +38,14 @@ struct TodoTrackerApp: App {
         }
         #endif
     }
+
+    #if os(macOS)
+    /// Breaks on every screen, and the tasks folder through the server (synced with the other computers).
+    private func startOnce() {
+        if breakWindows == nil { breakWindows = BreakWindows(model: model) }
+        LocalServer.shared.connect(model)
+    }
+    #endif
 
     private var dashboard: some View {
         DashboardView(model: model)
@@ -70,6 +78,17 @@ struct MenuBarGlance: View {
             Text("\(model.dashboard.now.count) now · \(model.dashboard.waiting.count) waiting · 🍅 \(model.pomodoroText)")
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
+            HStack {
+                Image(systemName: model.usesServer ? "arrow.triangle.2.circlepath.icloud" : "laptopcomputer")
+                Text(model.usesServer ? "In your tasks folder, synced with your other computers" : "On this Mac only")
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            if model.usesServer {
+                Button("Open Todo Tracker…") {
+                    Task { if let url = await model.launchURL() { NSWorkspace.shared.open(url) } }
+                }
+                .help("The full window in your browser: board, reports, settings and sync")
+            }
             Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
             HStack {
                 Button(exporting ? "Copying…" : "Copy to Apple Notes") {

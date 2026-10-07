@@ -35,8 +35,12 @@ public enum AppTheme: String, CaseIterable, Identifiable, Sendable {
 /// The appearance button in the header: System, Light or Dark.
 public struct ThemeMenu: View {
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
+    private let onChoose: ((String) -> Void)?
 
-    public init() {}
+    /// `onChoose`: also tell the others (the server, so every window follows).
+    public init(onChoose: ((String) -> Void)? = nil) {
+        self.onChoose = onChoose
+    }
 
     public var body: some View {
         Menu {
@@ -49,6 +53,7 @@ public struct ThemeMenu: View {
         }
         .menuIndicator(.hidden)
         .fixedSize()
+        .onChange(of: theme) { _, chosen in onChoose?(chosen) }
         .accessibilityLabel("Appearance")
         .help("Light, dark, or as the system is")
     }
