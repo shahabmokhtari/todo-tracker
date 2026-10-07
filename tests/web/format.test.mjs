@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -133,4 +133,18 @@ test('queryFor builds filter queries for tags and labels', () => {
   assert.equal(queryFor({ tag: 'infra' }), '#infra');
   assert.equal(queryFor({ label: 'Deep work' }), 'label:"Deep work"');
   assert.equal(queryFor({ label: 'Later' }), 'label:Later');
+});
+test('tags of several words are quoted, the same way as in quick capture and the filter', () => {
+  assert.deepEqual(parseTags('#"deep work", #q3 "client  x" #"Deep Work"'), ['deep work', 'q3', 'client x']);
+  assert.equal(formatTags(['deep work', 'q3']), '#"deep work" #q3');
+  assert.deepEqual(parseTags(formatTags(['deep work', 'q3', 'infra/k8s'])), ['deep work', 'q3', 'infra/k8s']);
+  assert.equal(queryFor({ tag: 'deep work' }), '#"deep work"');
+});
+test('the tag & label picker adds a term to the filter and takes it out again', () => {
+  assert.equal(toggleTerm('', '#"deep work"'), '#"deep work"');
+  assert.equal(toggleTerm('report label:urgent', '#"deep work"'), 'report label:urgent #"deep work"');
+  assert.equal(toggleTerm('report #"Deep Work" label:urgent', '#"deep work"'), 'report label:urgent');
+  assert.equal(toggleTerm('#work', '#work'), '');
+  assert.ok(hasTerm('a label:"next up" b', 'label:"Next up"'));
+  assert.ok(!hasTerm('#workshop', '#work'));
 });

@@ -162,6 +162,23 @@ public class TaskMarkdownTests
     }
 
     [Fact]
+    public void Multi_word_tags_survive_the_file_on_a_task_and_on_a_subtask()
+    {
+        var board = new TaskBoard();
+        var root = board.AddTask(new NewTask("Plan launch") { Tags = ["deep work", "q3"] }, Actor.User, Now);
+        var step = board.AddTask(new NewTask("Draft") { ParentId = root.Id, Tags = ["deep work", "writing"] }, Actor.User, Now);
+
+        var written = TaskMarkdown.Render(root, Utc);
+        var reread = TaskMarkdown.Parse(written, "Plan launch", Utc).Root;
+
+        Assert.Equal(["deep work", "q3"], reread.Tags);
+        Assert.Equal(["deep work", "writing"], reread.Children.Single(c => c.Id == step.Id).Tags.Order());
+        // Single-word tags stay Obsidian tags on the line; a multi-word one can't be one, so it isn't written there.
+        Assert.Contains("Draft #writing", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("#deep work", written, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_ordered_list_makes_the_steps_sequential()
     {
         var parsed = TaskMarkdown.Parse("# Rollout\n\n1. [ ] Ring 0\n2. [ ] Ring 1\n   1. [ ] Prep\n   2. [ ] Go\n", "Rollout", Utc);

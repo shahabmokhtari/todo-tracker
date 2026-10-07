@@ -109,7 +109,8 @@ export function createBoardView(ctx) {
         column === 'done'
           ? h('button', { class: 'icon-btn small', type: 'button', title: 'Archive', 'aria-label': `Archive ${node.title}`, onclick: () => run([{ method: 'POST', url: `/api/items/${node.id}/archive` }], 'Archived') }, icon('archive', { size: 14 }))
           : h('button', { class: 'icon-btn small', type: 'button', title: 'Done', 'aria-label': `Complete ${node.title}`, onclick: () => run([{ method: 'POST', url: `/api/items/${node.id}/complete` }], 'Done') }, icon('check', { size: 14 })),
-        moveMenu(node, column))),
+        moveMenu(node, column),
+        h('button', { class: 'icon-btn small', type: 'button', title: 'Open details', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 14 })))),
     node.labels.length || node.tags.length ? h('div', { class: 'card-chips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 3).map((t) => h('span', { class: 'chip tag' }, `#${t}`))) : null,
     h('div', { class: 'card-meta' }, due, ...facts.map(fact)));
     return el;

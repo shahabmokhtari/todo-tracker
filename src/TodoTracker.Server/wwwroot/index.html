@@ -39,6 +39,8 @@
           <span class="search-icon" id="search-icon" aria-hidden="true"></span>
           <input id="filter" type="search" autocomplete="off" spellcheck="false" placeholder="Filter  #tag  label:x" aria-label="Filter tasks (press /)" title="Words, #tag, label:name, group:name, is:done — press / to focus">
           <button id="filter-clear" class="icon-btn small" type="button" aria-label="Clear filter" hidden>×</button>
+          <button id="filter-pick" class="icon-btn small filter-pick" type="button" aria-label="Filter by tag or label" title="Filter by tag or label" aria-haspopup="menu" aria-expanded="false" aria-controls="filter-menu"></button>
+          <div id="filter-menu" class="menu filter-menu" role="menu" aria-label="Tags and labels" hidden></div>
         </div>
         <div id="timer" class="timer-chip" hidden></div>
         <div id="pomodoro" class="pomodoro" aria-live="polite"></div>

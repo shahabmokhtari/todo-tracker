@@ -241,7 +241,8 @@ public static class Wire
     public static TimeEntryDto TimeEntry(WorkItem item, TimeEntry entry, DateTimeOffset now) =>
         new(entry.Id, item.Id, entry.Start, entry.End, (long)entry.Duration(now).TotalSeconds, Of(entry.Source), entry.Device);
 
-    public static TreeNodeDto TreeNode(WorkItem item, DateTimeOffset now, TaskBoard board, Guid? timing)
+    /// <param name="keep">Only these subtasks (a filter); null: all.</param>
+    public static TreeNodeDto TreeNode(WorkItem item, DateTimeOffset now, TaskBoard board, Guid? timing, IReadOnlySet<Guid>? keep = null)
     {
         var leaves = item.SelfAndDescendants().Skip(1).Where(i => i.Children.Count == 0).ToList();
         return new TreeNodeDto(
@@ -267,7 +268,7 @@ public static class Wire
             leaves.Count,
             (long)item.TimeSpent(now).TotalSeconds,
             IsTiming(item, timing),
-            item.Children.Select(c => TreeNode(c, now, board, timing)).ToList());
+            item.Children.Where(c => keep is null || keep.Contains(c.Id)).Select(c => TreeNode(c, now, board, timing, keep)).ToList());
     }
 
     /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>

@@ -158,18 +158,22 @@ public sealed partial class TaskBoard
         Log(now, id, ActivityKind.Moved, parent is null ? $"Moved \"{item.Title}\" to {group!.Name}" : $"Moved \"{item.Title}\" under \"{parent.Title}\"", actor);
     }
 
+    /// <summary>Words of letters, numbers, - _ and / with single spaces between them ("deep work"), not only digits.</summary>
     internal static bool IsValidTag(string tag) =>
-        tag.Length is > 0 and <= MaxTagLength && TagPattern().IsMatch(tag) && !tag.All(c => char.IsDigit(c) || c == '/');
+        tag.Length is > 0 and <= MaxTagLength && TagPattern().IsMatch(tag) && !tag.All(c => char.IsDigit(c) || c is '/' or ' ');
+
+    /// <summary>A tag as typed: no #, no spaces at the edges, one space between words.</summary>
+    internal static string CleanTag(string? raw) => Spaces().Replace((raw ?? string.Empty).Trim().TrimStart('#').Trim(), " ");
 
     internal static List<string> NormalizeTags(IEnumerable<string>? tags)
     {
         var result = new List<string>();
         foreach (var raw in tags ?? [])
         {
-            var tag = (raw ?? string.Empty).Trim().TrimStart('#');
+            var tag = CleanTag(raw);
             if (!IsValidTag(tag))
             {
-                throw new ArgumentException($"\"{raw}\" isn't a valid tag. Use letters, numbers, - _ and / (not only digits), up to {MaxTagLength} characters.", nameof(tags));
+                throw new ArgumentException($"\"{raw}\" isn't a valid tag. Use words of letters, numbers, - _ and / (not only digits), up to {MaxTagLength} characters.", nameof(tags));
             }
 
             if (!result.Exists(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))
@@ -235,6 +239,9 @@ public sealed partial class TaskBoard
         }
     }
 
-    [GeneratedRegex(@"^[\p{L}\p{N}_\-/]+$")]
+    [GeneratedRegex(@"^[\p{L}\p{N}_\-/]+( [\p{L}\p{N}_\-/]+)*$")]
     private static partial Regex TagPattern();
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Spaces();
 }

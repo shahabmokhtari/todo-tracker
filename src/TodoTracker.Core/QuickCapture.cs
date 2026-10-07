@@ -27,8 +27,28 @@ public static partial class QuickCaptureParser
         DateTimeOffset? deadline = null;
         var words = new List<string>();
         var tags = new List<string>();
+        void AddTag(string tag)
+        {
+            if (!tags.Exists(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase)))
+            {
+                tags.Add(tag);
+            }
+        }
 
-        foreach (var token in (input ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        // #"deep work": a tag of several words.
+        var text = QuotedTag().Replace(input ?? string.Empty, m =>
+        {
+            var tag = TaskBoard.CleanTag(m.Groups[1].Value);
+            if (!TaskBoard.IsValidTag(tag))
+            {
+                return m.Value;
+            }
+
+            AddTag(tag);
+            return " ";
+        });
+
+        foreach (var token in text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (ParsePriority(token) is { } p)
             {
@@ -44,10 +64,7 @@ public static partial class QuickCaptureParser
             }
             else if (token.Length > 1 && token[0] == '#' && token[1] != '#' && TaskBoard.IsValidTag(token[1..]))
             {
-                if (!tags.Exists(t => string.Equals(t, token[1..], StringComparison.OrdinalIgnoreCase)))
-                {
-                    tags.Add(token[1..]);
-                }
+                AddTag(token[1..]);
             }
             else
             {
@@ -160,6 +177,9 @@ public static partial class QuickCaptureParser
 
     [GeneratedRegex("^([1-9][0-9]{0,2})d$")]
     private static partial Regex DaysPattern();
+
+    [GeneratedRegex(@"(?<=^|\s)#""([^""]+)""")]
+    private static partial Regex QuotedTag();
 }
 
 public static class RelativeTime

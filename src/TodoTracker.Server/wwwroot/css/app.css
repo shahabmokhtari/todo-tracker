@@ -412,7 +412,7 @@ button.link:hover { color: var(--accent); }
 .prio-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--prio); box-shadow: 0 0 0 3px color-mix(in srgb, var(--prio) 25%, transparent); }
 .focus-title { font-size: 28px; font-weight: 750; letter-spacing: -.025em; line-height: 1.2; overflow-wrap: anywhere; }
 button.focus-title { border: 0; background: none; padding: 0; text-align: left; cursor: pointer; color: var(--text); }
-button.focus-title:hover { color: var(--accent); }
+button.focus-title:hover { color: var(--accent); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
 .focus-sub { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .step-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); font-weight: 550; }
 .step-progress .ring-bar { stroke: var(--accent-2); }
@@ -484,6 +484,9 @@ button.focus-title:hover { color: var(--accent); }
 }
 .body { display: grid; gap: 4px; min-width: 0; }
 .title { font-weight: 600; overflow-wrap: anywhere; }
+/* The title opens the task: it looks like it on hover (and the Open button says so). */
+.item .title.link { cursor: pointer; text-align: left; }
+.item .title.link:hover, .item .title.link:focus-visible { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .meta:empty { display: none; }
 .reminder { display: flex; align-items: center; gap: 6px; color: #b45309; font-weight: 600; font-size: 13px; }
@@ -691,6 +694,19 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .search input { width: 100%; padding: 7px 28px 7px 32px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 13.5px; color: var(--text); }
 .search input:focus { outline: none; box-shadow: var(--ring); border-color: transparent; }
 .search .icon-btn { position: absolute; right: 4px; width: 22px; height: 22px; font-size: 16px; }
+.search input { padding-right: 52px; }
+.search #filter-clear { right: 28px; }
+.search .filter-pick { color: var(--text-3); }
+.search .filter-pick[aria-expanded=true], .search .filter-pick:hover { color: var(--accent); }
+.filter-menu { width: min(300px, 90vw); max-height: min(70vh, 480px); overflow-y: auto; }
+.filter-menu .menu-head { margin: 8px 10px 2px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); display: grid; }
+.filter-menu .menu-head small { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.filter-menu .menu-empty { margin: 4px 10px 8px; font-size: 12.5px; color: var(--text-3); }
+.filter-menu button .check { width: 14px; color: var(--accent); font-weight: 700; }
+.filter-menu button .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--label); flex: none; }
+.filter-menu button .count { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.filter-menu button.on { color: var(--accent); }
+.filter-menu .menu-clear { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; color: var(--text-2); }
 
 /* ---------- tags & labels ---------- */
 .chip.tag { background: transparent; color: var(--accent); border: 0; cursor: pointer; font-family: var(--font); }

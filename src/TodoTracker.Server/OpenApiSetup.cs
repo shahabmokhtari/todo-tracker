@@ -42,6 +42,7 @@ internal static partial class OpenApiSetup
         ["GET api/groups"] = ("listGroups", "Groups (tabs such as Work and Personal)"),
         ["POST api/groups"] = ("createGroup", "Add a group"),
         ["GET api/labels"] = ("listLabels", "The curated labels"),
+        ["GET api/tags"] = ("listTags", "The tags in use on open tasks, most used first"),
         ["GET api/vault"] = ("getVaultInfo", "Where the markdown files live and the file format"),
         ["GET api/items/{id}/history"] = ("getTaskHistory", "Saved versions of a task, newest first"),
         ["GET api/items/{id}/history/{version}"] = ("getTaskVersion", "A task's markdown file as it was in a version"),

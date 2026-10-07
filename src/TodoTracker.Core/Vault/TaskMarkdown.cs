@@ -613,6 +613,12 @@ public static partial class TaskMarkdown
             StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
         };
         item.TagList.AddRange(tags);
+        if (meta?["tags"] is JsonArray moreTags)
+        {
+            item.TagList.AddRange(moreTags.OfType<JsonValue>().Select(t => t.TryGetValue<string>(out var v) ? v : null).OfType<string>()
+                .Where(t => !item.TagList.Contains(t, StringComparer.OrdinalIgnoreCase)));
+        }
+
         if (meta?["labels"] is JsonArray labels)
         {
             item.LabelList.AddRange(labels.OfType<JsonValue>().Select(l => l.TryGetValue<string>(out var v) ? v : null).OfType<string>());
@@ -1230,7 +1236,8 @@ public static partial class TaskMarkdown
     private static string ItemLine(WorkItem item, TimeZoneInfo tz, ParsedTaskFile? previous)
     {
         var sb = new StringBuilder(item.Title);
-        foreach (var tag in item.Tags)
+        // Single-word tags are Obsidian tags on the line; a multi-word one can't be, so it goes in the hidden data.
+        foreach (var tag in item.Tags.Where(t => !t.Contains(' ', StringComparison.Ordinal)))
         {
             if (!Regex.IsMatch(item.Title, @"(^|\s)#" + Regex.Escape(tag) + @"(\s|$)", RegexOptions.IgnoreCase))
             {
@@ -1301,6 +1308,11 @@ public static partial class TaskMarkdown
         if (item.Labels.Count > 0)
         {
             meta["labels"] = new JsonArray(item.Labels.Select(l => (JsonNode?)l).ToArray());
+        }
+
+        if (item.Tags.Where(t => t.Contains(' ', StringComparison.Ordinal)).ToArray() is { Length: > 0 } multiWord)
+        {
+            meta["tags"] = new JsonArray(multiWord.Select(t => (JsonNode?)t).ToArray());
         }
 
         if (item.Reminders.Count > 0)

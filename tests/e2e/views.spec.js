@@ -367,4 +367,34 @@ test('Settings: light or dark for every window, and connected apps switch on at 
   await page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' }).uncheck();
   await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toHaveCount(0);
   expect(errors).toEqual([]);
+});test('Tags and labels: several-word tags, and the picker by the search box filters every view', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await add(request, 'Write the deck', { tags: ['deep work'], stage: 'next' });
+  await add(request, 'Order lunch', { stage: 'next' });
+  await open(page, request);
+
+  await page.getByRole('button', { name: 'Filter by tag or label' }).click();
+  const menu = page.getByRole('menu', { name: 'Tags and labels' });
+  await expect(menu).toContainText('Labels');
+  await menu.getByRole('menuitemcheckbox', { name: /#deep work/ }).click();
+  await expect(page.locator('#filter')).toHaveValue('#"deep work"');
+
+  // The board follows the filter too.
+  await page.locator('#nav-views').getByRole('link', { name: /Board/ }).click();
+  const next = page.locator('.lane[data-column="next"]');
+  await expect(next.locator('.kcard', { hasText: 'Write the deck' })).toBeVisible();
+  await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toHaveCount(0);
+
+  // Picked again: out of the filter.
+  await page.getByRole('button', { name: 'Filter by tag or label' }).click();
+  await expect(menu.getByRole('menuitemcheckbox', { name: /#deep work/ })).toHaveAttribute('aria-checked', 'true');
+  await menu.getByRole('menuitemcheckbox', { name: /#deep work/ }).click();
+  await expect(page.locator('#filter')).toHaveValue('');
+  await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toBeVisible();
+
+  // The details show the tag as typed, quotes and all.
+  await next.locator('.kcard', { hasText: 'Write the deck' }).getByRole('button', { name: /Open/ }).click();
+  await expect(page.locator('#drawer').getByRole('textbox', { name: 'Tags' })).toHaveValue('#"deep work"');
+  await expect(page.locator('#drawer')).toContainText('Labels are colored categories');
+  expect(errors).toEqual([]);
 });

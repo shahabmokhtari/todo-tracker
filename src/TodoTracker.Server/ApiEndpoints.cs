@@ -68,6 +68,8 @@ public sealed record FocusRequest(Guid? ItemId = null);
 
 public sealed record SettingsRequest(string? TeamsWebhookUrl);
 
+public sealed record TagDto(string Name, int Count);
+
 public sealed record LoginRequest(string? Token);
 
 public sealed record ConnectionDto(string BaseUrl, string McpUrl, string Token, object McpConfig);
@@ -470,6 +472,15 @@ internal static class ApiEndpoints
     private static void MapLabels(RouteGroupBuilder api)
     {
         api.MapGet("/labels", (IBoardStore store) => store.ReadAsync(Wire.Labels));
+
+        // The tags in use on open tasks (for the filter), most used first.
+        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(b => b.AllItems()
+            .Where(i => !i.IsDone && !i.IsArchived)
+            .SelectMany(i => i.Tags)
+            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new TagDto(g.First(), g.Count()))
+            .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList()));
 
         api.MapPost("/labels", (LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>

@@ -299,6 +299,19 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Tags_in_use_are_listed_with_how_many_open_tasks_have_them()
+    {
+        await _client.PostJson("/api/items", new { title = "A", tags = new[] { "deep work", "q3" } });
+        await _client.PostJson("/api/items", new { title = "B", tags = new[] { "Deep Work" } });
+        var done = await _client.PostJson("/api/items", new { title = "C", tags = new[] { "old" } });
+        await _client.PostJson($"/api/items/{done.Id()}/complete");
+
+        var tags = (await _client.GetJson("/api/tags")).AsArray();
+
+        Assert.Equal([("deep work", 2), ("q3", 1)], tags.Select(t => (t!["name"]!.GetValue<string>(), t!["count"]!.GetValue<int>())));
+    }
+
+    [Fact]
     public async Task The_theme_is_one_choice_for_every_window()
     {
         var store = _server.App.Services.GetRequiredService<SettingsStore>();
