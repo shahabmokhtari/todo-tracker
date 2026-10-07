@@ -24,12 +24,23 @@ public sealed class ConnectorApiTests
         await server.Store.UpdateAsync(b => b.Groups.FirstOrDefault(g => g.Name == name)?.Id ?? b.AddGroup(name, null, Actor.User, ServerFixture.T0).Id);
 
     [Fact]
-    public async Task Connectors_are_off_until_switched_on()
+    public async Task Connectors_are_off_until_switched_on_and_switch_on_at_once()
     {
         await using var server = await ServerFixture.StartAsync();
+        var client = server.Client();
 
-        Assert.False((await server.Client().GetAsync(Base)).IsSuccessStatusCode);
-        Assert.False((await server.Client().PostAsync($"{Base}/notion/sync", null)).IsSuccessStatusCode);
+        // Listed (so Settings can offer them) but off: nothing can be set up or synced.
+        var views = await client.GetJson(Base);
+        Assert.All(views.AsArray(), v => Assert.False(v!["on"]!.GetValue<bool>()));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync($"{Base}/notion/sync", null)).StatusCode);
+
+        // Switching one on needs no restart.
+        var toggled = await (await client.PutAsJsonAsync("/api/plugins/connector-notion", new { enabled = true })).Json();
+        Assert.False(toggled["restartRequired"]!.GetValue<bool>());
+        var notion = (await client.GetJson(Base)).AsArray().Single(v => v!["id"]!.GetValue<string>() == "notion")!;
+        Assert.True(notion["on"]!.GetValue<bool>());
+        Assert.Equal("Paste your Notion integration's token.", notion["missing"]!.GetValue<string>());
+        Assert.True((await client.GetJson("/api/plugins")).AsArray().Single(p => p!["id"]!.GetValue<string>() == "connector-notion")!["enabled"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -42,7 +53,8 @@ public sealed class ConnectorApiTests
         await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Write report") { GroupId = group }, Actor.User, ServerFixture.T0));
         notion.AddPage("p1", new JsonObject { ["Task"] = new JsonObject { ["type"] = "title", ["title"] = new JsonArray(new JsonObject { ["plain_text"] = "Call the bank" }) } });
 
-        var start = (await client.GetJson(Base)).AsArray().Single()!;
+        // Settings lists every connector (on or off): this one is picked by id.
+        var start = (await client.GetJson(Base)).AsArray().Single(v => v!["id"]!.GetValue<string>() == "notion")!;
         Assert.Equal("Paste your Notion integration's token.", start["missing"]!.GetValue<string>());
 
         var bad = await client.PutAsJsonAsync($"{Base}/notion/token", new { token = "secret_wrong_one" });
@@ -85,7 +97,8 @@ public sealed class ConnectorApiTests
         var links = Path.Combine(server.DataDirectory, "connectors", "notion", "links.json");
         await File.WriteAllTextAsync(links, "{ broken");
 
-        var view = (await client.GetJson(Base)).AsArray().Single()!;
+        // Settings lists every connector (on or off): this one is picked by id.
+        var view = (await client.GetJson(Base)).AsArray().Single(v => v!["id"]!.GetValue<string>() == "notion")!;
         Assert.StartsWith("Couldn't read", view["missing"]!.GetValue<string>(), StringComparison.Ordinal);
         var sync = await client.PostAsync($"{Base}/notion/sync", null);
 

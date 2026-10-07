@@ -115,14 +115,14 @@ public sealed class TaskQuery
         return value.Length > 0;
     }
 
-    /// <summary>Splits on whitespace; double quotes group words (and are dropped), also inside <c>label:"a b"</c>.</summary>
+    /// <summary>Splits on whitespace; double quotes (straight or curly) group words (and are dropped), also inside <c>label:"a b"</c>.</summary>
     private static IEnumerable<string> Tokenize(string text)
     {
         var current = new System.Text.StringBuilder();
         var quoted = false;
         foreach (var c in text)
         {
-            if (c == '"')
+            if (c is '"' or '\u201C' or '\u201D')
             {
                 quoted = !quoted;
             }

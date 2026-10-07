@@ -149,6 +149,23 @@ public class ManualOrderTests
     }
 
     [Fact]
+    public void A_task_can_be_put_right_after_a_sibling_even_with_others_between_them_hidden()
+    {
+        // The Tasks view may show only some subtasks (a filter): "after Flights" means right after it.
+        var trip = Add("Trip");
+        var flights = Add("Flights", parent: trip);
+        Add("Hotel", parent: trip);
+        var visa = Add("Visa", parent: trip);
+
+        _board.ReorderAfter(visa.Id, flights.Id);
+        Assert.Equal(["Flights", "Visa", "Hotel"], trip.Children.Select(c => c.Title));
+
+        _board.ReorderAfter(visa.Id, visa.Id);
+        Assert.Equal(["Flights", "Visa", "Hotel"], trip.Children.Select(c => c.Title));
+        Assert.Throws<ArgumentException>(() => _board.ReorderAfter(visa.Id, trip.Id));
+    }
+
+    [Fact]
     public void Top_level_tasks_can_be_reordered_too()
     {
         var a = Add("A");

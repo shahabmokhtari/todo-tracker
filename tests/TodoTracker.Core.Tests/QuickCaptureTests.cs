@@ -30,6 +30,48 @@ public class QuickCaptureTests
         Assert.Equal(Priority.High, capture.Priority);
     }
 
+    [Fact]
+    public void Quoted_hash_words_make_a_multi_word_tag()
+    {
+        var capture = QuickCaptureParser.Parse("Write the plan #\"deep work\" #q3 #\"Deep  Work\"", Now, TimeZoneInfo.Utc);
+
+        Assert.Equal("Write the plan", capture.Title);
+        Assert.Equal(["deep work", "q3"], capture.Tags);
+    }
+
+    [Fact]
+    public void Tags_may_have_words_but_not_edge_spaces_commas_or_only_digits()
+    {
+        var board = new TaskBoard();
+        var item = board.AddTask(new NewTask("A") { Tags = ["  deep   work ", "#client x"] }, Actor.User, Now);
+
+        Assert.Equal(["deep work", "client x"], item.Tags);
+        Assert.Throws<ArgumentException>(() => board.AddTask(new NewTask("B") { Tags = ["a,b"] }, Actor.User, Now));
+        Assert.Throws<ArgumentException>(() => board.AddTask(new NewTask("B") { Tags = ["12 34"] }, Actor.User, Now));
+    }
+
+    [Fact]
+    public void A_multi_word_tag_is_found_with_quotes()
+    {
+        var board = new TaskBoard();
+        board.AddTask(new NewTask("A") { Tags = ["deep work"] }, Actor.User, Now);
+        board.AddTask(new NewTask("B") { Tags = ["deep"] }, Actor.User, Now);
+
+        Assert.Equal(["A"], TaskQuery.Parse("#\"deep work\"").Apply(board).Select(i => i.Title));
+        Assert.Equal(["B"], TaskQuery.Parse("#deep").Apply(board).Select(i => i.Title));
+        // Typed on an iPhone or iPad (smart punctuation curls the quotes).
+        Assert.Equal(["A"], TaskQuery.Parse("#\u201Cdeep work\u201D").Apply(board).Select(i => i.Title));
+    }
+
+    [Fact]
+    public void Curly_quotes_make_a_multi_word_tag_too()
+    {
+        var capture = QuickCaptureParser.Parse("Write the plan #\u201Cdeep work\u201D", Now, TimeZoneInfo.Utc);
+
+        Assert.Equal("Write the plan", capture.Title);
+        Assert.Equal(["deep work"], capture.Tags);
+    }
+
     [Theory]
     [InlineData("Fix bug #123")]
     [InlineData("Fix bug #")]

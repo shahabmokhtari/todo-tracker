@@ -7,7 +7,8 @@ public sealed class AppNavigationTests
     [Theory]
     [InlineData("http://127.0.0.1:5317/", AppLink.App)]
     [InlineData("http://127.0.0.1:5317/index.html#/board", AppLink.App)]
-    [InlineData("http://127.0.0.1:5317/api/launch?code=abc", AppLink.App)]
+    // The sign-in link (ApiEndpoints.LaunchUrl): sending it to the browser left the window blank (reported by the user).
+    [InlineData("http://127.0.0.1:5317/auth?code=abc&return=%2F", AppLink.App)]
     [InlineData("about:blank", AppLink.App)]
     [InlineData("http://127.0.0.1:5317/report.html?id=1", AppLink.OwnPageInBrowser)]
     [InlineData("http://localhost:5317/", AppLink.Outside)]
@@ -41,6 +42,10 @@ public sealed class AppNavigationTests
         Assert.Equal(AppOpen.Navigate("/#/task/42"), AppNavigation.Plan("http://127.0.0.1:5317/report.html?id=1", loaded: true, "/#/task/42"));
         Assert.Equal(AppOpen.Navigate("/?connect=1"), AppNavigation.Plan("http://127.0.0.1:5317/", loaded: true, "/?connect=1"));
     }
+
+    [Fact]
+    public void The_window_loads_the_app_through_its_sign_in_link() =>
+        Assert.Equal(AppLink.App, AppNavigation.Classify(Origin, "http://127.0.0.1:5317/auth?code=x&return=%2F%23%2Ftask%2F42"));
 
     [Fact]
     public void An_own_page_opened_in_the_browser_keeps_its_query_and_fragment() =>

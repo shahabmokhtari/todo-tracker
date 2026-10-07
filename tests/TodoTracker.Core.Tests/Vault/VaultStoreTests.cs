@@ -333,7 +333,8 @@ public sealed class VaultStoreTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => store.UpdateAsync(b =>
         {
             b.AddNote(task.Id, "half done", Actor.User, T0);
-            b.SetTags(task.Id, ["not valid"], Actor.User, T0);
+            // Any invalid tag will do (a space used to be one; multi-word tags are allowed now).
+            b.SetTags(task.Id, ["not,valid"], Actor.User, T0);
         }));
 
         Assert.Empty(await store.ReadAsync(b => b.Get(task.Id).Notes.ToList()));

@@ -8,7 +8,9 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server.Plugins;
 
-public sealed record PluginInfo(string Id, string Name, string Description, bool DefaultEnabled = true);
+/// <param name="Live">Switches on and off at once (its services are always there and check the switch);
+/// others apply after a restart.</param>
+public sealed record PluginInfo(string Id, string Name, string Description, bool DefaultEnabled = true, bool Live = false);
 
 /// <summary>What the app shows about a plugin (and the web module that adds its UI, when enabled).</summary>
 public sealed record PluginDto(string Id, string Name, string Description, bool Enabled, string? WebModule);
@@ -40,6 +42,9 @@ public sealed class PluginSettings
     private readonly string _path;
     private readonly Lock _lock = new();
 
+    // Read once and kept in memory (live plugins ask on every request); changed only through SetEnabled.
+    private JsonObject? _known;
+
     public PluginSettings(string dataDirectory)
     {
         _path = Path.Combine(dataDirectory, "plugins.json");
@@ -62,17 +67,24 @@ public sealed class PluginSettings
             all[id] = enabled;
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             File.WriteAllText(_path, all.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            _known = all;
         }
     }
 
     private JsonObject Read()
     {
+        if (_known is not null)
+        {
+            return _known;
+        }
+
         try
         {
-            return File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? o : [];
+            return _known = File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? o : [];
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
+            // Not remembered: read again next time rather than keep "everything off" for good.
             return [];
         }
     }
@@ -112,7 +124,7 @@ public sealed class PluginHost
 
     public PluginSettings Settings { get; }
 
-    public bool IsRunning(string id) => Plugins.Any(p => p.Plugin.Info.Id == id && p.Enabled);
+    public bool IsRunning(string id) => Plugins.Any(p => p.Plugin.Info.Id == id && (p.Plugin.Info.Live ? Settings.IsEnabled(p.Plugin.Info) : p.Enabled));
 
     public static void AddServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -125,7 +137,7 @@ public sealed class PluginHost
         }
         foreach (var (plugin, enabled) in plugins)
         {
-            if (enabled)
+            if (enabled || plugin.Info.Live)
             {
                 plugin.ConfigureServices(services, options);
             }
@@ -138,7 +150,11 @@ public sealed class PluginHost
     {
         ArgumentNullException.ThrowIfNull(app);
         var host = app.Services.GetRequiredService<PluginHost>();
-        app.MapGet("/api/plugins", () => host.Plugins.Select(p => new PluginDto(p.Plugin.Info.Id, p.Plugin.Info.Name, p.Plugin.Info.Description, p.Enabled, p.Enabled ? p.Plugin.WebModule : null)));
+        app.MapGet("/api/plugins", () => host.Plugins.Select(p =>
+        {
+            var on = host.IsRunning(p.Plugin.Info.Id);
+            return new PluginDto(p.Plugin.Info.Id, p.Plugin.Info.Name, p.Plugin.Info.Description, on, on ? p.Plugin.WebModule : null);
+        }));
         app.MapPut("/api/plugins/{id}", (string id, PluginToggle request) =>
         {
             if (!host.Plugins.Any(p => p.Plugin.Info.Id == id))
@@ -152,7 +168,7 @@ public sealed class PluginHost
 
         foreach (var (plugin, enabled) in host.Plugins)
         {
-            if (enabled)
+            if (enabled || plugin.Info.Live)
             {
                 plugin.MapEndpoints(app.MapGroup($"/api/plugins/{plugin.Info.Id}").AddEndpointFilter(ApiEndpoints.MapDomainErrors));
             }

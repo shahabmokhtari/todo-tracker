@@ -77,3 +77,7 @@ To Do has no tags and no *critical* importance: tags stay here, and critical tas
 Choose **Copy for Loop** (the list button in the top bar), pick a group, then choose **Copy checklist** and paste it
 into a Loop page. It becomes a checklist there, and so do Teams, OneNote, GitHub and most markdown editors. Finished
 tasks are left out unless you check **Include finished**.
+
+One task: open it and choose **Copy for Loop** at the top of its details. You get the task with everything in
+it: details, subtasks (with their details and notes), notes, files and the pictures themselves. Rich editors (Loop,
+Teams, OneNote, Word, Outlook) paste it with the pictures; plain-text editors get the markdown checklist.

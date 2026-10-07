@@ -673,6 +673,34 @@ public sealed class SidebarViewModelTests : IDisposable
         Assert.True(_vm.IsCompact);
         Assert.Equal("2", _vm.CompactSummary);
     }
+
+    [Fact]
+    public async Task The_strip_names_the_task_at_hand_the_timed_one_first()
+    {
+        await Seed("Write report", Priority.Critical);
+        var other = await Seed("Call bank");
+        await _vm.RefreshAsync();
+        Assert.Equal("Write report", _vm.ActiveTitle);
+
+        await _store.UpdateAsync(b => b.StartTimer(other.Id, Actor.User, T0));
+        await _vm.RefreshAsync();
+
+        Assert.Equal("Call bank", _vm.ActiveTitle);
+    }
+
+    [Fact]
+    public void Peeking_shows_the_whole_sidebar_while_the_strip_keeps_its_screen_space()
+    {
+        _vm.IsCompact = true;
+        Assert.True(_vm.ShowsStrip);
+
+        _vm.IsPeeking = true;
+        Assert.False(_vm.ShowsStrip);
+        Assert.True(_vm.IsCompact);
+
+        // Expanding for good ends the peek.
+        _vm.IsCompact = false;
+        Assert.False(_vm.IsPeeking);
+        Assert.False(_vm.ShowsStrip);
+    }
 }
-
-

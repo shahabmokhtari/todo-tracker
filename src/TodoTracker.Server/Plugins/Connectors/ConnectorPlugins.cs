@@ -55,7 +55,8 @@ public abstract class ConnectorPlugin : ITodoPlugin
 {
     public abstract PluginInfo Info { get; }
 
-    public string? WebModule => "/js/plugins/connectors.js";
+    // Set up in Settings › Connected apps (always there, even before it's switched on).
+    public string? WebModule => null;
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -71,7 +72,9 @@ public abstract class ConnectorPlugin : ITodoPlugin
 /// <summary>Notion (off by default).</summary>
 public sealed class NotionConnectorPlugin : ConnectorPlugin
 {
-    public override PluginInfo Info { get; } = new("connector-notion", "Notion", "Keeps a group in step with a Notion database, both ways (uses a Notion integration's token).", DefaultEnabled: false);
+    public static PluginInfo Definition { get; } = new("connector-notion", "Notion", "Keeps a group in step with a Notion database, both ways (uses a Notion integration's token).", DefaultEnabled: false, Live: true);
+
+    public override PluginInfo Info => Definition;
 
     protected override void AddKind(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -88,7 +91,9 @@ public sealed class NotionConnectorPlugin : ConnectorPlugin
 /// <summary>Microsoft To Do (off by default).</summary>
 public sealed class MicrosoftToDoConnectorPlugin : ConnectorPlugin
 {
-    public override PluginInfo Info { get; } = new("connector-mstodo", "Microsoft To Do", "Keeps a group in step with a Microsoft To Do list, both ways (signs in to your Microsoft account).", DefaultEnabled: false);
+    public static PluginInfo Definition { get; } = new("connector-mstodo", "Microsoft To Do", "Keeps a group in step with a Microsoft To Do list, both ways (signs in to your Microsoft account).", DefaultEnabled: false, Live: true);
+
+    public override PluginInfo Info => Definition;
 
     protected override void AddKind(IServiceCollection services, TodoTrackerServerOptions options)
     {

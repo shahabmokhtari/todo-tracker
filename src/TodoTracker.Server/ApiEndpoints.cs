@@ -54,7 +54,8 @@ public sealed record MoveRequest(Guid? GroupId = null, Guid? ParentId = null, in
 public sealed record OrderRequest(IReadOnlyList<Guid>? Ids);
 
 /// <summary>Put the task before this sibling (null: last).</summary>
-public sealed record ReorderRequest(Guid? Before = null);
+/// <summary>Put the task before <c>Before</c> (null: last), or right after <c>After</c>: a task next to it.</summary>
+public sealed record ReorderRequest(Guid? Before = null, Guid? After = null);
 
 public sealed record LabelRequest(string? Name, string? Color = null);
 
@@ -67,6 +68,8 @@ public sealed record VaultDto(string Path, IReadOnlyList<VaultProblem> Problems,
 public sealed record FocusRequest(Guid? ItemId = null);
 
 public sealed record SettingsRequest(string? TeamsWebhookUrl);
+
+public sealed record TagDto(string Name, int Count);
 
 public sealed record LoginRequest(string? Token);
 
@@ -296,7 +299,15 @@ internal static class ApiEndpoints
         api.MapPost("/items/{id:guid}/reorder", (Guid id, ReorderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             Mutate(store, time, http, (b, _, _) =>
             {
-                b.Reorder(id, request.Before);
+                if (request.After is { } after)
+                {
+                    b.ReorderAfter(id, after);
+                }
+                else
+                {
+                    b.Reorder(id, request.Before);
+                }
+
                 return b.Get(id);
             }));
 
@@ -406,6 +417,12 @@ internal static class ApiEndpoints
 
         api.MapGet("/settings", (SettingsStore settings) => settings.ToDto());
 
+        api.MapPut("/settings/theme", (ThemeRequest request, SettingsStore settings) =>
+        {
+            settings.SetTheme(request.Theme);
+            return settings.ToDto();
+        });
+
         api.MapPut("/settings", (SettingsRequest request, SettingsStore settings) =>
         {
             settings.SetTeamsWebhook(request.TeamsWebhookUrl);
@@ -464,6 +481,15 @@ internal static class ApiEndpoints
     private static void MapLabels(RouteGroupBuilder api)
     {
         api.MapGet("/labels", (IBoardStore store) => store.ReadAsync(Wire.Labels));
+
+        // The tags in use on open tasks (for the filter), most used first.
+        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(b => b.AllItems()
+            .Where(i => !i.IsDone && !i.IsArchived)
+            .SelectMany(i => i.Tags)
+            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new TagDto(g.First(), g.Count()))
+            .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList()));
 
         api.MapPost("/labels", (LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>

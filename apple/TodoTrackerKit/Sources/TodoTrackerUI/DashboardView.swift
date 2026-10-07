@@ -184,6 +184,7 @@ public struct DashboardView: View {
                 Text(Presentation.summary(model.dashboard)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
+            ThemeMenu()
         }
     }
 

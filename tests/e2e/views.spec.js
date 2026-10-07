@@ -342,3 +342,102 @@ test('Copy for Loop: a group as a checklist to paste into a Loop page', async ({
   await expect(out).toHaveValue(/- \[x\] Book hotel/);
   expect(errors).toEqual([]);
 });
+test('Settings: light or dark for every window, and connected apps switch on at once', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await open(page, request);
+  await page.keyboard.press('Alt+6');
+  await expect(page).toHaveURL(/#\/settings$/);
+  const settings = page.locator('#view-settings');
+
+  await settings.getByRole('button', { name: 'Dark' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await expect.poll(async () => (await (await request.get('/api/settings', { headers: auth })).json()).theme).toBe('dark');
+  // Kept (no flash of the other theme on the next load).
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.locator('#view-settings').getByRole('button', { name: 'Light' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.locator('#view-settings').getByRole('button', { name: 'System' }).click();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', /./);
+
+  // Notion: switched on here, its setup shows right away (no restart).
+  const use = page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' });
+  await use.check();
+  await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toBeVisible();
+  await page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' }).uncheck();
+  await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});test('Tags and labels: several-word tags, and the picker by the search box filters every view', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await add(request, 'Write the deck', { tags: ['deep work'], stage: 'next' });
+  await add(request, 'Order lunch', { stage: 'next' });
+  await open(page, request);
+
+  await page.getByRole('button', { name: 'Filter by tag or label' }).click();
+  const menu = page.getByRole('dialog', { name: 'Tags and labels' });
+  await expect(menu).toContainText('Labels');
+  const deep = menu.getByRole('button', { name: /#deep work/ });
+  await deep.click();
+  await expect(page.locator('#filter')).toHaveValue('#"deep work"');
+  // Shows as on right away, and keeps focus for the next pick; Esc goes back to the button.
+  await expect(deep).toHaveAttribute('aria-pressed', 'true');
+  await expect(deep).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Filter by tag or label' })).toBeFocused();
+
+  // The board follows the filter too.
+  await page.locator('#nav-views').getByRole('link', { name: /Board/ }).click();
+  const next = page.locator('.lane[data-column="next"]');
+  await expect(next.locator('.kcard', { hasText: 'Write the deck' })).toBeVisible();
+  await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toHaveCount(0);
+
+  // Picked again: out of the filter.
+  await page.getByRole('button', { name: 'Filter by tag or label' }).click();
+  await expect(deep).toHaveAttribute('aria-pressed', 'true');
+  await deep.click();
+  await expect(deep).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#filter')).toHaveValue('');
+  await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toBeVisible();
+
+  // The details show the tag as typed, quotes and all.
+  await next.locator('.kcard', { hasText: 'Write the deck' }).getByRole('button', { name: /Open/ }).click();
+  await expect(page.locator('#drawer').getByRole('textbox', { name: 'Tags' })).toHaveValue('#"deep work"');
+  await expect(page.locator('#drawer')).toContainText('Labels are colored categories');
+  expect(errors).toEqual([]);
+});test('Copy for Loop on a task: its details, subtasks, notes and pictures, from its details panel', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const task = await add(request, 'Ship the brochure');
+  await add(request, 'Proof read', { parentId: task.id });
+  await request.post(`/api/items/${task.id}/notes`, { headers: auth, data: { text: 'Printer booked for Friday' } });
+  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: `/?item=${task.id}` } })).json();
+  await page.goto(launch.url);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Ship the brochure');
+
+  // A screenshot pasted into the details.
+  await page.evaluate(() => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    const box = document.querySelector('#drawer textarea[data-field="details"]');
+    box.focus();
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(drawer.locator('.embeds img')).toHaveCount(1);
+  await expect(drawer.locator('#save-state')).toHaveText('Saved');
+
+  await drawer.getByRole('button', { name: 'Copy for Loop' }).click();
+  await expect(page.locator('#toast')).toContainText('with 1 picture');
+  const copied = await page.evaluate(async () => {
+    const [item] = await navigator.clipboard.read();
+    return { types: item.types, html: await (await item.getType('text/html')).text(), text: await (await item.getType('text/plain')).text() };
+  });
+  expect(copied.text).toContain('## Ship the brochure');
+  expect(copied.text).toContain('- [ ] Proof read');
+  expect(copied.text).toMatch(/Printer booked for Friday/);
+  expect(copied.html).toContain('src="data:image/png;base64,');
+
+  expect(errors).toEqual([]);
+});

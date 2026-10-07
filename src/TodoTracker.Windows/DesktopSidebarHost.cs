@@ -109,6 +109,15 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         return new PlacementBounds(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
     }
 
+    /// <summary>Whether the mouse pointer is over the window.</summary>
+    public bool ContainsCursor() =>
+        _handle != IntPtr.Zero && GetCursorPos(out var p) && GetWindowRect(_handle, out var r)
+        && p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom;
+
+    /// <summary>The monitor a rectangle (physical pixels) is mostly on.</summary>
+    public static DisplayMonitor? MonitorOf(PlacementBounds bounds) =>
+        Monitors().MaxBy(m => bounds.IntersectionArea(new PlacementBounds(m.Bounds.X, m.Bounds.Y, m.Bounds.Width, m.Bounds.Height)));
+
     /// <summary>Moves/resizes in physical pixels (correct across monitors with different DPI).</summary>
     public void MoveWindowPixels(PlacementBounds bounds)
     {
@@ -361,6 +370,17 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetWindowRect(IntPtr hWnd, out NativeRect rect);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

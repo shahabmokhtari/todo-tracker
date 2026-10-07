@@ -92,6 +92,28 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
     public string CompactSummary => NowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>Collapsed, the pointer is over the strip: the whole sidebar shows (over other windows) until it leaves.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsStrip))]
+    public partial bool IsPeeking { get; set; }
+
+    /// <summary>The thin strip shows: collapsed and not peeking.</summary>
+    public bool ShowsStrip => IsCompact && !IsPeeking;
+
+    /// <summary>The task at hand, written down the strip: the one being timed, else the one to focus on.</summary>
+    [ObservableProperty]
+    public partial string? ActiveTitle { get; set; }
+
+    partial void OnIsCompactChanged(bool value)
+    {
+        if (!value)
+        {
+            IsPeeking = false;
+        }
+
+        OnPropertyChanged(nameof(ShowsStrip));
+    }
+
     public bool HasFocus => Focus is not null;
 
     partial void OnFocusChanged(CardViewModel? value) => OnPropertyChanged(nameof(HasFocus));
@@ -148,6 +170,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
         Break.Update(snapshot.Pomodoro, now);
         Timer.Update(snapshot.Timer, now);
+        ActiveTitle = snapshot.Timer?.Title ?? Focus?.Title;
     }
 
     [RelayCommand]
@@ -479,6 +502,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>The whole app: in the app window when there is one, else in the browser.</summary>
     [RelayCommand]
     private void OpenDashboard() => OpenApp("/");
+
+    /// <summary>Settings: appearance, connected apps (Notion, To Do), sync and extras.</summary>
+    [RelayCommand]
+    private void OpenSettings() => OpenApp("/#/settings");
 
     private void OpenApp(string path)
     {

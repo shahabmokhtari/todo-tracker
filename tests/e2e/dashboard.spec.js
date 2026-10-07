@@ -327,8 +327,9 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
 test('Plugins: every extra can be switched off (after a restart)', async ({ page, request }) => {
   const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
-  await page.getByRole('button', { name: 'Plugins' }).click();
-  const drawer = page.locator('#drawer');
+  // The extras moved from a Plugins panel into Settings (the side bar's Settings link); same switches, same rule.
+  await page.locator('#settings-link').click();
+  const drawer = page.locator('#view-settings');
   for (const name of ['Ask AI', 'Connect AI apps', 'Focus timer', 'Version history', 'Obsidian', 'Teams reminders']) {
     await expect(drawer.getByRole('checkbox', { name })).toBeChecked();
   }

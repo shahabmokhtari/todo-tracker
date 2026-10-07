@@ -130,18 +130,43 @@ export function fileSize(bytes) {
   return `${Number(value.toFixed(value < 10 ? 1 : 0))} ${units[unit]}`;
 }
 
-/** Tags typed as "#a, b c" → ['a', 'b', 'c'] (case-insensitive duplicates dropped). */
+/**
+ * Tags as typed: separated by spaces or commas, # optional; quotes keep words together (#"deep work"), as in quick
+ * capture and the filter.
+ */
 export function parseTags(text) {
   const seen = new Set();
-  return (text ?? '').split(/[\s,]+/).map((t) => t.replace(/^#+/, '').trim()).filter((t) => {
-    if (!t || seen.has(t.toLowerCase())) return false;
-    seen.add(t.toLowerCase());
-    return true;
-  });
+  const tags = [];
+  for (const m of straightQuotes(text).matchAll(/#?"([^"]*)"|[^\s,]+/g)) {
+    const tag = (m[1] ?? m[0]).replace(/^#+/, '').replace(/\s+/g, ' ').trim();
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    seen.add(tag.toLowerCase());
+    tags.push(tag);
+  }
+
+  return tags;
 }
+
+/** Tags for the tag box: #word, or #"several words". */
+export const formatTags = (tags) => (tags ?? []).map((t) => (/\s/.test(t) ? `#"${t}"` : `#${t}`)).join(' ');
 
 /** Search query for a clicked tag or label chip (same syntax as the server's TaskQuery). */
 export function queryFor({ tag, label }) {
-  if (tag) return `#${tag}`;
+  if (tag) return /\s/.test(tag) ? `#"${tag}"` : `#${tag}`;
   return /\s/.test(label) ? `label:"${label}"` : `label:${label}`;
+}
+
+/** Smart punctuation (iPhone, iPad, Mac) curls quotes as they're typed: “deep work” means "deep work". */
+const straightQuotes = (text) => String(text ?? '').replace(/[\u201C\u201D]/g, '"');
+
+const terms = (query) => straightQuotes(query).match(/[^\s"]*"[^"]*"?|\S+/g) ?? [];
+
+/** True when the filter already has this term (#tag, label:x; case-insensitive). */
+export const hasTerm = (query, term) => terms(query).some((t) => t.toLowerCase() === term.toLowerCase());
+
+/** Adds the term to the filter, or takes it out when it's there (the tag & label picker). */
+export function toggleTerm(query, term) {
+  const list = terms(query);
+  const kept = list.filter((t) => t.toLowerCase() !== term.toLowerCase());
+  return (kept.length === list.length ? [...list, term] : kept).join(' ');
 }

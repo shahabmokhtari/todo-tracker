@@ -22,6 +22,36 @@ public sealed class BoardTimeApiTests : IAsyncLifetime
         (await (await _client.PostAsJsonAsync("/api/items", new { title, parentId = parent })).Json()).Id();
 
     [Fact]
+    public async Task A_task_moves_right_after_a_sibling()
+    {
+        var trip = await Create("Trip");
+        var flights = await Create("Flights", trip);
+        await Create("Hotel", trip);
+        var visa = await Create("Visa", trip);
+
+        await _client.PostJson($"/api/items/{visa}/reorder", new { after = flights });
+
+        var item = await _client.GetJson($"/api/items/{trip}");
+        Assert.Equal(["Flights", "Visa", "Hotel"], item["children"]!.AsArray().Select(c => c!["title"]!.GetValue<string>()));
+    }
+
+    [Fact]
+    public async Task The_tree_can_be_filtered_like_the_dashboard_keeping_parents_for_context()
+    {
+        var launch = await Create("Launch");
+        var copy = (await (await _client.PostAsJsonAsync("/api/items", new { title = "Write copy", parentId = launch, tags = new[] { "deep work" } })).Json()).Id();
+        await Create("Book venue", launch);
+        await Create("Unrelated");
+
+        var tree = (await _client.GetJson("/api/tree?q=%23%22deep%20work%22")).AsArray();
+
+        var root = Assert.Single(tree)!;
+        Assert.Equal("Launch", root["title"]!.GetValue<string>());
+        Assert.Equal([copy], root["children"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()));
+        Assert.Equal(2, (await _client.GetJson("/api/tree?q=launch")).AsArray().Single()!["children"]!.AsArray().Count); // a match shows its subtasks
+    }
+
+    [Fact]
     public async Task Cards_move_along_the_board_and_the_tree_shows_them()
     {
         var id = await Create("Plan trip");

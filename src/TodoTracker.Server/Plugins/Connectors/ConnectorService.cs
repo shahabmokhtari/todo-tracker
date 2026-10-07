@@ -19,7 +19,9 @@ public sealed record ConnectorView(
     int Linked,
     string? ClientId,
     MicrosoftSignInView? SignIn,
-    bool HasToken);
+    bool HasToken,
+    bool On,
+    string PluginId);
 
 public sealed record ConnectorConfigRequest(string? Target, string? TargetName, Guid? GroupId, ConnectorDirection? Direction, bool? Enabled, string? ClientId);
 
@@ -33,15 +35,18 @@ public sealed record ConnectorTokenRequest(string? Token);
 /// of settings and a disconnect never overlap (so a sync can't write back links of a list that was just changed).
 /// Syncs run to the end even if the page that asked closes (the app stopping cancels them).
 /// </summary>
-public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardStore store, TimeProvider time, TodoTrackerServerOptions options, IHostApplicationLifetime lifetime) : IDisposable
+public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardStore store, TimeProvider time, TodoTrackerServerOptions options, IHostApplicationLifetime lifetime, PluginHost plugins) : IDisposable
 {
     private readonly SemaphoreSlim _busy = new(1, 1);
     private readonly IReadOnlyList<IConnectorKind> _kinds = [.. kinds];
 
+    /// <summary>Every connector, switched on or not (Settings offers to switch them on).</summary>
     public IReadOnlyList<ConnectorView> View => [.. _kinds.Select(ViewOf)];
 
     public T Kind<T>()
-        where T : IConnectorKind => _kinds.OfType<T>().FirstOrDefault() ?? throw new KeyNotFoundException("That connector is switched off (Plugins).");
+        where T : IConnectorKind => _kinds.OfType<T>().FirstOrDefault(k => IsOn(k)) ?? throw new KeyNotFoundException("That connector is switched off (Settings › Connected apps).");
+
+    private bool IsOn(IConnectorKind kind) => plugins.IsRunning(kind.PluginId);
 
     public void Dispose() => _busy.Dispose();
 
@@ -123,7 +128,7 @@ public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardSt
     {
         foreach (var kind in _kinds)
         {
-            if (!SafeSettings(kind, out var settings) || !settings.Enabled || SafeMissing(kind) is not null)
+            if (!IsOn(kind) || !SafeSettings(kind, out var settings) || !settings.Enabled || SafeMissing(kind) is not null)
             {
                 continue;
             }
@@ -217,7 +222,7 @@ public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardSt
 
     private static ConnectorTarget Target(IConnectorKind kind) => new(kind.Files.Settings.GroupId!.Value, kind.Files.Settings.Direction);
 
-    private IConnectorKind Get(string id) => _kinds.FirstOrDefault(k => k.Id == id) ?? throw new KeyNotFoundException($"There is no connector \"{id}\" (or it's switched off in Plugins).");
+    private IConnectorKind Get(string id) => _kinds.FirstOrDefault(k => k.Id == id && IsOn(k)) ?? throw new KeyNotFoundException($"There is no connector \"{id}\" (or it's switched off: Settings › Connected apps).");
 
     private IConnectorKind Ready(string id)
     {
@@ -260,7 +265,7 @@ public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardSt
         }
     }
 
-    private static ConnectorView ViewOf(IConnectorKind kind)
+    private ConnectorView ViewOf(IConnectorKind kind)
     {
         var readable = SafeSettings(kind, out var s);
         IReadOnlyList<ConnectorLink> links;
@@ -289,6 +294,8 @@ public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardSt
             links.Count(l => l.State == LinkState.Active),
             s.ClientId,
             (kind as MicrosoftToDoConnector)?.SignIn.View,
-            kind.Files.Secret is not null);
+            kind.Files.Secret is not null,
+            IsOn(kind),
+            kind.PluginId);
     }
 }

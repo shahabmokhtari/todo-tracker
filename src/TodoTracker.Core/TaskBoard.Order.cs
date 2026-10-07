@@ -67,6 +67,26 @@ public sealed partial class TaskBoard
     }
 
     /// <summary>Moves a task among its siblings, before <paramref name="before"/> (or to the end). Its parent stays.</summary>
+    /// <summary>Puts a task right after another one next to it (whatever is between them on screen).</summary>
+    public void ReorderAfter(Guid id, Guid after)
+    {
+        var item = Get(id);
+        var target = Get(after);
+        var siblings = item.Parent?.ChildList ?? RootList;
+        if (after == id)
+        {
+            return;
+        }
+
+        if (!siblings.Contains(target))
+        {
+            throw new ArgumentException($"\"{target.Title}\" isn't next to \"{item.Title}\"; use move to put a task somewhere else.", nameof(after));
+        }
+
+        siblings.Remove(item);
+        siblings.Insert(siblings.IndexOf(target) + 1, item);
+    }
+
     public void Reorder(Guid id, Guid? before)
     {
         var item = Get(id);

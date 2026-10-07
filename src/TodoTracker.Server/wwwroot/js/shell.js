@@ -11,6 +11,8 @@ export const VIEWS = [
   { id: 'tasks', name: 'Tasks', icon: 'tree', key: '3' },
   { id: 'done', name: 'Done', icon: 'archive', key: '4' },
   { id: 'reports', name: 'Reports', icon: 'pie', key: '5' },
+  // Not in the view lists: the side bar's Settings button and Alt+6 lead to it.
+  { id: 'settings', name: 'Settings', icon: 'settings', key: '6', nav: false },
 ];
 
 /** The view and task a location hash names: #/board, #/task/<id> (a task, full size, over the last view). */
@@ -34,10 +36,12 @@ export function createShell(ctx) {
     class: cls, href: `#/${v.id}`, dataset: { view: v.id }, title: `${v.name} (Alt+${v.key})`,
     onclick: () => closeNav(),
   }, h('span', { class: 'nav-icon' }, icon(v.icon, { size: 18 })), h('span', { class: 'nav-label' }, v.name), h('span', { class: 'nav-count', hidden: true }));
-  $('#nav-views').replaceChildren(...VIEWS.map((v) => link(v, 'nav-link')));
-  $('#bottom-nav').replaceChildren(...VIEWS.map((v) => link(v, 'bottom-link')));
+  $('#nav-views').replaceChildren(...VIEWS.filter((v) => v.nav !== false).map((v) => link(v, 'nav-link')));
+  $('#bottom-nav').replaceChildren(...VIEWS.filter((v) => v.nav !== false).map((v) => link(v, 'bottom-link')));
   $('#palette-icon').append(icon('search', { size: 18 }));
-  $('#plugins-btn').replaceChildren(h('span', { class: 'nav-icon' }, icon('layers', { size: 18 })), h('span', { class: 'nav-label' }, 'Plugins'));
+  const settingsLink = link(VIEWS.find((v) => v.id === 'settings'), 'nav-link');
+  settingsLink.id = 'settings-link';
+  $('#plugins-btn').replaceWith(settingsLink);
   $('#nav-toggle').append(icon('menu'));
 
   const sidenav = $('#sidenav');
@@ -88,6 +92,7 @@ export function createShell(ctx) {
 
   function show(id) {
     const changed = current !== id;
+    if (changed && current) ctx.views[current]?.hide?.();
     current = id;
     localStorage.setItem('tt.view', id);
     const def = VIEWS.find((v) => v.id === id);
@@ -314,7 +319,7 @@ export function createShell(ctx) {
       return;
     }
 
-    if (e.altKey && !e.ctrlKey && /^[1-5]$/.test(e.key)) {
+    if (e.altKey && !e.ctrlKey && /^[1-6]$/.test(e.key)) {
       e.preventDefault();
       location.hash = `#/${VIEWS[Number(e.key) - 1].id}`;
     }

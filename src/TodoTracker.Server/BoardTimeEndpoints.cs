@@ -27,10 +27,31 @@ internal static class BoardTimeEndpoints
             ? stage
             : throw new ArgumentException($"\"{value}\" isn't a column; use inbox, next or doing (finish a task to move it to done).", nameof(value));
 
+    /// <summary>The tasks a filter keeps (matches, their parents and subtasks); null when there's no filter.</summary>
+    internal static HashSet<Guid>? Filter(TaskBoard board, string? q, bool archived)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return null;
+        }
+
+        // Archived tasks are only matched when asked for; the archive list asks.
+        var query = TaskQuery.Parse(archived ? $"is:archived {q}" : q);
+        var keep = new HashSet<Guid>();
+        foreach (var match in query.Apply(board))
+        {
+            keep.UnionWith(match.SelfAndDescendants().Select(i => i.Id));
+            keep.UnionWith(match.Ancestors().Select(i => i.Id));
+        }
+
+        return keep;
+    }
+
     public static void Map(RouteGroupBuilder api)
     {
         // The board and the outline: top-level tasks of a group (or all), with their subtasks; archived ones on request.
-        api.MapGet("/tree", (Guid? group, bool? archived, IBoardStore store, TimeProvider time) =>
+        // q: the filter (#tag, label:x, words…): matching tasks, with their parents (for context) and subtasks.
+        api.MapGet("/tree", (Guid? group, bool? archived, string? q, IBoardStore store, TimeProvider time) =>
             store.ReadAsync(b =>
             {
                 if (group is { } g)
@@ -40,9 +61,10 @@ internal static class BoardTimeEndpoints
 
                 var now = time.GetUtcNow();
                 var timing = b.RunningTimer(now)?.Item.Id;
+                var keep = Filter(b, q, archived == true);
                 return b.Items
-                    .Where(r => (group is null || r.GroupId == group) && (r.ArchivedAt is not null) == (archived == true))
-                    .Select(r => Wire.TreeNode(r, now, b, timing))
+                    .Where(r => (group is null || r.GroupId == group) && (r.ArchivedAt is not null) == (archived == true) && (keep is null || keep.Contains(r.Id)))
+                    .Select(r => Wire.TreeNode(r, now, b, timing, keep))
                     .ToList();
             }));
 

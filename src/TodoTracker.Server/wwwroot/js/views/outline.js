@@ -98,9 +98,8 @@ export function createOutlineView(ctx) {
 
     // In place: after the task it was typed under (or first inside its parent).
     const siblings = parentId ? map.get(parentId).node.children : roots;
-    const after = at.afterId ? siblings.findIndex((n) => n.id === at.afterId) : -1;
-    const before = siblings[after + 1]?.id ?? null;
-    if (before) await ctx.api(`/api/items/${created.id}/reorder`, { method: 'POST', body: { before } }).catch(() => {});
+    const place = at.afterId ? { after: at.afterId } : siblings[0] ? { before: siblings[0].id } : null;
+    if (place) await ctx.api(`/api/items/${created.id}/reorder`, { method: 'POST', body: place }).catch(() => {});
     if (parentId) expanded.add(parentId);
     saveExpanded();
     return created;

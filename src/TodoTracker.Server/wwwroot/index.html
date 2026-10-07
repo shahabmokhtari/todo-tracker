@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#6366f1">
   <title>Todo Tracker</title>
+  <script src="js/theme.js"></script>
   <link rel="stylesheet" href="css/app.css">
   <link rel="stylesheet" href="css/views.css">
   <link rel="icon" href="img/logo.svg" type="image/svg+xml">
@@ -38,6 +39,8 @@
           <span class="search-icon" id="search-icon" aria-hidden="true"></span>
           <input id="filter" type="search" autocomplete="off" spellcheck="false" placeholder="Filter  #tag  label:x" aria-label="Filter tasks (press /)" title="Words, #tag, label:name, group:name, is:done — press / to focus">
           <button id="filter-clear" class="icon-btn small" type="button" aria-label="Clear filter" hidden>×</button>
+          <button id="filter-pick" class="icon-btn small filter-pick" type="button" aria-label="Filter by tag or label" title="Filter by tag or label" aria-expanded="false" aria-controls="filter-menu"></button>
+          <div id="filter-menu" class="menu filter-menu" role="dialog" aria-label="Tags and labels" hidden></div>
         </div>
         <div id="timer" class="timer-chip" hidden></div>
         <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
@@ -110,6 +113,7 @@
         <section id="view-tasks" class="view" hidden aria-label="All tasks"></section>
         <section id="view-done" class="view" hidden aria-label="Done and archive"></section>
         <section id="view-reports" class="view" hidden aria-label="Reports"></section>
+      <section id="view-settings" class="view" hidden aria-label="Settings"></section>
       </main>
 
       <nav class="bottom-nav" id="bottom-nav" aria-label="Views"></nav>

@@ -17,7 +17,7 @@ applies after a restart; the sidebar offers to restart right away.
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
 | **Notion** | Keep a group in step with a Notion database, both ways ([`connectors.md`](connectors.md)) | No |
 | **Microsoft To Do** | Keep a group in step with a To Do list, both ways ([`connectors.md`](connectors.md)) | No |
-| **Copy for Loop** | Copy a group's tasks as a checklist to paste into Microsoft Loop | Yes |
+| **Copy for Loop** | Copy a group's tasks as a checklist, or one task with its notes and pictures, to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
 
 The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in
@@ -88,5 +88,5 @@ public sealed class MyPlugin : ITodoPlugin
 * Endpoints live under `/api/plugins/{id}` and share the API's security (token or session, loopback only). They are
   not part of the OpenAPI description for AI tools.
 * The web module exports `activate(host)`; `host` offers `api`, `post`, `put`, `del`, `h`, `icon`, `toast`,
-  `openPanel`, `closePanel`, `refresh`, and `addHeaderButton`. See `wwwroot/js/plugins/agent-chat.js`.
+  `openPanel`, `closePanel`, `refresh`, `addHeaderButton`, and `addTaskAction` (a button in every task's details). See `wwwroot/js/plugins/agent-chat.js`.
 * Plugins are built in and reviewed with the app. Code from elsewhere is never loaded.

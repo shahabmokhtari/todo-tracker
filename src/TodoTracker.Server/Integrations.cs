@@ -4,9 +4,11 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server;
 
-public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null);
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null);
 
-public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost);
+public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);
+
+public sealed record ThemeRequest(string? Theme);
 
 public sealed record VaultSettingRequest(string? Path);
 
@@ -53,6 +55,32 @@ public sealed class SettingsStore
         }
     }
 
+    /// <summary>Light, dark, or the system's (every window follows it: the app, the browser and the sidebar).</summary>
+    public static readonly IReadOnlyList<string> Themes = ["system", "light", "dark"];
+
+    /// <summary>Raised with the new theme after it changes (the desktop sidebar follows it).</summary>
+    public event EventHandler<string>? ThemeChanged;
+
+    public ServerSettings SetTheme(string? theme)
+    {
+        var clean = theme?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!Themes.Contains(clean))
+        {
+            throw new ArgumentException("The theme is system, light or dark.", nameof(theme));
+        }
+
+        ServerSettings saved;
+        lock (_lock)
+        {
+            _current = _current with { Theme = clean };
+            Save();
+            saved = _current;
+        }
+
+        ThemeChanged?.Invoke(this, clean);
+        return saved;
+    }
+
     /// <summary>Remembers the vault folder chosen in the app (used from the next start).</summary>
     public ServerSettings SetVaultPath(string? path)
     {
@@ -83,7 +111,7 @@ public sealed class SettingsStore
     public SettingsDto ToDto()
     {
         var url = Current.TeamsWebhookUrl;
-        return new SettingsDto(url is not null, url is null ? null : new Uri(url).Host);
+        return new SettingsDto(url is not null, url is null ? null : new Uri(url).Host, Current.Theme ?? "system");
     }
 }
 

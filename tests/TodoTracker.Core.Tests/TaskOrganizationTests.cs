@@ -21,7 +21,8 @@ public class TaskOrganizationTests
     }
 
     [Theory]
-    [InlineData("has space")]
+    // Spaces became fine (multi-word tags, requested by the user); a comma still isn't.
+    [InlineData("has,comma")]
     [InlineData("2026")]
     [InlineData("a,b")]
     [InlineData("#")]

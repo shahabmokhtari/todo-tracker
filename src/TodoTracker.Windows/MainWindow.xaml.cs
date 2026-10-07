@@ -70,6 +70,7 @@ public partial class MainWindow : Window
             RememberFloatingBounds();
         };
         SourceInitialized += OnSourceInitialized;
+        InitPeek();
         LocationChanged += (_, _) => QueueSave();
         SizeChanged += (_, _) => QueueSave();
         Closing += OnClosing;
@@ -84,6 +85,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            _peekTimer.Stop();
             _hotKey?.Dispose();
             _appBar.Dispose();
             _vm.PropertyChanged -= OnViewModelPropertyChanged;
@@ -312,6 +314,12 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName == nameof(SidebarViewModel.IsCompact))
         {
+            if (!_vm.IsCompact)
+            {
+                // Kept open while peeking ("Keep the sidebar open").
+                RestoreAfterPeek();
+            }
+
             if (Placement.Mode == PlacementMode.Docked)
             {
                 _appBar.WidthInDips = _vm.IsCompact ? CompactWidth : Placement.DockWidth;
@@ -470,10 +478,30 @@ public partial class MainWindow : Window
         menu.IsOpen = true;
     }
 
+    /// <summary>Light, dark or the system's: the same choice as Settings › Appearance (every window follows it).</summary>
+    private static MenuItem ThemeMenu(SettingsStore settings)
+    {
+        var current = settings.Current.Theme ?? "system";
+        var menu = new MenuItem { Header = "Theme" };
+        foreach (var (value, label) in new[] { ("system", "Same as Windows"), ("light", "Light"), ("dark", "Dark") })
+        {
+            var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = current == value };
+            item.Click += (_, _) => settings.SetTheme(value);
+            menu.Items.Add(item);
+        }
+
+        return menu;
+    }
+
     private void OnMenuClick(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
         menu.Items.Add(new MenuItem { Header = "Open the app", Command = _vm.OpenDashboardCommand, ToolTip = "Board, outline, reports and more, in their own window" });
+        menu.Items.Add(new MenuItem { Header = "Settings…", Command = _vm.OpenSettingsCommand, ToolTip = "Appearance, connected apps (Notion, Microsoft To Do), sync and extras" });
+        if (_settings is not null)
+        {
+            menu.Items.Add(ThemeMenu(_settings));
+        }
         if (AppHost is { } appHost)
         {
             var inBrowser = new MenuItem { Header = "Open in the browser" };

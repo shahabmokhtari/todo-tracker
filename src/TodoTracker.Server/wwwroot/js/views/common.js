@@ -41,10 +41,11 @@ export async function send(ctx, requests, message, focusId = null) {
   }
 }
 
-/** The tree of the group on screen (all groups when none is picked). */
+/** The tree of the group on screen (all groups when none is picked), narrowed by the filter. */
 export const treeUrl = (ctx, extra = '') => {
   const params = new URLSearchParams(extra);
   if (ctx.state.group) params.set('group', ctx.state.group);
+  if (ctx.state.query) params.set('q', ctx.state.query);
   const query = params.toString();
   return `/api/tree${query ? `?${query}` : ''}`;
 };

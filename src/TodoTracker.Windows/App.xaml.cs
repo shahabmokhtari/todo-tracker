@@ -152,6 +152,14 @@ public partial class App : Application
         }
 
         var services = _server.Services;
+        // One theme for every window (Settings › Appearance in the app, or the sidebar's menu); --theme wins for this run.
+        var settings = services.GetRequiredService<SettingsStore>();
+        if (args.Theme is null)
+        {
+            ApplyTheme(settings.Current.Theme);
+            settings.ThemeChanged += (_, theme) => Dispatcher.BeginInvoke(() => ApplyTheme(theme));
+        }
+
         var connection = TodoTrackerHost.GetConnection(services);
         var mcpConfig = JsonSerializer.Serialize(connection.McpConfig, Indented);
         // The whole app in its own window (automated runs keep using the browser path and never save anything).

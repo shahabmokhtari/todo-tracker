@@ -1,5 +1,5 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, queryFor } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
@@ -9,6 +9,8 @@ import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
 import { createReportsView } from './views/reports.js';
+import { createSettingsView } from './views/settings.js';
+import { followTheme as follow } from './themes.js';
 import { duration, toLocalInput as localInput } from './timefmt.js';
 
 /** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
@@ -243,7 +245,57 @@ function renderFilter() {
 function setQuery(q) {
   state.query = (q ?? '').trim();
   renderFilter();
-  refresh();
+  // Every view follows the filter: Today, Board, Tasks and Done.
+  refreshAll();
+}
+
+/**
+ * The tag & label picker next to the filter: a small panel of toggles (click one to add it to the filter, again to
+ * take it out). Esc closes it and goes back to its button.
+ */
+async function toggleFilterMenu() {
+  const menu = $('#filter-menu');
+  if (!menu.hidden) return closeFilterMenu();
+  closeMenus();
+  let tags = [];
+  try { tags = await api('/api/tags'); } catch { /* labels alone still help */ }
+  renderFilterMenu(tags);
+  menu.hidden = false;
+  $('#filter-pick').setAttribute('aria-expanded', 'true');
+  menu.querySelector('button')?.focus();
+}
+
+function closeFilterMenu({ focusButton = false } = {}) {
+  $('#filter-menu').hidden = true;
+  $('#filter-pick').setAttribute('aria-expanded', 'false');
+  if (focusButton) $('#filter-pick').focus();
+}
+
+function renderFilterMenu(tags) {
+  const menu = $('#filter-menu');
+  const labels = state.dashboard?.labels ?? [];
+  // Redrawn after each click, so what's on shows at once (and focus stays on the same toggle).
+  const pick = (term) => {
+    setQuery(toggleTerm(state.query, term));
+    renderFilterMenu(tags);
+    menu.querySelector(`button[data-term="${CSS.escape(term)}"]`)?.focus();
+  };
+  const entry = (term, content, title) => {
+    const on = hasTerm(state.query, term);
+    return h('button', { type: 'button', 'aria-pressed': String(on), class: on ? 'on' : '', title, dataset: { term }, onclick: () => pick(term) },
+      h('span', { class: 'check', 'aria-hidden': 'true' }, on ? '✓' : ''), ...content);
+  };
+  const swatch = (color) => {
+    const s = h('span', { class: 'swatch', 'aria-hidden': 'true' });
+    s.style.setProperty('--label', color);
+    return s;
+  };
+  menu.replaceChildren(
+    h('h2', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
+    ...(labels.length ? labels.map((l) => entry(queryFor({ label: l.name }), [swatch(l.color), l.name], `Show tasks labeled "${l.name}"`)) : [h('p', { class: 'menu-empty' }, 'No labels yet: add them in a task\'s details.')]),
+    h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type: #word or #"two words"')),
+    ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: type #word in a task.')]),
+    state.query ? h('button', { type: 'button', class: 'menu-clear', onclick: () => { setQuery(''); renderFilterMenu(tags); } }, 'Clear the filter') : null);
 }
 
 function renderVault() {
@@ -312,7 +364,7 @@ function renderFocus(d) {
     h('div', { class: 'focus-top' },
       h('span', { class: 'eyebrow' }, icon(f.needsAttention ? 'clock' : 'target', { size: 14 }), f.needsAttention ? 'Reminder' : 'Do this now'),
       h('span', { class: 'prio-pill' }, meta.label)),
-    h('button', { class: 'focus-title', onclick: () => openDrawer(f.id) }, f.title),
+    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, f.title),
     sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
     f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
     f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
@@ -500,7 +552,7 @@ function card(c, { waiting = false, orderable = false } = {}) {
   const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
-      h('button', { class: 'title link', onclick: () => openDrawer(c.id) }, c.title),
+      h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, c.title),
       h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(chip), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
@@ -561,6 +613,8 @@ function actions(c, { waiting = false, big = false } = {}) {
       ? actionButton({ name: 'Stop timer', iconName: 'stop', big, tone: 'on', title: 'Stop timing this task', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') })
       : actionButton({ name: 'Timer', iconName: 'timer', big, title: 'Time this task (stops any other timer)', onclick: () => act(post('/api/timer/start', { itemId: c.id }), 'Timer started') }));
   }
+  // Said out loud: the title opens it too, but nothing else told you so.
+  bar.append(actionButton({ name: big ? 'Details' : 'Open', iconName: 'expand', big, title: 'Open details: subtasks, notes, time, files', onclick: () => openDrawer(c.id) }));
   return h('div', { class: 'action-wrap' }, bar, noteBox);
 }
 
@@ -577,6 +631,7 @@ function snoozeButton(c, big) {
 
 function closeMenus() {
   document.querySelectorAll('.menu').forEach((m) => (m.hidden = true));
+  $('#filter-pick')?.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', closeMenus);
 
@@ -771,7 +826,7 @@ async function openDrawer(id, { full = null } = {}) {
   details.addEventListener('input', showDetailImages);
   const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
   const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
-  const tags = h('input', { value: item.tags.map((t) => `#${t}`).join(' '), placeholder: '#tag #another', 'aria-label': 'Tags', dataset: { field: 'tags' } });
+  const tags = h('input', { value: formatTags(item.tags), placeholder: '#tag  #"two words"', 'aria-label': 'Tags', dataset: { field: 'tags' } });
   const labels = new Set(item.labels.map((l) => l.name));
 
   const fieldGroups = [['title'], ['details'], ['priority'], ['deadline', 'clearDeadline'], ['sequential'], ['stepDelayMinutes', 'clearStepDelay'], ['tags'], ['labels']];
@@ -864,6 +919,7 @@ async function openDrawer(id, { full = null } = {}) {
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
       h('button', {
         class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),
         onclick: () => setDrawerFull(!showFull, id),
@@ -874,6 +930,7 @@ async function openDrawer(id, { full = null } = {}) {
     h('div', { class: 'drawer-main' },
     h('div', { class: 'chips-row' }, labelPicker),
     field('Tags', tags),
+    h('p', { class: 'hint' }, 'Labels are colored categories you pick from a list (Urgent, Waiting…). Tags are free words you type, for anything else. Both filter: click one, or use the tag button by the search box.'),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
     detailImages,
@@ -998,6 +1055,10 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
   return true;
 }
 
+/** Buttons plugins add to every task's details (Copy for Loop…): onClick gets the task's id. */
+const taskActions = [];
+const taskActionButton = (a, id) => h('button', { class: 'icon-btn', type: 'button', 'aria-label': a.label, title: a.title ?? a.label, onclick: () => a.onClick(id) }, icon(a.iconName));
+
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
 const pluginHost = {
   api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
@@ -1009,6 +1070,12 @@ const pluginHost = {
     const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
     $('#plugin-buttons').append(button);
     return button;
+  },
+  addTaskAction(action) {
+    taskActions.push(action);
+    // A task opened from a link shows before the plugins load: it gets the button too.
+    const id = $('#drawer').dataset.itemId;
+    if (id) $('#drawer .task-actions')?.append(taskActionButton(action, id));
   },
 };
 
@@ -1038,31 +1105,9 @@ async function loadPlugins() {
 // ---------- plugins panel ----------
 
 /** Every optional feature is a plugin: switch them on or off here (applies after a restart). */
-async function openPlugins() {
-  let plugins;
-  try {
-    plugins = await api('/api/plugins');
-  } catch (err) {
-    return toast(err.message, 'error');
-  }
-  const note = h('p', { class: 'muted small', hidden: true }, 'Restart Todo Tracker to apply the change.');
-  const row = (p) => {
-    const toggle = h('input', { type: 'checkbox', checked: p.enabled, 'aria-label': p.name, onchange: async () => {
-      try {
-        const result = await api(`/api/plugins/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: toggle.checked } });
-        note.hidden = !result.restartRequired && note.hidden;
-        if (result.restartRequired) note.hidden = false;
-      } catch (err) {
-        toggle.checked = !toggle.checked;
-        toast(err.message, 'error');
-      }
-    } });
-    return h('label', { class: 'plugin-row' }, toggle, h('span', null, h('strong', null, p.name), h('span', { class: 'muted small' }, p.description)));
-  };
-  openPanel('Plugins', h('div', { class: 'plugins' },
-    h('p', { class: 'muted' }, 'Every extra is a plugin. Turn off what you don’t use to keep Todo Tracker calm.'),
-    ...plugins.map(row),
-    note), { iconName: 'layers' });
+/** The extras are in Settings (with appearance and connected apps). */
+function openPlugins() {
+  location.hash = '#/settings/plugins';
 }
 
 function subtaskTree(children, parentId) {
@@ -1290,8 +1335,11 @@ let filterTimer;
 $('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(() => setQuery($('#filter').value), 250); });
 $('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
 $('#filter-clear').addEventListener('click', () => setQuery(''));
+$('#filter-pick').append(icon('tag', { size: 15 }));
+  $('#filter-pick').addEventListener('click', (e) => { e.stopPropagation(); toggleFilterMenu(); });
+$('#filter-menu').addEventListener('click', (e) => e.stopPropagation());
+$('#filter-menu').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFilterMenu({ focusButton: true }); } });
 $('#search-icon').append(icon('search', { size: 16 }));
-$('#plugins-btn').addEventListener('click', openPlugins);
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
 const flushAll = () => {
@@ -1323,7 +1371,8 @@ const ctx = {
   views: {},
 };
 const shell = createShell(ctx);
-ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx) };
+ctx.pluginHost = pluginHost;
+ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), settings: createSettingsView(ctx) };
 state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';
 
 /** A view's own background refresh waits while something in it is being typed in or dragged. */
@@ -1335,8 +1384,15 @@ function refreshViewQuietly() {
 }
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
-setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } }, 15000);
+/** The shared theme, changed elsewhere (the sidebar's menu, another window). */
+const followTheme = () => follow(() => api('/api/settings').then((s) => s.theme)).catch(() => {});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') followTheme(); });
+// Coming back to this window (from the sidebar, where the theme may have just changed).
+window.addEventListener('focus', followTheme);
+setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); followTheme(); } }, 15000);
 refresh().then(() => {
+  // The theme every window shares (js/theme.js already applied the one remembered here).
+  followTheme();
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   loadPlugins();
   const params = new URLSearchParams(location.search);
