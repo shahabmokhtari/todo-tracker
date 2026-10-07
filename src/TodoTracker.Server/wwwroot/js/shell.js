@@ -138,8 +138,10 @@ export function createShell(ctx) {
   }
 
   function renderBreak(p) {
-    // The focus timer is a plugin: switched off, there are no breaks either.
-    const s = ctx.pluginOn('focus-timer') ? breakState(p, Date.now(), dismissedBreak) : { show: false };
+    // The focus timer is a plugin: switched off, there are no breaks either. In the Windows app's window the app
+    // itself shows the break on every screen.
+    const native = !!window.chrome?.webview;
+    const s = ctx.pluginOn('focus-timer') && !native ? breakState(p, Date.now(), dismissedBreak) : { show: false };
     if (!s.show) {
       if (shown) {
         screen.hidden = true;
