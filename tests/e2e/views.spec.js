@@ -330,3 +330,15 @@ test('Desktop app window: #/ask opens the chat over the view, and the desktop br
   await request.post('/api/pomodoro/reset', { headers: auth });
   expect(errors).toEqual([]);
 });
+test('Copy for Loop: a group as a checklist to paste into a Loop page', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await open(page, request);
+  await page.getByRole('button', { name: 'Copy for Loop' }).click();
+  const out = page.getByRole('textbox', { name: 'Checklist to paste' });
+  await expect(out).toHaveValue(new RegExp(`^## ${group.name}\\n`));
+  await expect(out).toHaveValue(/- \[ \] Plan the trip/);
+  await expect(out).not.toHaveValue(/Book hotel/);
+  await page.getByRole('checkbox', { name: 'Include finished' }).check();
+  await expect(out).toHaveValue(/- \[x\] Book hotel/);
+  expect(errors).toEqual([]);
+});
