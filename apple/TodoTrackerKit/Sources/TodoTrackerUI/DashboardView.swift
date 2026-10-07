@@ -145,6 +145,13 @@ public struct DashboardView: View {
         .fullScreenCover(isPresented: Binding(get: { model.breakPrompt != nil }, set: { if !$0 { model.takeBreak() } })) {
             BreakView(model: model)
         }
+        // Only one screen can be on top: an open task or prompt makes way for the break.
+        .onChange(of: model.breakPrompt != nil) { _, showing in
+            if showing {
+                detailId = nil
+                addingGroup = false
+            }
+        }
         #endif
         .alert("New group", isPresented: $addingGroup) {
             TextField("Name", text: $newGroupName)
