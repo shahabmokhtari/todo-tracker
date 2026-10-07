@@ -390,6 +390,8 @@ public sealed partial class TaskBoard
 
     public void SkipFocus(DateTimeOffset now)
     {
+        // A session that has already run out ends on time first, so Skip skips the break that followed it.
+        TickPomodoro(now);
         if (Pomodoro.Phase == PomodoroPhase.Focus)
         {
             StopFocusTimer(now);

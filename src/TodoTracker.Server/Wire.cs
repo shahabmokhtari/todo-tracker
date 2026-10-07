@@ -148,7 +148,8 @@ public sealed record PomodoroDto(
     int CompletedFocusCount,
     int FocusMinutes,
     int ShortBreakMinutes,
-    int LongBreakMinutes);
+    int LongBreakMinutes,
+    int FocusesBeforeLongBreak);
 
 public sealed record DashboardDto(
     DateTimeOffset ServerTime,
@@ -390,6 +391,7 @@ public static class Wire
             p.CompletedFocusCount,
             p.Settings.FocusMinutes,
             p.Settings.ShortBreakMinutes,
-            p.Settings.LongBreakMinutes);
+            p.Settings.LongBreakMinutes,
+            p.Settings.FocusesBeforeLongBreak);
     }
 }

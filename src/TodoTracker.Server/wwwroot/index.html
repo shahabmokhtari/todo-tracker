@@ -2,96 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#6366f1">
   <title>Todo Tracker</title>
   <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/views.css">
   <link rel="icon" href="img/logo.svg" type="image/svg+xml">
 </head>
 <body>
   <div class="backdrop" aria-hidden="true"></div>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Todo Tracker home">
-      <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
-      <span class="brand-name">Todo Tracker</span>
-    </a>
-    <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups"></nav>
-    <div class="search" role="search">
-      <span class="search-icon" id="search-icon" aria-hidden="true"></span>
-      <input id="filter" type="search" autocomplete="off" spellcheck="false" placeholder="Filter  #tag  label:x" aria-label="Filter tasks (press /)" title="Words, #tag, label:name, group:name, is:done — press / to focus">
-      <button id="filter-clear" class="icon-btn small" type="button" aria-label="Clear filter" hidden>×</button>
-    </div>
-    <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
-    <div id="plugin-buttons" class="plugin-buttons"></div>
-    <button id="plugins-btn" class="icon-btn" type="button" aria-label="Plugins" title="Plugins: switch features on or off"></button>
-  </header>
+  <a class="skip-link" href="#main">Skip to content</a>
 
-  <main class="layout">
-    <section id="login" class="panel login" hidden>
-      <img class="login-logo" src="img/logo.svg" alt="" width="56" height="56">
-      <h1>Connect to Todo Tracker</h1>
-      <p class="muted">Open this page from the sidebar (<em>Open dashboard</em>) or paste the token from <code>api-token</code> in your data folder.</p>
-      <form id="login-form" class="row">
-        <input id="login-token" type="password" autocomplete="off" placeholder="API token" aria-label="API token" required>
-        <button class="btn primary" type="submit">Connect</button>
-      </form>
-      <p id="login-error" class="error" role="alert"></p>
-    </section>
-
-    <div id="board" hidden>
-      <div class="hello">
-        <h1 id="greeting">Hello</h1>
-        <p id="summary" class="muted"></p>
+  <div class="app" id="app">
+    <aside class="sidenav" id="sidenav" aria-label="Navigation">
+      <a class="brand" href="#/today" aria-label="Todo Tracker home">
+        <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
+        <span class="brand-name">Todo Tracker</span>
+      </a>
+      <nav class="nav-views" id="nav-views" aria-label="Views"></nav>
+      <div class="nav-heading">Groups</div>
+      <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups" aria-orientation="vertical"></nav>
+      <div class="nav-foot">
+        <button id="palette-btn" class="nav-link" type="button" title="Find anything (Ctrl+K)"><span class="nav-icon" id="palette-icon"></span><span class="nav-label">Search</span><kbd>Ctrl K</kbd></button>
+        <button id="plugins-btn" class="nav-link" type="button" aria-label="Plugins" title="Plugins: switch features on or off"></button>
       </div>
+    </aside>
+    <div class="nav-scrim" id="nav-scrim" hidden></div>
 
-      <form id="capture" class="capture" autocomplete="off">
-        <span class="capture-icon" id="capture-icon"></span>
-        <input id="capture-input" maxlength="300" aria-label="Quick add task" placeholder="What's on your mind?">
-        <kbd class="capture-kbd" title="Press N anywhere to add">N</kbd>
-        <button class="btn primary" type="submit">Add</button>
-      </form>
-      <div class="hints" id="hints" aria-hidden="true">
-        <span class="hint"><code>!!</code> critical</span>
-        <span class="hint"><code>!</code> high</span>
-        <span class="hint"><code>@2h</code> later</span>
-        <span class="hint"><code>@tomorrow</code> 9:00</span>
-        <span class="hint"><code>due:3d</code> deadline</span>
-      </div>
-
-      <div id="problems" class="notice warn" role="status" hidden></div>
-
-      <section id="focus" class="focus" aria-label="Do this now"></section>
-
-      <div class="columns">
-        <div class="column">
-          <details id="sec-now" class="panel section" open>
-            <summary><span class="section-title">Do now</span><span class="count"></span></summary>
-            <ul class="list"></ul>
-          </details>
-          <details id="sec-waiting" class="panel section">
-            <summary><span class="section-title">Waiting</span><span class="count"></span></summary>
-            <ul class="list"></ul>
-          </details>
+    <div class="main-col">
+      <header class="topbar">
+        <button id="nav-toggle" class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-controls="sidenav" aria-expanded="false"></button>
+        <h1 class="view-title" id="view-title">Today</h1>
+        <div class="search" role="search">
+          <span class="search-icon" id="search-icon" aria-hidden="true"></span>
+          <input id="filter" type="search" autocomplete="off" spellcheck="false" placeholder="Filter  #tag  label:x" aria-label="Filter tasks (press /)" title="Words, #tag, label:name, group:name, is:done — press / to focus">
+          <button id="filter-clear" class="icon-btn small" type="button" aria-label="Clear filter" hidden>×</button>
         </div>
-        <div class="column">
-          <details id="sec-overview" class="panel section" open>
-            <summary><span class="section-title">Workstreams</span><span class="count"></span></summary>
-            <ul class="list"></ul>
-          </details>
-          <details id="sec-notes" class="panel section">
-            <summary><span class="section-title">Recent notes</span><span class="count"></span></summary>
-            <ul class="list"></ul>
-            <p class="more"><a href="report.html">Full timeline →</a></p>
-          </details>
+        <div id="timer" class="timer-chip" aria-live="polite" hidden></div>
+        <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
+        <div id="plugin-buttons" class="plugin-buttons"></div>
+      </header>
+
+      <main class="layout" id="main" tabindex="-1">
+        <section id="login" class="panel login" hidden>
+          <img class="login-logo" src="img/logo.svg" alt="" width="56" height="56">
+          <h1>Connect to Todo Tracker</h1>
+          <p class="muted">Open this page from the sidebar (<em>Open dashboard</em>) or paste the token from <code>api-token</code> in your data folder.</p>
+          <form id="login-form" class="row">
+            <input id="login-token" type="password" autocomplete="off" placeholder="API token" aria-label="API token" required>
+            <button class="btn primary" type="submit">Connect</button>
+          </form>
+          <p id="login-error" class="error" role="alert"></p>
+        </section>
+
+        <div id="board" class="view" hidden>
+          <div class="hello">
+            <h2 id="greeting">Hello</h2>
+            <p id="summary" class="muted"></p>
+          </div>
+
+          <form id="capture" class="capture" autocomplete="off">
+            <span class="capture-icon" id="capture-icon"></span>
+            <input id="capture-input" maxlength="300" aria-label="Quick add task" placeholder="What's on your mind?">
+            <kbd class="capture-kbd" title="Press N anywhere to add">N</kbd>
+            <button class="btn primary" type="submit">Add</button>
+          </form>
+          <div class="hints" id="hints" aria-hidden="true">
+            <span class="hint"><code>!!</code> critical</span>
+            <span class="hint"><code>!</code> high</span>
+            <span class="hint"><code>@2h</code> later</span>
+            <span class="hint"><code>@tomorrow</code> 9:00</span>
+            <span class="hint"><code>due:3d</code> deadline</span>
+          </div>
+
+          <div id="problems" class="notice warn" role="status" hidden></div>
+
+          <section id="focus" class="focus" aria-label="Do this now"></section>
+
+          <div class="columns">
+            <div class="column">
+              <details id="sec-now" class="panel section" open>
+                <summary><span class="section-title">Do now</span><span class="count"></span></summary>
+                <ul class="list"></ul>
+              </details>
+              <details id="sec-waiting" class="panel section">
+                <summary><span class="section-title">Waiting</span><span class="count"></span></summary>
+                <ul class="list"></ul>
+              </details>
+            </div>
+            <div class="column">
+              <details id="sec-overview" class="panel section" open>
+                <summary><span class="section-title">Workstreams</span><span class="count"></span></summary>
+                <ul class="list"></ul>
+              </details>
+              <details id="sec-notes" class="panel section">
+                <summary><span class="section-title">Recent notes</span><span class="count"></span></summary>
+                <ul class="list"></ul>
+                <p class="more"><a href="report.html">Full timeline →</a></p>
+              </details>
+            </div>
+          </div>
+          <footer id="vault" class="vault-footer"></footer>
         </div>
-      </div>
-      <footer id="vault" class="vault-footer"></footer>
+
+        <section id="view-board" class="view" hidden aria-label="Board"></section>
+        <section id="view-tasks" class="view" hidden aria-label="All tasks"></section>
+        <section id="view-done" class="view" hidden aria-label="Done and archive"></section>
+        <section id="view-reports" class="view" hidden aria-label="Reports"></section>
+      </main>
+
+      <nav class="bottom-nav" id="bottom-nav" aria-label="Views"></nav>
     </div>
-  </main>
+  </div>
 
   <div id="scrim" class="scrim" hidden></div>
   <aside id="drawer" class="drawer" hidden aria-label="Task details"></aside>
+  <div id="palette" class="palette" hidden role="dialog" aria-modal="true" aria-label="Search and commands"></div>
+  <div id="break" class="break-screen" hidden role="dialog" aria-modal="true" aria-labelledby="break-title"></div>
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="js/app.js"></script>
 </body>

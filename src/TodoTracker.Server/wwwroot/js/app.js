@@ -4,6 +4,12 @@ import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
 import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone } from './media.js';
+import { createShell } from './shell.js';
+import { createBoardView } from './views/board.js';
+import { createOutlineView } from './views/outline.js';
+import { createDoneView } from './views/done.js';
+import { createReportsView } from './views/reports.js';
+import { duration, toLocalInput as localInput } from './timefmt.js';
 
 /** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
 function embedNode(itemId, name, image) {
@@ -140,10 +146,22 @@ function restoreNoteDrafts(drafts) {
   });
 }
 
+/** Signed in: the views; signed out: the sign-in form (only redrawn when that changes). */
 function showBoard(authenticated) {
+  if (state.signedIn === authenticated) return;
+  state.signedIn = authenticated;
   $('#login').hidden = authenticated;
-  $('#board').hidden = !authenticated;
+  document.body.classList.toggle('signed-out', !authenticated);
+  shell.route();
 }
+
+/** The dashboard (top bar, Today) and the view on screen, after a change. */
+async function refreshAll() {
+  await refresh();
+  await currentView()?.refresh();
+}
+
+const currentView = () => ctx.views[shell.current()];
 
 /** Runs an action, then refreshes. Returns true on success so callers only clear inputs when nothing was lost. */
 async function act(promise, message) {
@@ -156,6 +174,7 @@ async function act(promise, message) {
     toast(err.message, 'error');
   }
   await refresh();
+  await currentView()?.refresh();
   if (state.drawerId) await openDrawer(state.drawerId);
   return ok;
 }
@@ -194,6 +213,7 @@ function render() {
   renderPomodoro(d.pomodoro);
   renderProblems(d.problems ?? []);
   renderFilter();
+  shell.update(d);
   document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
   if (kept) focusOrderControl(kept.id, kept.label);
 }
@@ -251,7 +271,7 @@ function renderTabs(d) {
       role: 'tab',
       class: 'tab',
       'aria-selected': String((state.group || null) === id),
-      onclick: () => { setGroup(id); refresh(); },
+      onclick: () => { setGroup(id); shell.closeNav(); refreshAll(); },
       ondblclick: id ? () => editGroup(d.groups.find((g) => g.id === id)) : undefined,
       title: id ? 'Double-click to rename or delete' : 'All groups',
     }, id ? h('span', { class: 'dot' }) : null, name, count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
@@ -535,7 +555,12 @@ function actions(c, { waiting = false, big = false } = {}) {
   if (waiting) bar.append(actionButton({ name: 'Do now', iconName: 'undo', big, title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }));
   bar.append(snoozeButton(c, big));
   bar.append(actionButton({ name: 'Note', iconName: 'pencil', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
-  if (!waiting) bar.append(actionButton({ name: 'Focus', iconName: 'play', big, tone: 'warn', title: 'Start focus timer', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
+  if (!waiting) bar.append(actionButton({ name: 'Focus', iconName: 'target', big, tone: 'warn', title: 'Start a focus session (Pomodoro)', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
+  if (!waiting) {
+    bar.append(c.timing
+      ? actionButton({ name: 'Stop timer', iconName: 'stop', big, tone: 'on', title: 'Stop timing this task', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') })
+      : actionButton({ name: 'Timer', iconName: 'timer', big, title: 'Time this task (stops any other timer)', onclick: () => act(post('/api/timer/start', { itemId: c.id }), 'Timer started') }));
+  }
   return h('div', { class: 'action-wrap' }, bar, noteBox);
 }
 
@@ -673,7 +698,10 @@ async function closeDrawer() {
   state.drawerNote = null;
   $('#drawer').hidden = true;
   $('#scrim').hidden = true;
+  // Back to the view from a task's own address (#/task/<id>), without reloading the view.
+  if (location.hash.startsWith('#/task/')) history.replaceState(null, '', `#/${shell.current() ?? 'today'}`);
   refresh({ background: true });
+  currentView()?.refresh();
 }
 
 $('#scrim').addEventListener('click', closeDrawer);
@@ -687,7 +715,8 @@ function drawerDraft() {
   return { note: note?.value ?? '', noteFocused: !!note && active === note, noteStart: note?.selectionStart, noteEnd: note?.selectionEnd, focused };
 }
 
-async function openDrawer(id) {
+async function openDrawer(id, { full = null } = {}) {
+  if (full !== null) state.drawerFull = full;
   // Anything still being typed is saved first. Re-opening the same task keeps the note being written (same note);
   // another task finishes it so the next keystrokes can't overwrite it.
   const same = state.drawerId === id && !$('#drawer').hidden;
@@ -831,15 +860,28 @@ async function openDrawer(id) {
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      h('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': state.drawerFull ? 'Smaller' : 'Full size', title: state.drawerFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(!!state.drawerFull),
+        onclick: () => setDrawerFull(!state.drawerFull, id),
+      }, icon(state.drawerFull ? 'shrink' : 'expand')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
     title,
+    // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
+    h('div', { class: 'drawer-main' },
     h('div', { class: 'chips-row' }, labelPicker),
     field('Tags', tags),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
     detailImages,
-    h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent)),
+    h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent),
+      item.parentId || item.completedAt ? null : field('Board', h('select', { 'aria-label': 'Board column', onchange: (e) => act(post(`/api/items/${id}/stage`, { stage: e.target.value }), 'Moved') },
+        ...[['inbox', 'Inbox'], ['next', 'Next'], ['doing', 'Doing']].map(([v, label]) => h('option', { value: v, selected: v === item.stage }, label))))),
     h('div', { class: 'row buttons' },
+      item.completedAt && !item.parentId
+        ? (item.archivedAt
+          ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/unarchive`), 'Back in Done') }, icon('undo', { size: 16 }), 'Unarchive')
+          : h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/archive`), 'Archived') }, icon('archive', { size: 16 }), 'Archive'))
+        : null,
       item.completedAt
         ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, icon('undo', { size: 16 }), 'Reopen')
         : h('button', { class: 'btn success', onclick: () => {
@@ -869,17 +911,20 @@ async function openDrawer(id) {
         isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))),
 
     (attachmentsNode = attachmentsSection(item)),
-    item.hasRich ? richSection(item) : null,
+    item.hasRich ? richSection(item) : null),
 
+    h('div', { class: 'drawer-side' },
+    timeSection(item),
     section('Reminders',
       h('ul', { class: 'reminders' }, ...item.reminders.filter((r) => !r.dismissedAt).map((r) => h('li', null,
         h('span', { class: 'author' }, icon('clock', { size: 14 }), `${r.message} · ${relativeTime(r.dueAt)}`),
         h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'Dismiss')))),
       h('div', { class: 'row' }, remindIn, remindMsg, h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me'))),
 
-    pluginOn('history') ? historySection(item) : null);
+    pluginOn('history') ? historySection(item) : null));
   $('#scrim').hidden = false;
   drawer.dataset.itemId = id;
+  drawer.classList.toggle('full', !!state.drawerFull);
   drawer.hidden = false;
   restoreDrawerDraft(drawer, draft, noteInput);
   if (state.refocus) focusOrderControl(state.refocus, null, drawer);
@@ -928,6 +973,7 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
   state.drawerNote = null;
   const drawer = $('#drawer');
   drawer.style.removeProperty('--prio');
+  drawer.classList.remove('full');
   delete drawer.dataset.itemId;
   drawer.replaceChildren(
     h('div', { class: 'drawer-head' },
@@ -1052,6 +1098,58 @@ function parentPicker(item) {
   return select;
 }
 
+/** Full size gives a task the whole window (its own address, #/task/<id>); the side panel keeps the view in sight. */
+function setDrawerFull(full, id) {
+  state.drawerFull = full;
+  localStorage.setItem('tt.drawer.full', full ? '1' : '0');
+  history.replaceState(null, '', full ? `#/task/${id}` : `#/${shell.current() ?? 'today'}`);
+  openDrawer(id);
+}
+
+/** Time spent: the timer for this task, the total (with subtasks), every stretch (fix or remove), and time to add by hand. */
+function timeSection(item) {
+  const timer = state.dashboard?.timer;
+  const timing = timer?.running && timer.itemId === item.id;
+  const own = [...(item.timeEntries ?? [])].reverse();
+  const shown = own.slice(0, 12);
+  const start = h('input', { type: 'datetime-local', value: localInput(new Date(Date.now() - 30 * 60_000)), 'aria-label': 'Started at' });
+  const minutes = h('input', { type: 'number', min: 1, max: 1440, step: 1, value: 30, 'aria-label': 'Minutes' });
+  const entryRow = (e) => {
+    const s = new Date(e.start);
+    const when = `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return h('li', { class: e.end ? '' : 'running' },
+      h('span', { class: 'when' }, when),
+      h('span', { class: 'what' }, e.end ? duration(e.seconds) : `running · ${duration(e.seconds)}`),
+      e.source === 'focus' ? h('span', { class: 'chip warn', title: 'A focus (Pomodoro) session' }, 'focus') : null,
+      e.end ? h('button', { class: 'icon-btn small', type: 'button', title: 'Fix the length', 'aria-label': `Fix the time from ${when}`, onclick: () => {
+        const value = prompt('How many minutes was it?', String(Math.round(e.seconds / 60)));
+        const m = Number(value);
+        if (value !== null && m > 0) act(put(`/api/items/${item.id}/time/${e.id}`, { start: e.start, end: new Date(s.getTime() + m * 60_000).toISOString() }), 'Fixed');
+      } }, icon('pencil', { size: 13 })) : null,
+      h('button', { class: 'icon-btn small', type: 'button', title: 'Remove', 'aria-label': `Remove the time from ${when}`, onclick: () => { if (confirm('Remove this time?')) act(del(`/api/items/${item.id}/time/${e.id}`), 'Removed'); } }, icon('x', { size: 13 })));
+  };
+  return h('section', { class: 'drawer-section time-section' },
+    h('h3', null, 'Time'),
+    h('div', { class: 'time-head' },
+      item.completedAt ? null : (timing
+        ? h('button', { class: 'btn on', type: 'button', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') }, icon('stop', { size: 16 }), 'Stop timer')
+        : h('button', { class: 'btn', type: 'button', onclick: () => act(post('/api/timer/start', { itemId: item.id }), 'Timer started') }, icon('timer', { size: 16 }), 'Start timer')),
+      h('span', { class: 'time-total' }, h('strong', null, duration(item.timeSpentSeconds ?? 0)), item.children.length ? ' with subtasks' : ' in total')),
+    shown.length ? h('ul', { class: 'time-list' }, ...shown.map(entryRow)) : null,
+    own.length > shown.length ? h('p', { class: 'muted small' }, `and ${own.length - shown.length} earlier`) : null,
+    h('details', null, h('summary', null, 'Add time by hand'),
+      h('form', { class: 'row', onsubmit: (e) => {
+        e.preventDefault();
+        const from = new Date(start.value);
+        const m = Number(minutes.value);
+        if (!start.value || !(m > 0)) return;
+        act(post(`/api/items/${item.id}/time`, { start: from.toISOString(), end: new Date(from.getTime() + m * 60_000).toISOString() }), `Logged ${duration(m * 60)}`);
+      } },
+      h('label', { class: 'field' }, h('span', null, 'Started'), start),
+      h('label', { class: 'field' }, h('span', null, 'Minutes'), minutes),
+      h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add'))));
+}
+
 function attachmentsSection(item) {
   const picker = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => uploadFiles(item.id, picker.files) });
   return h('section', { class: 'drawer-section' },
@@ -1156,10 +1254,17 @@ $('#login-form').addEventListener('submit', async (e) => {
   }
 });
 
+/** Quick capture: on Today's capture box (from any view). */
+function focusCapture() {
+  if (shell.current() !== 'today') location.hash = '#/today';
+  setTimeout(() => $('#capture-input').focus(), 0);
+}
+
 document.addEventListener('keydown', (e) => {
-  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
-  if (e.key === 'Escape') { closeMenus(); if (!$('#drawer').hidden) closeDrawer(); }
-  if (e.key === 'n' && !typing) { e.preventDefault(); $('#capture-input').focus(); }
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+  if (e.key === 'Escape') { closeMenus(); shell.closeNav(); if (!$('#drawer').hidden) closeDrawer(); }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'n' && !typing) { e.preventDefault(); focusCapture(); }
   if (e.key === '/' && !typing) { e.preventDefault(); $('#filter').focus(); }
 });
 
@@ -1169,7 +1274,6 @@ $('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filter
 $('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
 $('#filter-clear').addEventListener('click', () => setQuery(''));
 $('#search-icon').append(icon('search', { size: 16 }));
-$('#plugins-btn').append(icon('layers'));
 $('#plugins-btn').addEventListener('click', openPlugins);
 
 // Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
@@ -1183,8 +1287,35 @@ const flushAll = () => {
 window.addEventListener('pagehide', flushAll);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
 
-document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refresh({ background: true }));
-setInterval(() => document.visibilityState === 'visible' && refresh({ background: true }), 15000);
+// ---------- views ----------
+
+let lastFocused = null;
+const ctx = {
+  api, post, h, icon, toast, act, state, openDrawer, relativeTime, labelChip, openPlugins, refreshAll,
+  navigate: (view) => { location.hash = `#/${view}`; },
+  groups: () => state.dashboard?.groups ?? [],
+  dashboard: () => state.dashboard,
+  signedIn: () => !!state.signedIn,
+  setGroup: (id) => { setGroup(id); refreshAll(); },
+  capture: focusCapture,
+  saveFocus: () => { lastFocused = document.activeElement; },
+  restoreFocus: () => { lastFocused?.focus?.(); lastFocused = null; },
+  views: {},
+};
+const shell = createShell(ctx);
+ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx) };
+state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';
+
+/** A view's own background refresh waits while something in it is being typed in or dragged. */
+function refreshViewQuietly() {
+  const view = currentView();
+  const active = document.activeElement;
+  if (!view || (active && view.root.contains(active) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) || view.root.querySelector('.dragging')) return;
+  view.refresh();
+}
+
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
+setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } }, 15000);
 refresh().then(() => {
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   loadPlugins();

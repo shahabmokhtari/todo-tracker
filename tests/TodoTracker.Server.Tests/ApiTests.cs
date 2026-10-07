@@ -256,6 +256,8 @@ public sealed class ApiTests : IAsyncLifetime
         Assert.Equal("focus", started["phase"]!.GetValue<string>());
         Assert.Equal("Deep work", started["itemTitle"]!.GetValue<string>());
         Assert.Equal(1500, started["remainingSeconds"]!.GetValue<int>());
+        // The web app predicts the break that follows; it needs the same rule as the timer.
+        Assert.Equal(4, started["focusesBeforeLongBreak"]!.GetValue<int>());
 
         _server.Time.Advance(TimeSpan.FromMinutes(5));
         var paused = await _client.PostJson("/api/pomodoro/pause");

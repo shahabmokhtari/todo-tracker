@@ -443,7 +443,8 @@ button.focus-title:hover { color: var(--accent); }
 .item {
   position: relative;
   display: grid;
-  grid-template-columns: 10px 1fr auto;
+  /* priority dot, title, reorder controls (Do now), actions */
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: start;
   padding: 12px;
