@@ -27,6 +27,7 @@ public partial class App : Application
     private MainWindow? _window;
     private AppWindowHost? _appHost;
     private BreakOverlay? _breaks;
+    private TrayIcon? _tray;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -107,6 +108,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _tray?.Dispose();
         _toasts?.Dispose();
         _breaks?.Dispose();
         _appHost?.Dispose();
@@ -243,6 +245,9 @@ public partial class App : Application
 
             // Quitting: the break windows go first, before shutdown closes every window.
             window.Closing += (_, _) => breaks.Dispose();
+
+            // In the notification area: bring the sidebar back, hide it, the focus timer, quit.
+            _tray = new TrayIcon(window, viewModel);
         }
 
         var events = services.GetRequiredService<ServerEvents>();

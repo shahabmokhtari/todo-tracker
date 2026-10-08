@@ -461,8 +461,8 @@ public partial class MainWindow : Window
             var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
             if (On("obsidian"))
             {
-                var obsidian = new MenuItem { Header = "Open in Obsidian" };
-                obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(full));
+                var obsidian = new MenuItem { Header = TodoTracker.Core.Vault.ObsidianVaults.IsInstalled() ? "Open in Obsidian" : "Get Obsidian (to open it there)…" };
+                obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.LinkOrDownload(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(full)));
                 menu.Items.Add(obsidian);
             }
 
@@ -651,8 +651,8 @@ public partial class MainWindow : Window
         storage.Items.Add(open);
         if (On("obsidian"))
         {
-            var obsidian = new MenuItem { Header = "Open in Obsidian" };
-            obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(root));
+            var obsidian = new MenuItem { Header = TodoTracker.Core.Vault.ObsidianVaults.IsInstalled() ? "Open in Obsidian" : "Get Obsidian (to open it there)…" };
+            obsidian.Click += (_, _) => Open(TodoTracker.Core.Vault.ObsidianVaults.LinkOrDownload(TodoTracker.Core.Vault.ObsidianVaults.OpenUrl(root)));
             storage.Items.Add(obsidian);
         }
 

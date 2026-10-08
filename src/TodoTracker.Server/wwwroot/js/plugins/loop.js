@@ -32,7 +32,7 @@ function metaLine(item) {
   const parts = [];
   if (item.deadline && !isDone(item)) parts.push(`Due ${day(item.deadline)}`);
   parts.push(...(item.labels ?? []).map((l) => l.name));
-  if (item.tags?.length) parts.push(formatTags(item.tags));
+  if (item.tags?.length) parts.push(`Tags: ${formatTags(item.tags)}`);
   return parts.join(' · ');
 }
 

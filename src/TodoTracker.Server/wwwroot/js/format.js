@@ -131,24 +131,41 @@ export function fileSize(bytes) {
 }
 
 /**
- * Tags as typed: separated by spaces or commas, # optional; quotes keep words together (#"deep work"), as in quick
- * capture and the filter.
+ * Tags as typed in a task's tag box: separated by commas (deep work, q3); spaces and # around each are dropped, so
+ * are quotes and [ ]. Hashtags typed one after another (#a #b) are separate tags too.
  */
 export function parseTags(text) {
   const seen = new Set();
   const tags = [];
-  for (const m of straightQuotes(text).matchAll(/#?"([^"]*)"|[^\s,]+/g)) {
-    const tag = (m[1] ?? m[0]).replace(/^#+/, '').replace(/\s+/g, ' ').trim();
-    if (!tag || seen.has(tag.toLowerCase())) continue;
-    seen.add(tag.toLowerCase());
-    tags.push(tag);
+  for (const part of straightQuotes(text).replace(/^\s*\[|\]\s*$/g, '').split(',')) {
+    for (const piece of part.split(/\s+(?=#)/)) {
+      const tag = piece.replace(/"/g, '').trim().replace(/^#+/, '').replace(/\s+/g, ' ').trim();
+      if (!tag || seen.has(tag.toLowerCase())) continue;
+      seen.add(tag.toLowerCase());
+      tags.push(tag);
+    }
   }
 
   return tags;
 }
 
-/** Tags for the tag box: #word, or #"several words". */
-export const formatTags = (tags) => (tags ?? []).map((t) => (/\s/.test(t) ? `#"${t}"` : `#${t}`)).join(' ');
+/** Tags for the tag box: separated by commas. */
+export const formatTags = (tags) => (tags ?? []).join(', ');
+const OBSIDIAN = {
+  download: 'https://obsidian.md/download',
+  appStore: 'https://apps.apple.com/app/obsidian-connected-notes/id1557175442',
+  playStore: 'https://play.google.com/store/apps/details?id=md.obsidian',
+};
+
+/**
+ * Where an Obsidian link goes: the file in Obsidian when it's on this computer; else where to get it (its download
+ * page: it isn't in the Microsoft Store; on a phone, its app in the App Store or Google Play).
+ */
+export function obsidianLink({ url, installed, userAgent = '' }) {
+  if (/iPhone|iPad|iPod/i.test(userAgent)) return { href: OBSIDIAN.appStore, label: 'Get Obsidian', get: true };
+  if (/Android/i.test(userAgent)) return { href: OBSIDIAN.playStore, label: 'Get Obsidian', get: true };
+  return installed ? { href: url, label: 'Open in Obsidian', get: false } : { href: OBSIDIAN.download, label: 'Get Obsidian', get: true };
+}
 
 /** Search query for a clicked tag or label chip (same syntax as the server's TaskQuery). */
 export function queryFor({ tag, label }) {

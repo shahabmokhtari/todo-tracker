@@ -1,5 +1,5 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
@@ -293,9 +293,17 @@ function renderFilterMenu(tags) {
   menu.replaceChildren(
     h('h2', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
     ...(labels.length ? labels.map((l) => entry(queryFor({ label: l.name }), [swatch(l.color), l.name], `Show tasks labeled "${l.name}"`)) : [h('p', { class: 'menu-empty' }, 'No labels yet: add them in a task\'s details.')]),
-    h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type: #word or #"two words"')),
+    h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type in a task, separated by commas')),
     ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: type #word in a task.')]),
     state.query ? h('button', { type: 'button', class: 'menu-clear', onclick: () => { setQuery(''); renderFilterMenu(tags); } }, 'Clear the filter') : null);
+}
+
+/** "Open in Obsidian" when it's on this computer; else a link to get it (its site, or its app on a phone). */
+function obsidianAnchor(url, { class: cls, iconOnly = false, file = '' } = {}) {
+  const link = obsidianLink({ url, installed: state.vault?.obsidianInstalled ?? true, userAgent: navigator.userAgent });
+  const title = link.get ? 'Get Obsidian (to open your tasks there)' : file ? `Open in Obsidian (${file})` : 'Open in Obsidian';
+  const attrs = { class: cls, href: link.href, title, 'aria-label': link.label, ...(link.get ? { target: '_blank', rel: 'noopener' } : {}) };
+  return h('a', attrs, iconOnly ? icon('obsidian') : link.label);
 }
 
 function renderVault() {
@@ -304,7 +312,7 @@ function renderVault() {
   $('#vault').replaceChildren(
     icon('folder', { size: 14 }),
     h('span', { class: 'muted', title: v.path }, 'Saved as markdown in ', h('code', null, v.path)),
-      pluginOn('obsidian') ? h('a', { href: v.obsidianUrl, class: 'link' }, 'Open in Obsidian') : null);
+      pluginOn('obsidian') ? obsidianAnchor(v.obsidianUrl, { class: 'link' }) : null);
 }
 
 const tagChip = (t) => h('button', { class: 'chip tag', title: `Show #${t}`, onclick: (e) => { e.stopPropagation(); setQuery(queryFor({ tag: t })); } }, `#${t}`);
@@ -826,7 +834,7 @@ async function openDrawer(id, { full = null } = {}) {
   details.addEventListener('input', showDetailImages);
   const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
   const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
-  const tags = h('input', { value: formatTags(item.tags), placeholder: '#tag  #"two words"', 'aria-label': 'Tags', dataset: { field: 'tags' } });
+  const tags = h('input', { value: formatTags(item.tags), placeholder: 'deep work, q3', 'aria-label': 'Tags', dataset: { field: 'tags' } });
   const labels = new Set(item.labels.map((l) => l.name));
 
   const fieldGroups = [['title'], ['details'], ['priority'], ['deadline', 'clearDeadline'], ['sequential'], ['stepDelayMinutes', 'clearStepDelay'], ['tags'], ['labels']];
@@ -918,7 +926,7 @@ async function openDrawer(id, { full = null } = {}) {
       h('span', { class: 'prio-pill' }, meta.label),
       h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
-      item.obsidianUrl && pluginOn('obsidian') ? h('a', { class: 'icon-btn', href: item.obsidianUrl, title: `Open in Obsidian (${item.file})`, 'aria-label': 'Open in Obsidian' }, icon('obsidian')) : null,
+      item.obsidianUrl && pluginOn('obsidian') ? obsidianAnchor(item.obsidianUrl, { class: 'icon-btn', iconOnly: true, file: item.file }) : null,
       h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
       h('button', {
         class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),

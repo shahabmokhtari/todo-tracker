@@ -4,14 +4,21 @@
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
+    <!-- Only for the notification-area icon (NotifyIcon); WPF types stay the default names. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>TodoTracker</AssemblyName>
     <RootNamespace>TodoTracker.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF0001: Fluent ThemeMode is marked experimental but is the supported way to get Windows 11 styling + dark mode. -->
-    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+    <!-- WFO0003: a WinForms-app rule; this is a WPF app whose per-monitor DPI awareness belongs in app.manifest. -->
+    <NoWarn>$(NoWarn);WPF0001;WFO0003</NoWarn>
   </PropertyGroup>
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
     <PackageReference Include="Microsoft.Web.WebView2" />

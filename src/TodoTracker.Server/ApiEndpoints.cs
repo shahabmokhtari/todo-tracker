@@ -63,7 +63,8 @@ public sealed record RichRequest(string? Html);
 
 public sealed record RichDto(bool HasRich);
 
-public sealed record VaultDto(string Path, IReadOnlyList<VaultProblem> Problems, string Guide, string ObsidianUrl);
+/// <param name="ObsidianInstalled">Obsidian is set up on this computer (else links go to its download page).</param>
+public sealed record VaultDto(string Path, IReadOnlyList<VaultProblem> Problems, string Guide, string ObsidianUrl, bool ObsidianInstalled = false);
 
 public sealed record FocusRequest(Guid? ItemId = null);
 
@@ -410,7 +411,7 @@ internal static class ApiEndpoints
         api.MapGet("/vault", async (VaultLinks links) =>
         {
             await links.Vault.ReadAsync(_ => 0).ConfigureAwait(false);
-            return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath));
+            return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath), ObsidianVaults.IsInstalled());
         });
 
         api.MapGet("/obsidian/vaults", () => ObsidianVaults.Discover());

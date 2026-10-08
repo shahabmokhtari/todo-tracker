@@ -238,7 +238,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     public async Task<VaultDto> VaultInfo()
     {
         await store.ReadAsync(_ => 0).ConfigureAwait(false);
-        return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath));
+        return new VaultDto(links.Vault.RootPath, links.Vault.Problems, VaultBoardStore.Guide, ObsidianVaults.OpenUrl(links.Vault.RootPath), ObsidianVaults.IsInstalled());
     }
 
     [McpServerTool(Name = "task_history", ReadOnly = true), Description("Saved versions of a task's file, newest first (every change is versioned). Use restore_task_version to go back.")]

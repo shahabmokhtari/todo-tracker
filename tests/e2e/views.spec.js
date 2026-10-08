@@ -400,9 +400,9 @@ test('Settings: light or dark for every window, and connected apps switch on at 
   await expect(page.locator('#filter')).toHaveValue('');
   await expect(next.locator('.kcard', { hasText: 'Order lunch' })).toBeVisible();
 
-  // The details show the tag as typed, quotes and all.
+  // The details show tags separated by commas (no quotes needed).
   await next.locator('.kcard', { hasText: 'Write the deck' }).getByRole('button', { name: /Open/ }).click();
-  await expect(page.locator('#drawer').getByRole('textbox', { name: 'Tags' })).toHaveValue('#"deep work"');
+  await expect(page.locator('#drawer').getByRole('textbox', { name: 'Tags' })).toHaveValue('deep work');
   await expect(page.locator('#drawer')).toContainText('Labels are colored categories');
   expect(errors).toEqual([]);
 });test('Copy for Loop on a task: its details, subtasks, notes and pictures, from its details panel', async ({ page, request }) => {

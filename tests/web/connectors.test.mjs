@@ -41,7 +41,7 @@ const task = {
 test('Copy for Loop on one task: details, subtasks, notes and files, as a checklist', () => {
   assert.equal(taskMarkdown(task), [
     '## Launch <site>',
-    'Due 2026-01-08 · Urgent · #"deep work"',
+    'Due 2026-01-08 · Urgent · Tags: deep work',
     '',
     'Hero copy',
     '(picture: Pasted image 1.png)',

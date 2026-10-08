@@ -50,6 +50,20 @@ public sealed class ObsidianVaultsTests : IDisposable
     }
 
     [Fact]
+    public void Without_obsidian_its_links_go_to_its_download_page_not_a_store_search()
+    {
+        // Windows answers an obsidian:// link it can't open with "look for an app in the Microsoft Store", where
+        // Obsidian isn't.
+        var config = Path.Combine(_dir, "obsidian.json");
+        Assert.False(ObsidianVaults.IsInstalled(config));
+        Assert.Equal("https://obsidian.md/download", ObsidianVaults.LinkOrDownload("obsidian://open?path=x", config));
+
+        File.WriteAllText(config, "{\"vaults\":{}}");
+        Assert.True(ObsidianVaults.IsInstalled(config));
+        Assert.Equal("obsidian://open?path=x", ObsidianVaults.LinkOrDownload("obsidian://open?path=x", config));
+    }
+
+    [Fact]
     public void Open_links_escape_the_path()
     {
         Assert.Equal("obsidian://open?path=C%3A%5CNotes%5CA%20%26%20B.md", ObsidianVaults.OpenUrl(@"C:\Notes\A & B.md"));

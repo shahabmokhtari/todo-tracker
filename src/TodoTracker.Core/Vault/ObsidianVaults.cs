@@ -45,6 +45,19 @@ public static class ObsidianVaults
         return System.IO.Path.Combine(vault.Path, "Todo Tracker");
     }
 
+    /// <summary>Obsidian's downloads (it isn't in the Microsoft Store), and its apps for iPhone/iPad and Android.</summary>
+    public const string DownloadPage = "https://obsidian.md/download";
+
+    public const string AppStorePage = "https://apps.apple.com/app/obsidian-connected-notes/id1557175442";
+
+    public const string PlayStorePage = "https://play.google.com/store/apps/details?id=md.obsidian";
+
+    /// <summary>Whether Obsidian is set up on this computer (it writes <c>obsidian.json</c> when it first starts).</summary>
+    public static bool IsInstalled(string? configPath = null) => (configPath ?? DefaultConfigPath()) is { } path && File.Exists(path);
+
+    /// <summary>The link when Obsidian is here; else its download page (never the system's "find an app" search).</summary>
+    public static string LinkOrDownload(string obsidianUrl, string? configPath = null) => IsInstalled(configPath) ? obsidianUrl : DownloadPage;
+
     /// <summary>A link that opens the file in Obsidian (works when the file is inside a vault Obsidian knows).</summary>
     public static string OpenUrl(string fullPath) => "obsidian://open?path=" + Uri.EscapeDataString(fullPath);
 
