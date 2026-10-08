@@ -245,6 +245,34 @@ public sealed class CliCommandTests : IDisposable
         Assert.Equal(CliHarness.T0.AddMinutes(minutes), item["nextActionAt"]!.GetValue<DateTimeOffset>());
     }
 
+    [Theory]
+    [InlineData("next week", "2026-01-12T09:00:00Z")]
+    [InlineData("fri 14:30", "2026-01-09T14:30:00Z")]
+    [InlineData("2 weeks", "2026-01-19T09:00:00Z")]
+    [InlineData("weekend", "2026-01-10T09:00:00Z")]
+    public async Task Snooze_understands_typed_rules(string when, string expected)
+    {
+        var id = (await _tt.Json("add", "Plan trip")).Id().ToString();
+
+        var item = await _tt.Json(["snooze", id, .. when.Split(' ')]);
+
+        Assert.Equal(DateTimeOffset.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), item["nextActionAt"]!.GetValue<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task Snooze_after_another_task_waits_until_it_is_done()
+    {
+        var keys = (await _tt.Json("add", "Get the keys")).Id().ToString();
+        var move = (await _tt.Json("add", "Move in")).Id().ToString();
+
+        var item = await _tt.Json("snooze", move, "after", "Get", "the", "keys");
+
+        Assert.Equal("waiting", item.Str("state"));
+        Assert.Equal(keys, item.Str("afterId"));
+        await _tt.Ok("done", keys);
+        Assert.Equal("actionable", (await _tt.Json("show", move)).Str("state"));
+    }
+
     [Fact]
     public async Task Snooze_accepts_tomorrow_and_dates()
     {

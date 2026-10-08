@@ -25,7 +25,7 @@ internal static class CliCommands
         new CliCommand("reopen", "tt reopen <task>", "Undo done", null, Reopen),
         new CliCommand("first", "tt first <task> | tt first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
         new CliCommand("note", "tt note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
-        new CliCommand("snooze", "tt snooze <task> <when>", "Defer a task until later (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30", Snooze),
+        new CliCommand("snooze", "tt snooze <task> <when | after <task>>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>", Snooze),
         new CliCommand("edit", "tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none]", "Change a task", null, Edit),
         new CliCommand("tag", "tt tag <task> [+]tag… -tag…", "Add or remove tags", null, (s, a) => Tags(s, a, labels: false)),
         new CliCommand("label", "tt label <task> [+]label… -label…", "Add or remove labels (quote names with spaces)", null, (s, a) => Tags(s, a, labels: true)),
@@ -314,11 +314,20 @@ internal static class CliCommands
     {
         a.Allow();
         var reference = a.Word(0, "which task");
-        var when = a.WordsFrom(1, "when (e.g. 2h, tomorrow)");
+        var when = a.WordsFrom(1, "when (e.g. 2h, tomorrow, next week, after <task>)");
         var item = await s.Change((b, now) =>
         {
             var found = TaskResolver.Resolve(b, reference, i => !i.IsDone);
-            b.ScheduleNextAction(found.Id, CliTime.Defer(when, now, s.Zone), s.Actor, now, notify: true);
+            if (when.StartsWith("after ", StringComparison.OrdinalIgnoreCase))
+            {
+                var first = TaskResolver.Resolve(b, when["after ".Length..].Trim(), i => !i.IsDone && i.Id != found.Id);
+                b.WaitFor(found.Id, first.Id, s.Actor, now);
+            }
+            else
+            {
+                b.ScheduleNextAction(found.Id, CliTime.Defer(when, now, s.Zone), s.Actor, now, notify: true);
+            }
+
             return found;
         }).ConfigureAwait(false);
         await s.Print(item, (o, i) => o.Changed("Snoozed", i)).ConfigureAwait(false);

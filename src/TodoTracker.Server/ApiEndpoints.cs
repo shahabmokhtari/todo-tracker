@@ -39,7 +39,17 @@ public sealed record StepsRequest(IReadOnlyList<string>? Titles, int? StepDelayM
 
 public sealed record NoteRequest(string? Text, string? SourceUrl = null, string? SourceTitle = null);
 
-public sealed record ScheduleRequest(DateTimeOffset? At = null, int? InMinutes = null, bool Notify = true, string? Message = null, bool Clear = false);
+/// <param name="Choice">One of the quick choices (GET /api/snooze: "evening", "monday", "week"…), worked out here.</param>
+/// <param name="Rule">Typed: "3d", "fri 14:00", "next week", "2026-03-01" (see Snooze.Parse).</param>
+public sealed record ScheduleRequest(DateTimeOffset? At = null, int? InMinutes = null, bool Notify = true, string? Message = null, bool Clear = false, string? Choice = null, string? Rule = null);
+
+/// <summary>Snooze until another task is done.</summary>
+public sealed record AfterRequest(Guid? AfterId);
+
+public sealed record SnoozeChoiceDto(string Id, string Label, DateTimeOffset At, string In);
+
+/// <summary>The quick choices now, and (when one was given) what a typed rule means or why it isn't understood.</summary>
+public sealed record SnoozeDto(IReadOnlyList<SnoozeChoiceDto> Choices, DateTimeOffset? RuleAt = null, string? RuleIn = null, string? RuleProblem = null);
 
 public sealed record ReminderRequest(DateTimeOffset? At = null, int? InMinutes = null, string? Message = null);
 
@@ -246,7 +256,7 @@ internal static class ApiEndpoints
                 return Wire.Note(b.Get(id), note);
             }));
 
-        api.MapPost("/items/{id:guid}/schedule", (Guid id, ScheduleRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+        api.MapPost("/items/{id:guid}/schedule", (Guid id, ScheduleRequest request, HttpContext http, IBoardStore store, TimeProvider time, TodoTrackerServerOptions options) =>
             Mutate(store, time, http, (b, now, actor) =>
             {
                 if (request.Clear)
@@ -255,11 +265,32 @@ internal static class ApiEndpoints
                 }
                 else
                 {
-                    b.ScheduleNextAction(id, ResolveTime(request.At, request.InMinutes, now), actor, now, request.Notify, request.Message);
+                    b.ScheduleNextAction(id, ResolveSnooze(request, now, options.TimeZone), actor, now, request.Notify, request.Message);
                 }
 
                 return b.Get(id);
             }));
+
+        api.MapPost("/items/{id:guid}/after", (Guid id, AfterRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+            Mutate(store, time, http, (b, now, actor) =>
+            {
+                b.WaitFor(id, request.AfterId ?? throw new ArgumentException("Say which task it waits for (afterId).", nameof(request)), actor, now);
+                return b.Get(id);
+            }));
+
+        api.MapGet("/snooze", (string? rule, TimeProvider time, TodoTrackerServerOptions options) =>
+        {
+            var now = time.GetUtcNow();
+            var choices = Snooze.Choices(now, options.TimeZone).Select(c => new SnoozeChoiceDto(c.Id, c.Label, c.At, RelativeTime.Format(c.At, now))).ToList();
+            if (string.IsNullOrWhiteSpace(rule))
+            {
+                return new SnoozeDto(choices);
+            }
+
+            return Snooze.Parse(rule, now, options.TimeZone) is { } at
+                ? new SnoozeDto(choices, at, RelativeTime.Format(at, now))
+                : new SnoozeDto(choices, RuleProblem: RuleHint(rule));
+        });
 
         api.MapPost("/items/{id:guid}/reminders", (Guid id, ReminderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
@@ -628,6 +659,25 @@ internal static class ApiEndpoints
             return new RichDto(html is not null);
         });
     }
+
+    /// <summary>When a snooze ends: a quick choice, a typed rule, or a time (at / inMinutes).</summary>
+    internal static DateTimeOffset ResolveSnooze(ScheduleRequest request, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        if (request.Choice is { Length: > 0 } choice)
+        {
+            return Snooze.Choices(now, zone).FirstOrDefault(c => c.Id == choice)?.At ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request));
+        }
+
+        if (request.Rule is { Length: > 0 } rule)
+        {
+            return Snooze.Parse(rule, now, zone) ?? throw new ArgumentException(RuleHint(rule), nameof(request));
+        }
+
+        return ResolveTime(request.At, request.InMinutes, now);
+    }
+
+    private static string RuleHint(string rule) =>
+        $"Couldn't tell when \"{rule.Trim()}\" is. Try 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am or 2026-03-01.";
 
     internal static DateTimeOffset ResolveTime(DateTimeOffset? at, int? inMinutes, DateTimeOffset now)
     {

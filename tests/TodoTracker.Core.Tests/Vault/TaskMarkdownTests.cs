@@ -162,6 +162,24 @@ public class TaskMarkdownTests
     }
 
     [Fact]
+    public void Waiting_for_another_task_is_kept_in_the_file_on_a_task_and_a_subtask()
+    {
+        var board = new TaskBoard();
+        var quote = board.AddTask(new NewTask("Get the quote"), Actor.User, Now);
+        var order = board.AddTask(new NewTask("Order parts"), Actor.User, Now);
+        var pay = board.AddTask(new NewTask("Pay") { ParentId = order.Id }, Actor.User, Now);
+        board.WaitFor(order.Id, quote.Id, Actor.User, Now);
+        board.WaitFor(pay.Id, quote.Id, Actor.User, Now);
+
+        var written = TaskMarkdown.Render(order, Utc);
+        var reread = TaskMarkdown.Parse(written, "Order parts", Utc).Root;
+
+        Assert.Contains($"after: {quote.Id}", written, StringComparison.Ordinal);
+        Assert.Equal(quote.Id, reread.AfterId);
+        Assert.Equal(quote.Id, reread.Children.Single().AfterId);
+    }
+
+    [Fact]
     public void Multi_word_tags_survive_the_file_on_a_task_and_on_a_subtask()
     {
         var board = new TaskBoard();

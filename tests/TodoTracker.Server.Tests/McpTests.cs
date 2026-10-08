@@ -91,6 +91,21 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_snooze_in_words_or_until_another_task_is_done()
+    {
+        var keys = await Call("create_task", new() { ["title"] = "Get the keys" });
+        var move = await Call("create_task", new() { ["title"] = "Move in" });
+        var trip = await Call("create_task", new() { ["title"] = "Plan trip" });
+
+        var later = await Call("schedule_next_action", new() { ["taskId"] = trip.GetProperty("id").GetString(), ["when"] = "next week" });
+        var waiting = await Call("wait_for_task", new() { ["taskId"] = move.GetProperty("id").GetString(), ["afterTaskId"] = keys.GetProperty("id").GetString() });
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), later.GetProperty("nextActionAt").GetDateTimeOffset());
+        Assert.Equal("waiting", waiting.GetProperty("state").GetString());
+        Assert.Equal("Get the keys", waiting.GetProperty("waitingForTitle").GetString());
+    }
+
+    [Fact]
     public async Task Agent_can_move_cards_time_work_and_read_the_time_report()
     {
         var task = await Call("create_task", new() { ["title"] = "Write report" });

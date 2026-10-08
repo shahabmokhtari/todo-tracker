@@ -30,6 +30,7 @@ public sealed partial class TaskBoard
         foreach (var item in root.SelfAndDescendants())
         {
             _index.Add(item.Id, item);
+            item.Board = this;
         }
 
         root.Parent = null;

@@ -90,6 +90,7 @@ public static class BoardSerializer
         CompletedAt = item.CompletedAt,
         Deadline = item.Deadline,
         NextActionAt = item.NextActionAt,
+        After = item.AfterId,
         Sequential = item.Sequential ? true : null,
         StepDelayMinutes = item.StepDelay is { } d ? (int)Math.Round(d.TotalMinutes) : null,
         GroupId = item.Parent is null ? item.OwnGroupId : null,
@@ -160,6 +161,7 @@ public static class BoardSerializer
             CompletedAt = doc.CompletedAt,
             Deadline = doc.Deadline,
             NextActionAt = doc.NextActionAt,
+            AfterId = doc.After,
             Sequential = doc.Sequential ?? false,
             StepDelay = doc.StepDelayMinutes is > 0 and var m ? TimeSpan.FromMinutes(m) : null,
             OwnGroupId = doc.GroupId is { } g && board.Groups.Any(x => x.Id == g) ? g : board.DefaultGroupId,
@@ -254,6 +256,9 @@ public static class BoardSerializer
         public DateTimeOffset? Deadline { get; set; }
 
         public DateTimeOffset? NextActionAt { get; set; }
+
+    /// <summary>The task this one waits for ("after task X").</summary>
+    public Guid? After { get; set; }
 
         public bool? Sequential { get; set; }
 

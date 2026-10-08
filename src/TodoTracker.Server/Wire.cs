@@ -37,7 +37,9 @@ public sealed record CardDto(
     IReadOnlyList<LabelDto> Labels,
     int AttachmentCount,
     long TimeSpentSeconds = 0,
-    bool Timing = false);
+    bool Timing = false,
+    Guid? WaitingForId = null,
+    string? WaitingForTitle = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -83,7 +85,9 @@ public sealed record ItemDto(
     string? Stage = null,
     DateTimeOffset? ArchivedAt = null,
     long TimeSpentSeconds = 0,
-    IReadOnlyList<TimeEntryDto>? TimeEntries = null);
+    IReadOnlyList<TimeEntryDto>? TimeEntries = null,
+    Guid? AfterId = null,
+    string? WaitingForTitle = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -311,7 +315,9 @@ public static class Wire
             Labels(board, item),
             item.Attachments.Count,
             (long)item.TimeSpent(now).TotalSeconds,
-            IsTiming(item, timing));
+            IsTiming(item, timing),
+            e.WaitingFor?.Id,
+            e.WaitingFor?.Title);
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -341,7 +347,9 @@ public static class Wire
         item.Parent is null ? Of(item.Stage) : null,
         item.ArchivedAt,
         (long)item.TimeSpent(now).TotalSeconds,
-        item.TimeEntries.Select(e => TimeEntry(item, e, now)).ToList());
+        item.TimeEntries.Select(e => TimeEntry(item, e, now)).ToList(),
+        item.AfterId,
+        item.WaitingFor?.Title);
 
     public static SearchHitDto SearchHit(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
         item.Id,

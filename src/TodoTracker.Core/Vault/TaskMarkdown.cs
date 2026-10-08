@@ -85,9 +85,9 @@ public static partial class TaskMarkdown
     private const string Time = "time";
 
     /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
-    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "seq", "delay", "labels", "tags", "reminders"];
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders"];
 
-    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "created", "completed", "archived", "due", "scheduled", "sequential", "step-delay", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "tags", "labels", "reminders"];
 
     /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
     internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
@@ -248,6 +248,7 @@ public static partial class TaskMarkdown
             Details = JoinKeep(details),
             Deadline = VaultText.ParseTime(fm.Scalar("due"), tz, VaultText.DefaultDueTime),
             NextActionAt = VaultText.ParseTime(fm.Scalar("scheduled"), tz, VaultText.DefaultScheduledTime),
+            AfterId = Guid.TryParse(fm.Scalar("after"), out var after) ? after : null,
             StepDelay = VaultText.ParseDuration(fm.Scalar("step-delay")),
         };
         var result = new ParsedTaskFile(root) { Frontmatter = fm, Newline = newline, Bom = bom, IdKey = idKey, HasAppId = hasAppId };
@@ -615,6 +616,7 @@ public static partial class TaskMarkdown
         {
             Deadline = Resolve(due, Str(meta, "due"), VaultText.DefaultDueTime),
             NextActionAt = Resolve(scheduled, Str(meta, "next"), VaultText.DefaultScheduledTime),
+            AfterId = Guid.TryParse(Str(meta, "after"), out var after) ? after : null,
             Sequential = meta?["seq"] is JsonValue seq && seq.TryGetValue<bool>(out var s) && s,
             StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
         };
@@ -1033,6 +1035,7 @@ public static partial class TaskMarkdown
         ["completed"] = root.CompletedAt is { } c ? VaultText.Utc(c) : string.Empty,
         ["due"] = root.Deadline is { } d ? VaultText.Utc(d) : string.Empty,
         ["scheduled"] = root.NextActionAt is { } n ? VaultText.Utc(n) : string.Empty,
+        ["after"] = root.AfterId?.ToString() ?? string.Empty,
         ["sequential"] = root.Sequential ? "true" : "false",
         ["step-delay"] = root.StepDelay is { } s ? ((long)s.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
         ["tags"] = string.Join('\u001f', root.Tags),
@@ -1100,6 +1103,9 @@ public static partial class TaskMarkdown
                 return root.Deadline is { } d ? $"due: {VaultText.LocalDateTime(d, tz)}\n" : null;
             case "scheduled":
                 return root.NextActionAt is { } n ? $"scheduled: {VaultText.LocalDateTime(n, tz)}\n" : null;
+            case "after":
+                // Waits until that task (by id) is done.
+                return root.AfterId is { } waitsFor ? $"after: {waitsFor}\n" : null;
             case "sequential":
                 return root.Sequential ? "sequential: true\n" : null;
             case "step-delay":
@@ -1304,6 +1310,11 @@ public static partial class TaskMarkdown
         if (item.NextActionAt is { } n)
         {
             meta["next"] = VaultText.Utc(n);
+        }
+
+        if (item.AfterId is { } waitsFor)
+        {
+            meta["after"] = waitsFor.ToString();
         }
 
         if (item.Sequential && item.Children.Count == 0)

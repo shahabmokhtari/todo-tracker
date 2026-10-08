@@ -144,6 +144,12 @@ public sealed partial class TaskBoard
             Pomodoro.DetachItem();
         }
 
+        // Tasks waiting for what's gone don't wait any more.
+        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && !_index.ContainsKey(after)))
+        {
+            waiter.AfterId = null;
+        }
+
         Log(now, id, ActivityKind.Deleted, $"Deleted \"{item.Title}\"", actor);
     }
 
@@ -204,6 +210,61 @@ public sealed partial class TaskBoard
         StopTimers(item.SelfAndDescendants(), now);
         Log(now, id, ActivityKind.Completed, $"Completed \"{item.Title}\"", actor);
         AdvanceSequence(item, actor, now);
+        ReleaseWaiters(now);
+    }
+
+    /// <summary>
+    /// Snoozes a task until another one is done ("after task X"); then it comes back with a reminder. Replaces a
+    /// snooze until a time.
+    /// </summary>
+    public void WaitFor(Guid id, Guid afterId, Actor actor, DateTimeOffset now)
+    {
+        var item = Get(id);
+        var other = Get(afterId);
+        if (other == item)
+        {
+            throw new ArgumentException("A task can't wait for itself.", nameof(afterId));
+        }
+
+        if (other.IsDone)
+        {
+            throw new InvalidOperationException($"\"{other.Title}\" is already done.");
+        }
+
+        // Its own subtasks or parents would never get done while it waits; nor would a circle of waits.
+        if (item.SelfAndDescendants().Contains(other) || item.Ancestors().Contains(other))
+        {
+            throw new InvalidOperationException($"\"{item.Title}\" can't wait for \"{other.Title}\", which is part of it.");
+        }
+
+        var seen = new HashSet<Guid>();
+        for (var next = other; next is not null && seen.Add(next.Id); next = next.WaitingFor ?? next.Ancestors().Select(a => a.WaitingFor).FirstOrDefault(w => w is not null))
+        {
+            if (next == item || item.SelfAndDescendants().Contains(next))
+            {
+                throw new InvalidOperationException($"\"{other.Title}\" is already waiting for \"{item.Title}\": they'd wait for each other.");
+            }
+        }
+
+        item.AfterId = other.Id;
+        item.NextActionAt = null;
+        DismissPendingScheduleReminders(item, now);
+        Log(now, id, ActivityKind.Scheduled, $"Waits until \"{other.Title}\" is done", actor);
+    }
+
+    /// <summary>Tasks whose wait just ended (what they waited for is done) come back, with a reminder saying why.</summary>
+    private void ReleaseWaiters(DateTimeOffset now)
+    {
+        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && _index.TryGetValue(after, out var other) && other.IsDone).ToList())
+        {
+            var other = _index[waiter.AfterId!.Value];
+            waiter.AfterId = null;
+            if (!waiter.IsDone)
+            {
+                waiter.ReminderList.Add(new Reminder(Guid.NewGuid(), now, $"\"{other.Title}\" is done: back to \"{waiter.Title}\"", ReminderKind.NextAction));
+                Log(now, waiter.Id, ActivityKind.Scheduled, $"Back: \"{other.Title}\" is done", Actor.System);
+            }
+        }
     }
 
     public void Reopen(Guid id, Actor actor, DateTimeOffset now)
@@ -238,6 +299,7 @@ public sealed partial class TaskBoard
         var item = Get(id);
         var cleanMessage = OptionalText(message, MaxTitleLength);
         item.NextActionAt = at;
+        item.AfterId = null;
         DismissPendingScheduleReminders(item, now);
         if (notify)
         {
@@ -251,6 +313,7 @@ public sealed partial class TaskBoard
     {
         var item = Get(id);
         item.NextActionAt = null;
+        item.AfterId = null;
         DismissPendingScheduleReminders(item, now);
         Log(now, id, ActivityKind.Scheduled, "Cleared next action; back to Now", actor);
     }
@@ -437,6 +500,7 @@ public sealed partial class TaskBoard
 
     internal void Attach(WorkItem item, WorkItem? parent)
     {
+        item.Board = this;
         if (!_index.TryAdd(item.Id, item))
         {
             throw new InvalidDataException($"Duplicate task id {item.Id}.");
