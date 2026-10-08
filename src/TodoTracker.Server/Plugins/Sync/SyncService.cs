@@ -127,7 +127,7 @@ public sealed class SyncService : IDisposable
                 uses.Count == 0 ? null : string.Join(" + ", uses.Select(u => u.Provider.Name)),
                 primary is null ? reason : checks[primary.Id].Detail,
                 states.Select(s => s.State.Status.LastSync).Where(t => t is not null).DefaultIfEmpty(status.LastSync).Max(),
-                uses.Count == 0 ? null : problem,
+                problem,
                 Library,
                 views,
                 [.. states.SelectMany(s => s.State.Status.Devices).GroupBy(d => d.Device).Select(g => g.MaxBy(d => d.At)!)],
@@ -196,19 +196,53 @@ public sealed class SyncService : IDisposable
     private async Task RetireAsync(List<ISyncProvider> writtenBefore, CancellationToken cancellationToken)
     {
         var writtenNow = Written();
-        foreach (var provider in writtenBefore.Where(p => !writtenNow.Contains(p)))
+        var pending = Pending();
+        pending.UnionWith(writtenBefore.Where(p => !writtenNow.Contains(p)).Select(p => p.Id));
+        SaveSetting("retire", string.Join(';', pending));
+        if (await RetirePendingAsync(cancellationToken).ConfigureAwait(false) is { } problem)
         {
+            SetProblem(problem);
+        }
+    }
+
+    /// <summary>Places waiting for this computer's snapshot to go (tried again at every sync until it went).</summary>
+    private HashSet<string> Pending() => [.. (Setting("retire") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries)];
+
+    /// <summary>Takes this computer's snapshot out of the places waiting for it; says what couldn't be (null: all done).</summary>
+    private async Task<string?> RetirePendingAsync(CancellationToken cancellationToken)
+    {
+        var pending = Pending();
+        if (pending.Count == 0)
+        {
+            return null;
+        }
+
+        var uses = Uses(out _);
+        string? problem = null;
+        foreach (var provider in _providers.Where(p => pending.Contains(p.Id)))
+        {
+            var mode = uses.FirstOrDefault(u => u.Provider == provider).Mode;
+            if (mode.HasFlag(SyncMode.Write))
+            {
+                // Written again since: nothing to take out.
+                pending.Remove(provider.Id);
+                continue;
+            }
+
             try
             {
-                var state = StateFor(provider);
-                await provider.CreateRemote(_vault.RootPath, Library).ForgetAsync(state.DeviceId, cancellationToken).ConfigureAwait(false);
-                state.Published = null;
+                // Through its engine, so a sync running through it right now can't put the snapshot back.
+                await EngineFor(provider, mode).RetireAsync(mode, cancellationToken).ConfigureAwait(false);
+                pending.Remove(provider.Id);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or HttpRequestException or TaskCanceledException or ArgumentException)
             {
-                SetProblem($"Couldn't take this computer's tasks out of {provider.Name} ({ex.Message}).");
+                problem = $"Couldn't take this computer's tasks out of {provider.Name} yet ({ex.Message}); it's tried again at the next sync.";
             }
         }
+
+        SaveSetting("retire", string.Join(';', pending));
+        return problem;
     }
 
     /// <summary>Names this folder's set of tasks (computers using the same name sync together).</summary>
@@ -244,6 +278,9 @@ public sealed class SyncService : IDisposable
     /// </summary>
     public async Task<SyncView> SyncNowAsync(CancellationToken cancellationToken = default)
     {
+        // A place this computer stopped writing to, where its snapshot couldn't be taken out yet (even with sync off).
+        var retired = await RetirePendingAsync(cancellationToken).ConfigureAwait(false);
+        SetProblem(retired);
         List<(ISyncProvider Provider, SyncMode Mode, SyncEngine Engine)> engines;
         try
         {
@@ -292,6 +329,11 @@ public sealed class SyncService : IDisposable
             }
             finally
             {
+                if (retired is not null)
+                {
+                    problems.Add(retired);
+                }
+
                 SetProblem(problems.Count == 0 ? null : string.Join(' ', problems));
                 lock (_lock)
                 {
@@ -592,6 +634,28 @@ public sealed class SyncService : IDisposable
     }
 
     private void Save(string name, string value) => Save(new Dictionary<string, string> { [name] = value });
+
+    /// <summary>Saves without the side effects of a change of settings (no new sync, no cleared problem).</summary>
+    private void SaveSetting(string name, string value)
+    {
+        lock (_settingsLock)
+        {
+            JsonObject settings;
+            try
+            {
+                settings = File.Exists(SettingsPath) ? JsonNode.Parse(File.ReadAllText(SettingsPath)) as JsonObject ?? [] : [];
+            }
+            catch (JsonException)
+            {
+                settings = [];
+            }
+
+            settings[name] = value;
+            var temporary = SettingsPath + ".tmp";
+            File.WriteAllText(temporary, settings.ToJsonString());
+            File.Move(temporary, SettingsPath, overwrite: true);
+        }
+    }
 
     /// <summary>All at once, and atomically (a sync reading the settings meanwhile sees the old or the new ones).</summary>
     private void Save(Dictionary<string, string> values)

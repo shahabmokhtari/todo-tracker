@@ -123,7 +123,9 @@ public sealed class SyncEngineTests : IDisposable
         var written = await phone.Sync();
         Assert.DoesNotContain("While the phone only wrote", await phone.Titles());
         Assert.Equal(["Laptop"], phone.State.Status.Devices.Select(d => d.Name));
-        _ = written;
+        Assert.True(written.Published);
+        // Unchanged since: the place is only checked, not read again (a gist answers "not modified").
+        Assert.True((await phone.Sync()).Skipped);
 
         phone.Engine.Mode = SyncMode.Both;
         await phone.Sync();

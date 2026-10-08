@@ -91,6 +91,28 @@ public sealed class SyncEngine : IDisposable
         }
     }
 
+    /// <summary>
+    /// This device stops writing to the place: its snapshot there goes (between syncs, so a sync already running can't
+    /// put it back), and from now on the place is used as <paramref name="mode"/>.
+    /// </summary>
+    public async Task RetireAsync(SyncMode mode, CancellationToken cancellationToken = default)
+    {
+        Mode = mode;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Mode = mode;
+            using var crossProcess = await VaultFiles.AcquireLockAsync(_lockPath, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
+            await _remote.ForgetAsync(_state.DeviceId, cancellationToken).ConfigureAwait(false);
+            _state.Published = null;
+            _state.SeenVersion = null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>Forgets a conflict once it's been settled (between syncs, so a running sync can't bring it back).</summary>
     public async Task DismissAsync(string key, CancellationToken cancellationToken = default)
     {
@@ -125,17 +147,27 @@ public sealed class SyncEngine : IDisposable
     private async Task<SyncResult> SyncOnceAsync(CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
+        var mode = Mode;
+        var reading = mode.HasFlag(SyncMode.Read);
 
         // A new place (another folder, another gist): everything is published there again.
         if (_state.RemoteIdentity != _remote.Identity)
         {
             _state.RemoteIdentity = _remote.Identity;
             _state.RemoteVersion = null;
+            _state.SeenVersion = null;
             _state.Published = null;
         }
 
+        // Read: what's merged up to ("merged up to here"). Written only: what was last seen there (nothing is merged,
+        // but an unchanged place still costs next to nothing to check).
+        var known = reading ? _state.RemoteVersion : _state.SeenVersion;
         var local = await _store.ReadSyncAsync(cancellationToken).ConfigureAwait(false);
-        var remote = await _remote.ReadAsync(_state.DeviceId, _state.RemoteVersion, cancellationToken).ConfigureAwait(false);
+        var remote = await _remote.ReadAsync(_state.DeviceId, known, cancellationToken).ConfigureAwait(false);
+        if (!reading && remote is { Partial: false })
+        {
+            _state.SeenVersion = remote.Version;
+        }
         var heartbeatDue = _state.PublishedAt is not { } last || now - last > SyncLimits.Heartbeat;
         if (remote is null && Fingerprint(local) == _state.Published && !heartbeatDue)
         {
@@ -144,9 +176,8 @@ public sealed class SyncEngine : IDisposable
 
         // Devices not heard from in months are no longer merged (their old copies would bring back deleted tasks).
         // Written only: the others there are seen (and listed), not merged.
-        var mode = Mode;
         var seen = (remote?.Devices ?? []).Where(d => d.Device != _state.DeviceId && now - d.At < SyncLimits.Memory).OrderBy(d => d.Device, StringComparer.Ordinal).ToList();
-        var peers = mode.HasFlag(SyncMode.Read) ? seen : [];
+        var peers = reading ? seen : [];
 
         // A delete counts against the version it deleted, and only if it happened after that version appeared there
         // (the same content made again later is new, not deleted).
@@ -229,7 +260,7 @@ public sealed class SyncEngine : IDisposable
         }
 
         // "Merged up to here" only when it was read: switched to reading later, everything there is merged then.
-        if (remote is not null && complete && mode.HasFlag(SyncMode.Read))
+        if (remote is not null && complete && reading)
         {
             _state.RemoteVersion = remote.Version;
         }
@@ -254,14 +285,18 @@ public sealed class SyncEngine : IDisposable
                 .OrderBy(e => e.Key, StringComparer.Ordinal)
                 .ToList();
             var mine = new DeviceSnapshot(_state.DeviceId, _state.DeviceName, now, entriesNow) { Deleted = tombstones };
-            var version = await _remote.PublishAsync(mine, local.Read, _state.RemoteVersion, cancellationToken).ConfigureAwait(false);
+            var version = await _remote.PublishAsync(mine, local.Read, reading ? _state.RemoteVersion : _state.SeenVersion, cancellationToken).ConfigureAwait(false);
             _state.Tombstones = tombstones;
             _state.PublishedEntries = entriesNow;
             _state.Published = fingerprint;
             _state.PublishedAt = now;
-            if (complete)
+            if (complete && reading)
             {
                 _state.RemoteVersion = version;
+            }
+            else if (!reading)
+            {
+                _state.SeenVersion = version;
             }
 
             published = true;
