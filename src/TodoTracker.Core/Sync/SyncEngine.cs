@@ -14,6 +14,16 @@ public sealed record SyncResult(int Changes, int Peers, IReadOnlyList<SyncConfli
     public IReadOnlyList<SyncDevice>? Devices { get; init; }
 }
 
+/// <summary>How a place is used: read (others' changes come in), write (this device's tasks go out), or both.</summary>
+[Flags]
+public enum SyncMode
+{
+    None = 0,
+    Read = 1,
+    Write = 2,
+    Both = Read | Write,
+}
+
 /// <summary>
 /// Syncs a vault through a remote: merges each other device's latest snapshot into the vault (three-way, against
 /// what the two devices last agreed on), then publishes this vault's snapshot. Nothing is merged or published when
@@ -38,6 +48,9 @@ public sealed class SyncEngine : IDisposable
     }
 
     public SyncState State => _state;
+
+    /// <summary>Read only: merge the others' snapshots, publish nothing. Write only: publish, merge nothing.</summary>
+    public SyncMode Mode { get; init; } = SyncMode.Both;
 
     public void Dispose() => _gate.Dispose();
 
@@ -127,7 +140,9 @@ public sealed class SyncEngine : IDisposable
         }
 
         // Devices not heard from in months are no longer merged (their old copies would bring back deleted tasks).
-        var peers = (remote?.Devices ?? []).Where(d => d.Device != _state.DeviceId && now - d.At < SyncLimits.Memory).OrderBy(d => d.Device, StringComparer.Ordinal).ToList();
+        var peers = Mode.HasFlag(SyncMode.Read)
+            ? (remote?.Devices ?? []).Where(d => d.Device != _state.DeviceId && now - d.At < SyncLimits.Memory).OrderBy(d => d.Device, StringComparer.Ordinal).ToList()
+            : [];
 
         // A delete counts against the version it deleted, and only if it happened after that version appeared there
         // (the same content made again later is new, not deleted).
@@ -221,7 +236,7 @@ public sealed class SyncEngine : IDisposable
 
         var published = false;
         var fingerprint = Fingerprint(local);
-        if (fingerprint != _state.Published || heartbeatDue || remote is { SelfMissing: true })
+        if (Mode.HasFlag(SyncMode.Write) && (fingerprint != _state.Published || heartbeatDue || remote is { SelfMissing: true }))
         {
             // What disappeared since the last publish was deleted here: say so (for months) so it stays gone everywhere.
             var tombstones = _state.Tombstones.Where(t => now - t.At < SyncLimits.Memory && !local.Entries.ContainsKey(t.Key))

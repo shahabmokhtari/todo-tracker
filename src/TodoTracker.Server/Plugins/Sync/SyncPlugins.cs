@@ -16,9 +16,11 @@ public sealed record SyncLibraryRequest(string? Library);
 
 public sealed record SyncDeviceRequest(string? Device);
 
-public sealed record SyncResolveRequest(string? Key, string? Choice);
+public sealed record SyncResolveRequest(string? Key, string? Choice, string? Place = null);
 
-public sealed record SyncToolRequest(string? Key, string? Tool);
+public sealed record SyncPlaceRequest(string? Provider, string? Mode);
+
+public sealed record SyncToolRequest(string? Key, string? Tool, string? Place = null);
 
 /// <summary>A private GitHub gist (picked by the person; signs in with the GitHub CLI or GH_TOKEN/GITHUB_TOKEN).</summary>
 public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncProvider
@@ -208,10 +210,15 @@ public static class SyncEndpoints
         group.MapPost("/forget", (SyncDeviceRequest request, SyncService sync, CancellationToken cancellationToken) =>
             sync.ForgetAsync(request.Device ?? string.Empty, cancellationToken));
         group.MapPost("/resolve", (SyncResolveRequest request, SyncService sync, CancellationToken cancellationToken) =>
-            sync.ResolveAsync(request.Key ?? string.Empty, request.Choice ?? string.Empty, cancellationToken));
+            sync.ResolveAsync(request.Key ?? string.Empty, request.Choice ?? string.Empty, request.Place, cancellationToken));
+        group.MapPut("/places", (SyncPlaceRequest request, SyncService sync) =>
+        {
+            sync.SetMode(request.Provider ?? string.Empty, request.Mode ?? string.Empty);
+            return sync.View;
+        });
         group.MapPost("/compare", async (SyncToolRequest request, SyncService sync, CancellationToken cancellationToken) =>
         {
-            await sync.OpenMergeToolAsync(request.Key ?? string.Empty, request.Tool ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            await sync.OpenMergeToolAsync(request.Key ?? string.Empty, request.Tool ?? string.Empty, request.Place, cancellationToken).ConfigureAwait(false);
             return Results.NoContent();
         });
     }

@@ -12,15 +12,26 @@ namespace TodoTracker.Server.Plugins.Sync;
 
 public sealed record SyncProviderView(string Id, string Name, bool Available, string Detail, bool Active);
 
-/// <summary>A clash; <paramref name="Ready"/> once both computers have the merged task (a side can be chosen then).</summary>
-public sealed record SyncConflictView(string Key, string Path, string PeerName, DateTimeOffset At, bool Ready);
+/// <summary>
+/// A clash; <paramref name="Ready"/> once both computers have the merged task (a side can be chosen then).
+/// <paramref name="Place"/>: the sync place it came through (with more than one).
+/// </summary>
+public sealed record SyncConflictView(string Key, string Path, string PeerName, DateTimeOffset At, bool Ready, string Place = "");
+
+/// <summary>
+/// A place to sync through and how it's used: <c>both</c> (read and write), <c>read</c> (the others' changes come in),
+/// <c>write</c> (this computer's tasks go out) or <c>off</c>. <paramref name="OtherDevices"/>: computers seen there
+/// for this library (null: not looked yet).
+/// </summary>
+public sealed record SyncPlaceView(string Id, string Name, bool Available, string Detail, string Mode, int? OtherDevices);
 
 public sealed record MergeTool(string Id, string Name, string Path);
 
 /// <summary>
 /// What the Sync panel shows. State: <c>off</c>, <c>unavailable</c> (nothing to sync with), <c>idle</c>,
 /// <c>syncing</c>, <c>error</c>. <paramref name="Library"/> names this set of tasks: computers sync when they use the
-/// same place and the same library (a second tasks folder gets its own).
+/// same place and the same library (a second tasks folder gets its own). <paramref name="Warning"/>: the tasks are in
+/// more than one place and only some are used (choose how to use each in <paramref name="Places"/>).
 /// </summary>
 public sealed record SyncView(
     string Choice,
@@ -33,21 +44,28 @@ public sealed record SyncView(
     IReadOnlyList<SyncProviderView> Providers,
     IReadOnlyList<SyncDevice> Devices,
     IReadOnlyList<SyncConflictView> Conflicts,
-    IReadOnlyList<MergeTool> MergeTools);
+    IReadOnlyList<MergeTool> MergeTools,
+    IReadOnlyList<SyncPlaceView>? Places = null,
+    string? Warning = null);
 
 /// <summary>
-/// Keeps the tasks folder in sync with the person's other devices through the chosen provider (by default the first
-/// one available: OneDrive, then iCloud Drive). Every provider is a plugin; this only picks one and runs the engine.
+/// Keeps the tasks folder in sync with the person's other devices. By default through one place (the first available:
+/// OneDrive, then iCloud Drive). With the tasks in more than one place, each place can be read (its computers' changes
+/// are merged in, clashes listed to settle), written (this computer's tasks go there), or both. Every place is a
+/// plugin; this only picks them and runs one engine per place.
 /// </summary>
 public sealed class SyncService : IDisposable
 {
+    private static readonly TimeSpan LookAgain = TimeSpan.FromMinutes(10);
+
     private readonly VaultBoardStore _vault;
     private readonly IReadOnlyList<ISyncProvider> _providers;
     private readonly string _dir;
     private readonly TimeProvider _time;
     private readonly Lock _lock = new();
     private readonly SemaphoreSlim _trigger = new(0, 1);
-    private (string Key, SyncEngine Engine)? _engine;
+    private readonly Dictionary<string, (string Key, SyncEngine Engine)> _engines = [];
+    private readonly Dictionary<string, (string Library, int Count, DateTimeOffset At)> _seen = [];
     private bool _syncing;
     private string? _problem;
 
@@ -80,14 +98,12 @@ public sealed class SyncService : IDisposable
         get
         {
             var choice = Choice;
-            var active = Active(out var reason);
-            var state = active is null ? null : StateFor(active);
-            var status = state?.Status ?? SyncStatus.Empty;
-            var views = _providers.Select(p =>
-            {
-                var check = p.Check(_vault.RootPath);
-                return new SyncProviderView(p.Id, p.Name, check.Available, check.Detail, p == active);
-            }).ToList();
+            var uses = Uses(out var reason);
+            var primary = uses.Count > 0 ? uses[0].Provider : null;
+            var states = uses.Select(u => (u.Provider, State: StateFor(u.Provider))).ToList();
+            var status = states.Count > 0 ? states[0].State.Status : SyncStatus.Empty;
+            var checks = _providers.ToDictionary(p => p.Id, p => p.Check(_vault.RootPath));
+            var views = _providers.Select(p => new SyncProviderView(p.Id, p.Name, checks[p.Id].Available, checks[p.Id].Detail, p == primary)).ToList();
             bool syncing;
             string? problem;
             lock (_lock)
@@ -96,25 +112,34 @@ public sealed class SyncService : IDisposable
                 problem = _problem;
             }
 
-            var shown = choice == "off" ? "off" : active is null ? "unavailable" : syncing ? "syncing" : problem is not null ? "error" : "idle";
+            var places = _providers.Select(p =>
+            {
+                var use = uses.FirstOrDefault(u => u.Provider == p);
+                var others = use.Provider is not null ? StateFor(p).Status.Devices.Count : Seen(p);
+                return new SyncPlaceView(p.Id, p.Name, checks[p.Id].Available, checks[p.Id].Detail, use.Provider is null ? "off" : ModeName(use.Mode), others);
+            }).ToList();
+
+            var shown = choice == "off" ? "off" : uses.Count == 0 ? "unavailable" : syncing ? "syncing" : problem is not null ? "error" : "idle";
             return new SyncView(
                 choice,
                 shown,
-                active?.Name,
-                active is null ? reason : active.Check(_vault.RootPath).Detail,
-                status.LastSync,
-                active is null ? null : problem,
+                uses.Count == 0 ? null : string.Join(" + ", uses.Select(u => u.Provider.Name)),
+                primary is null ? reason : checks[primary.Id].Detail,
+                states.Select(s => s.State.Status.LastSync).Where(t => t is not null).DefaultIfEmpty(status.LastSync).Max(),
+                uses.Count == 0 ? null : problem,
                 Library,
                 views,
-                status.Devices,
-                [.. status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At, c.Result is null || state!.LoadBase(c.Peer).GetValueOrDefault(c.Key)?.Hash == c.Result))],
-                MergeTools.Find());
+                [.. states.SelectMany(s => s.State.Status.Devices).GroupBy(d => d.Device).Select(g => g.MaxBy(d => d.At)!)],
+                [.. states.SelectMany(s => s.State.Status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At, Ready(s.State, c), s.Provider.Id)))],
+                MergeTools.Find(),
+                places,
+                choice == "off" ? null : Warning(places));
         }
     }
 
     private string SettingsPath => Path.Combine(_dir, "settings.json");
 
-    /// <summary>Picks a provider ("auto", "off" or an id) and syncs with it from now on.</summary>
+    /// <summary>Picks one provider ("auto", "off" or an id) and syncs with it from now on (any per-place choice is cleared).</summary>
     public void Choose(string choice)
     {
         if (choice is not ("auto" or "off") && !_providers.Any(p => p.Id == choice))
@@ -122,7 +147,37 @@ public sealed class SyncService : IDisposable
             throw new ArgumentException($"There is no sync provider \"{choice}\".", nameof(choice));
         }
 
+        Save("modes", string.Empty);
         Save("provider", choice);
+    }
+
+    /// <summary>
+    /// How one place is used: "both", "read", "write" or "off". The first such choice turns the automatic pick into
+    /// per-place choices (the place used until now keeps reading and writing).
+    /// </summary>
+    public void SetMode(string provider, string mode)
+    {
+        if (!_providers.Any(p => p.Id == provider))
+        {
+            throw new ArgumentException($"There is no sync provider \"{provider}\".", nameof(provider));
+        }
+
+        var parsed = ParseMode(mode) ?? throw new ArgumentException("Choose both, read, write or off.", nameof(mode));
+        var modes = Modes();
+        if (modes.Count == 0)
+        {
+            foreach (var (place, current) in Uses(out _))
+            {
+                modes[place.Id] = current;
+            }
+        }
+
+        modes[provider] = parsed;
+        Save("modes", string.Join(';', modes.Select(m => $"{m.Key}={ModeName(m.Value)}")));
+        if (Choice == "off")
+        {
+            Save("provider", "auto");
+        }
     }
 
     /// <summary>Names this folder's set of tasks (computers using the same name sync together).</summary>
@@ -152,13 +207,18 @@ public sealed class SyncService : IDisposable
 
     internal Task<bool> WaitForTriggerAsync(TimeSpan timeout, CancellationToken cancellationToken) => _trigger.WaitAsync(timeout, cancellationToken);
 
-    /// <summary>Syncs now with the chosen provider (nothing when sync is off or no provider is available).</summary>
+    /// <summary>
+    /// Syncs now through every place in use: the ones read first (so what they bring is in the tasks folder), then the
+    /// ones only written. Places not in use are looked at now and then, to say when tasks are there too.
+    /// </summary>
     public async Task<SyncView> SyncNowAsync(CancellationToken cancellationToken = default)
     {
-        SyncEngine? engine;
+        List<(ISyncProvider Provider, SyncMode Mode, SyncEngine Engine)> engines;
         try
         {
-            engine = EngineFor(Active(out _));
+            engines = [.. Uses(out _)
+                .OrderBy(u => u.Mode == SyncMode.Read ? 0 : u.Mode == SyncMode.Both ? 1 : 2)
+                .Select(u => (u.Provider, u.Mode, EngineFor(u.Provider, u.Mode)))];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {
@@ -166,21 +226,64 @@ public sealed class SyncService : IDisposable
             return View;
         }
 
-        if (engine is null)
+        if (engines.Count > 0)
         {
-            return View;
+            lock (_lock)
+            {
+                _syncing = true;
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            var problems = new List<string>();
+            try
+            {
+                // With more than one place: when a later place brought changes, the places before it get them too
+                // (a second round; nothing is read or written where nothing changed).
+                for (var round = 0; round < (engines.Count > 1 ? 2 : 1); round++)
+                {
+                    problems.Clear();
+                    var brought = false;
+                    foreach (var (provider, _, engine) in engines)
+                    {
+                        var (problem, changes) = await SyncPlaceAsync(engine, cancellationToken).ConfigureAwait(false);
+                        brought |= changes > 0 && provider != engines[0].Provider;
+                        if (problem is not null)
+                        {
+                            problems.Add(engines.Count == 1 ? problem : $"{provider.Name}: {problem}");
+                        }
+                    }
+
+                    if (!brought)
+                    {
+                        break;
+                    }
+                }
+            }
+            finally
+            {
+                SetProblem(problems.Count == 0 ? null : string.Join(' ', problems));
+                lock (_lock)
+                {
+                    _syncing = false;
+                }
+            }
         }
 
-        lock (_lock)
+        if (Choice != "off")
         {
-            _syncing = true;
+            await LookAroundAsync(engines.Select(e => e.Provider).ToHashSet(), cancellationToken).ConfigureAwait(false);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+        return View;
+    }
+
+    private static async Task<(string? Problem, int Changes)> SyncPlaceAsync(SyncEngine engine, CancellationToken cancellationToken)
+    {
         try
         {
             var result = await engine.SyncAsync(cancellationToken).ConfigureAwait(false);
-            SetProblem(result.Problem);
+            return (result.Problem, result.Changes);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -189,33 +292,55 @@ public sealed class SyncService : IDisposable
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Whatever happened (a timeout, odd data from another computer), sync says so and tries again later.
-            SetProblem(ex is OperationCanceledException ? "The sync took too long (no connection?)." : ex.Message);
+            return (ex is OperationCanceledException ? "The sync took too long (no connection?)." : ex.Message, 0);
         }
-        finally
+    }
+
+    /// <summary>The places not in use that are here: are this library's tasks there too? (looked at every 10 minutes)</summary>
+    private async Task LookAroundAsync(HashSet<ISyncProvider> used, CancellationToken cancellationToken)
+    {
+        var library = Library;
+        var now = _time.GetUtcNow();
+        foreach (var provider in _providers.Where(p => !used.Contains(p) && p.Check(_vault.RootPath).Available))
         {
             lock (_lock)
             {
-                _syncing = false;
+                if (_seen.TryGetValue(provider.Id, out var seen) && seen.Library == library && now - seen.At < LookAgain)
+                {
+                    continue;
+                }
             }
 
-            Changed?.Invoke(this, EventArgs.Empty);
+            try
+            {
+                var self = StateFor(provider).DeviceId;
+                var snapshot = await provider.CreateRemote(_vault.RootPath, library).ReadAsync(self, null, cancellationToken).ConfigureAwait(false);
+                var count = snapshot?.Devices.Count(d => d.Device != self) ?? 0;
+                lock (_lock)
+                {
+                    _seen[provider.Id] = (library, count, now);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or HttpRequestException or JsonException or TaskCanceledException)
+            {
+                // Can't look now: try again next time.
+            }
         }
-
-        return View;
     }
 
     /// <summary>
     /// Settles a conflict: "mine" or "theirs" redoes the merge keeping that side only where the two clashed (every
-    /// other change from both stays); "merged" keeps the task as it is now.
+    /// other change from both stays); "merged" keeps the task as it is now. <paramref name="place"/>: where it came
+    /// through (with more than one place; else the first that lists it).
     /// </summary>
-    public async Task<SyncView> ResolveAsync(string key, string choice, CancellationToken cancellationToken = default)
+    public async Task<SyncView> ResolveAsync(string key, string choice, string? place = null, CancellationToken cancellationToken = default)
     {
         if (choice is not ("mine" or "theirs" or "merged"))
         {
             throw new ArgumentException("Choose mine, theirs or merged.", nameof(choice));
         }
 
-        var engine = EngineFor(Active(out _)) ?? throw new InvalidOperationException("Sync is off.");
+        var engine = EngineWith(key, place);
         var conflict = Newest(engine, key);
         if (choice != "merged")
         {
@@ -234,7 +359,7 @@ public sealed class SyncService : IDisposable
             }
 
             // Choosing a side before the other computer has the merged task too would be undone by its merge.
-            if (!Ready(engine, conflict))
+            if (!Ready(engine.State, conflict))
             {
                 throw new InvalidOperationException($"Wait until {conflict.PeerName} has synced too (usually within a minute), then choose.");
             }
@@ -256,20 +381,29 @@ public sealed class SyncService : IDisposable
         return View;
     }
 
-    /// <summary>Stops merging a device (a computer that's gone, or this computer's old tasks folder).</summary>
+    /// <summary>Stops merging a device (a computer that's gone, or this computer's old tasks folder), wherever it's seen.</summary>
     public async Task<SyncView> ForgetAsync(string device, CancellationToken cancellationToken = default)
     {
-        var engine = EngineFor(Active(out _)) ?? throw new InvalidOperationException("Sync is off.");
-        await engine.ForgetAsync(device, cancellationToken).ConfigureAwait(false);
+        var engines = Uses(out _).Select(u => EngineFor(u.Provider, u.Mode)).ToList();
+        if (engines.Count == 0)
+        {
+            throw new InvalidOperationException("Sync is off.");
+        }
+
+        foreach (var engine in engines.Where(e => e.State.Status.Devices.Any(d => d.Device == device)).DefaultIfEmpty(engines[0]))
+        {
+            await engine.ForgetAsync(device, cancellationToken).ConfigureAwait(false);
+        }
+
         Changed?.Invoke(this, EventArgs.Empty);
         return View;
     }
 
     /// <summary>Opens the other device's version next to the file in a merge tool (the file is edited in place).</summary>
-    public async Task OpenMergeToolAsync(string key, string toolId, CancellationToken cancellationToken = default)
+    public async Task OpenMergeToolAsync(string key, string toolId, string? place = null, CancellationToken cancellationToken = default)
     {
         var tool = MergeTools.Find().FirstOrDefault(t => t.Id == toolId) ?? throw new ArgumentException($"{toolId} isn't installed.", nameof(toolId));
-        var engine = EngineFor(Active(out _)) ?? throw new InvalidOperationException("Sync is off.");
+        var engine = EngineWith(key, place);
         var conflict = Newest(engine, key);
         var theirs = engine.State.ReadBlob(conflict.Theirs) ?? throw new InvalidOperationException("The other version isn't kept any more.");
         var local = await _vault.ReadSyncAsync(cancellationToken).ConfigureAwait(false);
@@ -285,7 +419,11 @@ public sealed class SyncService : IDisposable
 
     public void Dispose()
     {
-        _engine?.Engine.Dispose();
+        foreach (var (_, engine) in _engines.Values)
+        {
+            engine.Dispose();
+        }
+
         _trigger.Dispose();
     }
 
@@ -300,13 +438,110 @@ public sealed class SyncService : IDisposable
 
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..16];
 
+    private static string ModeName(SyncMode mode) => mode switch
+    {
+        SyncMode.Both => "both",
+        SyncMode.Read => "read",
+        SyncMode.Write => "write",
+        _ => "off",
+    };
+
+    private static SyncMode? ParseMode(string? text) => text switch
+    {
+        "both" => SyncMode.Both,
+        "read" => SyncMode.Read,
+        "write" => SyncMode.Write,
+        "off" => SyncMode.None,
+        _ => null,
+    };
+
     private static SyncConflictRecord Newest(SyncEngine engine, string key) =>
         engine.State.Status.Conflicts.Where(c => c.Key == key).OrderByDescending(c => c.At).FirstOrDefault()
             ?? throw new InvalidOperationException("That conflict was already settled.");
 
     /// <summary>Both computers have the merged task (it's what they last agreed on): a side can be chosen now.</summary>
-    private static bool Ready(SyncEngine engine, SyncConflictRecord conflict) =>
-        conflict.Result is null || engine.State.LoadBase(conflict.Peer).GetValueOrDefault(conflict.Key)?.Hash == conflict.Result;
+    private static bool Ready(SyncState state, SyncConflictRecord conflict) =>
+        conflict.Result is null || state.LoadBase(conflict.Peer).GetValueOrDefault(conflict.Key)?.Hash == conflict.Result;
+
+    /// <summary>Tasks are in a place that isn't read (another computer syncs there): say so, and where.</summary>
+    private static string? Warning(IReadOnlyList<SyncPlaceView> places)
+    {
+        var unread = places.Where(p => p.Available && p.Mode is "off" or "write" && p.OtherDevices > 0).Select(p => p.Name).ToList();
+        if (unread.Count == 0)
+        {
+            return null;
+        }
+
+        var where = unread.Count == 1 ? unread[0] : string.Join(", ", unread[..^1]) + " and " + unread[^1];
+        return $"Your tasks are also in {where}, which this computer doesn't read: changes made there don't show here. " +
+            "Choose below where to read from and write to; what's read is merged here (clashes are listed to settle).";
+    }
+
+    /// <summary>The engine of the place the conflict came through (the given place, else the first that lists it).</summary>
+    private SyncEngine EngineWith(string key, string? place)
+    {
+        var uses = Uses(out _);
+        if (uses.Count == 0)
+        {
+            throw new InvalidOperationException("Sync is off.");
+        }
+
+        foreach (var (provider, mode) in uses.Where(u => string.IsNullOrEmpty(place) || u.Provider.Id == place))
+        {
+            var engine = EngineFor(provider, mode);
+            if (engine.State.Status.Conflicts.Any(c => c.Key == key))
+            {
+                return engine;
+            }
+        }
+
+        throw new InvalidOperationException("That conflict was already settled.");
+    }
+
+    private int? Seen(ISyncProvider provider)
+    {
+        lock (_lock)
+        {
+            return _seen.TryGetValue(provider.Id, out var seen) && seen.Library == Library ? seen.Count : null;
+        }
+    }
+
+    private Dictionary<string, SyncMode> Modes()
+    {
+        var modes = new Dictionary<string, SyncMode>(StringComparer.Ordinal);
+        foreach (var pair in (Setting("modes") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2 && ParseMode(parts[1]) is { } mode && _providers.Any(p => p.Id == parts[0]))
+            {
+                modes[parts[0]] = mode;
+            }
+        }
+
+        return modes;
+    }
+
+    /// <summary>The places in use, and how: chosen per place, else the one chosen (or the first available) for both.</summary>
+    private List<(ISyncProvider Provider, SyncMode Mode)> Uses(out string reason)
+    {
+        if (Choice == "off")
+        {
+            reason = "Sync is off.";
+            return [];
+        }
+
+        var modes = Modes();
+        if (modes.Count > 0)
+        {
+            var chosen = _providers.Where(p => modes.GetValueOrDefault(p.Id) != SyncMode.None).ToList();
+            var here = chosen.Where(p => p.Check(_vault.RootPath).Available).Select(p => (p, modes[p.Id])).ToList();
+            reason = here.Count > 0 ? string.Empty : chosen.Count == 0 ? "Every place is set to off." : "None of the places chosen is available here.";
+            return here;
+        }
+
+        var active = Active(out reason);
+        return active is null ? [] : [(active, SyncMode.Both)];
+    }
 
     private string? Setting(string name)
     {
@@ -350,12 +585,6 @@ public sealed class SyncService : IDisposable
     private ISyncProvider? Active(out string reason)
     {
         var choice = Choice;
-        if (choice == "off")
-        {
-            reason = "Sync is off.";
-            return null;
-        }
-
         var candidates = choice == "auto" ? _providers.Where(p => p.Automatic) : _providers.Where(p => p.Id == choice);
         string? why = null;
         foreach (var provider in candidates)
@@ -374,26 +603,21 @@ public sealed class SyncService : IDisposable
         return null;
     }
 
-    /// <summary>The engine for this provider, place and library (a new one when any of them changed).</summary>
-    private SyncEngine? EngineFor(ISyncProvider? provider)
+    /// <summary>The engine for this place, how it's used, and the library (a new one when any of them changed).</summary>
+    private SyncEngine EngineFor(ISyncProvider provider, SyncMode mode)
     {
-        if (provider is null)
-        {
-            return null;
-        }
-
         var library = Library;
-        var key = $"{provider.Id}|{provider.Check(_vault.RootPath).Detail}|{library}";
+        var key = $"{provider.Check(_vault.RootPath).Detail}|{library}|{mode}";
         lock (_lock)
         {
-            if (_engine is { } current && current.Key == key)
+            if (_engines.TryGetValue(provider.Id, out var current) && current.Key == key)
             {
                 return current.Engine;
             }
 
-            _engine?.Engine.Dispose();
-            var engine = new SyncEngine(_vault, provider.CreateRemote(_vault.RootPath, library), StateFor(provider), Path.Combine(_dir, provider.Id + ".lock"), _time);
-            _engine = (key, engine);
+            current.Engine?.Dispose();
+            var engine = new SyncEngine(_vault, provider.CreateRemote(_vault.RootPath, library), StateFor(provider), Path.Combine(_dir, provider.Id + ".lock"), _time) { Mode = mode };
+            _engines[provider.Id] = (key, engine);
             return engine;
         }
     }
