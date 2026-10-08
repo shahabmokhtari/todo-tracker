@@ -55,6 +55,21 @@ Every computer remembers what it last agreed on with each other computer, and me
 When two computers had to choose (both moved the same task, say), they make the same choice, so they always end up
 with the same files.
 
+## Tasks in more than one place
+
+Sync uses one place by default. When this library's tasks are also somewhere it doesn't read (say the laptop syncs
+through OneDrive and the Mac through iCloud Drive), the Sync panel says so, and **More than one place** lets you choose
+for each place:
+
+* **Read and write:** the other computers' changes there come in, and this computer's tasks go out.
+* **Read only:** changes come in; nothing is written there.
+* **Write only:** this computer's tasks go there; nothing is read from it.
+* **Not used.**
+
+Everything read is merged into the tasks folder the same way as between computers (three-way; anything changed in
+two places shows under *Changed on both computers*, with the place it came through, to keep one side, both, or compare
+them). Places read come first in each sync, so the places written get what they brought in the same sync. Reading and
+writing every place keeps them all the same. Choosing a single place again in **Sync with** goes back to one place.
 ## On a Mac
 
 The Mac app comes with Todo Tracker's server inside. It starts in the background with the app (and stops when the app
