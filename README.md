@@ -14,6 +14,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
 | **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance and syncs with your other computers) |
 | **Linux** | A tray app (`todo-tracker`): runs everything (tasks folder, sync, the web app, MCP); click it for the full window, its menu adds a task and runs the focus timer |
+| **Android** | A native app (Kotlin, Jetpack Compose): Today with the one thing to do now, Do now, Waiting, groups, quick capture, snooze and notes; the same agenda rules as every other app (CI builds the APK) |
 | **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
 | **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |
