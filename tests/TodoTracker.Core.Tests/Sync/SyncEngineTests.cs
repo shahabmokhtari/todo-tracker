@@ -84,6 +84,56 @@ public sealed class SyncEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_place_can_be_read_only_or_write_only()
+    {
+        // With more than one place to sync through, each can be read (others' changes come in), written (this
+        // device's tasks go out), or both.
+        var laptop = Add("Laptop");
+        var phone = Add("Phone");
+        using var readOnly = new SyncEngine(phone.Store, new FolderRemote(Remote), phone.State, Path.Combine(_root, "phone-read.lock")) { Mode = SyncMode.Read };
+        using var writeOnly = new SyncEngine(phone.Store, new FolderRemote(Remote), phone.State, Path.Combine(_root, "phone-write.lock")) { Mode = SyncMode.Write };
+        await laptop.AddTask("From the laptop");
+        await phone.AddTask("From the phone");
+        await laptop.Sync();
+
+        var read = await readOnly.SyncAsync(TestContext.Current.CancellationToken);
+        Assert.False(read.Published);
+        Assert.Contains("From the laptop", await phone.Titles());
+        await laptop.Sync();
+        Assert.DoesNotContain("From the phone", await laptop.Titles());
+
+        await laptop.AddTask("Later on the laptop");
+        await laptop.Sync();
+        var written = await writeOnly.SyncAsync(TestContext.Current.CancellationToken);
+        Assert.True(written.Published);
+        Assert.DoesNotContain("Later on the laptop", await phone.Titles());
+        await laptop.Sync();
+        Assert.Contains("From the phone", await laptop.Titles());
+    }
+
+    [Fact]
+    public async Task A_place_written_only_then_read_brings_in_what_changed_meanwhile()
+    {
+        // Review finding: write-only syncs marked the place as merged, so reading it later skipped those changes.
+        var laptop = Add("Laptop");
+        var phone = Add("Phone");
+        phone.Engine.Mode = SyncMode.Write;
+        await laptop.AddTask("While the phone only wrote");
+        await laptop.Sync();
+        var written = await phone.Sync();
+        Assert.DoesNotContain("While the phone only wrote", await phone.Titles());
+        Assert.Equal(["Laptop"], phone.State.Status.Devices.Select(d => d.Name));
+        Assert.True(written.Published);
+        // Unchanged since: the place is only checked, not read again (a gist answers "not modified").
+        Assert.True((await phone.Sync()).Skipped);
+
+        phone.Engine.Mode = SyncMode.Both;
+        await phone.Sync();
+
+        Assert.Contains("While the phone only wrote", await phone.Titles());
+    }
+
+    [Fact]
     public async Task A_task_added_on_one_device_shows_up_on_the_other()
     {
         var laptop = Add("Laptop");

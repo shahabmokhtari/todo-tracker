@@ -5,6 +5,13 @@ namespace TodoTracker.Core.Sync;
 /// <param name="SelfMissing">This device's own snapshot isn't there (deleted, or a new place): publish again.</param>
 public sealed record RemoteSnapshot(IReadOnlyList<DeviceSnapshot> Devices, string Version, bool Partial = false, bool SelfMissing = false);
 
+/// <summary>A place that can be looked at without changing anything there (nothing created, nothing downloaded).</summary>
+public interface ISyncPeek
+{
+    /// <summary>The other devices there (none when the place doesn't exist yet).</summary>
+    Task<IReadOnlyList<SyncDevice>> PeekAsync(string self, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Where devices meet: a shared folder (OneDrive, iCloud Drive, a network share), a gist, ... Each device only ever
 /// writes its own snapshot (and contents), so two devices never write the same thing.

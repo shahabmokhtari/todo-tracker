@@ -815,7 +815,9 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .sync-providers > div { margin-top: 6px; }
 .sync-btn { position: relative; }
 .sync-btn.attention::after { content: ''; position: absolute; top: 5px; right: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface-solid, #fff); }
-.sync-device { justify-content: space-between; align-items: center !important; }
+.sync-device, .sync-place { justify-content: space-between; align-items: center !important; }
+.sync-warning { padding: 10px 12px; border-radius: 10px; background: var(--warn-soft, rgb(245 158 11 / .12)); color: var(--text); font-size: 13px; border: 1px solid rgb(245 158 11 / .45); }
+.sync-places summary { cursor: pointer; font-weight: 600; }
 .sync-library { width: 100%; }
 
 /* ---------- pasted images (embeds) ---------- */

@@ -63,6 +63,13 @@ public sealed class SyncState
         set => Write(MarksPath, (Read<Marks>(MarksPath) ?? new Marks()) with { RemoteVersion = value });
     }
 
+    /// <summary>The place's version when last seen while only writing to it (nothing merged; just "unchanged since").</summary>
+    public string? SeenVersion
+    {
+        get => Read<Marks>(MarksPath)?.SeenVersion;
+        set => Write(MarksPath, (Read<Marks>(MarksPath) ?? new Marks()) with { SeenVersion = value });
+    }
+
     /// <summary>A hash of what we last published (to skip publishing an unchanged vault).</summary>
     public string? Published
     {
@@ -203,5 +210,5 @@ public sealed class SyncState
 
     private sealed record DeviceInfo(string Id, string Name);
 
-    private sealed record Marks(string? RemoteVersion = null, string? Published = null, DateTimeOffset? PublishedAt = null, string? RemoteIdentity = null);
+    private sealed record Marks(string? RemoteVersion = null, string? Published = null, DateTimeOffset? PublishedAt = null, string? RemoteIdentity = null, string? SeenVersion = null);
 }
