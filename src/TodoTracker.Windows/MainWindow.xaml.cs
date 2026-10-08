@@ -454,11 +454,26 @@ public partial class MainWindow : Window
         }
 
         var menu = new ContextMenu { PlacementTarget = element };
-        foreach (var option in _vm.SnoozeOptions)
+        foreach (var choice in _vm.SnoozeChoices())
         {
-            menu.Items.Add(new MenuItem { Header = option.Label, Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, option) });
+            menu.Items.Add(new MenuItem { Header = choice.Label, InputGestureText = _vm.DescribeWhen(choice.At), Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, Choice: choice.Id) });
         }
 
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Pick a _time…", Command = _vm.PickSnoozeTimeCommand, CommandParameter = card });
+        var after = new MenuItem { Header = "_After another task" };
+        foreach (var other in _vm.WaitCandidates(card).Take(12))
+        {
+            // Titles are user text: no access keys from underscores in them.
+            after.Items.Add(new MenuItem { Header = new TextBlock { Text = other.Title, MaxWidth = 320, TextTrimming = TextTrimming.CharacterEllipsis }, Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, AfterId: other.Id) });
+        }
+
+        if (after.Items.Count == 0)
+        {
+            after.Items.Add(new MenuItem { Header = "No other open tasks", IsEnabled = false });
+        }
+
+        menu.Items.Add(after);
         menu.IsOpen = true;
     }
 

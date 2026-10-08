@@ -99,4 +99,25 @@ public sealed class SnoozeTests
         Assert.Equal(At(10, 9), QuickCaptureParser.Parse("Clean @weekend", Monday, Utc).NextActionAt);
         Assert.Equal("Email @team", QuickCaptureParser.Parse("Email @team", Monday, Utc).Title);
     }
+
+    [Theory]
+    [InlineData(5, 17, 0, "today 17:00")]
+    [InlineData(5, 9, 15, "today 9:15")]
+    [InlineData(6, 9, 0, "tomorrow 9:00")]
+    [InlineData(9, 14, 30, "Fri 14:30")]
+    [InlineData(11, 9, 0, "Sun 9:00")]
+    [InlineData(12, 9, 0, "Mon 12 Jan, 9:00")]
+    public void Describe_says_when_like_the_web_app(int day, int hour, int minute, string expected)
+    {
+        Assert.Equal(expected, Snooze.Describe(new DateTimeOffset(2026, 1, day, hour, minute, 0, TimeSpan.Zero), Monday, Utc));
+    }
+
+    [Fact]
+    public void Describe_adds_the_year_only_when_it_is_another_year_and_uses_the_local_day()
+    {
+        Assert.Equal("Mon 4 Jan 2027, 9:00", Snooze.Describe(new DateTimeOffset(2027, 1, 4, 9, 0, 0, TimeSpan.Zero), Monday, Utc));
+        var newYork = TimeZoneInfo.FindSystemTimeZoneById(OperatingSystem.IsWindows() ? "Eastern Standard Time" : "America/New_York");
+        // 2:00 UTC on Tuesday is still Monday evening (21:00) in New York.
+        Assert.Equal("today 21:00", Snooze.Describe(new DateTimeOffset(2026, 1, 6, 2, 0, 0, TimeSpan.Zero), Monday, newYork));
+    }
 }

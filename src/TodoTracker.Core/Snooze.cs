@@ -43,6 +43,26 @@ public static partial class Snooze
         return choices;
     }
 
+    /// <summary>When a snooze ends, the way people say it (same words as the web app's whenText): "today 17:00",
+    /// "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".</summary>
+    public static string Describe(DateTimeOffset at, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        var local = TimeZoneInfo.ConvertTime(at, zone);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var day = DateOnly.FromDateTime(local.DateTime);
+        var time = local.ToString("H:mm", CultureInfo.InvariantCulture);
+        var days = day.DayNumber - today.DayNumber;
+        var weekday = local.ToString("ddd", CultureInfo.InvariantCulture);
+        return days switch
+        {
+            0 => $"today {time}",
+            1 => $"tomorrow {time}",
+            > 1 and < 7 => $"{weekday} {time}",
+            _ => $"{weekday} {local.Day} {local.ToString("MMM", CultureInfo.InvariantCulture)}{(day.Year == today.Year ? string.Empty : $" {day.Year}")}, {time}",
+        };
+    }
+
     /// <summary>The time a typed rule means, or null when it isn't understood (or is already past).</summary>
     public static DateTimeOffset? Parse(string? rule, DateTimeOffset now, TimeZoneInfo zone)
     {
