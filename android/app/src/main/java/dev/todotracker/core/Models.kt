@@ -44,7 +44,7 @@ enum class ReminderKind(val wire: String) {
 }
 
 /** A change the board refuses (not found, invalid, a step that must wait): the message says why. */
-class BoardException(message: String) : Exception(message)
+class BoardException(message: String, val isNewerSchema: Boolean = false) : Exception(message)
 
 class Reminder(
     val id: UUID = UUID.randomUUID(),
@@ -91,6 +91,9 @@ class WorkItem(
     val children: MutableList<WorkItem> = mutableListOf()
     val reminders: MutableList<Reminder> = mutableListOf()
     val notes: MutableList<Note> = mutableListOf()
+
+    /** What other apps keep on a task that this one doesn't use (tags, labels, time…): written back as it was. */
+    var extra: kotlinx.serialization.json.JsonObject? = null
 
     val groupId: UUID get() = parent?.groupId ?: ownGroupId
     val isDone: Boolean get() = completedAt != null

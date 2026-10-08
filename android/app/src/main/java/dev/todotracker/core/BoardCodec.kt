@@ -32,11 +32,27 @@ object BoardCodec {
     fun parseDate(text: String): Instant? =
         runCatching { Instant.parse(text) }.getOrNull() ?: runCatching { OffsetDateTime.parse(text).toInstant() }.getOrNull()
 
-    fun decode(text: String): TaskBoard {
-        val doc = runCatching { json.parseToJsonElement(text).jsonObject }.getOrElse { throw BoardException("Board file is not valid: ${it.message}") }
+    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
+    private val itemKeys = setOf(
+        "id", "title", "details", "priority", "createdAt", "completedAt", "deadline", "nextActionAt", "sequential",
+        "stepDelayMinutes", "groupId", "reminders", "notes", "children",
+    )
+
+    /** The board in [text]; anything unexpected (not JSON, the wrong shapes) is a [BoardException]. */
+    fun decode(text: String): TaskBoard =
+        try {
+            decodeOrThrow(text)
+        } catch (e: BoardException) {
+            throw e
+        } catch (e: Exception) {
+            throw BoardException("Board file is not valid: ${e.message}")
+        }
+
+    private fun decodeOrThrow(text: String): TaskBoard {
+        val doc = json.parseToJsonElement(text).jsonObject
         val version = doc["schemaVersion"]?.jsonPrimitive?.intOrNull ?: 1
         if (version > TaskBoard.CURRENT_SCHEMA_VERSION) {
-            throw BoardException("Board schema v$version is newer than this app supports (v${TaskBoard.CURRENT_SCHEMA_VERSION}). Please update the app.")
+            throw BoardException("Board schema v$version is newer than this app supports (v${TaskBoard.CURRENT_SCHEMA_VERSION}). Please update the app.", isNewerSchema = true)
         }
 
         val board = TaskBoard(seedDefaultGroups = false)
@@ -60,10 +76,15 @@ object BoardCodec {
             if (board.find(uuid) != null && seen.add(uuid)) board.nowOrder.add(uuid)
         }
         board.pomodoro = doc["pomodoro"]?.takeIf { it !is JsonNull }
+        board.extra = unknown(doc, boardKeys)
         return board
     }
 
+    private fun unknown(o: JsonObject, known: Set<String>): JsonObject? =
+        o.filterKeys { it !in known }.takeIf { it.isNotEmpty() }?.let(::JsonObject)
+
     fun encode(board: TaskBoard): String = json.encodeToString(JsonObject.serializer(), buildJsonObject {
+        board.extra?.forEach { (key, value) -> put(key, value) }
         put("schemaVersion", TaskBoard.CURRENT_SCHEMA_VERSION)
         put("groups", buildJsonArray {
             for (g in board.groups) add(buildJsonObject {
@@ -87,6 +108,7 @@ object BoardCodec {
     })
 
     private fun item(i: WorkItem): JsonObject = buildJsonObject {
+        i.extra?.forEach { (key, value) -> put(key, value) }
         put("id", i.id.toString())
         put("title", i.title)
         i.details?.let { put("details", it) }
@@ -132,6 +154,7 @@ object BoardCodec {
         item.nextActionAt = o.date("nextActionAt")
         item.sequential = o["sequential"]?.jsonPrimitive?.booleanOrNull ?: false
         item.stepDelay = o["stepDelayMinutes"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }?.let { Duration.ofMinutes(it.toLong()) }
+        item.extra = unknown(o, itemKeys)
         for (r in o.array("reminders")) {
             val ro = r.jsonObject
             val rid = ro.uuid("id") ?: continue

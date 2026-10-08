@@ -3,6 +3,7 @@ package dev.todotracker.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -12,14 +13,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
+    private val vm: BoardViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             TodoTrackerTheme {
-                TodayScreen()
+                TodayScreen(vm)
             }
         }
+    }
+
+    // Back to the app: what came back meanwhile (this morning's "tomorrow" tasks) shows at once.
+    override fun onResume() {
+        super.onResume()
+        vm.refresh()
     }
 }
 

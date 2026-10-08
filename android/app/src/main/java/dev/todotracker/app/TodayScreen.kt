@@ -33,6 +33,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import java.util.UUID
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -48,10 +56,20 @@ import java.time.LocalTime
 /** Today: the one thing to do now (big), then the rest of Do now, then what's waiting. */
 @Composable
 fun TodayScreen(vm: BoardViewModel = viewModel()) {
-    var noteFor by remember { mutableStateOf<AgendaEntry?>(null) }
-    var addingGroup by remember { mutableStateOf(false) }
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(Modifier.safeDrawingPadding().imePadding().padding(horizontal = 16.dp)) {
+    // Kept across rotation and theme changes (as ids and text).
+    var noteFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var addingGroup by rememberSaveable { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val undoable = vm.undoable
+    LaunchedEffect(undoable) {
+        if (undoable != null) {
+            val result = snackbar.showSnackbar(undoable.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
+            if (result == SnackbarResult.ActionPerformed) undoable.undo()
+            vm.undoable = null
+        }
+    }
+    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
+        Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
             Header(vm)
             GroupTabs(vm, onAdd = { addingGroup = true })
             Capture(vm)
@@ -61,12 +79,12 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
                 if (focus == null) {
                     item { Text("Nothing is due. Nice.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp)) }
                 } else {
-                    item { FocusCard(focus, vm, onNote = { noteFor = focus }) }
+                    item { FocusCard(focus, vm, onNote = { noteFor = focus.item.id.toString() }) }
                 }
                 val rest = vm.dashboard.now.drop(1)
                 if (rest.isNotEmpty()) {
                     item { SectionTitle("Do now", rest.size) }
-                    items(rest, key = { it.item.id }) { TaskRow(it, vm, onNote = { noteFor = it }) }
+                    items(rest, key = { it.item.id }) { entry -> TaskRow(entry, vm, onNote = { noteFor = entry.item.id.toString() }) }
                 }
                 if (vm.dashboard.waiting.isNotEmpty()) {
                     item { SectionTitle("Waiting", vm.dashboard.waiting.size) }
@@ -76,7 +94,10 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             }
         }
     }
-    noteFor?.let { entry -> TextDialog("Note on “${entry.item.title}”", "What happened, what's next…", onDone = { vm.addNote(entry.item.id, it) }, onDismiss = { noteFor = null }) }
+    noteFor?.let { id ->
+        val uuid = UUID.fromString(id)
+        TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
+    }
     if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
 }
 
@@ -113,7 +134,7 @@ private fun GroupTabs(vm: BoardViewModel, onAdd: () -> Unit) {
 
 @Composable
 private fun Capture(vm: BoardViewModel) {
-    var text by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
     fun add() {
         if (vm.capture(text)) text = ""
     }
@@ -221,13 +242,14 @@ private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
 }
 
 @Composable
-private fun TextDialog(title: String, placeholder: String, onDone: (String) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
+private fun TextDialog(title: String, placeholder: String, onDone: (String) -> Boolean, onDismiss: () -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { OutlinedTextField(value = text, onValueChange = { text = it }, placeholder = { Text(placeholder) }) },
-        confirmButton = { TextButton(onClick = { onDone(text); onDismiss() }, enabled = text.isNotBlank()) { Text("Save") } },
+        // Closes only when it was saved (else what was typed stays, and the reason shows).
+        confirmButton = { TextButton(onClick = { if (onDone(text)) onDismiss() }, enabled = text.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

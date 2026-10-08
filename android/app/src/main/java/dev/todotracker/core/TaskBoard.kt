@@ -20,6 +20,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** The focus timer as the other apps wrote it (kept as it is: this app doesn't run it yet). */
     var pomodoro: JsonElement? = null
 
+    /** Board-level data other apps keep that this one doesn't use (labels…): written back as it was. */
+    var extra: kotlinx.serialization.json.JsonObject? = null
+
     private val index = HashMap<UUID, WorkItem>()
 
     init {

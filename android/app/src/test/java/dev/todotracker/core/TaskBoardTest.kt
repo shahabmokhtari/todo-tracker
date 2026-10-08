@@ -74,7 +74,45 @@ class TaskBoardTest {
 
     @Test
     fun aBoardFromANewerVersionIsNeverReplaced() {
-        assertThrows(BoardException::class.java) { BoardCodec.decode("""{"schemaVersion": 99}""") }
+        val e = assertThrows(BoardException::class.java) { BoardCodec.decode("""{"schemaVersion": 99}""") }
+        assertTrue(e.isNewerSchema)
+    }
+
+    @Test
+    fun theWrongShapesAreAnInvalidBoardNotACrash() {
+        for (text in listOf("""{"items":[null]}""", """{"items":[{"id":"8b0f2c1e-1111-4a6b-9c1d-000000000001","title":"x","reminders":[1]}]}""", "[]")) {
+            val e = assertThrows(text, BoardException::class.java) { BoardCodec.decode(text) }
+            assertFalse(e.isNewerSchema)
+        }
+    }
+
+    @Test
+    fun whatOtherAppsKeepOnATaskIsWrittenBackAsItWas() {
+        // Tags, labels, time from Windows or the server: this app doesn't use them, but never drops them.
+        val text = """{"schemaVersion":1,"labels":[{"name":"Urgent","color":"#e11d48"}],"items":[{"id":"8b0f2c1e-1111-4a6b-9c1d-000000000001","title":"Launch","createdAt":"2026-01-05T09:00:00.000Z","tags":["deep work"],"stage":"doing"}]}"""
+
+        val again = BoardCodec.encode(BoardCodec.decode(text))
+
+        assertTrue(again.contains("\"deep work\""))
+        assertTrue(again.contains("\"stage\": \"doing\""))
+        assertTrue(again.contains("\"Urgent\""))
+    }
+
+    @Test
+    fun aDamagedBoardWithoutAGoodCopyIsKeptAsideAndAFreshOneStarts() {
+        val dir = Files.createTempDirectory("tt-android").toFile()
+        try {
+            File(dir, "board.json").writeText("{ not json")
+            val store = BoardFileStore(File(dir, "board.json"))
+
+            val board = store.load()
+
+            assertTrue(board.items.isEmpty())
+            assertNotNull(store.problem)
+            assertTrue(dir.listFiles()!!.any { it.name.startsWith("board.json.corrupt-") })
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test
