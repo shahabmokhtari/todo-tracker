@@ -64,5 +64,7 @@ class SharedScenarioTest {
         assertEquals(Priority.HIGH, launch.priority)
         assertEquals(listOf("Write the copy", "Pick images"), launch.children.map { it.title })
         assertEquals(setOf(ActorKind.VAULT, ActorKind.CONNECTOR), launch.notes.map { it.author.kind }.toSet())
+        // Snoozed until another task is done.
+        assertEquals(launch.id, board.items.first { it.title == "Announce it" }.waitingFor?.id)
     }
 }

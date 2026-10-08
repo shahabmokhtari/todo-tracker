@@ -211,21 +211,69 @@ private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit) 
 
 @Composable
 private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit) {
-    var later by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!entry.item.hasOpenChildren) Button(onClick = { vm.complete(entry.item.id) }) { Text("Done") }
         entry.dueReminder?.let { r -> OutlinedButton(onClick = { vm.dismissReminder(entry.item.id, r.id) }) { Text("Dismiss") } }
-        Box {
-            OutlinedButton(onClick = { later = true }) { Text("Later") }
-            DropdownMenu(expanded = later, onDismissRequest = { later = false }) {
-                listOf("15 min" to 15L, "1 hour" to 60L, "3 hours" to 180L).forEach { (label, minutes) ->
-                    DropdownMenuItem(text = { Text(label) }, onClick = { later = false; vm.snooze(entry.item.id, minutes) })
-                }
-                DropdownMenuItem(text = { Text("Tomorrow 9:00") }, onClick = { later = false; vm.tomorrow(entry.item.id) })
-            }
-        }
+        LaterMenu(entry.item.id, vm)
         TextButton(onClick = onNote) { Text("Note") }
     }
+}
+
+/** Later: the quick choices (each says when), a date and time, or after another task. */
+@Composable
+private fun LaterMenu(id: java.util.UUID, vm: BoardViewModel) {
+    var open by remember { mutableStateOf(false) }
+    var pickingTask by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Box {
+        OutlinedButton(onClick = { open = true }) { Text("Later") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            vm.snoozeChoices().forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    trailingIcon = { Text(vm.describe(choice.at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    onClick = { open = false; vm.snoozeUntil(id, choice.at) },
+                )
+            }
+            androidx.compose.material3.HorizontalDivider()
+            DropdownMenuItem(text = { Text("Pick a time…") }, onClick = { open = false; pickDateTime(context) { vm.snoozeUntil(id, it) } })
+            DropdownMenuItem(text = { Text("After another task…") }, onClick = { open = false; pickingTask = true })
+        }
+    }
+    if (pickingTask) {
+        val others = vm.waitCandidates(id)
+        AlertDialog(
+            onDismissRequest = { pickingTask = false },
+            title = { Text("Waits until this is done") },
+            text = {
+                if (others.isEmpty()) {
+                    Text("No other open tasks.")
+                } else {
+                    androidx.compose.foundation.lazy.LazyColumn {
+                        items(others.size) { i ->
+                            val (otherId, title) = others[i]
+                            TextButton(onClick = { pickingTask = false; vm.waitFor(id, otherId) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(title, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pickingTask = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** The phone's own date picker, then its time picker (starting at tomorrow 9:00). */
+private fun pickDateTime(context: android.content.Context, onPicked: (Instant) -> Unit) {
+    val zone = java.time.ZoneId.systemDefault()
+    val start = dev.todotracker.core.QuickCaptureParser.tomorrowMorning(Instant.now(), zone).atZone(zone)
+    android.app.DatePickerDialog(context, { _, year, month, day ->
+        android.app.TimePickerDialog(context, { _, hour, minute ->
+            onPicked(java.time.LocalDateTime.of(year, month + 1, day, hour, minute).atZone(zone).toInstant())
+        }, start.hour, start.minute, android.text.format.DateFormat.is24HourFormat(context)).show()
+    }, start.year, start.monthValue - 1, start.dayOfMonth).apply { datePicker.minDate = System.currentTimeMillis() - 1000 }.show()
 }
 
 @Composable
@@ -235,6 +283,7 @@ private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
             Column(Modifier.weight(1f)) {
                 Text(entry.item.title, style = MaterialTheme.typography.bodyLarge)
                 entry.wakeAt?.let { Text("back ${relative(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                entry.waitingFor?.let { Text("after “${it.title}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             TextButton(onClick = { vm.bringBack(entry.item.id) }) { Text("Do now") }
         }

@@ -12,6 +12,8 @@ data class AgendaEntry(
     val wakeAt: Instant?,
     val isOverdue: Boolean,
     val breadcrumb: List<String>,
+    /** The open task it waits for ("after task X"), itself or through a parent. */
+    val waitingFor: WorkItem? = null,
 ) {
     /** "Step 2 of 10" for steps of a sequential parent. */
     val stepLabel: String?
@@ -37,7 +39,7 @@ object Agenda {
     fun stateOf(item: WorkItem, now: Instant): ItemState = when {
         item.isDone -> ItemState.DONE
         TaskBoard.findBlockingStep(item) != null -> ItemState.LOCKED
-        isAfter(item.nextActionAt, now) || item.ancestors.any { isAfter(it.nextActionAt, now) } -> ItemState.WAITING
+        waits(item, now) || item.ancestors.any { waits(it, now) } -> ItemState.WAITING
         item.hasOpenChildren -> ItemState.CONTAINER
         else -> ItemState.ACTIONABLE
     }
@@ -51,8 +53,8 @@ object Agenda {
             e.state == ItemState.ACTIONABLE || (e.needsAttention && (e.state == ItemState.WAITING || e.state == ItemState.CONTAINER))
         }
         val waitingAll = open.filter { (_, e) ->
-            e.state == ItemState.WAITING && !e.needsAttention && isAfter(e.item.nextActionAt, now) &&
-                e.item.ancestors.none { isAfter(it.nextActionAt, now) }
+            e.state == ItemState.WAITING && !e.needsAttention && waits(e.item, now) &&
+                e.item.ancestors.none { waits(it, now) }
         }
 
         val counts = board.groups.associate { g ->
@@ -109,6 +111,9 @@ object Agenda {
 
     private fun isAfter(date: Instant?, now: Instant) = date != null && date.isAfter(now)
 
+    /** Snoozed until a later time, or until another task is done. */
+    private fun waits(item: WorkItem, now: Instant) = isAfter(item.nextActionAt, now) || item.waitingFor != null
+
     private fun describe(item: WorkItem, now: Instant): AgendaEntry {
         val state = stateOf(item, now)
         val due = if (state == ItemState.LOCKED || state == ItemState.DONE) null else item.reminders.filter { it.isDue(now) }.minByOrNull { it.dueAt }
@@ -126,6 +131,7 @@ object Agenda {
             wakeAt = wake,
             isOverdue = item.deadline?.isBefore(now) ?: false,
             breadcrumb = item.ancestors.reversed().map { it.title },
+            waitingFor = if (state == ItemState.WAITING) item.waitingFor ?: item.ancestors.firstNotNullOfOrNull { it.waitingFor } else null,
         )
     }
 }
