@@ -653,7 +653,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
         // Tasks waiting for one finished or deleted outside the app (in Obsidian, by sync, or while it was closed) come
         // back with a reminder, once the files are quiet.
-        if (!_reactionPending && _board.ReleaseWaiters(Now))
+        if (!_reactionPending && _board.ReleaseWaiters(Now, skipRoots: _caches.Blocked))
         {
             reacted = true;
         }

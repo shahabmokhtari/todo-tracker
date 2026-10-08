@@ -1370,11 +1370,13 @@ async function submitAndClear(input, request, message) {
 function waitingBanner(item) {
   if (item.state !== 'waiting' || item.completedAt || !(item.wakeAt || item.waitingForTitle)) return null;
   const why = [item.waitingForTitle ? `waits for “${item.waitingForTitle}”` : null, item.wakeAt ? `snoozed until ${whenText(item.wakeAt)}` : null].filter(Boolean).join(' and ');
-  const text = item.heldById ? `Its parent “${item.heldByTitle}” ${why}` : `${why[0].toUpperCase()}${why.slice(1)}`;
+  // Its own wait (Do now ends it), its parent's (open the parent), or both.
+  const own = !!item.afterId || (!!item.nextActionAt && new Date(item.nextActionAt) > new Date());
+  const text = !own ? `Its parent “${item.heldByTitle}” ${why}`
+    : `${why[0].toUpperCase()}${why.slice(1)}${item.heldById ? `; its parent “${item.heldByTitle}” waits too` : ''}`;
   return h('div', { class: 'waiting-banner', role: 'status' }, icon(item.waitingForTitle ? 'link' : 'clock', { size: 16 }), h('span', null, text),
-    item.heldById
-      ? h('button', { class: 'btn ghost', type: 'button', onclick: () => openDrawer(item.heldById) }, icon('expand', { size: 15 }), 'Open parent')
-      : h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${item.id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now'));
+    own ? h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${item.id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now') : null,
+    item.heldById ? h('button', { class: 'btn ghost', type: 'button', onclick: () => openDrawer(item.heldById) }, icon('expand', { size: 15 }), 'Open parent') : null);
 }
 
 function stateLabel(item) {

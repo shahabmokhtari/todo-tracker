@@ -220,6 +220,12 @@ public sealed class ApiTests : IAsyncLifetime
         Assert.Equal("Trip", item["heldByTitle"]!.GetValue<string>());
         Assert.Equal(ServerFixture.T0.AddHours(2), parent["wakeAt"]!.GetValue<DateTimeOffset>());
         Assert.Null(parent["heldById"]);
+
+        // Its own snooze too: that's what it shows, and the parent still holds it.
+        await _client.PostJson($"/api/items/{book.Id()}/schedule", new { inMinutes = 30 });
+        var both = await _client.GetJson($"/api/items/{book.Id()}");
+        Assert.Equal(ServerFixture.T0.AddMinutes(30), both["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), both["heldById"]!.GetValue<string>());
     }
 
     [Fact]

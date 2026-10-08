@@ -126,7 +126,7 @@ dismisses the previous undelivered schedule reminder and any reminder that is al
   "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".
 * **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `tt snooze`):
   spans count from now, like `@3d` always has (`45m`, `2h`, `3d`, `2 weeks`, `1 month`); day words land at 9:00 (`fri`, `next fri`; a weekday with a time still ahead today means today: `mon 14:00` on a Monday morning), `tonight`,
-  `tomorrow 14:00`, `tomorrow at 9`, `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
+  `tomorrow 14:00`, `tomorrow at 9` (after `at`, a bare 1 to 7 is the afternoon and `tonight at 9` is 21:00), `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
   today, or tomorrow when it's past); dates (`2026-03-01`, with an optional time); an optional leading `in` (`in 3 days`). A rule that isn't
   understood is refused with examples; one already past (`tonight` at 19:00) says so. Phones offer the quick choices and a date picker.
 * **After another task** (`after: <id>` in the file; `POST /api/items/{id}/after`, MCP `wait_for_task`,

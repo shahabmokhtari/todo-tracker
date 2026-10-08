@@ -90,12 +90,15 @@ public static partial class Snooze
     {
         ArgumentNullException.ThrowIfNull(zone);
         var text = Spaces().Replace((rule ?? string.Empty).Trim().ToLowerInvariant(), " ");
-        foreach (var lead in (string[])["in ", "at "])
+        if (text.StartsWith("in ", StringComparison.Ordinal))
         {
-            if (text.StartsWith(lead, StringComparison.Ordinal))
-            {
-                text = text[lead.Length..];
-            }
+            text = text[3..];
+        }
+
+        var leadingAt = text.StartsWith("at ", StringComparison.Ordinal);
+        if (leadingAt)
+        {
+            text = text[3..];
         }
 
         if (text.Length == 0)
@@ -124,21 +127,19 @@ public static partial class Snooze
         TimeOnly? time = null;
         var atWord = text.LastIndexOf(" at ", StringComparison.Ordinal);
         var lastSpace = text.LastIndexOf(' ');
-        if (ReadTime(text) is { } whole)
+        if ((leadingAt ? AtTime(text, evening: false) : ReadTime(text)) is { } whole)
         {
             time = whole;
             dayPart = null;
         }
         else if (atWord > 0)
         {
-            // After "at" a bare hour is a time too ("tomorrow at 9").
-            time = ReadTime(text[(atWord + 4)..], bareHour: true);
+            dayPart = text[..atWord];
+            time = AtTime(text[(atWord + 4)..], evening: dayPart is "tonight" or "this evening" or "evening");
             if (time is null)
             {
                 return null;
             }
-
-            dayPart = text[..atWord];
         }
         else if (lastSpace > 0 && ReadTime(text[(lastSpace + 1)..]) is { } tail)
         {
@@ -168,6 +169,26 @@ public static partial class Snooze
         }
 
         return At(day.Date, time?.Hour ?? (day.Evening ? EveningHour : MorningHour), time?.Minute ?? 0, zone);
+    }
+
+    /// <summary>
+    /// A time after "at", the way people say it: a bare hour is a time ("at 9"); without am/pm, 1 to 7 o'clock is the
+    /// afternoon ("tomorrow at 3" isn't 3 in the night), and in the evening every hour is ("tonight at 9" is 21:00).
+    /// </summary>
+    private static TimeOnly? AtTime(string text, bool evening)
+    {
+        if (ReadTime(text, bareHour: true) is not { } time)
+        {
+            return null;
+        }
+
+        if (text.EndsWith("am", StringComparison.Ordinal) || text.EndsWith("pm", StringComparison.Ordinal))
+        {
+            return time;
+        }
+
+        var afternoon = evening ? time.Hour is >= 1 and <= 11 : !text.Contains(':', StringComparison.Ordinal) && time.Hour is >= 1 and <= 7;
+        return afternoon ? time.AddHours(12) : time;
     }
 
     /// <summary>The day a word means, whether it's "tonight", and whether it's a weekday's name; relative to <paramref name="today"/>.</summary>

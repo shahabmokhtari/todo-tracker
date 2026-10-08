@@ -280,6 +280,31 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_task_whose_file_cant_be_read_or_hasnt_arrived_yet_doesnt_end_the_wait()
+    {
+        var store = Open();
+        var (keys, waiter) = await store.UpdateAsync(b =>
+        {
+            var k = b.AddTask(new NewTask("Get the keys"), Actor.User, T0);
+            var u = b.AddTask(new NewTask("Unpack"), Actor.User, T0);
+            b.WaitFor(u.Id, k.Id, Actor.User, T0);
+            return (k.Id, u.Id);
+        });
+        var keysFile = P("Work", "Get the keys.md");
+        var text = await File.ReadAllTextAsync(keysFile);
+
+        // A sync client that hasn't delivered it yet (or someone mid-edit): a fresh process can't see the task.
+        File.Delete(keysFile);
+        var fresh = Open();
+        Assert.Equal(keys, await fresh.ReadAsync(b => b.Get(waiter).AfterId));
+        Assert.Contains($"after: {keys}", await File.ReadAllTextAsync(P("Work", "Unpack.md")), StringComparison.Ordinal);
+
+        await File.WriteAllTextAsync(keysFile, text);
+        fresh.MarkDirty();
+        Assert.Equal(ItemState.Waiting, await fresh.ReadAsync(b => Agenda.StateOf(b.Get(waiter), _time.GetUtcNow())));
+    }
+
+    [Fact]
     public async Task A_note_created_in_a_group_folder_becomes_a_task()
     {
         var store = Open();

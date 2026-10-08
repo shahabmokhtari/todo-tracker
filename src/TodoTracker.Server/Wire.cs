@@ -354,14 +354,18 @@ public static class Wire
         item.WaitingFor?.Id,
         Wait(item, now) is { } w ? w.WaitingFor?.Title : null,
         Wait(item, now) is { } wake && wake.NextActionAt > now ? wake.NextActionAt : null,
-        Wait(item, now) is { } held && held != item ? held.Id : null,
-        Wait(item, now) is { } heldBy && heldBy != item ? heldBy.Title : null);
+        HeldBy(item, now)?.Id,
+        HeldBy(item, now)?.Title);
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>
         Agenda.StateOf(item, now) == ItemState.Waiting
             ? item.Ancestors().Prepend(item).FirstOrDefault(i => i.NextActionAt > now || i.WaitingFor is not null)
             : null;
+
+    /// <summary>The nearest parent whose snooze or wait also keeps this one waiting (Do now on the task alone won't bring it back).</summary>
+    private static WorkItem? HeldBy(WorkItem item, DateTimeOffset now) =>
+        Agenda.StateOf(item, now) == ItemState.Waiting ? item.Ancestors().FirstOrDefault(i => i.NextActionAt > now || i.WaitingFor is not null) : null;
 
     public static SearchHitDto SearchHit(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
         item.Id,

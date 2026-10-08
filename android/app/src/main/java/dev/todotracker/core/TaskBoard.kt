@@ -116,13 +116,14 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         return other !== item && waitProblem(item, other) == null
     }
 
-    /** Tasks whose wait ended (what they waited for is done, or gone) come back, with a reminder saying why. */
+    /** Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why. */
     private fun releaseWaiters(now: Instant, deleted: Map<UUID, String> = emptyMap()) {
         for (waiter in allItems) {
             val afterId = waiter.afterId ?: continue
             val other = index[afterId]
             val why = when {
-                other == null -> deleted[afterId]?.let { "\"$it\" was deleted" } ?: "The task it waited for is gone"
+                // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
+                other == null -> deleted[afterId]?.let { "\"$it\" was deleted" } ?: continue
                 other.isDone -> "\"${other.title}\" is done"
                 else -> continue
             }

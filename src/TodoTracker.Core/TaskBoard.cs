@@ -284,18 +284,19 @@ public sealed partial class TaskBoard
     }
 
     /// <summary>
-    /// Tasks whose wait ended (what they waited for is done, or gone) come back, with a reminder saying why; whatever
-    /// finished it: the app, an edit in the files, or sync. Returns whether any did.
+    /// Tasks whose wait ended come back, with a reminder saying why: what they waited for is done (however it got done:
+    /// the app, an edit in the files, or sync), or was just <paramref name="deleted"/> here. A task merely missing (its
+    /// file can't be read right now, or hasn't synced yet) doesn't end a wait. Waiters under <paramref name="skipRoots"/>
+    /// (files that can't be saved right now) are left for later. Returns whether any came back.
     /// </summary>
-    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null)
+    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null, IReadOnlySet<Guid>? skipRoots = null)
     {
+        bool Ended(Guid after) => _index.TryGetValue(after, out var other) ? other.IsDone : deleted?.ContainsKey(after) == true;
         var released = false;
-        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && (!_index.TryGetValue(after, out var other) || other.IsDone)).ToList())
+        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && Ended(after) && skipRoots?.Contains(i.Root.Id) != true).ToList())
         {
             var after = waiter.AfterId!.Value;
-            var why = _index.TryGetValue(after, out var other)
-                ? $"\"{other.Title}\" is done"
-                : deleted?.GetValueOrDefault(after) is { } title ? $"\"{title}\" was deleted" : "The task it waited for is gone";
+            var why = _index.TryGetValue(after, out var other) ? $"\"{other.Title}\" is done" : $"\"{deleted![after]}\" was deleted";
             waiter.AfterId = null;
             released = true;
             if (!waiter.IsDone)

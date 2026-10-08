@@ -152,7 +152,7 @@ public final class TaskBoard {
         return nil
     }
 
-    /// Tasks whose wait ended (what they waited for is done, or gone) come back, with a reminder saying why.
+    /// Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why.
     private func releaseWaiters(now: Date, deleted: [UUID: String] = [:]) {
         for waiter in allItems {
             guard let afterId = waiter.afterId else { continue }
@@ -161,7 +161,9 @@ public final class TaskBoard {
                 guard other.isDone else { continue }
                 why = "\"\(other.title)\" is done"
             } else {
-                why = deleted[afterId].map { "\"\($0)\" was deleted" } ?? "The task it waited for is gone"
+                // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
+                guard let title = deleted[afterId] else { continue }
+                why = "\"\(title)\" was deleted"
             }
             waiter.afterId = nil
             if !waiter.isDone {
