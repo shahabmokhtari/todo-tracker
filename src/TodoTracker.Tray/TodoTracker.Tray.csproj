@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Todo Tracker in the system tray on Linux (it also runs on Windows and macOS): runs the server, opens the full
+       window in the browser, quick add, the focus timer. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>todo-tracker</AssemblyName>
+    <RootNamespace>TodoTracker.Tray</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <ProjectReference Include="..\TodoTracker.Server\TodoTracker.Server.csproj" />
+    <ProjectReference Include="..\TodoTracker.Desktop\TodoTracker.Desktop.csproj" />
+    <!-- tt next to the app, so AI apps can launch "tt mcp". -->
+    <ProjectReference Include="..\TodoTracker.Cli\TodoTracker.Cli.csproj" />
+    <InternalsVisibleTo Include="TodoTracker.Tray.Tests" />
+  </ItemGroup>
+</Project>

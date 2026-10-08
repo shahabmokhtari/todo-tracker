@@ -77,4 +77,10 @@ public sealed class TrayMenuTests : IDisposable
         Assert.Equal(new string('a', 38) + "…", cut);
         Assert.Equal("short", TrayMenu.Cut("short", 40));
     }
+
+    [Fact]
+    public void Without_a_sidebar_there_is_nothing_to_hide_or_show()
+    {
+        Assert.DoesNotContain(TrayMenu.Items(_vm, sidebarShown: null), i => i.Id == TrayMenu.ToggleSidebar);
+    }
 }

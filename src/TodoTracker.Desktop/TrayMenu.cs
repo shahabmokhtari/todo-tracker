@@ -25,7 +25,8 @@ public static class TrayMenu
     /// <summary>The tooltip limit of the Windows notification area (characters).</summary>
     public const int MaxTooltip = 127;
 
-    public static IReadOnlyList<TrayItem> Items(SidebarViewModel vm, bool sidebarShown)
+    /// <param name="sidebarShown">Whether the sidebar is on screen; null: there is no sidebar (the Linux app).</param>
+    public static IReadOnlyList<TrayItem> Items(SidebarViewModel vm, bool? sidebarShown)
     {
         ArgumentNullException.ThrowIfNull(vm);
         var items = new List<TrayItem>
@@ -52,7 +53,11 @@ public static class TrayMenu
         }
 
         items.Add(TrayItem.Separator);
-        items.Add(new TrayItem(ToggleSidebar, sidebarShown ? "Hide the sidebar" : "Show the sidebar"));
+        if (sidebarShown is { } shown)
+        {
+            items.Add(new TrayItem(ToggleSidebar, shown ? "Hide the sidebar" : "Show the sidebar"));
+        }
+
         items.Add(new TrayItem(Settings, "Settings…"));
         items.Add(TrayItem.Separator);
         items.Add(new TrayItem(Quit, "Quit Todo Tracker"));
