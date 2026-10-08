@@ -30,6 +30,7 @@ public sealed partial class TaskBoard
         foreach (var item in root.SelfAndDescendants())
         {
             _index.Add(item.Id, item);
+            item.Board = this;
         }
 
         root.Parent = null;
@@ -63,6 +64,8 @@ public sealed partial class TaskBoard
 
         Log(now, item.Id, ActivityKind.Completed, $"Completed \"{item.Title}\"", actor);
         AdvanceSequence(item, actor, now);
+
+        // What waits for it comes back after the reload (VaultBoardStore), which skips files that can't be saved now.
     }
 
     internal void LogExternal(Guid itemId, ActivityKind kind, string summary, Actor actor, DateTimeOffset now) => Log(now, itemId, kind, summary, actor);

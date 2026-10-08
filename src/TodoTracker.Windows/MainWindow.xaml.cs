@@ -446,19 +446,45 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSnoozeClick(object sender, RoutedEventArgs e)
+    private async void OnSnoozeClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CardViewModel card } element)
         {
             return;
         }
 
-        var menu = new ContextMenu { PlacementTarget = element };
-        foreach (var option in _vm.SnoozeOptions)
+        // Read before the menu is built, so it opens complete (a busy board file just means no "After" choices).
+        IReadOnlyList<CardViewModel> others;
+        try
         {
-            menu.Items.Add(new MenuItem { Header = option.Label, Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, option) });
+            others = await _vm.WaitCandidatesAsync(card);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            others = [];
         }
 
+        var menu = new ContextMenu { PlacementTarget = element };
+        foreach (var choice in _vm.SnoozeChoices())
+        {
+            menu.Items.Add(new MenuItem { Header = choice.Label, InputGestureText = _vm.DescribeWhen(choice.At), Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, Choice: choice.Id) });
+        }
+
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Pick a _time…", Command = _vm.PickSnoozeTimeCommand, CommandParameter = card });
+        var after = new MenuItem { Header = "_After another task" };
+        foreach (var other in others.Take(12))
+        {
+            // Titles are user text: no access keys from underscores in them.
+            after.Items.Add(new MenuItem { Header = new TextBlock { Text = other.Title, MaxWidth = 320, TextTrimming = TextTrimming.CharacterEllipsis }, Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, AfterId: other.Id) });
+        }
+
+        if (after.Items.Count == 0)
+        {
+            after.Items.Add(new MenuItem { Header = "No task it can wait for", IsEnabled = false });
+        }
+
+        menu.Items.Add(after);
         menu.IsOpen = true;
     }
 

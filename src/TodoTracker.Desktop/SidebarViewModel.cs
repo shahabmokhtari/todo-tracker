@@ -61,7 +61,21 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
     public TaskTimerViewModel Timer { get; } = new();
 
-    public IReadOnlyList<SnoozeOption> SnoozeOptions { get; } = SnoozeOption.Defaults;
+    /// <summary>The quick snooze choices right now (the same in every app).</summary>
+    public IReadOnlyList<SnoozeChoice> SnoozeChoices() => Core.Snooze.Choices(_time.GetUtcNow(), _options.TimeZone);
+
+    /// <summary>"today 17:00", "Fri 14:30", "Mon 12 Jan, 9:00".</summary>
+    public string DescribeWhen(DateTimeOffset at) => Core.Snooze.Describe(at, _time.GetUtcNow(), _options.TimeZone);
+
+    /// <summary>Tasks a card can wait for ("After another task"): the open ones shown, except itself, its own subtasks or
+    /// parents, and what already waits for it.</summary>
+    public async Task<IReadOnlyList<CardViewModel>> WaitCandidatesAsync(CardViewModel card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        var shown = new[] { Focus }.Concat(Now).Concat(Waiting).OfType<CardViewModel>().DistinctBy(c => c.Id).ToList();
+        var allowed = await _store.ReadAsync(b => shown.Where(c => b.CanWaitFor(card.Id, c.Id)).Select(c => c.Id).ToHashSet()).ConfigureAwait(true);
+        return shown.Where(c => allowed.Contains(c.Id)).ToList();
+    }
 
     [ObservableProperty]
     public partial CardViewModel? Focus { get; set; }
@@ -209,13 +223,47 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task Snooze(SnoozeRequest? request) => request is null ? Task.CompletedTask : Run(async () =>
     {
-        await _store.UpdateAsync(b =>
+        return await _store.UpdateAsync(b =>
         {
             var now = _time.GetUtcNow();
-            b.ScheduleNextAction(request.Card.Id, now.AddMinutes(request.Option.Minutes(now, _options.TimeZone)), Actor.User, now, notify: true);
+            if (request.AfterId is { } afterId)
+            {
+                b.WaitFor(request.Card.Id, afterId, Actor.User, now);
+                return $"Waiting for “{b.Get(afterId).Title}”";
+            }
+
+            var at = request.Choice is { } choice
+                ? Core.Snooze.Resolve(choice, now, _options.TimeZone) ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request))
+                : Core.Snooze.Parse(request.Rule, now, _options.TimeZone) ?? throw new ArgumentException(Core.Snooze.Hint(request.Rule, now, _options.TimeZone), nameof(request));
+            b.ScheduleNextAction(request.Card.Id, at, Actor.User, now, notify: true);
+            return $"Snoozed until {Core.Snooze.Describe(at, now, _options.TimeZone)}";
         }).ConfigureAwait(true);
-        return $"Snoozed: {request.Option.Label.ToLowerInvariant()}";
     });
+
+    /// <summary>"Pick a time…": asks when, in words ("next week", "fri 14:00"), until it's understood or cancelled.</summary>
+    [RelayCommand]
+    private async Task PickSnoozeTime(CardViewModel? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        var message = "Snooze until when? e.g. next week, fri 14:00, 3d, weekend, tonight, 2026-03-01";
+        string? typed = null;
+        while (_shell.Prompt("Snooze until…", $"{message}\n\n“{card.Title}”", typed) is { } rule && !string.IsNullOrWhiteSpace(rule))
+        {
+            if (Core.Snooze.Parse(rule, _time.GetUtcNow(), _options.TimeZone) is not null)
+            {
+                await SnoozeCommand.ExecuteAsync(new SnoozeRequest(card, Rule: rule)).ConfigureAwait(true);
+                return;
+            }
+
+            typed = rule;
+            message = Core.Snooze.Hint(rule, _time.GetUtcNow(), _options.TimeZone);
+        }
+    }
+
 
     /// <summary>Whether the focus timer is shown (the Focus timer plugin).</summary>
     [ObservableProperty]

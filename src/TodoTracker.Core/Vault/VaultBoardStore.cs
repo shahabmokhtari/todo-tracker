@@ -650,6 +650,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
         // React to edits made outside the app (completing a step advances its sequence), once per change.
         var reacted = initial ? false : ReactToExternalEdits(files);
+
+        // Tasks waiting for one finished or deleted outside the app (in Obsidian, by sync, or while it was closed) come
+        // back with a reminder, once the files are quiet.
+        if (!_reactionPending && _board.ReleaseWaiters(Now, skipRoots: _caches.Blocked))
+        {
+            reacted = true;
+        }
         if (initial)
         {
             _acked = board.AllItems().ToDictionary(i => i.Id, i => i.IsDone);

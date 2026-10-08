@@ -8,7 +8,11 @@ public sealed record AgendaEntry(
     Reminder? DueReminder,
     DateTimeOffset? WakeAt,
     bool IsOverdue,
-    IReadOnlyList<string> Breadcrumb);
+    IReadOnlyList<string> Breadcrumb)
+{
+    /// <summary>The open task it waits for ("after task X"), itself or through its parent.</summary>
+    public WorkItem? WaitingFor { get; init; }
+}
 
 public sealed record OverviewEntry(
     WorkItem Item,
@@ -51,7 +55,7 @@ public static class Agenda
             return ItemState.Locked;
         }
 
-        if (item.NextActionAt > now || item.Ancestors().Any(a => a.NextActionAt > now))
+        if (Waits(item, now) || item.Ancestors().Any(a => Waits(a, now)))
         {
             return ItemState.Waiting;
         }
@@ -70,7 +74,7 @@ public static class Agenda
         ArgumentNullException.ThrowIfNull(board);
         var allOpen = board.AllItems().Where(i => !i.IsDone && !i.IsArchived).Select(i => Describe(i, now)).ToList();
         var nowAll = allOpen.Where(e => e.State == ItemState.Actionable || (e.NeedsAttention && e.State is ItemState.Waiting or ItemState.Container)).ToList();
-        var waitingAll = allOpen.Where(e => e.State == ItemState.Waiting && !e.NeedsAttention && e.Item.NextActionAt > now && !e.Item.Ancestors().Any(a => a.NextActionAt > now)).ToList();
+        var waitingAll = allOpen.Where(e => e.State == ItemState.Waiting && !e.NeedsAttention && Waits(e.Item, now) && !e.Item.Ancestors().Any(a => Waits(a, now))).ToList();
 
         var counts = board.Groups.ToDictionary(
             g => g.Id,
@@ -88,8 +92,9 @@ public static class Agenda
         var scoped = nowAll.Where(e => InScope(e.Item)).ToList();
         var nowList = Arrange(scoped.Where(e => e.NeedsAttention), rank).Concat(Arrange(scoped.Where(e => !e.NeedsAttention), rank)).ToList();
 
+        // Back at a time first (soonest first); then those waiting for another task.
         var waitingList = waitingAll.Where(e => InScope(e.Item))
-            .OrderBy(e => e.WakeAt)
+            .OrderBy(e => e.WakeAt ?? DateTimeOffset.MaxValue)
             .ThenByDescending(e => e.EffectivePriority)
             .ThenBy(e => e.Item.CreatedAt)
             .ToList();
@@ -148,10 +153,16 @@ public static class Agenda
             dueReminder,
             wakeAt,
             item.Deadline < now,
-            item.Ancestors().Reverse().Select(a => a.Title).ToList());
+            item.Ancestors().Reverse().Select(a => a.Title).ToList())
+        {
+            WaitingFor = state == ItemState.Waiting ? item.WaitingFor ?? item.Ancestors().Select(a => a.WaitingFor).FirstOrDefault(w => w is not null) : null,
+        };
     }
 
     private static bool IsLocked(WorkItem item) => TaskBoard.FindBlockingStep(item) is not null;
+
+    /// <summary>Snoozed until a later time, or until another task is done.</summary>
+    private static bool Waits(WorkItem item, DateTimeOffset now) => item.NextActionAt > now || item.WaitingFor is not null;
 
 
     private static OverviewEntry Summarize(WorkItem root, IReadOnlyList<AgendaEntry> now, IReadOnlyList<AgendaEntry> waiting)

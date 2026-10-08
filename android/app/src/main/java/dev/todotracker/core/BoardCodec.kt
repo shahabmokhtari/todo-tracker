@@ -34,7 +34,7 @@ object BoardCodec {
 
     private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
     private val itemKeys = setOf(
-        "id", "title", "details", "priority", "createdAt", "completedAt", "deadline", "nextActionAt", "sequential",
+        "id", "title", "details", "priority", "createdAt", "completedAt", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "children",
     )
 
@@ -117,6 +117,7 @@ object BoardCodec {
         i.completedAt?.let { put("completedAt", formatDate(it)) }
         i.deadline?.let { put("deadline", formatDate(it)) }
         i.nextActionAt?.let { put("nextActionAt", formatDate(it)) }
+        i.afterId?.let { put("after", it.toString()) }
         if (i.sequential) put("sequential", true)
         i.stepDelay?.let { put("stepDelayMinutes", it.toMinutes()) }
         if (i.parent == null) put("groupId", i.ownGroupId.toString())
@@ -152,6 +153,7 @@ object BoardCodec {
         item.completedAt = o.date("completedAt")
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")
+        item.afterId = o.uuid("after")
         item.sequential = o["sequential"]?.jsonPrimitive?.booleanOrNull ?: false
         item.stepDelay = o["stepDelayMinutes"]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 }?.let { Duration.ofMinutes(it.toLong()) }
         item.extra = unknown(o, itemKeys)

@@ -102,7 +102,9 @@ public static partial class QuickCaptureParser
             return TomorrowMorning(now, zone);
         }
 
-        return ParseSpan(value) is { } span ? now + span : null;
+        // @15m, @2h, @3d count from now (as always); anything else as in "Pick a time…": @fri, @2w, @weekend, @14:00,
+        // and words with spaces written with hyphens (@next-week, @tomorrow-14:00).
+        return ParseSpan(value) is { } span ? now + span : Snooze.Parse(value, now, zone) ?? Snooze.Parse(value.Replace('-', ' '), now, zone);
     }
 
     /// <summary>Next 9:00. Before 4:00 people still mean "when I wake up", i.e. this morning.</summary>

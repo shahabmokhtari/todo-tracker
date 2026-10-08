@@ -100,11 +100,21 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         [Description("Minutes from now.")] int? inMinutes = null,
         [Description("Exact ISO-8601 time (alternative to inMinutes).")] DateTimeOffset? at = null,
         bool notify = true,
-        string? message = null) =>
+        string? message = null,
+        [Description("Or in words, in the user's time zone: 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am, 2026-03-01 14:00.")] string? when = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
-            b.ScheduleNextAction(id, ApiEndpoints.ResolveTime(at, inMinutes, now), actor, now, notify, message);
+            b.ScheduleNextAction(id, ApiEndpoints.ResolveSnooze(new ScheduleRequest(at, inMinutes, Rule: when), now, options.TimeZone), actor, now, notify, message);
+            return b.Get(id);
+        });
+
+    [McpServerTool(Name = "wait_for_task"), Description("Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed.")]
+    public Task<ItemDto> WaitForTask(McpServer server, string taskId, [Description("The task it waits for.")] string afterTaskId) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            b.WaitFor(id, ParseId(afterTaskId), actor, now);
             return b.Get(id);
         });
 

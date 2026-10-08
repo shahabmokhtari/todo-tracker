@@ -422,21 +422,73 @@ public sealed class SidebarViewModelTests : IDisposable
     {
         await Seed("Feature B");
         await _vm.RefreshAsync();
-        var option = _vm.SnoozeOptions.Single(o => o.Label == "1 hour");
 
-        await _vm.SnoozeCommand.ExecuteAsync(new SnoozeRequest(_vm.Focus!, option));
+        await _vm.SnoozeCommand.ExecuteAsync(new SnoozeRequest(_vm.Focus!, Choice: "1h"));
 
         var item = await _store.ReadAsync(b => b.Items.Single());
         Assert.Equal(T0.AddHours(1), item.NextActionAt);
         Assert.Single(item.Reminders);
         Assert.Single(_vm.Waiting);
+        Assert.Equal("Snoozed until today 15:30", _vm.StatusMessage);
     }
 
     [Fact]
-    public void Snooze_options_include_tomorrow_morning_in_local_zone()
+    public void Snooze_choices_are_the_shared_ones_and_say_when()
     {
-        var tomorrow = _vm.SnoozeOptions.Single(o => o.Label == "Tomorrow 9:00");
-        Assert.Equal(new DateTimeOffset(2026, 1, 6, 9, 0, 0, TimeSpan.Zero), T0.AddMinutes(tomorrow.Minutes(T0, TimeZoneInfo.Utc)));
+        var choices = _vm.SnoozeChoices();
+
+        Assert.Equal(["15m", "1h", "3h", "evening", "tomorrow", "2d", "monday", "week", "month"], choices.Select(c => c.Id));
+        Assert.Equal(new DateTimeOffset(2026, 1, 6, 9, 0, 0, TimeSpan.Zero), choices.Single(c => c.Id == "tomorrow").At);
+        Assert.Equal("today 18:00", _vm.DescribeWhen(choices.Single(c => c.Id == "evening").At));
+    }
+
+    [Fact]
+    public async Task Pick_a_time_reads_words_and_asks_again_when_it_cannot()
+    {
+        await Seed("Plan trip");
+        await _vm.RefreshAsync();
+        _shell.PromptAnswers.Enqueue("when pigs fly");
+        _shell.PromptAnswers.Enqueue("fri 14:00");
+
+        await _vm.PickSnoozeTimeCommand.ExecuteAsync(_vm.Focus);
+
+        var item = await _store.ReadAsync(b => b.Items.Single());
+        Assert.Equal(new DateTimeOffset(2026, 1, 9, 14, 0, 0, TimeSpan.Zero), item.NextActionAt);
+        Assert.Equal("Snoozed until Fri 14:00", _vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Pick_a_time_cancelled_changes_nothing()
+    {
+        await Seed("Plan trip");
+        await _vm.RefreshAsync();
+
+        await _vm.PickSnoozeTimeCommand.ExecuteAsync(_vm.Focus);
+
+        Assert.Null((await _store.ReadAsync(b => b.Items.Single())).NextActionAt);
+    }
+
+    [Fact]
+    public async Task Snooze_after_another_task_waits_until_it_is_done()
+    {
+        var keys = await Seed("Get the keys");
+        var move = await Seed("Move in");
+        await _vm.RefreshAsync();
+        var card = _vm.Now.Concat([_vm.Focus!]).Single(c => c.Id == move.Id);
+
+        Assert.DoesNotContain(await _vm.WaitCandidatesAsync(card), c => c.Id == move.Id);
+        Assert.Contains(await _vm.WaitCandidatesAsync(card), c => c.Id == keys.Id);
+        await _vm.SnoozeCommand.ExecuteAsync(new SnoozeRequest(card, AfterId: keys.Id));
+
+        Assert.Equal(keys.Id, (await _store.ReadAsync(b => b.Get(move.Id))).AfterId);
+        Assert.Equal("Waiting for “Get the keys”", _vm.StatusMessage);
+        var waiting = Assert.Single(_vm.Waiting);
+        Assert.Equal("Move in", waiting.Title);
+        // What already waits for a task isn't offered as something it could wait for (they'd wait for each other).
+        Assert.DoesNotContain(await _vm.WaitCandidatesAsync(_vm.Focus!), c => c.Id == move.Id);
+
+        await _vm.CompleteCommand.ExecuteAsync(_vm.Focus);
+        Assert.Empty(_vm.Waiting);
     }
 
     [Fact]

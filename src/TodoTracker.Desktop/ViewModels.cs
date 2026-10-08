@@ -35,22 +35,8 @@ public enum ToastAction
     Snooze,
 }
 
-public sealed record SnoozeOption(string Label, Func<DateTimeOffset, TimeZoneInfo, int> Minutes)
-{
-    public static IReadOnlyList<SnoozeOption> Defaults { get; } =
-    [
-        new("15 min", (_, _) => 15),
-        new("1 hour", (_, _) => 60),
-        new("3 hours", (_, _) => 180),
-        new("Tomorrow 9:00", MinutesUntilTomorrowMorning),
-        new("+24 hours", (_, _) => 1440),
-    ];
-
-    private static int MinutesUntilTomorrowMorning(DateTimeOffset now, TimeZoneInfo zone) =>
-        Math.Max(1, (int)Math.Round((QuickCaptureParser.TomorrowMorning(now, zone) - now).TotalMinutes));
-}
-
-public sealed record SnoozeRequest(CardViewModel Card, SnoozeOption Option);
+/// <summary>Snooze a card: one of the shared quick choices (<see cref="Snooze.Choices"/> id), a typed rule, or until another task is done.</summary>
+public sealed record SnoozeRequest(CardViewModel Card, string? Choice = null, string? Rule = null, Guid? AfterId = null);
 
 /// <summary>A label shown on a card: its name and <c>#rrggbb</c> color.</summary>
 public sealed record LabelChip(string Name, string Color);

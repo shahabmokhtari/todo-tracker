@@ -73,13 +73,15 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
 
   // Snooze from the focus card via the menu.
   await page.locator('#tabs .tab', { hasText: 'Personal' }).click();
+  await expect(page.locator('#toast')).toBeHidden(); // a toast may sit over the menu's last items
   await page.locator('.focus-card').getByRole('button', { name: 'Later', exact: true }).click();
+  await expect(page.locator('.focus-card .menu [role="menuitem"]').last()).toBeVisible();
   // Regression (UI review): every menu item must be on top at its center, not clipped by the card or covered by panels.
   const covered = await page.locator('.focus-card .menu [role="menuitem"]').evaluateAll((items) => items
     .filter((el) => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !el.contains(hit); })
     .map((el) => el.textContent));
   expect(covered).toEqual([]);
-  await page.locator('.focus-card .menu').getByRole('menuitem', { name: '1 hour' }).click();
+  await page.locator('.focus-card .menu').getByRole('menuitem', { name: /^In an hour/ }).click();
   await expect(page.locator('.focus-card')).toContainText('Nothing is due');
 
   // Full report opens with the timeline.
@@ -250,6 +252,10 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await input.press('Enter');
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');
 
+  // Not caused by the snooze PR: a race already in this test. The answer shows before the turn ends, and Enter is
+  // ignored while the agent is still busy, so on a slow CI runner "add Milk" was typed too soon and never sent.
+  // Waiting until Send is enabled again (the turn is over) makes it deterministic.
+  await expect(drawer.getByRole('button', { name: 'Send' })).toBeEnabled();
   await input.fill('add Milk');
   await input.press('Enter');
   const ask = drawer.locator('.ask').last();
@@ -266,6 +272,7 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await drawer.getByRole('searchbox', { name: 'Search chats' }).fill('milk');
   await drawer.locator('.chat-item', { hasText: 'hi' }).click();
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Added "Milk".');
+  await expect(drawer.getByRole('button', { name: 'Send' })).toBeEnabled(); // the same race as above
   await input.fill('hi again');
   await input.press('Enter');
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');

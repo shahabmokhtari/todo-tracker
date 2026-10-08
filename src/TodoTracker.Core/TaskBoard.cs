@@ -144,6 +144,9 @@ public sealed partial class TaskBoard
             Pomodoro.DetachItem();
         }
 
+        // Tasks waiting for what's gone come back, like when it's done.
+        ReleaseWaiters(now, item.SelfAndDescendants().ToDictionary(i => i.Id, i => i.Title));
+
         Log(now, id, ActivityKind.Deleted, $"Deleted \"{item.Title}\"", actor);
     }
 
@@ -204,6 +207,106 @@ public sealed partial class TaskBoard
         StopTimers(item.SelfAndDescendants(), now);
         Log(now, id, ActivityKind.Completed, $"Completed \"{item.Title}\"", actor);
         AdvanceSequence(item, actor, now);
+        ReleaseWaiters(now);
+    }
+
+    /// <summary>
+    /// Snoozes a task until another one is done ("after task X"); then it comes back with a reminder. Replaces a
+    /// snooze until a time.
+    /// </summary>
+    public void WaitFor(Guid id, Guid afterId, Actor actor, DateTimeOffset now)
+    {
+        var item = Get(id);
+        var other = Get(afterId);
+        if (other == item)
+        {
+            throw new ArgumentException("A task can't wait for itself.", nameof(afterId));
+        }
+
+        if (WaitProblem(item, other) is { } problem)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
+        item.AfterId = other.Id;
+        item.NextActionAt = null;
+        DismissPendingScheduleReminders(item, now);
+        Log(now, id, ActivityKind.Scheduled, $"Waits until \"{other.Title}\" is done", actor);
+    }
+
+    /// <summary>Whether <paramref name="id"/> may wait for <paramref name="afterId"/> (what the pickers offer).</summary>
+    public bool CanWaitFor(Guid id, Guid afterId) =>
+        Find(id) is { } item && Find(afterId) is { } other && other != item && WaitProblem(item, other) is null;
+
+    /// <summary>Why a task can't wait for another, or null when it can.</summary>
+    private static string? WaitProblem(WorkItem item, WorkItem other)
+    {
+        if (item.IsDone)
+        {
+            return $"\"{item.Title}\" is already done.";
+        }
+
+        if (other.IsDone)
+        {
+            return $"\"{other.Title}\" is already done.";
+        }
+
+        // Its own subtasks or parents would never get done while it waits.
+        var family = item.SelfAndDescendants().Concat(item.Ancestors()).ToHashSet();
+        if (family.Contains(other))
+        {
+            return $"\"{item.Title}\" can't wait for \"{other.Title}\", which is part of it.";
+        }
+
+        // Nor would a circle: follow what holds "other" up (what it, its parents and its open subtasks wait for, and its
+        // open subtasks themselves); reaching this task's family means they'd wait for each other.
+        var seen = new HashSet<WorkItem>();
+        var queue = new Queue<WorkItem>([other]);
+        while (queue.TryDequeue(out var next))
+        {
+            if (!seen.Add(next))
+            {
+                continue;
+            }
+
+            if (family.Contains(next))
+            {
+                return $"\"{other.Title}\" is already waiting for \"{item.Title}\": they'd wait for each other.";
+            }
+
+            foreach (var holder in next.Ancestors().Prepend(next).Select(a => a.WaitingFor).OfType<WorkItem>().Concat(next.Children.Where(c => !c.IsDone)))
+            {
+                queue.Enqueue(holder);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tasks whose wait ended come back, with a reminder saying why: what they waited for is done (however it got done:
+    /// the app, an edit in the files, or sync), or was just <paramref name="deleted"/> here. A task merely missing (its
+    /// file can't be read right now, or hasn't synced yet) doesn't end a wait. Waiters under <paramref name="skipRoots"/>
+    /// (files that can't be saved right now) are left for later. Returns whether any came back.
+    /// </summary>
+    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null, IReadOnlySet<Guid>? skipRoots = null)
+    {
+        bool Ended(Guid after) => _index.TryGetValue(after, out var other) ? other.IsDone : deleted?.ContainsKey(after) == true;
+        var released = false;
+        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && Ended(after) && skipRoots?.Contains(i.Root.Id) != true).ToList())
+        {
+            var after = waiter.AfterId!.Value;
+            var why = _index.TryGetValue(after, out var other) ? $"\"{other.Title}\" is done" : $"\"{deleted![after]}\" was deleted";
+            waiter.AfterId = null;
+            released = true;
+            if (!waiter.IsDone)
+            {
+                waiter.ReminderList.Add(new Reminder(Guid.NewGuid(), now, $"{why}: back to \"{waiter.Title}\"", ReminderKind.NextAction));
+                Log(now, waiter.Id, ActivityKind.Scheduled, $"Back: {why}", Actor.System);
+            }
+        }
+
+        return released;
     }
 
     public void Reopen(Guid id, Actor actor, DateTimeOffset now)
@@ -238,6 +341,7 @@ public sealed partial class TaskBoard
         var item = Get(id);
         var cleanMessage = OptionalText(message, MaxTitleLength);
         item.NextActionAt = at;
+        item.AfterId = null;
         DismissPendingScheduleReminders(item, now);
         if (notify)
         {
@@ -251,6 +355,7 @@ public sealed partial class TaskBoard
     {
         var item = Get(id);
         item.NextActionAt = null;
+        item.AfterId = null;
         DismissPendingScheduleReminders(item, now);
         Log(now, id, ActivityKind.Scheduled, "Cleared next action; back to Now", actor);
     }
@@ -437,6 +542,7 @@ public sealed partial class TaskBoard
 
     internal void Attach(WorkItem item, WorkItem? parent)
     {
+        item.Board = this;
         if (!_index.TryAdd(item.Id, item))
         {
             throw new InvalidDataException($"Duplicate task id {item.Id}.");

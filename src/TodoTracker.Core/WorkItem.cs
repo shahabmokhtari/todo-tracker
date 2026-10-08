@@ -36,6 +36,15 @@ public sealed class WorkItem
     /// <summary>The item is deferred (waiting) until this time.</summary>
     public DateTimeOffset? NextActionAt { get; internal set; }
 
+    /// <summary>The item waits until this other task is done ("after task X"); it comes back with a reminder then.</summary>
+    public Guid? AfterId { get; internal set; }
+
+    /// <summary>The open task this one waits for (null: none, it's done, or it's gone).</summary>
+    public WorkItem? WaitingFor => AfterId is { } id && Board?.Find(id) is { IsDone: false } other ? other : null;
+
+    /// <summary>The board it's on (set when it's added), to look up what it waits for.</summary>
+    internal TaskBoard? Board { get; set; }
+
     /// <summary>Children are steps that must be completed in order.</summary>
     public bool Sequential { get; internal set; }
 

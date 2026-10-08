@@ -56,6 +56,7 @@
     { "name": "get_rich_html", "description": "Read a task's rich HTML version" },
     { "name": "set_rich_html", "description": "Save a rich HTML version of a task" },
     { "name": "vault_info", "description": "Where the markdown files live and their format" },
+    { "name": "wait_for_task", "description": "Defer a task until another task is done" },
     { "name": "task_history", "description": "Saved versions of a task" },
     { "name": "restore_task_version", "description": "Put a task back the way it was" },
     { "name": "get_report", "description": "Timeline of what happened" },

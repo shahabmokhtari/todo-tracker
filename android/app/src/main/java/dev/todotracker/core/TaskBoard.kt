@@ -70,6 +70,8 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (parent != null) parent.children.removeAll { it === item } else items.removeAll { it === item }
         for (removed in item.selfAndDescendants) index.remove(removed.id)
         nowOrder.removeAll { index[it] == null }
+        // Tasks waiting for what's gone come back, like when it's done.
+        releaseWaiters(now, item.selfAndDescendants.associate { it.id to it.title })
         log(now, id, "deleted", "Deleted \"${item.title}\"", actor)
     }
 
@@ -89,6 +91,48 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         for (d in item.selfAndDescendants) if (!d.isDone) d.completedAt = now
         log(now, id, "completed", "Completed \"${item.title}\"", actor)
         advanceSequence(item, actor, now)
+        releaseWaiters(now)
+    }
+
+    /**
+     * Snoozes a task until another one is done ("after task X"); then it comes back with a reminder. Replaces a snooze
+     * until a time. Same rules as TodoTracker.Core.TaskBoard.WaitFor.
+     */
+    fun waitFor(id: UUID, afterId: UUID, actor: Actor = Actor.USER, now: Instant) {
+        val item = get(id)
+        val other = get(afterId)
+        if (other === item) throw BoardException("A task can't wait for itself.")
+        waitProblem(item, other)?.let { throw BoardException(it) }
+        item.afterId = other.id
+        item.nextActionAt = null
+        dismissPendingScheduleReminders(item, now)
+        log(now, id, "scheduled", "Waits until \"${other.title}\" is done", actor)
+    }
+
+    /** Whether [id] may wait for [afterId] (what the picker offers). */
+    fun canWaitFor(id: UUID, afterId: UUID): Boolean {
+        val item = find(id) ?: return false
+        val other = find(afterId) ?: return false
+        return other !== item && waitProblem(item, other) == null
+    }
+
+    /** Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why. */
+    private fun releaseWaiters(now: Instant, deleted: Map<UUID, String> = emptyMap()) {
+        for (waiter in allItems) {
+            val afterId = waiter.afterId ?: continue
+            val other = index[afterId]
+            val why = when {
+                // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
+                other == null -> deleted[afterId]?.let { "\"$it\" was deleted" } ?: continue
+                other.isDone -> "\"${other.title}\" is done"
+                else -> continue
+            }
+            waiter.afterId = null
+            if (!waiter.isDone) {
+                waiter.reminders.add(Reminder(dueAt = now, message = "$why: back to \"${waiter.title}\"", kind = ReminderKind.NEXT_ACTION))
+                log(now, waiter.id, "scheduled", "Back: $why", Actor.SYSTEM)
+            }
+        }
     }
 
     fun reopen(id: UUID, actor: Actor = Actor.USER, now: Instant) {
@@ -105,6 +149,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     fun scheduleNextAction(id: UUID, at: Instant, notify: Boolean = false, message: String? = null, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
         item.nextActionAt = at
+        item.afterId = null
         dismissPendingScheduleReminders(item, now)
         if (notify) {
             item.reminders.add(Reminder(dueAt = at, message = optionalText(message) ?: defaultReminderMessage(item), kind = ReminderKind.NEXT_ACTION))
@@ -115,6 +160,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     fun clearNextAction(id: UUID, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
         item.nextActionAt = null
+        item.afterId = null
         dismissPendingScheduleReminders(item, now)
         log(now, id, "scheduled", "Cleared next action; back to Now", actor)
     }
@@ -158,6 +204,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (index.containsKey(item.id)) throw BoardException("Duplicate task id ${item.id}.")
         index[item.id] = item
         item.parent = parent
+        item.board = this
         if (parent != null) parent.children.add(item) else items.add(item)
     }
 
@@ -204,6 +251,26 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
         /** Activity not tied to a task (group changes) uses the empty id, like Guid.Empty in C#. */
         val BOARD_SCOPE_ID: UUID = UUID(0L, 0L)
+
+        /** Why a task can't wait for another, or null when it can. */
+        internal fun waitProblem(item: WorkItem, other: WorkItem): String? {
+            if (item.isDone) return "\"${item.title}\" is already done."
+            if (other.isDone) return "\"${other.title}\" is already done."
+            // Its own subtasks or parents would never get done while it waits.
+            val family = (item.selfAndDescendants + item.ancestors).map { it.id }.toSet()
+            if (other.id in family) return "\"${item.title}\" can't wait for \"${other.title}\", which is part of it."
+            // Nor would a circle: follow what holds "other" up (what it, its parents and its open subtasks wait for, and
+            // its open subtasks themselves); reaching this task's family means they'd wait for each other.
+            val seen = HashSet<UUID>()
+            val queue = ArrayDeque(listOf(other))
+            while (queue.isNotEmpty()) {
+                val next = queue.removeFirst()
+                if (!seen.add(next.id)) continue
+                if (next.id in family) return "\"${other.title}\" is already waiting for \"${item.title}\": they'd wait for each other."
+                queue.addAll((listOf(next) + next.ancestors).mapNotNull { it.waitingFor } + next.children.filter { !it.isDone })
+            }
+            return null
+        }
 
         /** The first unfinished earlier step blocking this item or any of its ancestors. */
         fun findBlockingStep(item: WorkItem): WorkItem? {

@@ -95,6 +95,140 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Snooze_choices_and_rule_preview_come_from_the_server_clock()
+    {
+        var snooze = await _client.GetJson("/api/snooze?rule=fri%2014:30");
+
+        var ids = snooze["choices"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()).ToList();
+        Assert.Equal(["15m", "1h", "3h", "evening", "tomorrow", "2d", "monday", "week", "month"], ids);
+        var week = snooze["choices"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == "week")!;
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), week["at"]!.GetValue<DateTimeOffset>());
+        Assert.Equal("In a week", week["label"]!.GetValue<string>());
+        Assert.False(string.IsNullOrEmpty(week["in"]!.GetValue<string>()));
+        Assert.Equal(new DateTimeOffset(2026, 1, 9, 14, 30, 0, TimeSpan.Zero), snooze["ruleAt"]!.GetValue<DateTimeOffset>());
+        Assert.Null(snooze["ruleProblem"]);
+    }
+
+    [Fact]
+    public async Task Snooze_preview_explains_a_rule_it_cannot_read()
+    {
+        var snooze = await _client.GetJson("/api/snooze?rule=someday%20maybe");
+
+        Assert.Null(snooze["ruleAt"]);
+        Assert.Contains("someday maybe", snooze["ruleProblem"]!.GetValue<string>());
+        Assert.Contains("next week", snooze["ruleProblem"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Schedule_takes_a_choice_or_a_typed_rule()
+    {
+        var a = await _client.PostJson("/api/items", new { title = "A" });
+        var b = await _client.PostJson("/api/items", new { title = "B" });
+
+        var byChoice = await _client.PostJson($"/api/items/{a.Id()}/schedule", new { choice = "week" });
+        var byRule = await _client.PostJson($"/api/items/{b.Id()}/schedule", new { rule = "next week" });
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), byChoice["nextActionAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), byRule["nextActionAt"]!.GetValue<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task Schedule_rejects_an_unknown_choice_or_unreadable_rule()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "A" });
+
+        var choice = await _client.PostAsJsonAsync($"/api/items/{item.Id()}/schedule", new { choice = "fortnight" });
+        var rule = await _client.PostAsJsonAsync($"/api/items/{item.Id()}/schedule", new { rule = "when pigs fly" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, choice.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, rule.StatusCode);
+        Assert.Contains("when pigs fly", await rule.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task After_another_task_waits_and_shows_what_it_waits_for_until_that_is_done()
+    {
+        var first = await _client.PostJson("/api/items", new { title = "Get the keys" });
+        var then = await _client.PostJson("/api/items", new { title = "Move in" });
+
+        var waiting = await _client.PostJson($"/api/items/{then.Id()}/after", new { afterId = first.Id() });
+        Assert.Equal(first.Id(), waiting["afterId"]!.GetValue<string>());
+
+        var dashboard = await Dashboard();
+        var card = Assert.Single(dashboard["waiting"]!.AsArray())!;
+        Assert.Equal("Move in", card["title"]!.GetValue<string>());
+        Assert.Equal(first.Id(), card["waitingForId"]!.GetValue<string>());
+        Assert.Equal("Get the keys", card["waitingForTitle"]!.GetValue<string>());
+
+        await _client.PostJson($"/api/items/{first.Id()}/complete");
+
+        var after = await Dashboard();
+        Assert.Contains("Move in", after["now"].Titles());
+        Assert.Empty(after["waiting"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task After_rejects_itself_cycles_and_a_missing_task()
+    {
+        var a = await _client.PostJson("/api/items", new { title = "A" });
+        var b = await _client.PostJson("/api/items", new { title = "B" });
+        await _client.PostJson($"/api/items/{a.Id()}/after", new { afterId = b.Id() });
+
+        var self = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { afterId = a.Id() });
+        var cycle = await _client.PostAsJsonAsync($"/api/items/{b.Id()}/after", new { afterId = a.Id() });
+        var missing = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { afterId = Guid.NewGuid() });
+        var none = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { });
+
+        Assert.True(self.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict, self.StatusCode.ToString());
+        Assert.True(cycle.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict, cycle.StatusCode.ToString());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+    }
+
+    [Fact]
+    public async Task Wait_candidates_are_only_tasks_it_can_wait_for()
+    {
+        var project = await _client.PostJson("/api/items", new { title = "Move house" });
+        var keys = await _client.PostJson("/api/items", new { title = "Get the keys" });
+        var box = await _client.PostJson("/api/items", new { title = "Pack a box", parentId = project.Id() });
+        var paint = await _client.PostJson("/api/items", new { title = "Paint the walls" });
+        await _client.PostJson($"/api/items/{paint.Id()}/after", new { afterId = project.Id() });
+
+        var nearby = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+        var found = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates?q=keys")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+
+        // Not itself, its subtask, or a task already waiting for it.
+        Assert.Equal(["Get the keys"], nearby);
+        Assert.Equal(["Get the keys"], found);
+        Assert.DoesNotContain(box["title"]!.GetValue<string>(), nearby);
+        Assert.NotNull(keys);
+    }
+
+    [Fact]
+    public async Task A_subtask_of_a_snoozed_task_says_its_parent_holds_it()
+    {
+        var trip = await _client.PostJson("/api/items", new { title = "Trip" });
+        var book = await _client.PostJson("/api/items", new { title = "Book hotel", parentId = trip.Id() });
+        await _client.PostJson($"/api/items/{trip.Id()}/schedule", new { inMinutes = 120 });
+
+        var item = await _client.GetJson($"/api/items/{book.Id()}");
+        var parent = await _client.GetJson($"/api/items/{trip.Id()}");
+
+        Assert.Equal("waiting", item["state"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), item["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), item["heldById"]!.GetValue<string>());
+        Assert.Equal("Trip", item["heldByTitle"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), parent["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Null(parent["heldById"]);
+
+        // Its own snooze too: that's what it shows, and the parent still holds it.
+        await _client.PostJson($"/api/items/{book.Id()}/schedule", new { inMinutes = 30 });
+        var both = await _client.GetJson($"/api/items/{book.Id()}");
+        Assert.Equal(ServerFixture.T0.AddMinutes(30), both["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), both["heldById"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Reminders_can_be_added_and_dismissed()
     {
         var item = await _client.PostJson("/api/items", new { title = "Feature B" });

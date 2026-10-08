@@ -150,6 +150,10 @@ public final class WorkItem: Identifiable {
     public internal(set) var completedAt: Date?
     public internal(set) var deadline: Date?
     public internal(set) var nextActionAt: Date?
+    /// Snoozed until this task is done ("after task X"); see `waitingFor`.
+    public internal(set) var afterId: UUID?
+    /// The board it's on (set when it's added), to look up what it waits for.
+    weak var board: TaskBoard?
     public internal(set) var sequential: Bool = false
     public internal(set) var stepDelay: TimeInterval?
     var ownGroupId: UUID
@@ -168,6 +172,12 @@ public final class WorkItem: Identifiable {
 
     public var groupId: UUID { parent?.groupId ?? ownGroupId }
     public var isDone: Bool { completedAt != nil }
+
+    /// The open task this one waits for (nil: none, it's done, or it's gone).
+    public var waitingFor: WorkItem? {
+        guard let afterId, let other = board?.find(afterId), !other.isDone else { return nil }
+        return other
+    }
     public var hasOpenChildren: Bool { children.contains { !$0.isDone } }
 
     public var ancestors: [WorkItem] {

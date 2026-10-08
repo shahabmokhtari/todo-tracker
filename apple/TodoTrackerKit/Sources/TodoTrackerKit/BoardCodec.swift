@@ -115,6 +115,7 @@ struct BoardDocument: Codable {
         item.completedAt = doc.completedAt
         item.deadline = doc.deadline
         item.nextActionAt = doc.nextActionAt
+        item.afterId = doc.after
         item.sequential = doc.sequential ?? false
         item.stepDelay = doc.stepDelayMinutes.flatMap { $0 > 0 ? TimeInterval($0 * 60) : nil }
         item.reminders = (doc.reminders ?? []).map {
@@ -143,6 +144,7 @@ struct ItemDocument: Codable {
     var completedAt: Date?
     var deadline: Date?
     var nextActionAt: Date?
+    var after: UUID?
     var sequential: Bool?
     var stepDelayMinutes: Int?
     var groupId: UUID?
@@ -159,6 +161,7 @@ struct ItemDocument: Codable {
         completedAt = item.completedAt
         deadline = item.deadline
         nextActionAt = item.nextActionAt
+        after = item.afterId
         sequential = item.sequential ? true : nil
         stepDelayMinutes = item.stepDelay.map { Int(($0 / 60).rounded()) }
         groupId = item.parent == nil ? item.ownGroupId : nil

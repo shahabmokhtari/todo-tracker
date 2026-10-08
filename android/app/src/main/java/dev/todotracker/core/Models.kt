@@ -84,6 +84,12 @@ class WorkItem(
     var completedAt: Instant? = null
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
+
+    /** Snoozed until this task is done ("after task X"); see [waitingFor]. */
+    var afterId: UUID? = null
+
+    /** The board it's on (set when it's added), to look up what it waits for. */
+    internal var board: TaskBoard? = null
     var sequential: Boolean = false
     var stepDelay: Duration? = null
     var parent: WorkItem? = null
@@ -98,6 +104,9 @@ class WorkItem(
     val groupId: UUID get() = parent?.groupId ?: ownGroupId
     val isDone: Boolean get() = completedAt != null
     val hasOpenChildren: Boolean get() = children.any { !it.isDone }
+
+    /** The open task this one waits for (null: none, it's done, or it's gone). */
+    val waitingFor: WorkItem? get() = afterId?.let { board?.find(it) }?.takeIf { !it.isDone }
 
     val ancestors: List<WorkItem>
         get() {

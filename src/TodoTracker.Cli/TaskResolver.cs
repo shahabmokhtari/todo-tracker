@@ -87,13 +87,13 @@ internal static class TaskResolver
     }
 }
 
-/// <summary>"When" words for snooze and deadlines: 45m, 2h, 3d, tomorrow, today, a date, or an ISO date-time.</summary>
+/// <summary>"When" words for snooze and deadlines: 45m, 2h, 3d, tomorrow, today, a date, an ISO date-time, or a snooze rule (next week, fri 14:30).</summary>
 internal static class CliTime
 {
     public static DateTimeOffset Defer(string when, DateTimeOffset now, TimeZoneInfo zone)
     {
         var text = (when ?? string.Empty).Trim();
-        var at = Parse(text, now, zone) ?? throw new ArgumentException($"\"{text}\" isn't a time. Use 45m, 2h, 3d, tomorrow, 2026-02-01, or 2026-02-01T14:30.");
+        var at = Parse(text, now, zone) ?? throw new ArgumentException(TodoTracker.Core.Snooze.Hint(text, now, zone));
         return at > now ? at : throw new ArgumentException($"{text} is in the past. Snooze to a later time (e.g. 2h or tomorrow).");
     }
 
@@ -103,6 +103,13 @@ internal static class CliTime
         if (!text.Contains(' ', StringComparison.Ordinal) && QuickCaptureParser.Parse($"x @{text}", now, zone).NextActionAt is { } at)
         {
             return at;
+        }
+
+        // The same words as everywhere else ("wed 14:30", "next week") before .NET's own date reading, which reads a
+        // weekday as today's date.
+        if (TodoTracker.Core.Snooze.Parse(text, now, zone) is { } rule)
+        {
+            return rule;
         }
 
         if (DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))

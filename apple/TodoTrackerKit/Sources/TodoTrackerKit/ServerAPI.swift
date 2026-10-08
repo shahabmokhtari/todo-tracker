@@ -7,6 +7,8 @@ public enum ServerAction: Equatable, Sendable {
     case complete(UUID)
     case reopen(UUID)
     case schedule(UUID, at: Date)
+    /// Snoozed until another task is done.
+    case waitFor(UUID, after: UUID)
     case bringBack(UUID)
     case dismissReminder(UUID, reminderId: UUID)
     case addNote(UUID, text: String)
@@ -57,6 +59,8 @@ public enum ServerAPI {
             return post("/api/items/\(id(item))/reopen")
         case let .schedule(item, at):
             return post("/api/items/\(id(item))/schedule", ["at": BoardCodec.formatDate(at), "notify": true])
+        case let .waitFor(item, after):
+            return post("/api/items/\(id(item))/after", ["afterId": id(after)])
         case let .bringBack(item):
             return post("/api/items/\(id(item))/schedule", ["clear": true])
         case let .dismissReminder(item, reminderId):

@@ -10,6 +10,8 @@ public struct AgendaEntry: Identifiable {
     public let wakeAt: Date?
     public let isOverdue: Bool
     public let breadcrumb: [String]
+    /// The open task it waits for ("after task X"), itself or through a parent.
+    public var waitingFor: WorkItem? = nil
 
     /// "Step 2 of 10" for steps of a sequential parent.
     public var stepLabel: String? {
@@ -55,7 +57,7 @@ public enum Agenda {
     public static func state(of item: WorkItem, now: Date) -> ItemState {
         if item.isDone { return .done }
         if isLocked(item) { return .locked }
-        if isAfter(item.nextActionAt, now) || item.ancestors.contains(where: { isAfter($0.nextActionAt, now) }) { return .waiting }
+        if waits(item, now) || item.ancestors.contains(where: { waits($0, now) }) { return .waiting }
         return item.hasOpenChildren ? .container : .actionable
     }
 
@@ -67,8 +69,8 @@ public enum Agenda {
         let openItems = board.allItems.filter { !$0.isDone }.enumerated().map { (offset: $0.offset, entry: describe($0.element, now: now)) }
         let nowAll = openItems.filter { $0.entry.state == .actionable || ($0.entry.needsAttention && ($0.entry.state == .waiting || $0.entry.state == .container)) }
         let waitingAll = openItems.filter {
-            $0.entry.state == .waiting && !$0.entry.needsAttention && isAfter($0.entry.item.nextActionAt, now)
-                && !$0.entry.item.ancestors.contains(where: { isAfter($0.nextActionAt, now) })
+            $0.entry.state == .waiting && !$0.entry.needsAttention && waits($0.entry.item, now)
+                && !$0.entry.item.ancestors.contains(where: { waits($0, now) })
         }
 
         var counts: [UUID: GroupCount] = [:]
@@ -130,6 +132,9 @@ public enum Agenda {
         return placed.map(\.entry) + others.map(\.entry)
     }
 
+    /// Snoozed until a later time, or until another task is done.
+    private static func waits(_ item: WorkItem, _ now: Date) -> Bool { isAfter(item.nextActionAt, now) || item.waitingFor != nil }
+
     private static func isAfter(_ date: Date?, _ now: Date) -> Bool {
         guard let date else { return false }
         return date > now
@@ -147,7 +152,8 @@ public enum Agenda {
             dueReminder: due,
             wakeAt: wake,
             isOverdue: item.deadline.map { $0 < now } ?? false,
-            breadcrumb: item.ancestors.reversed().map(\.title))
+            breadcrumb: item.ancestors.reversed().map(\.title),
+            waitingFor: state == .waiting ? item.waitingFor ?? item.ancestors.lazy.compactMap(\.waitingFor).first : nil)
     }
 
     private static func isLocked(_ item: WorkItem) -> Bool { TaskBoard.findBlockingStep(item) != nil }

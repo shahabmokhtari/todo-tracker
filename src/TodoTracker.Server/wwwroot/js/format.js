@@ -42,6 +42,27 @@ export function snoozeOptions(now = new Date()) {
   ];
 }
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** When a snooze ends, the way people say it: "today 17:00", "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00". */
+export function whenText(at, now = new Date()) {
+  const d = new Date(at);
+  const time = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  const days = Math.round((day(d) - day(now)) / 86400000);
+  if (days === 0) return `today ${time}`;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days > 1 && days < 7) return `${WEEKDAYS[d.getDay()]} ${time}`;
+  const year = d.getFullYear() === now.getFullYear() ? '' : ` ${d.getFullYear()}`;
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}${year}, ${time}`;
+}
+
+/** The line under a typed snooze rule: when it means, or why it isn't understood (GET /api/snooze?rule=). */
+export function rulePreview(answer, now = new Date()) {
+  if (answer?.ruleAt) return { text: `${whenText(answer.ruleAt, now)} · ${answer.ruleIn}`, ok: true };
+  return { text: answer?.ruleProblem ?? '', ok: false };
+}
+
 export function groupByDay(entries, dayKey = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })) {
   const days = [];
   const byKey = new Map();
@@ -91,6 +112,7 @@ export function metaChips(card, { waiting = false, now = new Date() } = {}) {
   const step = stepLabel(card);
   if (step) chips.push({ text: step, tone: 'step' });
   if (waiting && card.wakeAt) chips.push({ text: `back ${relativeTime(card.wakeAt, now)}`, tone: 'info' });
+  if (card.waitingForTitle) chips.push({ text: `after “${card.waitingForTitle}”`, tone: 'info' });
   if (card.deadline) {
     chips.push(card.isOverdue
       ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }

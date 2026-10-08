@@ -80,6 +80,8 @@ public final class TaskBoard {
             items.removeAll { $0 === item }
         }
         for removed in item.selfAndDescendants { index[removed.id] = nil }
+        // Tasks waiting for what's gone come back, like when it's done.
+        releaseWaiters(now: now, deleted: Dictionary(item.selfAndDescendants.map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a }))
         if let focused = pomodoro.itemId, index[focused] == nil { pomodoro.detachItem() }
         log(now, id, "deleted", "Deleted \"\(item.title)\"", actor)
     }
@@ -108,6 +110,67 @@ public final class TaskBoard {
         for d in item.selfAndDescendants where !d.isDone { d.completedAt = now }
         log(now, id, "completed", "Completed \"\(item.title)\"", actor)
         advanceSequence(after: item, actor: actor, now: now)
+        releaseWaiters(now: now)
+    }
+
+    /// Snoozes a task until another one is done ("after task X"); then it comes back with a reminder. Replaces a
+    /// snooze until a time. Same rules as TodoTracker.Core.TaskBoard.WaitFor.
+    public func waitFor(_ id: UUID, after afterId: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        let other = try get(afterId)
+        if other === item { throw BoardError.invalid("A task can't wait for itself.") }
+        if let problem = Self.waitProblem(item, other) { throw BoardError.conflict(problem) }
+        item.afterId = other.id
+        item.nextActionAt = nil
+        dismissPendingScheduleReminders(item, now: now)
+        log(now, id, "scheduled", "Waits until \"\(other.title)\" is done", actor)
+    }
+
+    /// Whether `id` may wait for `afterId` (what the pickers offer).
+    public func canWaitFor(_ id: UUID, after afterId: UUID) -> Bool {
+        guard let item = find(id), let other = find(afterId), other !== item else { return false }
+        return Self.waitProblem(item, other) == nil
+    }
+
+    /// Why a task can't wait for another, or nil when it can.
+    static func waitProblem(_ item: WorkItem, _ other: WorkItem) -> String? {
+        if item.isDone { return "\"\(item.title)\" is already done." }
+        if other.isDone { return "\"\(other.title)\" is already done." }
+        // Its own subtasks or parents would never get done while it waits.
+        let family = Set((item.selfAndDescendants + item.ancestors).map(\.id))
+        if family.contains(other.id) { return "\"\(item.title)\" can't wait for \"\(other.title)\", which is part of it." }
+        // Nor would a circle: follow what holds "other" up (what it, its parents and its open subtasks wait for, and its
+        // open subtasks themselves); reaching this task's family means they'd wait for each other.
+        var seen = Set<UUID>()
+        var queue = [other]
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            guard seen.insert(next.id).inserted else { continue }
+            if family.contains(next.id) { return "\"\(other.title)\" is already waiting for \"\(item.title)\": they'd wait for each other." }
+            queue += ([next] + next.ancestors).compactMap(\.waitingFor) + next.children.filter { !$0.isDone }
+        }
+        return nil
+    }
+
+    /// Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why.
+    private func releaseWaiters(now: Date, deleted: [UUID: String] = [:]) {
+        for waiter in allItems {
+            guard let afterId = waiter.afterId else { continue }
+            let why: String
+            if let other = index[afterId] {
+                guard other.isDone else { continue }
+                why = "\"\(other.title)\" is done"
+            } else {
+                // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
+                guard let title = deleted[afterId] else { continue }
+                why = "\"\(title)\" was deleted"
+            }
+            waiter.afterId = nil
+            if !waiter.isDone {
+                waiter.reminders.append(Reminder(dueAt: now, message: "\(why): back to \"\(waiter.title)\"", kind: .nextAction))
+                log(now, waiter.id, "scheduled", "Back: \(why)", .system)
+            }
+        }
     }
 
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
@@ -124,6 +187,7 @@ public final class TaskBoard {
     public func scheduleNextAction(_ id: UUID, at: Date, notify: Bool = false, message: String? = nil, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         item.nextActionAt = at
+        item.afterId = nil
         dismissPendingScheduleReminders(item, now: now)
         if notify {
             item.reminders.append(Reminder(dueAt: at, message: Self.optionalText(message) ?? Self.defaultReminderMessage(item), kind: .nextAction))
@@ -134,6 +198,7 @@ public final class TaskBoard {
     public func clearNextAction(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         item.nextActionAt = nil
+        item.afterId = nil
         dismissPendingScheduleReminders(item, now: now)
         log(now, id, "scheduled", "Cleared next action; back to Now", actor)
     }
@@ -241,6 +306,7 @@ public final class TaskBoard {
         guard index[item.id] == nil else { throw BoardError.invalid("Duplicate task id \(item.id).") }
         index[item.id] = item
         item.parent = parent
+        item.board = self
         if let parent { parent.children.append(item) } else { items.append(item) }
     }
 

@@ -20,6 +20,7 @@ public enum Presentation {
         var chips: [Chip] = []
         if let step = entry.stepLabel { chips.append(Chip(step, .step)) }
         if entry.state == .waiting, let wake = entry.wakeAt { chips.append(Chip("back \(RelativeTime.format(wake, now: now))", .info)) }
+        if let other = entry.waitingFor { chips.append(Chip("after “\(other.title)”", .info)) }
         if let deadline = entry.item.deadline {
             chips.append(entry.isOverdue
                 ? Chip("overdue \(RelativeTime.format(deadline, now: now))", .danger)

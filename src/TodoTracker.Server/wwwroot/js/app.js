@@ -1,10 +1,11 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, whenText } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
 import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone } from './media.js';
 import { createShell } from './shell.js';
+import { createLater } from './later.js';
 import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
@@ -626,19 +627,86 @@ function actions(c, { waiting = false, big = false } = {}) {
   return h('div', { class: 'action-wrap' }, bar, noteBox);
 }
 
+/** The quick choices come from the server (its clock and zone decide "this evening", "next Monday"…); kept a minute. */
+let snoozeChoices = { at: 0, list: null };
+async function quickChoices() {
+  if (snoozeChoices.list && Date.now() - snoozeChoices.at < 60000) return snoozeChoices.list;
+  try {
+    const answer = await Promise.race([api('/api/snooze'), new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 1500))]);
+    snoozeChoices = { at: Date.now(), list: answer.choices };
+    return answer.choices;
+  } catch {
+    return snoozeOptions().map((o) => ({ label: o.label, minutes: o.minutes }));
+  }
+}
+
 function snoozeButton(c, big) {
-  const menu = h('div', { class: 'menu', hidden: true, role: 'menu' },
-    ...snoozeOptions().map((o) => h('button', {
-      role: 'menuitem',
-      onclick: () => act(post(`/api/items/${c.id}/schedule`, { inMinutes: o.minutes, notify: true }), `Snoozed until ${o.label.toLowerCase()}`),
-    }, icon('clock', { size: 15 }), o.label)));
-  const button = actionButton({ name: 'Later', iconName: 'clock', big, title: 'Snooze (remind me later)', onclick: (e) => { e.stopPropagation(); closeMenus(); menu.hidden = !menu.hidden; } });
+  const menu = h('div', { class: 'menu snooze-menu', hidden: true, role: 'menu', 'aria-label': `Snooze ${c.title}` });
+  const fill = (choices) => {
+    const now = new Date();
+    menu.replaceChildren(
+      ...choices.map((o) => h('button', {
+        role: 'menuitem', class: 'choice',
+        onclick: () => act(post(`/api/items/${c.id}/schedule`, o.id ? { choice: o.id, notify: true } : { inMinutes: o.minutes, notify: true }),
+          o.at ? `Snoozed until ${whenText(o.at, now)}` : `Snoozed: ${o.label.toLowerCase()}`),
+      }, icon('clock', { size: 15 }), h('span', { class: 'menu-label' }, o.label), o.at ? h('span', { class: 'menu-hint' }, whenText(o.at, now)) : null)),
+      h('div', { class: 'menu-sep', role: 'separator' }),
+      h('button', { role: 'menuitem', class: 'wide', onclick: () => later.openWhen(c) }, icon('calendar', { size: 15 }), h('span', { class: 'menu-label' }, 'Pick a time…')),
+      h('button', { role: 'menuitem', class: 'wide', onclick: () => later.openAfter(c) }, icon('link', { size: 15 }), h('span', { class: 'menu-label' }, 'After another task…')));
+  };
+  const button = actionButton({
+    name: 'Later', iconName: 'clock', big, title: 'Snooze: later today, next week, a time you type, or after another task',
+    onclick: async (e) => {
+      e.stopPropagation();
+      const opening = menu.hidden;
+      closeMenus();
+      if (!opening) return;
+      fill(await quickChoices());
+      menu.hidden = false;
+      fitMenu(menu);
+      button.setAttribute('aria-expanded', 'true');
+      menu.querySelector('button')?.focus();
+    },
+  });
   button.setAttribute('aria-haspopup', 'menu');
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMenus(); button.focus(); }
+  });
   return h('span', { class: 'menu-wrap' }, button, menu);
+}
+
+/** A menu that doesn't fit below its button opens above it, or (no room either way) scrolls. */
+function fitMenu(menu) {
+  menu.classList.remove('up', 'start');
+  menu.style.maxHeight = '';
+  const margin = 8;
+  // Clipped on the left (right-aligned under a button near the left edge of a panel): align it to the button's left instead.
+  const clip = menu.closest('.drawer, .palette-box')?.getBoundingClientRect();
+  if (menu.getBoundingClientRect().left < Math.max(margin, clip ? clip.left + margin : 0)) menu.classList.add('start');
+  const rect = menu.getBoundingClientRect();
+  // Inside a panel that scrolls (task details), scroll it so the whole menu shows.
+  if (clip) { menu.scrollIntoView({ block: 'nearest' }); return; }
+  const top = margin;
+  const bottom = innerHeight - margin;
+  if (rect.bottom <= bottom) return;
+  const button = menu.parentElement.getBoundingClientRect();
+  if (button.top - top - 6 >= rect.height) {
+    menu.classList.add('up');
+    return;
+  }
+
+  // No room above or below: scroll the page so all of it shows (a menu taller than the window scrolls itself).
+  if (rect.height > bottom - top) menu.style.maxHeight = `${bottom - top}px`;
+  menu.scrollIntoView({ block: 'nearest' });
 }
 
 function closeMenus() {
   document.querySelectorAll('.menu').forEach((m) => (m.hidden = true));
+  document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
   $('#filter-pick')?.setAttribute('aria-expanded', 'false');
 }
 document.addEventListener('click', closeMenus);
@@ -941,6 +1009,7 @@ async function openDrawer(id, { full = null } = {}) {
     title,
     // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
     h('div', { class: 'drawer-main' },
+    waitingBanner(item),
     h('div', { class: 'chips-row' }, labelPicker),
     field('Tags', tags),
     tagPreview,
@@ -964,6 +1033,7 @@ async function openDrawer(id, { full = null } = {}) {
           if (open && !confirm(`Also mark ${open} open subtask${open > 1 ? 's' : ''} as done?`)) return;
           act(post(`/api/items/${id}/complete`), 'Done');
         } }, icon('check', { size: 16 }), 'Done'),
+      item.completedAt ? null : snoozeButton(item, true),
       h('a', { class: 'btn ghost', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, icon('report', { size: 16 }), 'Full report'),
       h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks? (It goes to the vault's trash.)`)) { autosave.cancel(); closeDrawer(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
 
@@ -1293,7 +1363,24 @@ async function submitAndClear(input, request, message) {
   if (!(await act(request(value), message))) input.value = value;
 }
 
+/**
+ * Why a task is waiting: its own snooze or wait (Do now brings it back), or its parent's (open the parent to change it).
+ * Nothing when it isn't waiting, or is waiting for a step before it.
+ */
+function waitingBanner(item) {
+  if (item.state !== 'waiting' || item.completedAt || !(item.wakeAt || item.waitingForTitle)) return null;
+  const why = [item.waitingForTitle ? `waits for “${item.waitingForTitle}”` : null, item.wakeAt ? `snoozed until ${whenText(item.wakeAt)}` : null].filter(Boolean).join(' and ');
+  // Its own wait (Do now ends it), its parent's (open the parent), or both.
+  const own = !!item.afterId || (!!item.nextActionAt && new Date(item.nextActionAt) > new Date());
+  const text = !own ? `Its parent “${item.heldByTitle}” ${why}`
+    : `${why[0].toUpperCase()}${why.slice(1)}${item.heldById ? `; its parent “${item.heldByTitle}” waits too` : ''}`;
+  return h('div', { class: 'waiting-banner', role: 'status' }, icon(item.waitingForTitle ? 'link' : 'clock', { size: 16 }), h('span', null, text),
+    own ? h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${item.id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now') : null,
+    item.heldById ? h('button', { class: 'btn ghost', type: 'button', onclick: () => openDrawer(item.heldById) }, icon('expand', { size: 15 }), 'Open parent') : null);
+}
+
 function stateLabel(item) {
+  if (item.state === 'waiting' && item.waitingForTitle) return `waiting for “${item.waitingForTitle}”`;
   if (item.state === 'waiting' && item.nextActionAt) return `waiting · ${relativeTime(item.nextActionAt)}`;
   return { actionable: 'now', container: 'in progress', locked: 'later', done: 'done', waiting: 'waiting' }[item.state] ?? item.state;
 }
@@ -1385,6 +1472,7 @@ const ctx = {
   views: {},
 };
 const shell = createShell(ctx);
+const later = createLater(ctx);
 ctx.pluginHost = pluginHost;
 ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), settings: createSettingsView(ctx) };
 state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';

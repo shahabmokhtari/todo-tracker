@@ -284,8 +284,28 @@ public final class BoardModel: ObservableObject {
     public func complete(_ id: UUID) { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }
 
     public func snooze(_ id: UUID, minutes: Int) {
-        let at = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        change("Snoozed", server: .schedule(id, at: at)) { try board.scheduleNextAction(id, at: $0.addingTimeInterval(TimeInterval(minutes * 60)), notify: true, now: $0) }
+        snooze(id, until: Date().addingTimeInterval(TimeInterval(minutes * 60)))
+    }
+
+    /// The quick choices right now (the same in every app).
+    public var snoozeChoices: [SnoozeChoice] { Snooze.choices(now: Date(), timeZone: .current) }
+
+    /// Snoozes until a time: a quick choice or one picked on the calendar.
+    public func snooze(_ id: UUID, until at: Date) {
+        let when = Snooze.describe(at, now: Date(), timeZone: .current)
+        change("Snoozed until \(when)", server: .schedule(id, at: at)) { try board.scheduleNextAction(id, at: at, notify: true, now: $0) }
+    }
+
+    /// Snoozes until another task is done; it comes back with a reminder then.
+    public func waitFor(_ id: UUID, after other: WorkItem) {
+        change("Waiting for “\(other.title)”", server: .waitFor(id, after: other.id)) { try board.waitFor(id, after: other.id, now: $0) }
+    }
+
+    /// Tasks it can wait for: the open ones shown (to do now, then waiting), not itself, its own subtasks or parents, or
+    /// what already waits for it.
+    public func waitCandidates(for id: UUID) -> [WorkItem] {
+        var seen = Set<UUID>()
+        return (dashboard.now + dashboard.waiting).map(\.item).filter { seen.insert($0.id).inserted && board.canWaitFor(id, after: $0.id) }
     }
 
     public func reopen(_ id: UUID) { change("Reopened", server: .reopen(id)) { try board.reopen(id, now: $0) } }
@@ -326,8 +346,7 @@ public final class BoardModel: ObservableObject {
     }
 
     public func snoozeUntilTomorrow(_ id: UUID) {
-        let at = QuickCaptureParser.tomorrowMorning(now: Date(), timeZone: .current)
-        change("See you tomorrow", server: .schedule(id, at: at)) { try board.scheduleNextAction(id, at: QuickCaptureParser.tomorrowMorning(now: $0, timeZone: .current), notify: true, now: $0) }
+        snooze(id, until: QuickCaptureParser.tomorrowMorning(now: Date(), timeZone: .current))
     }
 
     public func addSubtask(_ parentId: UUID, title: String) {

@@ -45,6 +45,7 @@ public sealed class ExportFixtureTests
         Assert.Contains(all, i => i.ArchivedAt is not null);
         Assert.Contains(all, i => i.TimeEntries.Count > 0);
         Assert.Contains(all, i => i.Parent is null && i.Stage == Stage.Doing);
+        Assert.Contains(all, i => i.AfterId is not null);
     }
 
     private static TaskBoard Build()
@@ -64,6 +65,8 @@ public sealed class ExportFixtureTests
         board.AddNote(launch.Id, "From Notion", new Actor(ActorKind.Connector, "Notion"), T0.AddMinutes(6));
         board.AddNote(copy.Id, "Draft 1", new Actor(ActorKind.System), T0.AddMinutes(7));
         board.AddTime(copy.Id, T0, T0.AddMinutes(25), user, T0.AddMinutes(25));
+        var announce = board.AddTask(new NewTask("Announce it") { GroupId = work.Id }, user, T0);
+        board.WaitFor(announce.Id, launch.Id, user, T0);
         var old = board.AddTask(new NewTask("Old task") { GroupId = work.Id }, user, T0);
         board.Complete(old.Id, user, T0);
         board.Archive(old.Id, user, T0);
