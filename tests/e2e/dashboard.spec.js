@@ -252,6 +252,10 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await input.press('Enter');
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');
 
+  // Not caused by the snooze PR: a race already in this test. The answer shows before the turn ends, and Enter is
+  // ignored while the agent is still busy, so on a slow CI runner "add Milk" was typed too soon and never sent.
+  // Waiting until Send is enabled again (the turn is over) makes it deterministic.
+  await expect(drawer.getByRole('button', { name: 'Send' })).toBeEnabled();
   await input.fill('add Milk');
   await input.press('Enter');
   const ask = drawer.locator('.ask').last();
@@ -268,6 +272,7 @@ test('Ask AI: chat with the agent, approve a change, and see the answer', async 
   await drawer.getByRole('searchbox', { name: 'Search chats' }).fill('milk');
   await drawer.locator('.chat-item', { hasText: 'hi' }).click();
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Added "Milk".');
+  await expect(drawer.getByRole('button', { name: 'Send' })).toBeEnabled(); // the same race as above
   await input.fill('hi again');
   await input.press('Enter');
   await expect(drawer.locator('.msg.agent').last()).toHaveText('Hello, there.');
