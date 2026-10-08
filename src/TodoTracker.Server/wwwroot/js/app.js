@@ -694,14 +694,14 @@ function fitMenu(menu) {
   const bottom = innerHeight - margin;
   if (rect.bottom <= bottom) return;
   const button = menu.parentElement.getBoundingClientRect();
-  const above = button.top - top - 6;
-  const below = bottom - rect.top;
-  if (above >= rect.height || above > below) {
+  if (button.top - top - 6 >= rect.height) {
     menu.classList.add('up');
-    if (above < rect.height) menu.style.maxHeight = `${Math.max(120, above)}px`;
-  } else {
-    menu.style.maxHeight = `${Math.max(120, below)}px`;
+    return;
   }
+
+  // No room above or below: scroll the page so all of it shows (a menu taller than the window scrolls itself).
+  if (rect.height > bottom - top) menu.style.maxHeight = `${bottom - top}px`;
+  menu.scrollIntoView({ block: 'nearest' });
 }
 
 function closeMenus() {
