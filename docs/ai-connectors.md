@@ -129,7 +129,8 @@ tt add 'Book flights' --under trip  a subtask; <task> is an id prefix or words f
 tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
 tt show passport                    a task with subtasks, notes and its markdown file
 tt note passport 'Booked appointment for Tuesday'   (or tt note passport - to read it from stdin)
-tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, 2026-02-01, 2026-02-01T14:30
+tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, 2026-02-01, 2026-02-01T14:30
+tt snooze "move in" after keys      wait until another task is done
 tt done Renew passport              finish (several at once by id: tt done a1b2c3 d4e5f6)
 tt first call the bank              put it at the top of Do now (it becomes the focus)
 tt steps rollout "Ring 0" "Ring 1" --delay 24

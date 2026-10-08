@@ -66,7 +66,14 @@ Type a task in the box at the top and press Enter:
 
 ```
 Deploy ring 2 !! @2h due:tomorrow      →  critical, back in 2h with a reminder, due tomorrow 17:00
+Plan the offsite @next-week            →  back next Monday 9:00   (also @fri, @weekend, @tonight, @2w…)
 ```
+
+**Not now?** Press **Later** on a task: back in 15 minutes, an hour, 3 hours, this evening, tomorrow morning, in 2 days,
+next Monday, in a week or a month (each says when, e.g. *Fri 9:00*). Or **Pick a time…** and type it the way you'd say
+it (`next week`, `fri 14:30`, `3d`, `weekend`, `2026-03-01 14:00`; it shows when that is before you snooze), or pick a
+date. Or **After another task…**: it waits until that task is done, then comes back with a reminder. Every app offers
+the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other task>`, and the AI tools too).
 
 ### The full app
 

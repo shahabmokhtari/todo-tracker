@@ -98,6 +98,10 @@ public sealed class SnoozeTests
         Assert.Equal(At(19, 9), QuickCaptureParser.Parse("Review @2w", Monday, Utc).NextActionAt);
         Assert.Equal(At(10, 9), QuickCaptureParser.Parse("Clean @weekend", Monday, Utc).NextActionAt);
         Assert.Equal("Email @team", QuickCaptureParser.Parse("Email @team", Monday, Utc).Title);
+        // Words with a space are written with a hyphen after @; dates keep theirs.
+        Assert.Equal(At(12, 9), QuickCaptureParser.Parse("Plan @next-week", Monday, Utc).NextActionAt);
+        Assert.Equal(new DateTimeOffset(2026, 1, 6, 14, 0, 0, TimeSpan.Zero), QuickCaptureParser.Parse("Plan @tomorrow-14:00", Monday, Utc).NextActionAt);
+        Assert.Equal(new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.Zero), QuickCaptureParser.Parse("Plan @2026-03-01", Monday, Utc).NextActionAt);
     }
 
     [Theory]

@@ -119,11 +119,28 @@ that parent reopens exactly the children that action closed. Reopening a child r
 **Snooze / schedule.** Sets `nextActionAt` and (default) adds a `nextAction` reminder at that time. Rescheduling
 dismisses the previous undelivered schedule reminder and any reminder that is already due (even if delivered), so "Later" on a ringing reminder really moves the task to *Waiting* and reminders never stack.
 
+* **Quick choices** (`Snooze.Choices`, the same ids in C#, the web app via `GET /api/snooze`, Swift and Kotlin;
+  `tests/fixtures/snooze.json` checks them): `15m`, `1h`, `3h`, `evening` (18:00; offered before 17:00), `tomorrow`
+  (next 9:00; before 4:00 that's this morning), `2d`, `monday` (next Monday; a week on when it's Monday), `week`, `month`
+  (9:00 local on that day; a month from Jan 31 is the end of February). Each shows when it ends: "today 17:00",
+  "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".
+* **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `tt snooze`):
+  `45m`/`2h` from now; `3d`, `2 weeks`, `1 month` (that day at 9:00); weekdays (`fri`, `next fri`); `tonight`,
+  `tomorrow 14:00`, `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
+  today, or tomorrow when it's past); dates (`2026-03-01`, with an optional time); an optional leading `in` (`in 3 days`). A rule that isn't
+  understood or is in the past is refused with examples. Phones offer the quick choices and a date picker.
+* **After another task** (`after: <id>` in the file; `POST /api/items/{id}/after`, MCP `wait_for_task`,
+  `tt snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
+  reminder ("X is done: back to Y"). It replaces a snooze until a time (and snoozing or *Do now* replaces it). Refused:
+  itself, a done task, its own subtasks or parents, or a circle. If X is deleted the wait ends. In *Waiting*, tasks
+  back at a time come first (soonest first), then those waiting for a task.
+
 **Delivery.** Every 15s the server marks due, undelivered reminders as delivered, at most once and before sending,
 so a crash never double-notifies. It then fans them out to desktop toasts and Teams. A failing integration never
 blocks the others.
 
-**Quick capture:** `!`/`!high`, `!!`/`!critical`/`!urgent`, `!low`, `@15m`/`@2h`/`@3d`/`@tomorrow` (next 9:00 local; before 4:00 that means this morning),
+**Quick capture:** `!`/`!high`, `!!`/`!critical`/`!urgent`, `!low`, `@15m`/`@2h`/`@3d`/`@tomorrow` (next 9:00 local; before 4:00 that means this morning; `@3d` is exactly 72h, as before),
+and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@next-week`),
 `due:today`/`due:tomorrow`/`due:3d`/`due:YYYY-MM-DD` (17:00 local; `due:today` after 17:00 means 23:59). Malformed tokens (`due:2026-13-01`, `@+5m`) stay in the title on every platform. Unknown tokens stay in the title.
 
 ## 6. UX specification
@@ -152,7 +169,8 @@ blocks the others.
   5. **Do this now** card.
   6. Collapsible sections: Do now, Waiting, Workstreams (progress bars; click for the report), and Recent notes.
   7. Focus timer bar.
-* Card actions: ✓ done, 🔕 dismiss, ↩ bring back, ⏰ snooze menu (15m, 1h, 3h, tomorrow 9:00, +24h), ✎ inline note,
+* Card actions: ✓ done, 🔕 dismiss, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
+  time…*, *After another task*), ✎ inline note,
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional
   *Start with Windows*.
