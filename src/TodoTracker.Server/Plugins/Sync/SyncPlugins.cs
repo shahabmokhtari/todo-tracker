@@ -197,9 +197,9 @@ public static class SyncEndpoints
         var group = app.MapGroup("/api/plugins/sync").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
         group.MapGet("/", (SyncService sync) => sync.View);
         group.MapPost("/now", (SyncService sync, CancellationToken cancellationToken) => sync.SyncNowAsync(cancellationToken));
-        group.MapPut("/provider", (SyncChoiceRequest request, SyncService sync) =>
+        group.MapPut("/provider", async (SyncChoiceRequest request, SyncService sync, CancellationToken cancellationToken) =>
         {
-            sync.Choose(request.Provider ?? "auto");
+            await sync.ChooseAsync(request.Provider ?? "auto", cancellationToken).ConfigureAwait(false);
             return sync.View;
         });
         group.MapPut("/library", (SyncLibraryRequest request, SyncService sync) =>
@@ -211,9 +211,9 @@ public static class SyncEndpoints
             sync.ForgetAsync(request.Device ?? string.Empty, cancellationToken));
         group.MapPost("/resolve", (SyncResolveRequest request, SyncService sync, CancellationToken cancellationToken) =>
             sync.ResolveAsync(request.Key ?? string.Empty, request.Choice ?? string.Empty, request.Place, cancellationToken));
-        group.MapPut("/places", (SyncPlaceRequest request, SyncService sync) =>
+        group.MapPut("/places", async (SyncPlaceRequest request, SyncService sync, CancellationToken cancellationToken) =>
         {
-            sync.SetMode(request.Provider ?? string.Empty, request.Mode ?? string.Empty);
+            await sync.SetModeAsync(request.Provider ?? string.Empty, request.Mode ?? string.Empty, cancellationToken).ConfigureAwait(false);
             return sync.View;
         });
         group.MapPost("/compare", async (SyncToolRequest request, SyncService sync, CancellationToken cancellationToken) =>

@@ -63,6 +63,7 @@ public sealed class SyncService : IDisposable
     private readonly string _dir;
     private readonly TimeProvider _time;
     private readonly Lock _lock = new();
+    private readonly Lock _settingsLock = new();
     private readonly SemaphoreSlim _trigger = new(0, 1);
     private readonly Dictionary<string, (string Key, SyncEngine Engine)> _engines = [];
     private readonly Dictionary<string, (string Library, int Count, DateTimeOffset At)> _seen = [];
@@ -100,7 +101,7 @@ public sealed class SyncService : IDisposable
             var choice = Choice;
             var uses = Uses(out var reason);
             var primary = uses.Count > 0 ? uses[0].Provider : null;
-            var states = uses.Select(u => (u.Provider, State: StateFor(u.Provider))).ToList();
+            var states = uses.Select(u => (u.Provider, u.Mode, State: StateFor(u.Provider))).ToList();
             var status = states.Count > 0 ? states[0].State.Status : SyncStatus.Empty;
             var checks = _providers.ToDictionary(p => p.Id, p => p.Check(_vault.RootPath));
             var views = _providers.Select(p => new SyncProviderView(p.Id, p.Name, checks[p.Id].Available, checks[p.Id].Detail, p == primary)).ToList();
@@ -130,7 +131,7 @@ public sealed class SyncService : IDisposable
                 Library,
                 views,
                 [.. states.SelectMany(s => s.State.Status.Devices).GroupBy(d => d.Device).Select(g => g.MaxBy(d => d.At)!)],
-                [.. states.SelectMany(s => s.State.Status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At, Ready(s.State, c), s.Provider.Id)))],
+                [.. states.SelectMany(s => s.State.Status.Conflicts.Select(c => new SyncConflictView(c.Key, c.Path, c.PeerName, c.At, Ready(s.State, c) || !s.Mode.HasFlag(SyncMode.Write), s.Provider.Id)))],
                 MergeTools.Find(),
                 places,
                 choice == "off" ? null : Warning(places));
@@ -140,22 +141,23 @@ public sealed class SyncService : IDisposable
     private string SettingsPath => Path.Combine(_dir, "settings.json");
 
     /// <summary>Picks one provider ("auto", "off" or an id) and syncs with it from now on (any per-place choice is cleared).</summary>
-    public void Choose(string choice)
+    public async Task ChooseAsync(string choice, CancellationToken cancellationToken = default)
     {
         if (choice is not ("auto" or "off") && !_providers.Any(p => p.Id == choice))
         {
             throw new ArgumentException($"There is no sync provider \"{choice}\".", nameof(choice));
         }
 
-        Save("modes", string.Empty);
-        Save("provider", choice);
+        var writtenBefore = Written();
+        Save(new() { ["modes"] = string.Empty, ["provider"] = choice });
+        await RetireAsync(writtenBefore, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
     /// How one place is used: "both", "read", "write" or "off". The first such choice turns the automatic pick into
     /// per-place choices (the place used until now keeps reading and writing).
     /// </summary>
-    public void SetMode(string provider, string mode)
+    public async Task SetModeAsync(string provider, string mode, CancellationToken cancellationToken = default)
     {
         if (!_providers.Any(p => p.Id == provider))
         {
@@ -172,11 +174,40 @@ public sealed class SyncService : IDisposable
             }
         }
 
+        var writtenBefore = Written();
         modes[provider] = parsed;
-        Save("modes", string.Join(';', modes.Select(m => $"{m.Key}={ModeName(m.Value)}")));
+        var changes = new Dictionary<string, string> { ["modes"] = string.Join(';', modes.Select(m => $"{m.Key}={ModeName(m.Value)}")) };
         if (Choice == "off")
         {
-            Save("provider", "auto");
+            changes["provider"] = "auto";
+        }
+
+        Save(changes);
+        await RetireAsync(writtenBefore, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The places this computer writes to now.</summary>
+    private List<ISyncProvider> Written() => [.. Uses(out _).Where(u => u.Mode.HasFlag(SyncMode.Write)).Select(u => u.Provider)];
+
+    /// <summary>
+    /// A place no longer written: this computer's snapshot there goes (else it would stay a computer the others merge
+    /// for months, and one starting to read the place later would bring back what was deleted here since).
+    /// </summary>
+    private async Task RetireAsync(List<ISyncProvider> writtenBefore, CancellationToken cancellationToken)
+    {
+        var writtenNow = Written();
+        foreach (var provider in writtenBefore.Where(p => !writtenNow.Contains(p)))
+        {
+            try
+            {
+                var state = StateFor(provider);
+                await provider.CreateRemote(_vault.RootPath, Library).ForgetAsync(state.DeviceId, cancellationToken).ConfigureAwait(false);
+                state.Published = null;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or HttpRequestException or TaskCanceledException)
+            {
+                SetProblem($"Couldn't take this computer's tasks out of {provider.Name} ({ex.Message}).");
+            }
         }
     }
 
@@ -313,15 +344,20 @@ public sealed class SyncService : IDisposable
 
             try
             {
+                // Only a look (nothing is created there, nothing downloaded): places that can't be looked at aren't.
+                if (provider.CreateRemote(_vault.RootPath, library) is not ISyncPeek peek)
+                {
+                    continue;
+                }
+
                 var self = StateFor(provider).DeviceId;
-                var snapshot = await provider.CreateRemote(_vault.RootPath, library).ReadAsync(self, null, cancellationToken).ConfigureAwait(false);
-                var count = snapshot?.Devices.Count(d => d.Device != self) ?? 0;
+                var count = (await peek.PeekAsync(self, cancellationToken).ConfigureAwait(false)).Count(d => now - d.At < SyncLimits.Memory);
                 lock (_lock)
                 {
                     _seen[provider.Id] = (library, count, now);
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or HttpRequestException or JsonException or TaskCanceledException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or HttpRequestException or JsonException or TaskCanceledException or InvalidOperationException or ArgumentException)
             {
                 // Can't look now: try again next time.
             }
@@ -359,7 +395,7 @@ public sealed class SyncService : IDisposable
             }
 
             // Choosing a side before the other computer has the merged task too would be undone by its merge.
-            if (!Ready(engine.State, conflict))
+            if (engine.Mode.HasFlag(SyncMode.Write) && !Ready(engine.State, conflict))
             {
                 throw new InvalidOperationException($"Wait until {conflict.PeerName} has synced too (usually within a minute), then choose.");
             }
@@ -555,20 +591,33 @@ public sealed class SyncService : IDisposable
         }
     }
 
-    private void Save(string name, string value)
+    private void Save(string name, string value) => Save(new Dictionary<string, string> { [name] = value });
+
+    /// <summary>All at once, and atomically (a sync reading the settings meanwhile sees the old or the new ones).</summary>
+    private void Save(Dictionary<string, string> values)
     {
-        JsonObject settings;
-        try
+        lock (_settingsLock)
         {
-            settings = File.Exists(SettingsPath) ? JsonNode.Parse(File.ReadAllText(SettingsPath)) as JsonObject ?? [] : [];
-        }
-        catch (JsonException)
-        {
-            settings = [];
+            JsonObject settings;
+            try
+            {
+                settings = File.Exists(SettingsPath) ? JsonNode.Parse(File.ReadAllText(SettingsPath)) as JsonObject ?? [] : [];
+            }
+            catch (JsonException)
+            {
+                settings = [];
+            }
+
+            foreach (var (name, value) in values)
+            {
+                settings[name] = value;
+            }
+
+            var temporary = SettingsPath + ".tmp";
+            File.WriteAllText(temporary, settings.ToJsonString());
+            File.Move(temporary, SettingsPath, overwrite: true);
         }
 
-        settings[name] = value;
-        File.WriteAllText(SettingsPath, settings.ToJsonString());
         SetProblem(null);
         Trigger();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -603,22 +652,25 @@ public sealed class SyncService : IDisposable
         return null;
     }
 
-    /// <summary>The engine for this place, how it's used, and the library (a new one when any of them changed).</summary>
+    /// <summary>
+    /// The engine for this place and library (a new one when either changed), set to how the place is used now (the
+    /// same engine, so a sync running through it is never cut off).
+    /// </summary>
     private SyncEngine EngineFor(ISyncProvider provider, SyncMode mode)
     {
         var library = Library;
-        var key = $"{provider.Check(_vault.RootPath).Detail}|{library}|{mode}";
+        var key = $"{provider.Check(_vault.RootPath).Detail}|{library}";
         lock (_lock)
         {
-            if (_engines.TryGetValue(provider.Id, out var current) && current.Key == key)
+            if (!_engines.TryGetValue(provider.Id, out var current) || current.Key != key)
             {
-                return current.Engine;
+                // The one it replaces isn't disposed: a sync may still be running through it.
+                current = (key, new SyncEngine(_vault, provider.CreateRemote(_vault.RootPath, library), StateFor(provider), Path.Combine(_dir, provider.Id + ".lock"), _time));
+                _engines[provider.Id] = current;
             }
 
-            current.Engine?.Dispose();
-            var engine = new SyncEngine(_vault, provider.CreateRemote(_vault.RootPath, library), StateFor(provider), Path.Combine(_dir, provider.Id + ".lock"), _time) { Mode = mode };
-            _engines[provider.Id] = (key, engine);
-            return engine;
+            current.Engine.Mode = mode;
+            return current.Engine;
         }
     }
 

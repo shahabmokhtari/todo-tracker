@@ -9,7 +9,7 @@ namespace TodoTracker.Core.Sync;
 /// <c>devices/&lt;id&gt;.json</c> per device and <c>blobs/&lt;ab&gt;/&lt;hash&gt;</c> for contents. Files are only ever
 /// added or replaced whole (temp file + rename), contents before the snapshot that lists them.
 /// </summary>
-public sealed class FolderRemote(string root) : ISyncRemote
+public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private DateTime _lastCollect = DateTime.MinValue;
@@ -29,6 +29,36 @@ public sealed class FolderRemote(string root) : ISyncRemote
 
         File.Delete(Path.Combine(Devices, device + ".json"));
         return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<SyncDevice>> PeekAsync(string self, CancellationToken cancellationToken)
+    {
+        var found = new List<SyncDevice>();
+        if (Directory.Exists(Devices))
+        {
+            foreach (var file in Directory.EnumerateFiles(Devices, "*.json"))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (string.Equals(Path.GetFileNameWithoutExtension(file), self, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (JsonSerializer.Deserialize<DeviceSnapshot>(File.ReadAllBytes(file), Json) is { Device: not null } device)
+                    {
+                        found.Add(new SyncDevice(device.Device, device.Name, device.At));
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    // Being written right now, or not ours: not counted this time.
+                }
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<SyncDevice>>(found);
     }
 
     public Task<RemoteSnapshot?> ReadAsync(string self, string? knownVersion, CancellationToken cancellationToken)

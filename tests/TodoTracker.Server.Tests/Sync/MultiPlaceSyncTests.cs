@@ -92,6 +92,23 @@ public sealed class MultiPlaceSyncTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_place_no_longer_written_loses_this_computers_tasks_and_looking_creates_nothing()
+    {
+        // Looking at an unused place creates nothing in a cloud drive the user didn't choose.
+        await Sync(_desktop);
+        Assert.False(Directory.Exists(Path.Combine(_home, "iCloudDrive", "Apps")));
+
+        await Use(_desktop, "icloud", "both");
+        await Sync(_desktop);
+        var devices = Path.Combine(_home, "iCloudDrive", "Apps", "TodoTrackerSync", "vault", "devices");
+        Assert.Single(Directory.GetFiles(devices));
+
+        // Read only from now on: its snapshot there goes (else it would be merged by the others for months).
+        await Use(_desktop, "icloud", "read");
+        Assert.Empty(Directory.GetFiles(devices));
+    }
+
+    [Fact]
     public async Task A_place_can_be_only_read_or_only_written()
     {
         await Use(_desktop, "onedrive", "read");

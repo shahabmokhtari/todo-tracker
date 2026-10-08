@@ -69,7 +69,7 @@ for each place:
 Everything read is merged into the tasks folder the same way as between computers (three-way; anything changed in
 two places shows under *Changed on both computers*, with the place it came through, to keep one side, both, or compare
 them). Places read come first in each sync, so the places written get what they brought in the same sync. Reading and
-writing every place keeps them all the same. Choosing a single place again in **Sync with** goes back to one place.
+writing every place keeps them all the same (with a place only read or only written, a clash there can be settled right away, but later edits on both sides keep being merged against the last version both had). A place this computer stops writing to loses its copy of this computer's tasks, so nobody merges an old copy later. Choosing a single place again in **Sync with** goes back to one place.
 ## On a Mac
 
 The Mac app comes with Todo Tracker's server inside. It starts in the background with the app (and stops when the app

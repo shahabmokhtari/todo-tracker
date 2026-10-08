@@ -112,6 +112,26 @@ public sealed class SyncEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_place_written_only_then_read_brings_in_what_changed_meanwhile()
+    {
+        // Review finding: write-only syncs marked the place as merged, so reading it later skipped those changes.
+        var laptop = Add("Laptop");
+        var phone = Add("Phone");
+        phone.Engine.Mode = SyncMode.Write;
+        await laptop.AddTask("While the phone only wrote");
+        await laptop.Sync();
+        var written = await phone.Sync();
+        Assert.DoesNotContain("While the phone only wrote", await phone.Titles());
+        Assert.Equal(["Laptop"], phone.State.Status.Devices.Select(d => d.Name));
+        _ = written;
+
+        phone.Engine.Mode = SyncMode.Both;
+        await phone.Sync();
+
+        Assert.Contains("While the phone only wrote", await phone.Titles());
+    }
+
+    [Fact]
     public async Task A_task_added_on_one_device_shows_up_on_the_other()
     {
         var laptop = Add("Laptop");
