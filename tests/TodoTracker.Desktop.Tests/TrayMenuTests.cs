@@ -68,4 +68,13 @@ public sealed class TrayMenuTests : IDisposable
         Assert.True(stop.Label.Length < 70);
         Assert.True(TrayMenu.Tooltip(_vm).Length <= TrayMenu.MaxTooltip);
     }
+
+    [Fact]
+    public void Shortening_never_splits_an_emoji()
+    {
+        var cut = TrayMenu.Cut(new string('a', 38) + "🎉🎉", 40);
+
+        Assert.Equal(new string('a', 38) + "…", cut);
+        Assert.Equal("short", TrayMenu.Cut("short", 40));
+    }
 }

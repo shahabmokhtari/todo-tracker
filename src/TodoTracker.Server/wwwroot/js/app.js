@@ -294,13 +294,13 @@ function renderFilterMenu(tags) {
     h('h2', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
     ...(labels.length ? labels.map((l) => entry(queryFor({ label: l.name }), [swatch(l.color), l.name], `Show tasks labeled "${l.name}"`)) : [h('p', { class: 'menu-empty' }, 'No labels yet: add them in a task\'s details.')]),
     h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type in a task, separated by commas')),
-    ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: type #word in a task.')]),
+    ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: add them in a task\'s details, separated by commas.')]),
     state.query ? h('button', { type: 'button', class: 'menu-clear', onclick: () => { setQuery(''); renderFilterMenu(tags); } }, 'Clear the filter') : null);
 }
 
 /** "Open in Obsidian" when it's on this computer; else a link to get it (its site, or its app on a phone). */
 function obsidianAnchor(url, { class: cls, iconOnly = false, file = '' } = {}) {
-  const link = obsidianLink({ url, installed: state.vault?.obsidianInstalled ?? true, userAgent: navigator.userAgent });
+  const link = obsidianLink({ url, installed: state.vault?.obsidianInstalled ?? true, userAgent: navigator.userAgent, touchPoints: navigator.maxTouchPoints });
   const title = link.get ? 'Get Obsidian (to open your tasks there)' : file ? `Open in Obsidian (${file})` : 'Open in Obsidian';
   const attrs = { class: cls, href: link.href, title, 'aria-label': link.label, ...(link.get ? { target: '_blank', rel: 'noopener' } : {}) };
   return h('a', attrs, iconOnly ? icon('obsidian') : link.label);
@@ -867,6 +867,11 @@ async function openDrawer(id, { full = null } = {}) {
   state.drawerAutosave = autosave;
   const changed = () => autosave.schedule(values());
   for (const el of [title, details, delay, tags]) el.addEventListener('input', changed);
+  // What the tag box will save, as you type (commas separate tags; a space doesn't).
+  const tagPreview = h('div', { class: 'tag-preview', 'aria-live': 'polite' });
+  const showTags = () => tagPreview.replaceChildren(...parseTags(tags.value).map((t) => h('span', { class: 'chip tag' }, `#${t}`)));
+  tags.addEventListener('input', showTags);
+  showTags();
   for (const el of [priority, deadline, sequential]) el.addEventListener('change', changed);
 
   const labelPicker = h('div', { class: 'label-picker' });
@@ -938,6 +943,7 @@ async function openDrawer(id, { full = null } = {}) {
     h('div', { class: 'drawer-main' },
     h('div', { class: 'chips-row' }, labelPicker),
     field('Tags', tags),
+    tagPreview,
     h('p', { class: 'hint' }, 'Labels are colored categories you pick from a list (Urgent, Waiting…). Tags are free words you type, for anything else. Both filter: click one, or use the tag button by the search box.'),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),

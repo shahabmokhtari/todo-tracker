@@ -75,7 +75,8 @@ internal sealed class TrayIcon : IDisposable
                 continue;
             }
 
-            var entry = new Forms.ToolStripMenuItem(item.Label) { Enabled = item.Enabled };
+            // & marks a menu shortcut there: a title like "R&D review" keeps its &.
+            var entry = new Forms.ToolStripMenuItem(item.Label.Replace("&", "&&", StringComparison.Ordinal)) { Enabled = item.Enabled };
             entry.Click += (_, _) => Run(id);
             menu.Items.Add(entry);
         }
@@ -89,7 +90,6 @@ internal sealed class TrayIcon : IDisposable
                 _vm.OpenDashboardCommand.Execute(null);
                 break;
             case TrayMenu.Add:
-                _window.ShowSidebar();
                 _window.FocusCapture();
                 break;
             case TrayMenu.StartFocus:

@@ -161,8 +161,9 @@ const OBSIDIAN = {
  * Where an Obsidian link goes: the file in Obsidian when it's on this computer; else where to get it (its download
  * page: it isn't in the Microsoft Store; on a phone, its app in the App Store or Google Play).
  */
-export function obsidianLink({ url, installed, userAgent = '' }) {
-  if (/iPhone|iPad|iPod/i.test(userAgent)) return { href: OBSIDIAN.appStore, label: 'Get Obsidian', get: true };
+export function obsidianLink({ url, installed, userAgent = '', touchPoints = 0 }) {
+  // An iPad's Safari says it's a Mac; a touch screen gives it away.
+  if (/iPhone|iPad|iPod/i.test(userAgent) || (/Macintosh/i.test(userAgent) && touchPoints > 1)) return { href: OBSIDIAN.appStore, label: 'Get Obsidian', get: true };
   if (/Android/i.test(userAgent)) return { href: OBSIDIAN.playStore, label: 'Get Obsidian', get: true };
   return installed ? { href: url, label: 'Open in Obsidian', get: false } : { href: OBSIDIAN.download, label: 'Get Obsidian', get: true };
 }

@@ -55,7 +55,14 @@ internal sealed class ToastService : IDisposable
         var args = ToastArguments.Parse(e.Argument);
         _window.Dispatcher.BeginInvoke(async () =>
         {
-            _window.Activate();
+            if (_window is MainWindow sidebar)
+            {
+                sidebar.ShowSidebar();
+            }
+            else
+            {
+                _window.Activate();
+            }
             if (!args.TryGetValue("item", out var itemText) || !Guid.TryParse(itemText, out var itemId))
             {
                 return;

@@ -98,6 +98,7 @@ public partial class MainWindow : Window
 
     internal void FocusCapture()
     {
+        ShowSidebar();
         if (_vm.IsCompact)
         {
             _vm.IsCompact = false;
@@ -277,6 +278,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnDisplaysChanged(object? sender, EventArgs e)
     {
+        if (_hiddenByUser)
+        {
+            return;
+        }
+
         if (_preferred is { } preferred)
         {
             // Docking failed earlier (e.g. every monitor was gone mid-change): try the user's choice again.
@@ -299,6 +305,11 @@ public partial class MainWindow : Window
 
     private void OnShellRestarted(object? sender, EventArgs e)
     {
+        if (_hiddenByUser)
+        {
+            return;
+        }
+
         // Explorer forgot our AppBar (or wasn't ready when we tried): dock again where the user wants it.
         if (_preferred is { } preferred)
         {
@@ -323,7 +334,10 @@ public partial class MainWindow : Window
             if (Placement.Mode == PlacementMode.Docked)
             {
                 _appBar.WidthInDips = _vm.IsCompact ? CompactWidth : Placement.DockWidth;
-                _appBar.Dock();
+                if (!_hiddenByUser)
+                {
+                    _appBar.Dock();
+                }
             }
             else if (_vm.IsCompact)
             {

@@ -78,9 +78,25 @@ public static class TrayMenu
             parts.Add($"timing {vm.Timer.Title}");
         }
 
-        var text = string.Join(" · ", parts);
-        return text.Length <= MaxTooltip ? text : text[..(MaxTooltip - 1)] + "…";
+        return Cut(string.Join(" · ", parts), MaxTooltip);
     }
 
-    private static string Short(string title) => title.Length <= 40 ? title : title[..39] + "…";
+    private static string Short(string title) => Cut(title, 40);
+
+    /// <summary>At most <paramref name="max"/> characters, with … when cut (never in the middle of an emoji).</summary>
+    internal static string Cut(string text, int max)
+    {
+        if (text.Length <= max)
+        {
+            return text;
+        }
+
+        var end = max - 1;
+        if (char.IsLowSurrogate(text[end]))
+        {
+            end--;
+        }
+
+        return text[..end] + "…";
+    }
 }
