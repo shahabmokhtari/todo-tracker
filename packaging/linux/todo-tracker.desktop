@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Todo Tracker
+GenericName=Tasks
+Comment=What to do now: an ADHD-friendly task list in your tray
+Exec=todo-tracker
+Icon=todo-tracker
+Terminal=false
+Categories=Office;ProjectManagement;Utility;
+Keywords=todo;tasks;focus;pomodoro;
+StartupNotify=false

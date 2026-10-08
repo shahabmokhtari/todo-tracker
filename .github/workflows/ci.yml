@@ -51,6 +51,44 @@ jobs:
           name: coverage
           path: TestResults/**/*.cobertura.xml
 
+  linux-tray:
+    name: Linux tray app
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build and test
+        run: |
+          dotnet build tests/TodoTracker.Tray.Tests --configuration Release -warnaserror
+          TODOTRACKER_CLOUD=off dotnet test --project tests/TodoTracker.Tray.Tests --configuration Release --no-build
+      - name: Package (self-contained, no .NET needed)
+        run: |
+          dotnet publish src/TodoTracker.Tray --configuration Release --runtime linux-x64 --self-contained --output artifacts/todo-tracker/app
+          rm -f artifacts/todo-tracker/app/*.pdb
+          cp packaging/linux/install.sh packaging/linux/todo-tracker.desktop packaging/linux/todo-tracker.png artifacts/todo-tracker/
+          chmod +x artifacts/todo-tracker/install.sh artifacts/todo-tracker/app/todo-tracker
+          tar -C artifacts -czf todo-tracker-linux-x64.tar.gz todo-tracker
+      - name: The packaged app starts (no display needed)
+        run: TODOTRACKER_CLOUD=off artifacts/todo-tracker/app/todo-tracker --smoke-test --data "$(mktemp -d)" --port 5398
+      - name: The tray app runs on a desktop (virtual display) and serves the tasks
+        run: |
+          sudo apt-get install -y xvfb > /dev/null
+          data=$(mktemp -d)
+          TODOTRACKER_CLOUD=off xvfb-run -a artifacts/todo-tracker/app/todo-tracker --data "$data" --port 5397 > tray.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:5397/health > /dev/null 2>&1 && break; sleep 1; done
+          curl -fsS http://127.0.0.1:5397/health || { cat tray.log; exit 1; }
+          sleep 3
+          pgrep -f 'todo-tracker --data' > /dev/null || { echo 'The tray app stopped'; cat tray.log; exit 1; }
+          pkill -f 'todo-tracker --data' || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-tray
+          path: todo-tracker-linux-x64.tar.gz
+
   web:
     name: Web UI, extension & browser e2e
     runs-on: ubuntu-latest
