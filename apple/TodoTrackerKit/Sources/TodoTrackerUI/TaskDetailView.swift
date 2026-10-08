@@ -27,6 +27,7 @@ struct TaskDetailView: View {
                         LabeledContent("Priority", value: item.priority.label)
                         LabeledContent("State", value: Agenda.state(of: item, now: model.now).rawValue)
                         if let next = item.nextActionAt { LabeledContent("Next action", value: RelativeTime.format(next, now: model.now)) }
+                        if let other = item.waitingFor { LabeledContent("Waits for", value: other.title) }
                         if let deadline = item.deadline { LabeledContent("Deadline", value: RelativeTime.format(deadline, now: model.now)) }
                     }
 

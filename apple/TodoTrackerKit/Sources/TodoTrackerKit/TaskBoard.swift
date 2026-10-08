@@ -80,6 +80,8 @@ public final class TaskBoard {
             items.removeAll { $0 === item }
         }
         for removed in item.selfAndDescendants { index[removed.id] = nil }
+        // Nothing waits for a task that's gone.
+        for waiter in allItems where waiter.afterId.map({ index[$0] == nil }) ?? false { waiter.afterId = nil }
         if let focused = pomodoro.itemId, index[focused] == nil { pomodoro.detachItem() }
         log(now, id, "deleted", "Deleted \"\(item.title)\"", actor)
     }
@@ -108,6 +110,45 @@ public final class TaskBoard {
         for d in item.selfAndDescendants where !d.isDone { d.completedAt = now }
         log(now, id, "completed", "Completed \"\(item.title)\"", actor)
         advanceSequence(after: item, actor: actor, now: now)
+        releaseWaiters(now: now)
+    }
+
+    /// Snoozes a task until another one is done ("after task X"); then it comes back with a reminder. Replaces a
+    /// snooze until a time. Same rules as TodoTracker.Core.TaskBoard.WaitFor.
+    public func waitFor(_ id: UUID, after afterId: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        let other = try get(afterId)
+        if other === item { throw BoardError.invalid("A task can't wait for itself.") }
+        if other.isDone { throw BoardError.conflict("\"\(other.title)\" is already done.") }
+        // Its own subtasks or parents would never get done while it waits; nor would a circle of waits.
+        let inside = item.selfAndDescendants
+        if inside.contains(where: { $0 === other }) || item.ancestors.contains(where: { $0 === other }) {
+            throw BoardError.conflict("\"\(item.title)\" can't wait for \"\(other.title)\", which is part of it.")
+        }
+        var seen = Set<UUID>()
+        var next: WorkItem? = other
+        while let n = next, seen.insert(n.id).inserted {
+            if inside.contains(where: { $0 === n }) {
+                throw BoardError.conflict("\"\(other.title)\" is already waiting for \"\(item.title)\": they'd wait for each other.")
+            }
+            next = n.waitingFor ?? n.ancestors.lazy.compactMap(\.waitingFor).first
+        }
+        item.afterId = other.id
+        item.nextActionAt = nil
+        dismissPendingScheduleReminders(item, now: now)
+        log(now, id, "scheduled", "Waits until \"\(other.title)\" is done", actor)
+    }
+
+    /// Tasks whose wait just ended (what they waited for is done) come back, with a reminder saying why.
+    private func releaseWaiters(now: Date) {
+        for waiter in allItems {
+            guard let afterId = waiter.afterId, let other = index[afterId], other.isDone else { continue }
+            waiter.afterId = nil
+            if !waiter.isDone {
+                waiter.reminders.append(Reminder(dueAt: now, message: "\"\(other.title)\" is done: back to \"\(waiter.title)\"", kind: .nextAction))
+                log(now, waiter.id, "scheduled", "Back: \"\(other.title)\" is done", .system)
+            }
+        }
     }
 
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
@@ -124,6 +165,7 @@ public final class TaskBoard {
     public func scheduleNextAction(_ id: UUID, at: Date, notify: Bool = false, message: String? = nil, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         item.nextActionAt = at
+        item.afterId = nil
         dismissPendingScheduleReminders(item, now: now)
         if notify {
             item.reminders.append(Reminder(dueAt: at, message: Self.optionalText(message) ?? Self.defaultReminderMessage(item), kind: .nextAction))
@@ -134,6 +176,7 @@ public final class TaskBoard {
     public func clearNextAction(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         item.nextActionAt = nil
+        item.afterId = nil
         dismissPendingScheduleReminders(item, now: now)
         log(now, id, "scheduled", "Cleared next action; back to Now", actor)
     }
@@ -241,6 +284,7 @@ public final class TaskBoard {
         guard index[item.id] == nil else { throw BoardError.invalid("Duplicate task id \(item.id).") }
         index[item.id] = item
         item.parent = parent
+        item.board = self
         if let parent { parent.children.append(item) } else { items.append(item) }
     }
 

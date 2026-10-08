@@ -461,14 +461,25 @@ struct SnoozeMenu: View {
     @ObservedObject var model: BoardModel
     let id: UUID
     var pill = false
+    @State private var picking = false
 
     var body: some View {
         Menu {
-            Button("15 min") { model.snooze(id, minutes: 15) }
-            Button("1 hour") { model.snooze(id, minutes: 60) }
-            Button("3 hours") { model.snooze(id, minutes: 180) }
-            Button("Tomorrow 9:00") { model.snoozeUntilTomorrow(id) }
-            Button("+24 hours") { model.snooze(id, minutes: 1440) }
+            let now = Date()
+            ForEach(model.snoozeChoices) { choice in
+                Button { model.snooze(id, until: choice.at) } label: {
+                    Text("\(choice.label)  ·  \(Snooze.describe(choice.at, now: now, timeZone: .current))")
+                }
+            }
+            Divider()
+            Button { picking = true } label: { Label("Pick a time…", systemImage: "calendar") }
+            let others = model.waitCandidates(for: id)
+            Menu {
+                if others.isEmpty { Text("No other open tasks") }
+                ForEach(others.prefix(12), id: \.id) { other in
+                    Button(other.title) { model.waitFor(id, after: other) }
+                }
+            } label: { Label("After another task", systemImage: "link") }
         } label: {
             if pill {
                 Label("Later", systemImage: "clock").font(.subheadline.weight(.semibold))
@@ -483,6 +494,38 @@ struct SnoozeMenu: View {
         .buttonStyle(.plain)
         .fixedSize()
         .accessibilityLabel("Later")
+        .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+    }
+}
+
+/// "Pick a time…": a date and time on the calendar (it starts at tomorrow 9:00).
+struct SnoozePicker: View {
+    @ObservedObject var model: BoardModel
+    let id: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var at = QuickCaptureParser.tomorrowMorning(now: Date(), timeZone: .current)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Snooze until…").font(.title3.weight(.semibold))
+            DatePicker("When", selection: $at, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+            Text(Snooze.describe(at, now: Date(), timeZone: .current)).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Snooze") {
+                    model.snooze(id, until: at)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 320)
     }
 }
 

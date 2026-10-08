@@ -21,6 +21,8 @@ final class ExportFixtureTests: XCTestCase {
         // Notes from Obsidian and from connected apps.
         XCTAssertEqual(Set(launch.notes.map(\.author.kind)), [.vault, .connector])
         XCTAssertTrue(board.items.contains { $0.title == "Old task" && $0.isDone })
+        // Snoozed until another task is done.
+        XCTAssertEqual(board.items.first { $0.title == "Announce it" }?.waitingFor?.id, launch.id)
     }
 
     func testAuthorsFromANewerVersionStillRead() throws {
@@ -32,5 +34,6 @@ final class ExportFixtureTests: XCTestCase {
         let board = try BoardCodec.decode(try fixture())
         let agenda = Agenda.build(board, now: BoardCodec.parseDate("2026-01-05T09:30:00.000Z")!)
         XCTAssertFalse(agenda.now.contains { $0.item.title == "Old task" })
+        XCTAssertEqual(agenda.waiting.first { $0.item.title == "Announce it" }?.waitingFor?.title, "Launch the site")
     }
 }

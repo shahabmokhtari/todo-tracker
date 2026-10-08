@@ -1,0 +1,79 @@
+{
+  "about": "Snooze choices and how a time is said. Checked by the C# core (SnoozeFixtureTests) and Swift (SnoozeTests) so every app offers the same choices.",
+  "choices": [
+    {
+      "name": "Monday morning",
+      "now": "2026-01-05T10:30:00Z",
+      "zone": "UTC",
+      "expect": [
+        { "id": "15m", "label": "In 15 minutes", "at": "2026-01-05T10:45:00Z" },
+        { "id": "1h", "label": "In an hour", "at": "2026-01-05T11:30:00Z" },
+        { "id": "3h", "label": "In 3 hours", "at": "2026-01-05T13:30:00Z" },
+        { "id": "evening", "label": "This evening", "at": "2026-01-05T18:00:00Z" },
+        { "id": "tomorrow", "label": "Tomorrow morning", "at": "2026-01-06T09:00:00Z" },
+        { "id": "2d", "label": "In 2 days", "at": "2026-01-07T09:00:00Z" },
+        { "id": "monday", "label": "Next Monday", "at": "2026-01-12T09:00:00Z" },
+        { "id": "week", "label": "In a week", "at": "2026-01-12T09:00:00Z" },
+        { "id": "month", "label": "In a month", "at": "2026-02-05T09:00:00Z" }
+      ]
+    },
+    {
+      "name": "Saturday night at the end of January: no evening, a month is the end of February",
+      "now": "2026-01-31T20:00:00Z",
+      "zone": "UTC",
+      "expect": [
+        { "id": "15m", "label": "In 15 minutes", "at": "2026-01-31T20:15:00Z" },
+        { "id": "1h", "label": "In an hour", "at": "2026-01-31T21:00:00Z" },
+        { "id": "3h", "label": "In 3 hours", "at": "2026-01-31T23:00:00Z" },
+        { "id": "tomorrow", "label": "Tomorrow morning", "at": "2026-02-01T09:00:00Z" },
+        { "id": "2d", "label": "In 2 days", "at": "2026-02-02T09:00:00Z" },
+        { "id": "monday", "label": "Next Monday", "at": "2026-02-02T09:00:00Z" },
+        { "id": "week", "label": "In a week", "at": "2026-02-07T09:00:00Z" },
+        { "id": "month", "label": "In a month", "at": "2026-02-28T09:00:00Z" }
+      ]
+    },
+    {
+      "name": "New York, Saturday 10:00 before the clocks go forward: mornings are 9:00 local",
+      "now": "2026-03-07T15:00:00Z",
+      "zone": "America/New_York",
+      "expect": [
+        { "id": "15m", "label": "In 15 minutes", "at": "2026-03-07T15:15:00Z" },
+        { "id": "1h", "label": "In an hour", "at": "2026-03-07T16:00:00Z" },
+        { "id": "3h", "label": "In 3 hours", "at": "2026-03-07T18:00:00Z" },
+        { "id": "evening", "label": "This evening", "at": "2026-03-07T23:00:00Z" },
+        { "id": "tomorrow", "label": "Tomorrow morning", "at": "2026-03-08T13:00:00Z" },
+        { "id": "2d", "label": "In 2 days", "at": "2026-03-09T13:00:00Z" },
+        { "id": "monday", "label": "Next Monday", "at": "2026-03-09T13:00:00Z" },
+        { "id": "week", "label": "In a week", "at": "2026-03-14T13:00:00Z" },
+        { "id": "month", "label": "In a month", "at": "2026-04-07T13:00:00Z" }
+      ]
+    },
+    {
+      "name": "2:30 at night: tomorrow morning is this morning",
+      "now": "2026-01-06T02:30:00Z",
+      "zone": "UTC",
+      "expect": [
+        { "id": "15m", "label": "In 15 minutes", "at": "2026-01-06T02:45:00Z" },
+        { "id": "1h", "label": "In an hour", "at": "2026-01-06T03:30:00Z" },
+        { "id": "3h", "label": "In 3 hours", "at": "2026-01-06T05:30:00Z" },
+        { "id": "evening", "label": "This evening", "at": "2026-01-06T18:00:00Z" },
+        { "id": "tomorrow", "label": "Tomorrow morning", "at": "2026-01-06T09:00:00Z" },
+        { "id": "2d", "label": "In 2 days", "at": "2026-01-08T09:00:00Z" },
+        { "id": "monday", "label": "Next Monday", "at": "2026-01-12T09:00:00Z" },
+        { "id": "week", "label": "In a week", "at": "2026-01-13T09:00:00Z" },
+        { "id": "month", "label": "In a month", "at": "2026-02-06T09:00:00Z" }
+      ]
+    }
+  ],
+  "describe": [
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-05T17:00:00Z", "text": "today 17:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-05T08:05:00Z", "text": "today 8:05" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-06T09:00:00Z", "text": "tomorrow 9:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-09T14:30:00Z", "text": "Fri 14:30" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-11T09:00:00Z", "text": "Sun 9:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-12T09:00:00Z", "text": "Mon 12 Jan, 9:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2026-01-04T09:00:00Z", "text": "Sun 4 Jan, 9:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "UTC", "at": "2027-01-04T09:00:00Z", "text": "Mon 4 Jan 2027, 9:00" },
+    { "now": "2026-01-05T10:30:00Z", "zone": "America/New_York", "at": "2026-01-06T02:00:00Z", "text": "today 21:00" }
+  ]
+}
