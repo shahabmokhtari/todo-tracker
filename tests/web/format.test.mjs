@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -124,8 +124,13 @@ test('fileSize is short and readable', () => {
   assert.equal(fileSize(5 * 1024 * 1024), '5 MB');
 });
 
-test('parseTags accepts #, commas and spaces, and dedupes', () => {
-  assert.deepEqual(parseTags('#release, infra/k8s  Release #ux'), ['release', 'infra/k8s', 'ux']);
+test('tags are separated by commas; spaces and # around them are dropped, and duplicates', () => {
+  assert.deepEqual(parseTags('deep work, something'), ['deep work', 'something']);
+  assert.deepEqual(parseTags('[deep work, something]'), ['deep work', 'something']);
+  assert.deepEqual(parseTags(' #release ,  infra/k8s, Release,, #ux '), ['release', 'infra/k8s', 'ux']);
+  assert.deepEqual(parseTags('#deep   work'), ['deep work']);
+  // Hashtags typed one after another still split (#a #b).
+  assert.deepEqual(parseTags('#release #ux'), ['release', 'ux']);
   assert.deepEqual(parseTags('  '), []);
 });
 
@@ -135,8 +140,9 @@ test('queryFor builds filter queries for tags and labels', () => {
   assert.equal(queryFor({ label: 'Later' }), 'label:Later');
 });
 test('tags of several words are quoted, the same way as in quick capture and the filter', () => {
-  assert.deepEqual(parseTags('#"deep work", #q3 "client  x" #"Deep Work"'), ['deep work', 'q3', 'client x']);
-  assert.equal(formatTags(['deep work', 'q3']), '#"deep work" #q3');
+  // Quotes aren't needed, but don't get in the way.
+  assert.deepEqual(parseTags('#"deep work", q3, "client  x", Deep Work'), ['deep work', 'q3', 'client x']);
+  assert.equal(formatTags(['deep work', 'q3']), 'deep work, q3');
   assert.deepEqual(parseTags(formatTags(['deep work', 'q3', 'infra/k8s'])), ['deep work', 'q3', 'infra/k8s']);
   assert.equal(queryFor({ tag: 'deep work' }), '#"deep work"');
 });
@@ -149,7 +155,20 @@ test('the tag & label picker adds a term to the filter and takes it out again', 
   assert.ok(!hasTerm('#workshop', '#work'));
 });
 test('curly quotes (smart punctuation on iPhone, iPad and Mac) group words like straight ones', () => {
-  assert.deepEqual(parseTags('#\u201Cdeep work\u201D #q3'), ['deep work', 'q3']);
+  assert.deepEqual(parseTags('\u201Cdeep work\u201D, q3'), ['deep work', 'q3']);
   assert.ok(hasTerm('report #\u201Cdeep work\u201D', '#"deep work"'));
   assert.equal(toggleTerm('report #\u201Cdeep work\u201D', '#"deep work"'), 'report');
+});
+test('Obsidian links open it when it is here, else go where to get it (not a store search)', () => {
+  const url = 'obsidian://open?path=x';
+  const windows = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/140.0';
+  assert.deepEqual(obsidianLink({ url, installed: true, userAgent: windows }), { href: url, label: 'Open in Obsidian', get: false });
+  assert.equal(obsidianLink({ url, installed: false, userAgent: windows }).href, 'https://obsidian.md/download');
+  assert.match(obsidianLink({ url, installed: true, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }).href, /^https:\/\/apps\.apple\.com\//);
+  assert.match(obsidianLink({ url, installed: true, userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 9)' }).href, /^https:\/\/play\.google\.com\//);
+});
+test('an iPad (whose Safari says it is a Mac) gets Obsidian from the App Store', () => {
+  const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15';
+  assert.match(obsidianLink({ url: 'obsidian://x', installed: true, userAgent: mac, touchPoints: 5 }).href, /apps\.apple\.com/);
+  assert.equal(obsidianLink({ url: 'obsidian://x', installed: true, userAgent: mac, touchPoints: 0 }).href, 'obsidian://x');
 });

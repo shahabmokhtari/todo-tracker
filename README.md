@@ -52,7 +52,11 @@ The sidebar docks on the right. To move it, use **⋯ › Position**:
 - **Float as a window** makes it a normal window you can drag and resize. Turn on **⋯ › Always on top** if you want it
   to stay above other windows.
 
-Your choice is remembered. **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
+Your choice is remembered. Todo Tracker also sits in the notification area (the tray): click its icon to bring the
+sidebar back; right-click it to open the full window, add a task, start or pause the focus timer, hide the sidebar
+(it gives the screen edge back) or quit. A red dot on it means a reminder is due.
+
+**Order Do now your way:** drag a card (drop it on the big card to make it the focus),
 or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put; a task whose
 reminder is due still shows first. Subtasks reorder the same way in the web task panel.
 
@@ -152,6 +156,16 @@ node --test tests/web/*.test.mjs extension/tests/*.test.mjs
 cd tests/e2e && npm install && npx playwright install chromium && npx playwright test
 ```
 
+Notes for contributors:
+
+* **Shared fixtures** in `tests/fixtures` are checked by more than one platform. `scenarios/*.json` and `breaks.json`
+  are hand-written. `export.json` (the board `/api/export` sends, which the Mac app reads) is written by C#: after
+  changing the board format, run `ExportFixtureTests` with `TT_WRITE_FIXTURES=1` and commit the result.
+* **Swift** (apple/) only builds and runs its tests in CI (macOS runner); keep Swift changes small and covered by
+  `swift test`.
+* `extension/lib/format.js` and `icons.js` are exact copies of the web app's (a test checks): copy them after changing
+  either.
+* Only one copy of the Windows app runs at a time: stop it before running a test build.
 `src/TodoTracker.Windows/bin/.../TodoTracker.exe --smoke-test --smoke-log smoke.log` boots the real app against a
 temporary board and verifies that the API and the sidebar see the same data. CI runs it on every PR.
 

@@ -16,17 +16,8 @@ public partial class MainWindow
     /// <summary>Another launch was started: show this sidebar instead (restore, activate, focus quick capture).</summary>
     internal void BringToFront()
     {
-        if (!IsVisible)
-        {
-            Show();
-        }
-
-        if (WindowState == WindowState.Minimized)
-        {
-            WindowState = WindowState.Normal;
-        }
-
-        Activate();
+        // Hidden from the tray: shown again where it belongs (docked again, if it was).
+        ShowSidebar();
         Focus();
     }
 

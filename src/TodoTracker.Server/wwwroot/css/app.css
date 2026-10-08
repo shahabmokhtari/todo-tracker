@@ -716,7 +716,9 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .chip.label .swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--label); }
 .chip.label.off { background: transparent; border-style: dashed; color: var(--text-3); }
 .chip.label.off .swatch { opacity: .45; }
-.chips-row, .label-picker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips-row, .label-picker, .tag-preview { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag-preview:empty { display: none; }
+.tag-preview { margin-top: -4px; }
 .label-input { width: 96px; padding: 3px 8px; border-radius: 999px; border: 1px dashed var(--border-strong); background: transparent; font-size: 12.5px; color: var(--text); }
 
 /* ---------- notices & footer ---------- */
