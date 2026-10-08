@@ -441,3 +441,58 @@ test('Settings: light or dark for every window, and connected apps switch on at 
 
   expect(errors).toEqual([]);
 });
+
+test('Later: quick choices with times, a time typed in words, and after another task', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const keys = await add(request, 'Get the keys');
+  const move = await add(request, 'Move in');
+  const trip = await add(request, 'Plan the summer trip');
+
+  // A time typed in words: the preview says when (or why not) before snoozing.
+  let launch = await (await request.post('/api/launch', { headers: auth, data: { return: `/?item=${trip.id}` } })).json();
+  await page.goto(launch.url);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Plan the summer trip');
+  await drawer.getByRole('button', { name: 'Later', exact: true }).click();
+  const menu = drawer.getByRole('menu');
+  await expect(menu.getByRole('menuitem', { name: /^In a week/ })).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: /^Next Monday/ })).toContainText(/Mon/);
+  await menu.getByRole('menuitem', { name: 'Pick a time…' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Snooze Plan the summer trip until' });
+  await expect(sheet).toBeVisible();
+  const when = sheet.getByRole('textbox', { name: 'When' });
+  await expect(when).toBeFocused();
+  await when.fill('when pigs fly');
+  await expect(sheet.locator('.later-preview.bad')).toContainText('tell when');
+  await sheet.getByRole('button', { name: 'next week' }).click();
+  await expect(sheet.locator('.later-preview.ok')).toContainText(/Mon.* 9:00 · in /);
+  await when.press('Enter');
+  await expect(sheet).toBeHidden();
+  await expect(drawer.locator('.waiting-banner')).toContainText(/Snoozed until Mon.* 9:00/);
+  const snoozed = await (await request.get(`/api/items/${trip.id}`, { headers: auth })).json();
+  expect(new Date(snoozed.nextActionAt).getDay()).toBe(1);
+
+  // After another task: find it, pick it; the task waits and says for what.
+  launch = await (await request.post('/api/launch', { headers: auth, data: { return: `/?item=${move.id}` } })).json();
+  await page.goto(launch.url);
+  await expect(drawer.locator('.title-input')).toHaveValue('Move in');
+  await drawer.getByRole('button', { name: 'Later', exact: true }).click();
+  await drawer.getByRole('menuitem', { name: 'After another task…' }).click();
+  const picker = page.getByRole('dialog', { name: 'Move in waits for' });
+  await picker.getByRole('combobox').fill('keys');
+  await picker.getByRole('option', { name: /Get the keys/ }).click();
+  await expect(picker).toBeHidden();
+  await expect(drawer.locator('.waiting-banner')).toContainText('Waits for “Get the keys”');
+  await page.keyboard.press('Escape');
+
+  // On Today it waits, saying for what; finishing that task brings it back.
+  await page.locator('#tabs .tab', { hasText: group.name }).click();
+  await page.locator('#sec-waiting > summary').click();
+  await expect(page.locator('#sec-waiting .item', { hasText: 'Move in' }).locator('.meta')).toContainText('after “Get the keys”');
+  await request.post(`/api/items/${keys.id}/complete`, { headers: auth });
+  await page.reload();
+  await expect(page.locator('#sec-waiting .item', { hasText: 'Move in' })).toHaveCount(0);
+  const back = await (await request.get(`/api/items/${move.id}`, { headers: auth })).json();
+  expect(back.state).toBe('actionable');
+  expect(errors).toEqual([]);
+});
