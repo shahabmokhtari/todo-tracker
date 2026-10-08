@@ -28,6 +28,9 @@ internal sealed class TrayHost : IAsyncDisposable
 
     public string BaseUrl { get; }
 
+    /// <summary>Signalled when the server is asked to stop (Ctrl+C, kill, logging out): the app should quit then.</summary>
+    public CancellationToken Stopping => _server.Lifetime.ApplicationStopping;
+
     /// <summary>A sign-in link to a page of the app (for the browser).</summary>
     public string LaunchUrl(string path) => TodoTrackerHost.CreateLaunchUrl(_server.Services, path);
 
@@ -45,12 +48,28 @@ internal sealed class TrayHost : IAsyncDisposable
         try
         {
             server = TodoTrackerHost.Build(TodoTrackerHost.CreateBuilder(options));
-            await server.StartAsync().ConfigureAwait(false);
         }
         catch (StoreLockedException)
         {
-            await OpenRunningAsync(options, shell).ConfigureAwait(false);
+            await OpenRunningAsync(options, shell).ConfigureAwait(true);
             return null;
+        }
+
+        try
+        {
+            // Back on the caller's (UI) thread afterwards: the view model below belongs to it.
+            await server.StartAsync().ConfigureAwait(true);
+        }
+        catch (StoreLockedException)
+        {
+            await server.DisposeAsync().ConfigureAwait(true);
+            await OpenRunningAsync(options, shell).ConfigureAwait(true);
+            return null;
+        }
+        catch
+        {
+            await server.DisposeAsync().ConfigureAwait(true);
+            throw;
         }
 
         var services = server.Services;
@@ -68,7 +87,7 @@ internal sealed class TrayHost : IAsyncDisposable
                     return Path.GetFileName((await vault.AddAttachmentAsync(taskId, name, content, Actor.User).ConfigureAwait(false)).Path);
                 },
             });
-        await viewModel.RefreshAsync().ConfigureAwait(false);
+        await viewModel.RefreshAsync().ConfigureAwait(true);
         return new TrayHost(server, viewModel, connection.BaseUrl);
     }
 
@@ -100,8 +119,15 @@ internal sealed class TrayHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        await ViewModel.FlushNotesAsync().ConfigureAwait(false);
-        ViewModel.Dispose();
+        try
+        {
+            await ViewModel.FlushNotesAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            ViewModel.Dispose();
+        }
+
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         await _server.StopAsync(stop.Token).ConfigureAwait(false);
         await _server.DisposeAsync().ConfigureAwait(false);

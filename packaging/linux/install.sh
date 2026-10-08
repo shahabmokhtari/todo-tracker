@@ -9,8 +9,13 @@ bin="$HOME/.local/bin"
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
 
-mkdir -p "$app" "$bin" "$apps" "$icons"
-cp -R "$here/app/." "$app/"
+mkdir -p "$bin" "$apps" "$icons"
+# A new copy next to the old one, then swapped: files of a running Todo Tracker are never overwritten.
+rm -rf "$app.new" "$app.old"
+cp -R "$here/app" "$app.new"
+if [ -d "$app" ]; then mv "$app" "$app.old"; fi
+mv "$app.new" "$app"
+rm -rf "$app.old"
 chmod +x "$app/todo-tracker" "$app/tt" 2>/dev/null || true
 ln -sf "$app/todo-tracker" "$bin/todo-tracker"
 ln -sf "$app/tt" "$bin/tt"

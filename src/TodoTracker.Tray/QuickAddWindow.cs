@@ -22,15 +22,28 @@ internal sealed class QuickAddWindow : Window
         var box = new TextBox { PlaceholderText = "What needs doing? (@tomorrow, !high, #tag)", AcceptsReturn = false };
         var status = new TextBlock { Opacity = 0.7, FontSize = 12 };
         var add = new Button { Content = "Add", IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right };
+        var busy = false;
         async void Add()
         {
-            if (string.IsNullOrWhiteSpace(box.Text))
+            // Once per press: a second Enter while it's being added would add it twice.
+            if (busy || string.IsNullOrWhiteSpace(box.Text))
             {
                 return;
             }
 
+            busy = true;
+            add.IsEnabled = false;
             vm.QuickText = box.Text;
-            await vm.CaptureCommand.ExecuteAsync(null).ConfigureAwait(true);
+            try
+            {
+                await vm.CaptureCommand.ExecuteAsync(null).ConfigureAwait(true);
+            }
+            finally
+            {
+                busy = false;
+                add.IsEnabled = true;
+            }
+
             if (string.IsNullOrEmpty(vm.QuickText))
             {
                 Close();

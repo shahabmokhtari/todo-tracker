@@ -83,7 +83,10 @@ jobs:
           curl -fsS http://127.0.0.1:5397/health || { cat tray.log; exit 1; }
           sleep 3
           pgrep -f 'todo-tracker --data' > /dev/null || { echo 'The tray app stopped'; cat tray.log; exit 1; }
-          pkill -f 'todo-tracker --data' || true
+          # Asked to stop (as at logout): it quits by itself, notes saved.
+          pkill -TERM -f 'todo-tracker --data' || true
+          for i in $(seq 1 15); do pgrep -f 'todo-tracker --data' > /dev/null || break; sleep 1; done
+          if pgrep -f 'todo-tracker --data' > /dev/null; then echo 'It ignored SIGTERM'; cat tray.log; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
           name: linux-tray

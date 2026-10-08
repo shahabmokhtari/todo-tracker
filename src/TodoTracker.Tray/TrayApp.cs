@@ -16,8 +16,11 @@ internal sealed class TrayApp : Application
 {
     private TrayHost? _host;
     private TrayIcon? _icon;
+    private NativeMenu? _menu;
     private QuickAddWindow? _quickAdd;
     private bool? _drawnAttention;
+    private List<TrayItem> _built = [];
+    private bool _quitting;
 
     public TrayArgs Args { get; set; } = new();
 
@@ -36,7 +39,28 @@ internal sealed class TrayApp : Application
 
     private async Task StartAsync(IClassicDesktopStyleApplicationLifetime desktop)
     {
-        _host = await TrayHost.StartAsync(TrayHost.Options(Args), new TrayShell()).ConfigureAwait(true);
+        var options = TrayHost.Options(Args);
+        Dispatcher.UIThread.UnhandledException += (_, e) =>
+        {
+            Log(options.DataDirectory, e.Exception);
+            e.Handled = true;
+        };
+        try
+        {
+            _host = await TrayHost.StartAsync(options, new TrayShell()).ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // Last chance at startup: say what went wrong instead of vanishing.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Log(options.DataDirectory, ex);
+            var problem = ex is IOException ? $"Port {options.Port} is in use (is another program, or another user's Todo Tracker, using it?).\n\n{ex.Message}" : ex.Message;
+            var window = new ErrorWindow("Todo Tracker couldn't start", problem);
+            window.Closed += (_, _) => desktop.Shutdown(1);
+            window.Show();
+            return;
+        }
+
         if (_host is null)
         {
             // Already running: its window was opened instead.
@@ -44,10 +68,12 @@ internal sealed class TrayApp : Application
             return;
         }
 
-        var menu = new NativeMenu();
-        menu.Opening += (_, _) => Build(menu);
-        Build(menu);
-        _icon = new TrayIcon { Menu = menu, IsVisible = true };
+        // Ctrl+C, kill, logging out: quit properly (notes saved, the server stopped).
+        _host.Stopping.Register(() => Dispatcher.UIThread.Post(() => _ = QuitAsync()));
+        _menu = new NativeMenu();
+        _menu.Opening += (_, _) => Build(force: true);
+        Build(force: true);
+        _icon = new TrayIcon { Menu = _menu, IsVisible = true };
         _icon.Clicked += (_, _) => _host.ViewModel.OpenDashboardCommand.Execute(null);
         TrayIcon.SetIcons(this, [_icon]);
         Update();
@@ -65,6 +91,9 @@ internal sealed class TrayApp : Application
 
         var vm = _host.ViewModel;
         _icon.ToolTipText = TrayMenu.Tooltip(vm);
+
+        // Linux panels don't say when the menu opens: keep it current (only rebuilt when something changed).
+        Build(force: false);
         if (_drawnAttention != vm.HasAttention)
         {
             _icon.Icon = new WindowIcon(TrayArt.Draw(vm.HasAttention));
@@ -72,15 +101,38 @@ internal sealed class TrayApp : Application
         }
     }
 
-    private void Build(NativeMenu menu)
+    private void Build(bool force)
     {
-        if (_host is null)
+        if (_host is null || _menu is not { } menu)
         {
             return;
         }
 
+        var items = TrayMenu.Items(_host.ViewModel, sidebarShown: null).ToList();
+        if (!force && items.SequenceEqual(_built))
+        {
+            return;
+        }
+
+        if (items.Select(i => i.Id).SequenceEqual(_built.Select(i => i.Id)) && menu.Items.Count == items.Count)
+        {
+            // Only the words changed (the time left): updated in place, so an open menu stays open.
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (menu.Items[i] is NativeMenuItem existing && items[i].Id is not null)
+                {
+                    existing.Header = items[i].Label;
+                    existing.IsEnabled = items[i].Enabled;
+                }
+            }
+
+            _built = items;
+            return;
+        }
+
+        _built = items;
         menu.Items.Clear();
-        foreach (var item in TrayMenu.Items(_host.ViewModel, sidebarShown: null))
+        foreach (var item in items)
         {
             if (item.Id is not { } id)
             {
@@ -131,16 +183,47 @@ internal sealed class TrayApp : Application
 
     private async Task QuitAsync()
     {
-        if (_icon is not null)
+        if (_quitting)
         {
-            _icon.IsVisible = false;
+            return;
         }
 
-        if (_host is not null)
+        _quitting = true;
+        try
         {
-            await _host.DisposeAsync().ConfigureAwait(true);
-        }
+            if (_icon is not null)
+            {
+                _icon.IsVisible = false;
+            }
 
-        (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+            if (_host is not null)
+            {
+                await _host.DisposeAsync().ConfigureAwait(true);
+            }
+        }
+#pragma warning disable CA1031 // Quitting goes on whatever happened (it's written down).
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Log(TrayHost.Options(Args).DataDirectory, ex);
+        }
+        finally
+        {
+            (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+        }
+    }
+
+    /// <summary>Problems go to errors.log in the data folder (best effort).</summary>
+    private static void Log(string dataDirectory, Exception ex)
+    {
+        try
+        {
+            Directory.CreateDirectory(dataDirectory);
+            File.AppendAllText(Path.Combine(dataDirectory, "errors.log"), $"{DateTimeOffset.Now:o} {ex}{Environment.NewLine}");
+        }
+        catch (Exception logging) when (logging is IOException or UnauthorizedAccessException)
+        {
+            // Nowhere to write it.
+        }
     }
 }
