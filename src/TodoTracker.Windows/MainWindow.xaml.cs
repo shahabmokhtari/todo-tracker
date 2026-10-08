@@ -446,11 +446,22 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSnoozeClick(object sender, RoutedEventArgs e)
+    private async void OnSnoozeClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CardViewModel card } element)
         {
             return;
+        }
+
+        // Read before the menu is built, so it opens complete (a busy board file just means no "After" choices).
+        IReadOnlyList<CardViewModel> others;
+        try
+        {
+            others = await _vm.WaitCandidatesAsync(card);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            others = [];
         }
 
         var menu = new ContextMenu { PlacementTarget = element };
@@ -462,7 +473,7 @@ public partial class MainWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Pick a _time…", Command = _vm.PickSnoozeTimeCommand, CommandParameter = card });
         var after = new MenuItem { Header = "_After another task" };
-        foreach (var other in _vm.WaitCandidates(card).Take(12))
+        foreach (var other in others.Take(12))
         {
             // Titles are user text: no access keys from underscores in them.
             after.Items.Add(new MenuItem { Header = new TextBlock { Text = other.Title, MaxWidth = 320, TextTrimming = TextTrimming.CharacterEllipsis }, Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, AfterId: other.Id) });
@@ -470,7 +481,7 @@ public partial class MainWindow : Window
 
         if (after.Items.Count == 0)
         {
-            after.Items.Add(new MenuItem { Header = "No other open tasks", IsEnabled = false });
+            after.Items.Add(new MenuItem { Header = "No task it can wait for", IsEnabled = false });
         }
 
         menu.Items.Add(after);

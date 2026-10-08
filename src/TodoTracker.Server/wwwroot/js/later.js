@@ -108,11 +108,7 @@ export function createLater(ctx) {
     let results = [];
     let active = 0;
     let timer = null;
-    const dashboard = ctx.dashboard();
-    const seen = new Set([card.id]);
-    const nearby = [dashboard?.focus, ...(dashboard?.now ?? []), ...(dashboard?.waiting ?? [])]
-      .filter((t) => t && !seen.has(t.id) && seen.add(t.id))
-      .map((t) => ({ id: t.id, title: t.title, breadcrumb: t.breadcrumb ?? [] }));
+    let loaded = false;
     sheet(`${card.title} waits for`, (close) => {
       const list = h('ul', { class: 'palette-list', role: 'listbox', id: 'after-list', 'aria-label': 'Tasks' });
       const choose = async (t) => {
@@ -120,33 +116,36 @@ export function createLater(ctx) {
       };
       const render = () => {
         active = Math.min(active, Math.max(0, results.length - 1));
+        const empty = !loaded ? 'Finding tasks…' : input.value.trim() ? 'No open task it can wait for matches.' : 'Type to find a task.';
         list.replaceChildren(...(results.length
           ? results.map((t, i) => h('li', {
             role: 'option', id: `after-${i}`, class: 'palette-item', 'aria-selected': String(i === active),
             onmousemove: () => { if (active !== i) { active = i; render(); } },
             onclick: () => choose(t),
-          }, h('span', { class: 'palette-icon' }, icon('link', { size: 16 })), h('span', { class: 'palette-text' }, h('span', null, t.title), t.breadcrumb.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null)))
-          : [h('li', { class: 'palette-empty muted' }, input.value.trim() ? 'No open task matches.' : 'Type to find a task.')]));
-        input.setAttribute('aria-activedescendant', results.length ? `after-${active}` : '');
+          }, h('span', { class: 'palette-icon' }, icon('link', { size: 16 })), h('span', { class: 'palette-text' }, h('span', null, t.title), t.breadcrumb?.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null)))
+          : [h('li', { class: 'palette-empty muted' }, empty)]));
+        input.setAttribute('aria-expanded', String(results.length > 0));
+        if (results.length) input.setAttribute('aria-activedescendant', `after-${active}`);
+        else input.removeAttribute('aria-activedescendant');
       };
+      // Only tasks it can wait for (not itself, its own subtasks or parents, or what already waits for it).
       const search = async (q) => {
         try {
-          const found = await api(`/api/search?q=${encodeURIComponent(q)}`);
+          const found = await api(`/api/items/${card.id}/wait-candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`);
           if (input.value.trim() !== q) return;
-          results = found.filter((t) => !t.isDone && t.id !== card.id).slice(0, 8).map((t) => ({ id: t.id, title: t.title, breadcrumb: t.breadcrumb ?? [] }));
+          results = found;
+          loaded = true;
           render();
         } catch {
           // Keep what's shown.
         }
       };
       const input = h('input', {
-        type: 'text', placeholder: 'Find the task it waits for…', 'aria-label': 'Find the task it waits for', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'after-list', autocomplete: 'off',
+        type: 'text', placeholder: 'Find the task it waits for…', 'aria-label': 'Find the task it waits for', role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'after-list', autocomplete: 'off',
         oninput: () => {
           active = 0;
           clearTimeout(timer);
-          const q = input.value.trim();
-          if (!q) { results = nearby; render(); return; }
-          timer = setTimeout(() => search(q), 120);
+          timer = setTimeout(() => search(input.value.trim()), 120);
         },
         onkeydown: (e) => {
           if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(results.length - 1, active + 1); render(); }
@@ -154,8 +153,8 @@ export function createLater(ctx) {
           else if (e.key === 'Enter') { e.preventDefault(); choose(results[active]); }
         },
       });
-      results = nearby;
       render();
+      search('');
       return [
         h('div', { class: 'later-head' }, icon('link', { size: 18 }), h('div', null, h('h2', null, 'After another task'), h('p', { class: 'muted small' }, `“${card.title}” comes back when that one is done.`))),
         h('div', { class: 'palette-input' }, icon('search', { size: 18 }), input, h('kbd', null, 'Esc')),

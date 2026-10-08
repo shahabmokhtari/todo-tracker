@@ -32,6 +32,7 @@ internal static partial class OpenApiSetup
         ["PATCH api/items/{id}/notes/{noteId}"] = ("updateNote", "Edit a note"),
         ["POST api/items/{id}/schedule"] = ("scheduleNextAction", "Defer a task until later and remind the user"),
         ["POST api/items/{id}/after"] = ("waitForTask", "Defer a task until another task is done"),
+        ["GET api/items/{id}/wait-candidates"] = ("waitCandidates", "Open tasks a task can wait for (optionally matching q)"),
         ["GET api/snooze"] = ("snoozeChoices", "The snooze choices now, and what a typed snooze rule means"),
         ["POST api/items/{id}/reminders"] = ("addReminder", "Add a reminder"),
         ["POST api/items/{id}/reminders/{reminderId}/dismiss"] = ("dismissReminder", "Dismiss a reminder"),

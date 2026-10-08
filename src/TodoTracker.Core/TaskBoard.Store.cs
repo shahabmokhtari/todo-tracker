@@ -64,6 +64,7 @@ public sealed partial class TaskBoard
 
         Log(now, item.Id, ActivityKind.Completed, $"Completed \"{item.Title}\"", actor);
         AdvanceSequence(item, actor, now);
+        ReleaseWaiters(now);
     }
 
     internal void LogExternal(Guid itemId, ActivityKind kind, string summary, Actor actor, DateTimeOffset now) => Log(now, itemId, kind, summary, actor);

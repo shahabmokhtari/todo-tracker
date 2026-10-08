@@ -1009,11 +1009,7 @@ async function openDrawer(id, { full = null } = {}) {
     title,
     // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
     h('div', { class: 'drawer-main' },
-    item.state === 'waiting' && !item.completedAt
-      ? h('div', { class: 'waiting-banner', role: 'status' }, icon(item.waitingForTitle ? 'link' : 'clock', { size: 16 }),
-        h('span', null, item.waitingForTitle ? `Waits for “${item.waitingForTitle}”` : `Snoozed until ${whenText(item.nextActionAt)}`),
-        h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now'))
-      : null,
+    waitingBanner(item),
     h('div', { class: 'chips-row' }, labelPicker),
     field('Tags', tags),
     tagPreview,
@@ -1365,6 +1361,20 @@ async function submitAndClear(input, request, message) {
   if (!value.trim()) return;
   input.value = '';
   if (!(await act(request(value), message))) input.value = value;
+}
+
+/**
+ * Why a task is waiting: its own snooze or wait (Do now brings it back), or its parent's (open the parent to change it).
+ * Nothing when it isn't waiting, or is waiting for a step before it.
+ */
+function waitingBanner(item) {
+  if (item.state !== 'waiting' || item.completedAt || !(item.wakeAt || item.waitingForTitle)) return null;
+  const why = [item.waitingForTitle ? `waits for “${item.waitingForTitle}”` : null, item.wakeAt ? `snoozed until ${whenText(item.wakeAt)}` : null].filter(Boolean).join(' and ');
+  const text = item.heldById ? `Its parent “${item.heldByTitle}” ${why}` : `${why[0].toUpperCase()}${why.slice(1)}`;
+  return h('div', { class: 'waiting-banner', role: 'status' }, icon(item.waitingForTitle ? 'link' : 'clock', { size: 16 }), h('span', null, text),
+    item.heldById
+      ? h('button', { class: 'btn ghost', type: 'button', onclick: () => openDrawer(item.heldById) }, icon('expand', { size: 15 }), 'Open parent')
+      : h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${item.id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now'));
 }
 
 function stateLabel(item) {

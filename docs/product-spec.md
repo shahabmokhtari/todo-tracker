@@ -125,14 +125,14 @@ dismisses the previous undelivered schedule reminder and any reminder that is al
   (9:00 local on that day; a month from Jan 31 is the end of February). Each shows when it ends: "today 17:00",
   "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".
 * **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `tt snooze`):
-  `45m`/`2h` from now; `3d`, `2 weeks`, `1 month` (that day at 9:00); weekdays (`fri`, `next fri`); `tonight`,
-  `tomorrow 14:00`, `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
+  spans count from now, like `@3d` always has (`45m`, `2h`, `3d`, `2 weeks`, `1 month`); day words land at 9:00 (`fri`, `next fri`; a weekday with a time still ahead today means today: `mon 14:00` on a Monday morning), `tonight`,
+  `tomorrow 14:00`, `tomorrow at 9`, `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
   today, or tomorrow when it's past); dates (`2026-03-01`, with an optional time); an optional leading `in` (`in 3 days`). A rule that isn't
-  understood or is in the past is refused with examples. Phones offer the quick choices and a date picker.
+  understood is refused with examples; one already past (`tonight` at 19:00) says so. Phones offer the quick choices and a date picker.
 * **After another task** (`after: <id>` in the file; `POST /api/items/{id}/after`, MCP `wait_for_task`,
   `tt snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
   reminder ("X is done: back to Y"). It replaces a snooze until a time (and snoozing or *Do now* replaces it). Refused:
-  itself, a done task, its own subtasks or parents, or a circle. If X is deleted the wait ends. In *Waiting*, tasks
+  itself, a done task (either one), its own subtasks or parents, or a circle (also through a parent that can't finish while its subtask waits); the pickers only offer what's allowed (`GET /api/items/{id}/wait-candidates`). It comes back the same way when X is finished outside the app (a box checked in Obsidian, or by sync), and when X is deleted (\"X\" was deleted). In *Waiting*, tasks
   back at a time come first (soonest first), then those waiting for a task.
 
 **Delivery.** Every 15s the server marks due, undelivered reminders as delivered, at most once and before sending,

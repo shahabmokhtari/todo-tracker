@@ -49,6 +49,8 @@ public sealed class WaitForTests
         _board.Delete(a.Id, Actor.User, T0);
         Assert.Null(c.AfterId);
         Assert.Equal(ItemState.Actionable, Agenda.StateOf(c, T0));
+        // Like finishing it: the task comes back with a reminder saying why.
+        Assert.Contains(c.Reminders, r => r.Message == "\"A\" was deleted: back to \"C\"" && r.IsDue(T0));
     }
 
     [Fact]
@@ -63,6 +65,29 @@ public sealed class WaitForTests
         Assert.Throws<ArgumentException>(() => _board.WaitFor(a.Id, a.Id, Actor.User, T0));
         Assert.Throws<InvalidOperationException>(() => _board.WaitFor(a.Id, b.Id, Actor.User, T0));
         Assert.Throws<InvalidOperationException>(() => _board.WaitFor(a.Id, done.Id, Actor.User, T0));
+        Assert.Throws<InvalidOperationException>(() => _board.WaitFor(done.Id, a.Id, Actor.User, T0));
+        Assert.False(_board.CanWaitFor(a.Id, b.Id));
+        Assert.True(_board.CanWaitFor(a.Id, Add("C").Id));
+    }
+
+    [Fact]
+    public void A_circle_through_a_parent_and_its_subtask_is_refused_both_ways()
+    {
+        // P can't be done while its subtask C waits; so X waiting for P and C waiting for X would wait forever.
+        var p = Add("P");
+        var c = _board.AddTask(new NewTask("C") { ParentId = p.Id }, Actor.User, T0);
+        var x = Add("X");
+
+        _board.WaitFor(x.Id, p.Id, Actor.User, T0);
+        Assert.False(_board.CanWaitFor(c.Id, x.Id));
+        Assert.Throws<InvalidOperationException>(() => _board.WaitFor(c.Id, x.Id, Actor.User, T0));
+
+        var board = new TaskBoard();
+        var p2 = board.AddTask(new NewTask("P"), Actor.User, T0);
+        var c2 = board.AddTask(new NewTask("C") { ParentId = p2.Id }, Actor.User, T0);
+        var x2 = board.AddTask(new NewTask("X"), Actor.User, T0);
+        board.WaitFor(c2.Id, x2.Id, Actor.User, T0);
+        Assert.Throws<InvalidOperationException>(() => board.WaitFor(x2.Id, p2.Id, Actor.User, T0));
     }
 
     [Fact]

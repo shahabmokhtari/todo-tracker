@@ -476,14 +476,16 @@ public sealed class SidebarViewModelTests : IDisposable
         await _vm.RefreshAsync();
         var card = _vm.Now.Concat([_vm.Focus!]).Single(c => c.Id == move.Id);
 
-        Assert.DoesNotContain(_vm.WaitCandidates(card), c => c.Id == move.Id);
-        Assert.Contains(_vm.WaitCandidates(card), c => c.Id == keys.Id);
+        Assert.DoesNotContain(await _vm.WaitCandidatesAsync(card), c => c.Id == move.Id);
+        Assert.Contains(await _vm.WaitCandidatesAsync(card), c => c.Id == keys.Id);
         await _vm.SnoozeCommand.ExecuteAsync(new SnoozeRequest(card, AfterId: keys.Id));
 
         Assert.Equal(keys.Id, (await _store.ReadAsync(b => b.Get(move.Id))).AfterId);
         Assert.Equal("Waiting for “Get the keys”", _vm.StatusMessage);
         var waiting = Assert.Single(_vm.Waiting);
         Assert.Equal("Move in", waiting.Title);
+        // What already waits for a task isn't offered as something it could wait for (they'd wait for each other).
+        Assert.DoesNotContain(await _vm.WaitCandidatesAsync(_vm.Focus!), c => c.Id == move.Id);
 
         await _vm.CompleteCommand.ExecuteAsync(_vm.Focus);
         Assert.Empty(_vm.Waiting);

@@ -132,6 +132,26 @@ internal static class ApiEndpoints
         api.MapGet("/search", (string? q, IBoardStore store, TimeProvider time, VaultLinks links) =>
             store.ReadAsync(b => Search(b, q, time.GetUtcNow(), links)));
 
+        // "After another task…": the open tasks it can wait for (shown ones first; or those matching q).
+        api.MapGet("/items/{id:guid}/wait-candidates", (Guid id, string? q, IBoardStore store, TimeProvider time, VaultLinks links) =>
+            store.ReadAsync(b =>
+            {
+                var now = time.GetUtcNow();
+                b.Get(id);
+                IEnumerable<WorkItem> tasks;
+                if (string.IsNullOrWhiteSpace(q))
+                {
+                    var agenda = Agenda.Build(b, now, recentNoteCount: 0);
+                    tasks = agenda.Now.Concat(agenda.Waiting).Select(e => e.Item);
+                }
+                else
+                {
+                    tasks = Search(b, q, now, links).Select(h => b.Get(h.Id));
+                }
+
+                return tasks.Where(t => !t.IsDone && b.CanWaitFor(id, t.Id)).DistinctBy(t => t.Id).Take(8).Select(t => Wire.SearchHit(t, now, b, links)).ToList();
+            }));
+
         api.MapGet("/items", (bool? includeDone, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.ReadAsync(b => b.Items.Where(i => !i.IsArchived && (includeDone == true || !i.IsDone)).Select(i => Wire.Item(i, time.GetUtcNow(), b, http.RequestServices.GetRequiredService<VaultLinks>())).ToList()));
 
@@ -289,7 +309,7 @@ internal static class ApiEndpoints
 
             return Snooze.Parse(rule, now, options.TimeZone) is { } at
                 ? new SnoozeDto(choices, at, RelativeTime.Format(at, now))
-                : new SnoozeDto(choices, RuleProblem: RuleHint(rule));
+                : new SnoozeDto(choices, RuleProblem: Snooze.Hint(rule, now, options.TimeZone));
         });
 
         api.MapPost("/items/{id:guid}/reminders", (Guid id, ReminderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
@@ -665,19 +685,17 @@ internal static class ApiEndpoints
     {
         if (request.Choice is { Length: > 0 } choice)
         {
-            return Snooze.Choices(now, zone).FirstOrDefault(c => c.Id == choice)?.At ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request));
+            return Snooze.Resolve(choice, now, zone) ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request));
         }
 
         if (request.Rule is { Length: > 0 } rule)
         {
-            return Snooze.Parse(rule, now, zone) ?? throw new ArgumentException(RuleHint(rule), nameof(request));
+            return Snooze.Parse(rule, now, zone) ?? throw new ArgumentException(Snooze.Hint(rule, now, zone), nameof(request));
         }
 
         return ResolveTime(request.At, request.InMinutes, now);
     }
 
-    private static string RuleHint(string rule) =>
-        $"Couldn't tell when \"{rule.Trim()}\" is. Try 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am or 2026-03-01.";
 
     internal static DateTimeOffset ResolveTime(DateTimeOffset? at, int? inMinutes, DateTimeOffset now)
     {

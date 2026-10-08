@@ -87,7 +87,10 @@ public sealed record ItemDto(
     long TimeSpentSeconds = 0,
     IReadOnlyList<TimeEntryDto>? TimeEntries = null,
     Guid? AfterId = null,
-    string? WaitingForTitle = null);
+    string? WaitingForTitle = null,
+    DateTimeOffset? WakeAt = null,
+    Guid? HeldById = null,
+    string? HeldByTitle = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -348,8 +351,17 @@ public static class Wire
         item.ArchivedAt,
         (long)item.TimeSpent(now).TotalSeconds,
         item.TimeEntries.Select(e => TimeEntry(item, e, now)).ToList(),
-        item.AfterId,
-        item.WaitingFor?.Title);
+        item.WaitingFor?.Id,
+        Wait(item, now) is { } w ? w.WaitingFor?.Title : null,
+        Wait(item, now) is { } wake && wake.NextActionAt > now ? wake.NextActionAt : null,
+        Wait(item, now) is { } held && held != item ? held.Id : null,
+        Wait(item, now) is { } heldBy && heldBy != item ? heldBy.Title : null);
+
+    /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
+    private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>
+        Agenda.StateOf(item, now) == ItemState.Waiting
+            ? item.Ancestors().Prepend(item).FirstOrDefault(i => i.NextActionAt > now || i.WaitingFor is not null)
+            : null;
 
     public static SearchHitDto SearchHit(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
         item.Id,

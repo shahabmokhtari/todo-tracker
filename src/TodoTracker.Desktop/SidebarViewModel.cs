@@ -67,11 +67,14 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>"today 17:00", "Fri 14:30", "Mon 12 Jan, 9:00".</summary>
     public string DescribeWhen(DateTimeOffset at) => Core.Snooze.Describe(at, _time.GetUtcNow(), _options.TimeZone);
 
-    /// <summary>Tasks a card could wait for ("After another task"): the open ones shown, except the card itself.</summary>
-    public IReadOnlyList<CardViewModel> WaitCandidates(CardViewModel card)
+    /// <summary>Tasks a card can wait for ("After another task"): the open ones shown, except itself, its own subtasks or
+    /// parents, and what already waits for it.</summary>
+    public async Task<IReadOnlyList<CardViewModel>> WaitCandidatesAsync(CardViewModel card)
     {
         ArgumentNullException.ThrowIfNull(card);
-        return new[] { Focus }.Concat(Now).Concat(Waiting).OfType<CardViewModel>().Where(c => c.Id != card.Id).DistinctBy(c => c.Id).ToList();
+        var shown = new[] { Focus }.Concat(Now).Concat(Waiting).OfType<CardViewModel>().DistinctBy(c => c.Id).ToList();
+        var allowed = await _store.ReadAsync(b => shown.Where(c => b.CanWaitFor(card.Id, c.Id)).Select(c => c.Id).ToHashSet()).ConfigureAwait(true);
+        return shown.Where(c => allowed.Contains(c.Id)).ToList();
     }
 
     [ObservableProperty]
@@ -230,8 +233,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             }
 
             var at = request.Choice is { } choice
-                ? Core.Snooze.Choices(now, _options.TimeZone).FirstOrDefault(c => c.Id == choice)?.At ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request))
-                : Core.Snooze.Parse(request.Rule, now, _options.TimeZone) ?? throw new ArgumentException(RuleHint(request.Rule), nameof(request));
+                ? Core.Snooze.Resolve(choice, now, _options.TimeZone) ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request))
+                : Core.Snooze.Parse(request.Rule, now, _options.TimeZone) ?? throw new ArgumentException(Core.Snooze.Hint(request.Rule, now, _options.TimeZone), nameof(request));
             b.ScheduleNextAction(request.Card.Id, at, Actor.User, now, notify: true);
             return $"Snoozed until {Core.Snooze.Describe(at, now, _options.TimeZone)}";
         }).ConfigureAwait(true);
@@ -257,12 +260,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             }
 
             typed = rule;
-            message = RuleHint(rule);
+            message = Core.Snooze.Hint(rule, _time.GetUtcNow(), _options.TimeZone);
         }
     }
 
-    private static string RuleHint(string? rule) =>
-        $"Couldn't tell when \"{rule?.Trim()}\" is. Try 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am or 2026-03-01.";
 
     /// <summary>Whether the focus timer is shown (the Focus timer plugin).</summary>
     [ObservableProperty]

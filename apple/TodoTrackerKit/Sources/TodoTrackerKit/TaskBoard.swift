@@ -80,8 +80,8 @@ public final class TaskBoard {
             items.removeAll { $0 === item }
         }
         for removed in item.selfAndDescendants { index[removed.id] = nil }
-        // Nothing waits for a task that's gone.
-        for waiter in allItems where waiter.afterId.map({ index[$0] == nil }) ?? false { waiter.afterId = nil }
+        // Tasks waiting for what's gone come back, like when it's done.
+        releaseWaiters(now: now, deleted: Dictionary(item.selfAndDescendants.map { ($0.id, $0.title) }, uniquingKeysWith: { a, _ in a }))
         if let focused = pomodoro.itemId, index[focused] == nil { pomodoro.detachItem() }
         log(now, id, "deleted", "Deleted \"\(item.title)\"", actor)
     }
@@ -119,34 +119,54 @@ public final class TaskBoard {
         let item = try get(id)
         let other = try get(afterId)
         if other === item { throw BoardError.invalid("A task can't wait for itself.") }
-        if other.isDone { throw BoardError.conflict("\"\(other.title)\" is already done.") }
-        // Its own subtasks or parents would never get done while it waits; nor would a circle of waits.
-        let inside = item.selfAndDescendants
-        if inside.contains(where: { $0 === other }) || item.ancestors.contains(where: { $0 === other }) {
-            throw BoardError.conflict("\"\(item.title)\" can't wait for \"\(other.title)\", which is part of it.")
-        }
-        var seen = Set<UUID>()
-        var next: WorkItem? = other
-        while let n = next, seen.insert(n.id).inserted {
-            if inside.contains(where: { $0 === n }) {
-                throw BoardError.conflict("\"\(other.title)\" is already waiting for \"\(item.title)\": they'd wait for each other.")
-            }
-            next = n.waitingFor ?? n.ancestors.lazy.compactMap(\.waitingFor).first
-        }
+        if let problem = Self.waitProblem(item, other) { throw BoardError.conflict(problem) }
         item.afterId = other.id
         item.nextActionAt = nil
         dismissPendingScheduleReminders(item, now: now)
         log(now, id, "scheduled", "Waits until \"\(other.title)\" is done", actor)
     }
 
-    /// Tasks whose wait just ended (what they waited for is done) come back, with a reminder saying why.
-    private func releaseWaiters(now: Date) {
+    /// Whether `id` may wait for `afterId` (what the pickers offer).
+    public func canWaitFor(_ id: UUID, after afterId: UUID) -> Bool {
+        guard let item = find(id), let other = find(afterId), other !== item else { return false }
+        return Self.waitProblem(item, other) == nil
+    }
+
+    /// Why a task can't wait for another, or nil when it can.
+    static func waitProblem(_ item: WorkItem, _ other: WorkItem) -> String? {
+        if item.isDone { return "\"\(item.title)\" is already done." }
+        if other.isDone { return "\"\(other.title)\" is already done." }
+        // Its own subtasks or parents would never get done while it waits.
+        let family = Set((item.selfAndDescendants + item.ancestors).map(\.id))
+        if family.contains(other.id) { return "\"\(item.title)\" can't wait for \"\(other.title)\", which is part of it." }
+        // Nor would a circle: follow what holds "other" up (what it, its parents and its open subtasks wait for, and its
+        // open subtasks themselves); reaching this task's family means they'd wait for each other.
+        var seen = Set<UUID>()
+        var queue = [other]
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            guard seen.insert(next.id).inserted else { continue }
+            if family.contains(next.id) { return "\"\(other.title)\" is already waiting for \"\(item.title)\": they'd wait for each other." }
+            queue += ([next] + next.ancestors).compactMap(\.waitingFor) + next.children.filter { !$0.isDone }
+        }
+        return nil
+    }
+
+    /// Tasks whose wait ended (what they waited for is done, or gone) come back, with a reminder saying why.
+    private func releaseWaiters(now: Date, deleted: [UUID: String] = [:]) {
         for waiter in allItems {
-            guard let afterId = waiter.afterId, let other = index[afterId], other.isDone else { continue }
+            guard let afterId = waiter.afterId else { continue }
+            let why: String
+            if let other = index[afterId] {
+                guard other.isDone else { continue }
+                why = "\"\(other.title)\" is done"
+            } else {
+                why = deleted[afterId].map { "\"\($0)\" was deleted" } ?? "The task it waited for is gone"
+            }
             waiter.afterId = nil
             if !waiter.isDone {
-                waiter.reminders.append(Reminder(dueAt: now, message: "\"\(other.title)\" is done: back to \"\(waiter.title)\"", kind: .nextAction))
-                log(now, waiter.id, "scheduled", "Back: \"\(other.title)\" is done", .system)
+                waiter.reminders.append(Reminder(dueAt: now, message: "\(why): back to \"\(waiter.title)\"", kind: .nextAction))
+                log(now, waiter.id, "scheduled", "Back: \(why)", .system)
             }
         }
     }

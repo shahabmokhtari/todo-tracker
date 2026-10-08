@@ -37,22 +37,24 @@ public sealed class SnoozeTests
     }
 
     [Theory]
-    [InlineData("3d", 8, 9, 0)]
-    [InlineData("in 3 days", 8, 9, 0)]
-    [InlineData("2w", 19, 9, 0)]
-    [InlineData("2 weeks", 19, 9, 0)]
     [InlineData("fri", 9, 9, 0)]
     [InlineData("Friday 14:30", 9, 14, 30)]
+    [InlineData("fri at 14:30", 9, 14, 30)]
+    [InlineData("tomorrow at 9", 6, 9, 0)]
+    [InlineData("tomorrow at 2pm", 6, 14, 0)]
     [InlineData("next week", 12, 9, 0)]
     [InlineData("weekend", 10, 9, 0)]
     [InlineData("tomorrow 2pm", 6, 14, 0)]
     [InlineData("tonight", 5, 18, 0)]
     [InlineData("14:00", 5, 14, 0)]
+    [InlineData("at 14:00", 5, 14, 0)]
     [InlineData("9am", 6, 9, 0)]
     [InlineData("2026-01-20", 20, 9, 0)]
     [InlineData("2026-01-20 16:45", 20, 16, 45)]
     [InlineData("mon", 12, 9, 0)]
-    public void Rules_are_read_in_the_local_time_zone(string rule, int day, int hour, int minute)
+    [InlineData("mon 14:00", 5, 14, 0)]
+    [InlineData("mon 9:00", 12, 9, 0)]
+    public void Day_words_are_read_in_the_local_time_zone(string rule, int day, int hour, int minute)
     {
         Assert.Equal(At(day, hour, minute), Snooze.Parse(rule, Monday, Utc));
     }
@@ -61,9 +63,20 @@ public sealed class SnoozeTests
     [InlineData("90m", 90)]
     [InlineData("in 2 hours", 120)]
     [InlineData("45 min", 45)]
-    public void Short_spans_count_from_now(string rule, int minutes)
+    [InlineData("3d", 3 * 24 * 60)]
+    [InlineData("in 3 days", 3 * 24 * 60)]
+    [InlineData("2w", 14 * 24 * 60)]
+    [InlineData("2 weeks", 14 * 24 * 60)]
+    public void Spans_count_from_now_like_at_3d_in_quick_capture(string rule, int minutes)
     {
         Assert.Equal(Monday.AddMinutes(minutes), Snooze.Parse(rule, Monday, Utc));
+        Assert.Equal(Monday.AddMinutes(minutes), QuickCaptureParser.Parse($"x @{rule.Replace(' ', '-')}", Monday, Utc).NextActionAt);
+    }
+
+    [Fact]
+    public void A_month_is_the_same_time_next_month()
+    {
+        Assert.Equal(new DateTimeOffset(2026, 2, 5, 10, 30, 0, TimeSpan.Zero), Snooze.Parse("1 month", Monday, Utc));
     }
 
     [Theory]
@@ -83,6 +96,18 @@ public sealed class SnoozeTests
     }
 
     [Fact]
+    public void The_hint_says_when_a_rule_is_already_past_or_not_understood()
+    {
+        var evening = new DateTimeOffset(2026, 1, 5, 19, 0, 0, TimeSpan.Zero);
+
+        Assert.Null(Snooze.Parse("tonight", evening, Utc));
+        Assert.Contains("already past", Snooze.Hint("tonight", evening, Utc), StringComparison.Ordinal);
+        Assert.Contains("already past", Snooze.Hint("2026-01-01", evening, Utc), StringComparison.Ordinal);
+        Assert.Contains("Couldn't tell when \"someday\" is", Snooze.Hint("someday", evening, Utc), StringComparison.Ordinal);
+        Assert.Contains("next week", Snooze.Hint("someday", evening, Utc), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Local_time_follows_the_persons_time_zone()
     {
         var newYork = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
@@ -92,10 +117,22 @@ public sealed class SnoozeTests
     }
 
     [Fact]
+    public void A_choice_picked_from_a_menu_opened_a_moment_ago_still_resolves()
+    {
+        var justAfter = new DateTimeOffset(2026, 1, 5, 17, 1, 0, TimeSpan.Zero);
+
+        Assert.DoesNotContain(Snooze.Choices(justAfter, Utc), c => c.Id == "evening");
+        Assert.Equal(At(5, 18), Snooze.Resolve("evening", justAfter, Utc));
+        Assert.Null(Snooze.Resolve("evening", new DateTimeOffset(2026, 1, 5, 18, 30, 0, TimeSpan.Zero), Utc));
+        Assert.Equal(At(12, 9), Snooze.Resolve("monday", justAfter, Utc));
+        Assert.Null(Snooze.Resolve("fortnight", justAfter, Utc));
+    }
+
+    [Fact]
     public void Quick_capture_understands_the_same_rules_after_an_at_sign()
     {
         Assert.Equal(At(9, 9), QuickCaptureParser.Parse("Call the bank @fri", Monday, Utc).NextActionAt);
-        Assert.Equal(At(19, 9), QuickCaptureParser.Parse("Review @2w", Monday, Utc).NextActionAt);
+        Assert.Equal(Monday.AddDays(14), QuickCaptureParser.Parse("Review @2w", Monday, Utc).NextActionAt);
         Assert.Equal(At(10, 9), QuickCaptureParser.Parse("Clean @weekend", Monday, Utc).NextActionAt);
         Assert.Equal("Email @team", QuickCaptureParser.Parse("Email @team", Monday, Utc).Title);
         // Words with a space are written with a hyphen after @; dates keep theirs.

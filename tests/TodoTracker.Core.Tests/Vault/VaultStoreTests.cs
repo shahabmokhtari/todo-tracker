@@ -255,6 +255,31 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Checking_a_box_in_obsidian_brings_back_what_waits_for_it_with_a_reminder()
+    {
+        var store = Open();
+        var (step, waiter) = await store.UpdateAsync(b =>
+        {
+            var project = b.AddTask(new NewTask("Move"), Actor.User, T0);
+            var keys = b.AddTask(new NewTask("Get the keys") { ParentId = project.Id }, Actor.User, T0);
+            var unpack = b.AddTask(new NewTask("Unpack"), Actor.User, T0);
+            b.WaitFor(unpack.Id, keys.Id, Actor.User, T0);
+            return (keys.Id, unpack.Id);
+        });
+        Assert.Contains($"after: {step}", await File.ReadAllTextAsync(P("Work", "Unpack.md")), StringComparison.Ordinal);
+
+        var file = P("Work", "Move.md");
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("- [ ] Get the keys", "- [x] Get the keys", StringComparison.Ordinal));
+        _time.Advance(TimeSpan.FromMinutes(5));
+        store.MarkDirty();
+
+        var (after, reminder) = await store.ReadAsync(b => (b.Get(waiter).AfterId, (b.Get(waiter).Reminders.Count > 0 ? b.Get(waiter).Reminders[^1].Message : null)));
+        Assert.Null(after);
+        Assert.Equal("\"Get the keys\" is done: back to \"Unpack\"", reminder);
+        Assert.DoesNotContain("after:", await File.ReadAllTextAsync(P("Work", "Unpack.md")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_note_created_in_a_group_folder_becomes_a_task()
     {
         var store = Open();

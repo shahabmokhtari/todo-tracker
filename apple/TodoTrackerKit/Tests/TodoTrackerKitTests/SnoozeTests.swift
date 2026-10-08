@@ -69,6 +69,20 @@ final class SnoozeTests: XCTestCase {
         XCTAssertThrowsError(try board.waitFor(child.id, after: a.id, now: t0))
         XCTAssertThrowsError(try board.waitFor(a.id, after: b.id, now: t0))
         XCTAssertThrowsError(try board.waitFor(a.id, after: done.id, now: t0))
+        XCTAssertThrowsError(try board.waitFor(done.id, after: a.id, now: t0))
+        XCTAssertFalse(board.canWaitFor(a.id, after: b.id))
+    }
+
+    func testACircleThroughAParentAndItsSubtaskIsRefused() throws {
+        // P can't be done while its subtask C waits; so X waiting for P and C waiting for X would wait forever.
+        let board = TaskBoard()
+        let p = try board.addTask(NewTask("P"), now: t0)
+        let c = try board.addTask(NewTask("C", parentId: p.id), now: t0)
+        let x = try board.addTask(NewTask("X"), now: t0)
+        try board.waitFor(x.id, after: p.id, now: t0)
+
+        XCTAssertFalse(board.canWaitFor(c.id, after: x.id))
+        XCTAssertThrowsError(try board.waitFor(c.id, after: x.id, now: t0))
     }
 
     func testSnoozingOrBringingBackEndsTheWaitAndDeletingTheOtherTaskReleasesIt() throws {
@@ -84,6 +98,7 @@ final class SnoozeTests: XCTestCase {
         try board.delete(a.id, now: t0)
         XCTAssertNil(c.afterId)
         XCTAssertEqual(Agenda.state(of: c, now: t0), .actionable)
+        XCTAssertEqual(c.reminders.last?.message, "\"A\" was deleted: back to \"C\"")
     }
 
     func testTheWaitIsSavedAndReadBack() throws {

@@ -186,6 +186,43 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Wait_candidates_are_only_tasks_it_can_wait_for()
+    {
+        var project = await _client.PostJson("/api/items", new { title = "Move house" });
+        var keys = await _client.PostJson("/api/items", new { title = "Get the keys" });
+        var box = await _client.PostJson("/api/items", new { title = "Pack a box", parentId = project.Id() });
+        var paint = await _client.PostJson("/api/items", new { title = "Paint the walls" });
+        await _client.PostJson($"/api/items/{paint.Id()}/after", new { afterId = project.Id() });
+
+        var nearby = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+        var found = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates?q=keys")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+
+        // Not itself, its subtask, or a task already waiting for it.
+        Assert.Equal(["Get the keys"], nearby);
+        Assert.Equal(["Get the keys"], found);
+        Assert.DoesNotContain(box["title"]!.GetValue<string>(), nearby);
+        Assert.NotNull(keys);
+    }
+
+    [Fact]
+    public async Task A_subtask_of_a_snoozed_task_says_its_parent_holds_it()
+    {
+        var trip = await _client.PostJson("/api/items", new { title = "Trip" });
+        var book = await _client.PostJson("/api/items", new { title = "Book hotel", parentId = trip.Id() });
+        await _client.PostJson($"/api/items/{trip.Id()}/schedule", new { inMinutes = 120 });
+
+        var item = await _client.GetJson($"/api/items/{book.Id()}");
+        var parent = await _client.GetJson($"/api/items/{trip.Id()}");
+
+        Assert.Equal("waiting", item["state"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), item["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), item["heldById"]!.GetValue<string>());
+        Assert.Equal("Trip", item["heldByTitle"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), parent["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Null(parent["heldById"]);
+    }
+
+    [Fact]
     public async Task Reminders_can_be_added_and_dismissed()
     {
         var item = await _client.PostJson("/api/items", new { title = "Feature B" });

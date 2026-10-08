@@ -144,11 +144,8 @@ public sealed partial class TaskBoard
             Pomodoro.DetachItem();
         }
 
-        // Tasks waiting for what's gone don't wait any more.
-        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && !_index.ContainsKey(after)))
-        {
-            waiter.AfterId = null;
-        }
+        // Tasks waiting for what's gone come back, like when it's done.
+        ReleaseWaiters(now, item.SelfAndDescendants().ToDictionary(i => i.Id, i => i.Title));
 
         Log(now, id, ActivityKind.Deleted, $"Deleted \"{item.Title}\"", actor);
     }
@@ -226,24 +223,9 @@ public sealed partial class TaskBoard
             throw new ArgumentException("A task can't wait for itself.", nameof(afterId));
         }
 
-        if (other.IsDone)
+        if (WaitProblem(item, other) is { } problem)
         {
-            throw new InvalidOperationException($"\"{other.Title}\" is already done.");
-        }
-
-        // Its own subtasks or parents would never get done while it waits; nor would a circle of waits.
-        if (item.SelfAndDescendants().Contains(other) || item.Ancestors().Contains(other))
-        {
-            throw new InvalidOperationException($"\"{item.Title}\" can't wait for \"{other.Title}\", which is part of it.");
-        }
-
-        var seen = new HashSet<Guid>();
-        for (var next = other; next is not null && seen.Add(next.Id); next = next.WaitingFor ?? next.Ancestors().Select(a => a.WaitingFor).FirstOrDefault(w => w is not null))
-        {
-            if (next == item || item.SelfAndDescendants().Contains(next))
-            {
-                throw new InvalidOperationException($"\"{other.Title}\" is already waiting for \"{item.Title}\": they'd wait for each other.");
-            }
+            throw new InvalidOperationException(problem);
         }
 
         item.AfterId = other.Id;
@@ -252,19 +234,78 @@ public sealed partial class TaskBoard
         Log(now, id, ActivityKind.Scheduled, $"Waits until \"{other.Title}\" is done", actor);
     }
 
-    /// <summary>Tasks whose wait just ended (what they waited for is done) come back, with a reminder saying why.</summary>
-    private void ReleaseWaiters(DateTimeOffset now)
+    /// <summary>Whether <paramref name="id"/> may wait for <paramref name="afterId"/> (what the pickers offer).</summary>
+    public bool CanWaitFor(Guid id, Guid afterId) =>
+        Find(id) is { } item && Find(afterId) is { } other && other != item && WaitProblem(item, other) is null;
+
+    /// <summary>Why a task can't wait for another, or null when it can.</summary>
+    private static string? WaitProblem(WorkItem item, WorkItem other)
     {
-        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && _index.TryGetValue(after, out var other) && other.IsDone).ToList())
+        if (item.IsDone)
         {
-            var other = _index[waiter.AfterId!.Value];
-            waiter.AfterId = null;
-            if (!waiter.IsDone)
+            return $"\"{item.Title}\" is already done.";
+        }
+
+        if (other.IsDone)
+        {
+            return $"\"{other.Title}\" is already done.";
+        }
+
+        // Its own subtasks or parents would never get done while it waits.
+        var family = item.SelfAndDescendants().Concat(item.Ancestors()).ToHashSet();
+        if (family.Contains(other))
+        {
+            return $"\"{item.Title}\" can't wait for \"{other.Title}\", which is part of it.";
+        }
+
+        // Nor would a circle: follow what holds "other" up (what it, its parents and its open subtasks wait for, and its
+        // open subtasks themselves); reaching this task's family means they'd wait for each other.
+        var seen = new HashSet<WorkItem>();
+        var queue = new Queue<WorkItem>([other]);
+        while (queue.TryDequeue(out var next))
+        {
+            if (!seen.Add(next))
             {
-                waiter.ReminderList.Add(new Reminder(Guid.NewGuid(), now, $"\"{other.Title}\" is done: back to \"{waiter.Title}\"", ReminderKind.NextAction));
-                Log(now, waiter.Id, ActivityKind.Scheduled, $"Back: \"{other.Title}\" is done", Actor.System);
+                continue;
+            }
+
+            if (family.Contains(next))
+            {
+                return $"\"{other.Title}\" is already waiting for \"{item.Title}\": they'd wait for each other.";
+            }
+
+            foreach (var holder in next.Ancestors().Prepend(next).Select(a => a.WaitingFor).OfType<WorkItem>().Concat(next.Children.Where(c => !c.IsDone)))
+            {
+                queue.Enqueue(holder);
             }
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tasks whose wait ended (what they waited for is done, or gone) come back, with a reminder saying why; whatever
+    /// finished it: the app, an edit in the files, or sync. Returns whether any did.
+    /// </summary>
+    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null)
+    {
+        var released = false;
+        foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && (!_index.TryGetValue(after, out var other) || other.IsDone)).ToList())
+        {
+            var after = waiter.AfterId!.Value;
+            var why = _index.TryGetValue(after, out var other)
+                ? $"\"{other.Title}\" is done"
+                : deleted?.GetValueOrDefault(after) is { } title ? $"\"{title}\" was deleted" : "The task it waited for is gone";
+            waiter.AfterId = null;
+            released = true;
+            if (!waiter.IsDone)
+            {
+                waiter.ReminderList.Add(new Reminder(Guid.NewGuid(), now, $"{why}: back to \"{waiter.Title}\"", ReminderKind.NextAction));
+                Log(now, waiter.Id, ActivityKind.Scheduled, $"Back: {why}", Actor.System);
+            }
+        }
+
+        return released;
     }
 
     public void Reopen(Guid id, Actor actor, DateTimeOffset now)

@@ -250,6 +250,9 @@ public sealed class CliCommandTests : IDisposable
     [InlineData("fri 14:30", "2026-01-09T14:30:00Z")]
     [InlineData("2 weeks", "2026-01-19T09:00:00Z")]
     [InlineData("weekend", "2026-01-10T09:00:00Z")]
+    [InlineData("mon 14:00", "2026-01-05T14:00:00Z")]
+    [InlineData("mon 8:00", "2026-01-12T08:00:00Z")]
+    [InlineData("tomorrow at 9", "2026-01-06T09:00:00Z")]
     public async Task Snooze_understands_typed_rules(string when, string expected)
     {
         var id = (await _tt.Json("add", "Plan trip")).Id().ToString();

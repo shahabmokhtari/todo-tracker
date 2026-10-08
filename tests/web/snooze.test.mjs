@@ -33,3 +33,19 @@ test('rulePreview turns the server answer into a line to show (or nothing yet)',
   assert.deepEqual(rulePreview({ ruleAt: at(12, 9).toISOString(), ruleIn: 'in 7d' }, now), { text: 'Mon 12 Jan, 9:00 · in 7d', ok: true });
   assert.deepEqual(rulePreview({ ruleProblem: 'Couldn’t tell when "x" is.' }, now), { text: 'Couldn’t tell when "x" is.', ok: false });
 });
+
+test('whenText matches the shared wording in tests/fixtures/snooze.json (C#, Swift and Kotlin check it too)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const { fileURLToPath, pathToFileURL } = await import('node:url');
+  const root = fileURLToPath(new URL('../../', import.meta.url));
+  const cases = JSON.parse(readFileSync(`${root}tests/fixtures/snooze.json`, 'utf8')).describe;
+  const format = pathToFileURL(`${root}src/TodoTracker.Server/wwwroot/js/format.js`).href;
+  for (const zone of new Set(cases.map((c) => c.zone))) {
+    const mine = cases.filter((c) => c.zone === zone);
+    // The browser's own time zone decides the words: run in that zone.
+    const script = `import { whenText } from ${JSON.stringify(format)}; console.log(JSON.stringify(${JSON.stringify(mine)}.map((c) => whenText(c.at, new Date(c.now)))));`;
+    const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ: zone }, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(out), mine.map((c) => c.text), zone);
+  }
+});

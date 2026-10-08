@@ -19,7 +19,16 @@ public static partial class Snooze
     /// <summary>"This evening" is offered until this hour.</summary>
     private const int EveningOfferedUntil = 17;
 
-    public static IReadOnlyList<SnoozeChoice> Choices(DateTimeOffset now, TimeZoneInfo zone)
+    public static IReadOnlyList<SnoozeChoice> Choices(DateTimeOffset now, TimeZoneInfo zone) => Choices(now, zone, all: false);
+
+    /// <summary>
+    /// When a quick choice ends if picked now; null for an unknown id or a time already past. A menu opened a moment
+    /// ago still works: "evening" picked at 17:01 is 18:00.
+    /// </summary>
+    public static DateTimeOffset? Resolve(string id, DateTimeOffset now, TimeZoneInfo zone) =>
+        Choices(now, zone, all: true).FirstOrDefault(c => c.Id == id) is { } choice && choice.At > now ? choice.At : null;
+
+    private static List<SnoozeChoice> Choices(DateTimeOffset now, TimeZoneInfo zone, bool all)
     {
         ArgumentNullException.ThrowIfNull(zone);
         var local = TimeZoneInfo.ConvertTime(now, zone);
@@ -30,7 +39,7 @@ public static partial class Snooze
             new("1h", "In an hour", now.AddHours(1)),
             new("3h", "In 3 hours", now.AddHours(3)),
         };
-        if (local.Hour < EveningOfferedUntil)
+        if (all || local.Hour < EveningOfferedUntil)
         {
             choices.Add(new("evening", "This evening", At(today, EveningHour, 0, zone)));
         }
@@ -64,13 +73,29 @@ public static partial class Snooze
     }
 
     /// <summary>The time a typed rule means, or null when it isn't understood (or is already past).</summary>
-    public static DateTimeOffset? Parse(string? rule, DateTimeOffset now, TimeZoneInfo zone)
+    public static DateTimeOffset? Parse(string? rule, DateTimeOffset now, TimeZoneInfo zone) =>
+        Read(rule, now, zone) is { } at && at > now ? at : null;
+
+    /// <summary>Why a rule can't be used: it's already past, or it isn't understood (with examples).</summary>
+    public static string Hint(string? rule, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var text = (rule ?? string.Empty).Trim();
+        return Read(rule, now, zone) is { } at && at <= now
+            ? $"\"{text}\" is already past. Pick a later time (e.g. tomorrow, or next week)."
+            : $"Couldn't tell when \"{text}\" is. Try 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am or 2026-03-01.";
+    }
+
+    /// <summary>What a rule says, even when that's already past (null: not understood).</summary>
+    private static DateTimeOffset? Read(string? rule, DateTimeOffset now, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(zone);
         var text = Spaces().Replace((rule ?? string.Empty).Trim().ToLowerInvariant(), " ");
-        if (text.StartsWith("in ", StringComparison.Ordinal))
+        foreach (var lead in (string[])["in ", "at "])
         {
-            text = text[3..];
+            if (text.StartsWith(lead, StringComparison.Ordinal))
+            {
+                text = text[lead.Length..];
+            }
         }
 
         if (text.Length == 0)
@@ -78,20 +103,42 @@ public static partial class Snooze
             return null;
         }
 
-        // Minutes and hours count from now.
+        // Spans count from now (as @3d always has): 45m, 2h, 3d, 2 weeks, 1 month.
         if (ShortSpan().Match(text) is { Success: true } span && int.Parse(span.Groups[1].Value, CultureInfo.InvariantCulture) is var amount and > 0 and < 10_000)
         {
             return span.Groups[2].Value[0] == 'h' ? now.AddHours(amount) : now.AddMinutes(amount);
         }
 
-        // "<day> <time>", "<day>", or "<time>".
+        if (LongSpan().Match(text) is { Success: true } longSpan && int.Parse(longSpan.Groups[1].Value, CultureInfo.InvariantCulture) is var count and > 0 and < 1000)
+        {
+            return longSpan.Groups[2].Value switch
+            {
+                "d" or "day" or "days" => now.AddDays(count),
+                "w" or "week" or "weeks" => now.AddDays(7 * count),
+                _ => now.AddMonths(count),
+            };
+        }
+
+        // "<day> <time>", "<day> at <time>", "<day>", or "<time>".
         string? dayPart = text;
         TimeOnly? time = null;
+        var atWord = text.LastIndexOf(" at ", StringComparison.Ordinal);
         var lastSpace = text.LastIndexOf(' ');
         if (ReadTime(text) is { } whole)
         {
             time = whole;
             dayPart = null;
+        }
+        else if (atWord > 0)
+        {
+            // After "at" a bare hour is a time too ("tomorrow at 9").
+            time = ReadTime(text[(atWord + 4)..], bareHour: true);
+            if (time is null)
+            {
+                return null;
+            }
+
+            dayPart = text[..atWord];
         }
         else if (lastSpace > 0 && ReadTime(text[(lastSpace + 1)..]) is { } tail)
         {
@@ -101,18 +148,12 @@ public static partial class Snooze
 
         var local = TimeZoneInfo.ConvertTime(now, zone);
         var today = DateOnly.FromDateTime(local.DateTime);
-        DateTimeOffset result;
         if (dayPart is null)
         {
             // Just a time: today, or tomorrow when it's already past.
             var t = time!.Value;
-            result = At(today, t.Hour, t.Minute, zone);
-            if (result <= now)
-            {
-                result = At(today.AddDays(1), t.Hour, t.Minute, zone);
-            }
-
-            return result;
+            var result = At(today, t.Hour, t.Minute, zone);
+            return result <= now ? At(today.AddDays(1), t.Hour, t.Minute, zone) : result;
         }
 
         if (Day(dayPart, today) is not { } day)
@@ -120,47 +161,41 @@ public static partial class Snooze
             return null;
         }
 
-        var hour = time?.Hour ?? (dayPart is "tonight" or "this evening" or "evening" ? EveningHour : MorningHour);
-        result = At(day.Date, hour, time?.Minute ?? 0, zone);
-        return result > now ? result : null;
+        // "mon 14:00" on a Monday morning means this afternoon (just "mon" means next week's).
+        if (time is { } given && day.Weekday && day.Date == today.AddDays(7) && At(today, given.Hour, given.Minute, zone) > now)
+        {
+            return At(today, given.Hour, given.Minute, zone);
+        }
+
+        return At(day.Date, time?.Hour ?? (day.Evening ? EveningHour : MorningHour), time?.Minute ?? 0, zone);
     }
 
-    /// <summary>The day a word means (and whether it's "tonight"): relative to <paramref name="today"/>.</summary>
-    private static (DateOnly Date, bool Evening)? Day(string text, DateOnly today)
+    /// <summary>The day a word means, whether it's "tonight", and whether it's a weekday's name; relative to <paramref name="today"/>.</summary>
+    private static (DateOnly Date, bool Evening, bool Weekday)? Day(string text, DateOnly today)
     {
         switch (text)
         {
             case "today":
-                return (today, false);
+                return (today, false, false);
             case "tonight" or "this evening" or "evening":
-                return (today, true);
+                return (today, true, false);
             case "tomorrow" or "tmrw":
-                return (today.AddDays(1), false);
+                return (today.AddDays(1), false, false);
             case "weekend" or "this weekend" or "the weekend":
-                return (Next(today, DayOfWeek.Saturday), false);
+                return (Next(today, DayOfWeek.Saturday), false, false);
             case "next week":
-                return (Next(today, DayOfWeek.Monday), false);
+                return (Next(today, DayOfWeek.Monday), false, false);
             case "next month":
-                return (new DateOnly(today.Year, today.Month, 1).AddMonths(1), false);
+                return (new DateOnly(today.Year, today.Month, 1).AddMonths(1), false, false);
         }
 
         var name = text.StartsWith("next ", StringComparison.Ordinal) ? text[5..] : text;
         if (Weekday(name) is { } weekday)
         {
-            return (Next(today, weekday), false);
+            return (Next(today, weekday), false, name == text);
         }
 
-        if (LongSpan().Match(text) is { Success: true } span && int.Parse(span.Groups[1].Value, CultureInfo.InvariantCulture) is var amount and > 0 and < 1000)
-        {
-            return span.Groups[2].Value switch
-            {
-                "d" or "day" or "days" => (today.AddDays(amount), false),
-                "w" or "week" or "weeks" => (today.AddDays(7 * amount), false),
-                _ => (today.AddMonths(amount), false),
-            };
-        }
-
-        return DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? (date, false) : null;
+        return DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ? (date, false, false) : null;
     }
 
     private static DayOfWeek? Weekday(string name)
@@ -178,7 +213,7 @@ public static partial class Snooze
     }
 
     /// <summary>"14:30", "9:00", "2pm", "9am", "9:30pm".</summary>
-    private static TimeOnly? ReadTime(string text)
+    private static TimeOnly? ReadTime(string text, bool bareHour = false)
     {
         if (Clock().Match(text) is not { Success: true } m)
         {
@@ -197,7 +232,7 @@ public static partial class Snooze
 
             hour = hour % 12 + (half == "pm" ? 12 : 0);
         }
-        else if (!m.Groups[2].Success)
+        else if (!m.Groups[2].Success && !bareHour)
         {
             // A bare number isn't a time ("3" could be anything).
             return null;

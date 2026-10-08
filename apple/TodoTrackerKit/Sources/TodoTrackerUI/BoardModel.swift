@@ -301,10 +301,11 @@ public final class BoardModel: ObservableObject {
         change("Waiting for “\(other.title)”", server: .waitFor(id, after: other.id)) { try board.waitFor(id, after: other.id, now: $0) }
     }
 
-    /// Tasks it could wait for: the open ones shown (to do now, then waiting), not itself.
+    /// Tasks it can wait for: the open ones shown (to do now, then waiting), not itself, its own subtasks or parents, or
+    /// what already waits for it.
     public func waitCandidates(for id: UUID) -> [WorkItem] {
-        var seen: Set<UUID> = [id]
-        return (dashboard.now + dashboard.waiting).map(\.item).filter { seen.insert($0.id).inserted }
+        var seen = Set<UUID>()
+        return (dashboard.now + dashboard.waiting).map(\.item).filter { seen.insert($0.id).inserted && board.canWaitFor(id, after: $0.id) }
     }
 
     public func reopen(_ id: UUID) { change("Reopened", server: .reopen(id)) { try board.reopen(id, now: $0) } }
