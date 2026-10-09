@@ -14,7 +14,7 @@ that work with files. Every change is versioned, and nothing needs a Save button
 | **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
 | **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance and syncs with your other computers) |
 | **Linux** | A tray app (`todo-tracker`): runs everything (tasks folder, sync, the web app, MCP); click it for the full window, its menu adds a task and runs the focus timer |
-| **Android** | A native app (Kotlin, Jetpack Compose): Today with the one thing to do now, Do now, Waiting, groups, quick capture, snooze and notes; the same agenda rules as every other app (CI builds the APK) |
+| **Android** | A native app (Kotlin, Jetpack Compose): Today with the one thing to do now, Do now, Waiting, groups, quick capture, snooze and notes, task timers and the focus timer with full-screen breaks; the same rules as every other app (CI builds the APK) |
 | **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
 | **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
 | **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |
@@ -95,7 +95,8 @@ closes it). Its **Time** section starts or stops the timer and lists the time sp
 by hand. Starting a focus session on a task starts that task's timer too (the session's time counts as focus time on
 it). When the session ends, a full-screen break reminds you to rest: take it, skip it, or **Start next focus now**
 (same task, the break ends). When a break you saw runs out, it asks **Break's over: Start next focus** or **Not now**;
-on Windows the notification has the button too. (The iPhone app has the focus timer and breaks but doesn't time tasks.)
+on Windows the notification has the button too. The phone apps do the same (Android and iPhone), and say
+when a focus session or a break ends with the app closed.
 
 To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add rollout steps*), enter one step per line,
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
@@ -183,7 +184,12 @@ Notes for contributors:
   `swift test`.
 * `extension/lib/format.js` and `icons.js` are exact copies of the web app's (a test checks): copy them after changing
   either.
-* Only one copy of the Windows app runs at a time: stop it before running a test build.
+* Only one copy of the Windows app runs at a time: stop it before running a test build (it's fine to stop the copy
+  you use, as long as you start it again afterwards). Point a test copy at its own folder with `--data <folder>`
+  and `--port`, and set `TODOTRACKER_CLOUD=off` so it never syncs into your OneDrive.
+* **Android** builds and runs its unit tests locally with JDK 17, Gradle 8.11 and the Android SDK (platform 35):
+  `gradle testDebugUnitTest assembleDebug` in `android/`. An emulator (`system-images;android-35;google_apis;x86_64`)
+  runs the app for checks by hand; `adb shell date @<seconds>` moves its clock (as root) to reach a break quickly.
 `src/TodoTracker.Windows/bin/.../TodoTracker.exe --smoke-test --smoke-log smoke.log` boots the real app against a
 temporary board and verifies that the API and the sidebar see the same data. CI runs it on every PR.
 
