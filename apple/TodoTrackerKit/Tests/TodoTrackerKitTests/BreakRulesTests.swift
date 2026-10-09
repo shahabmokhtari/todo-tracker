@@ -33,7 +33,7 @@ final class BreakRulesTests: XCTestCase {
             if let over = expect["over"] as? Bool {
                 let seen = (c["seen"] as? String).flatMap(BoardCodec.parseDate)
                 let dismissedOver = (c["dismissedOver"] as? String).flatMap(BoardCodec.parseDate)
-                XCTAssertEqual(Breaks.over(phase: PomodoroPhase(rawValue: p["phase"] as! String)!, endsAt: (p["endsAt"] as? String).flatMap(BoardCodec.parseDate), now: now, seen: seen, dismissedOver: dismissedOver), over, "\(name): over")
+                XCTAssertEqual(Breaks.over(phase: PomodoroPhase(rawValue: p["phase"] as! String)!, running: p["running"] as! Bool, endsAt: (p["endsAt"] as? String).flatMap(BoardCodec.parseDate), breakEndedAt: (p["breakEndedAt"] as? String).flatMap(BoardCodec.parseDate), now: now, seen: seen, dismissedOver: dismissedOver), over, "\(name): over")
             }
             if shown, let due {
                 XCTAssertEqual(due.until, BoardCodec.parseDate(expect["until"] as! String), "\(name): until")

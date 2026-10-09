@@ -41,13 +41,17 @@ export const OVER_FOR_MS = 15 * 60_000;
 
 /**
  * Whether to ask "Break's over: start the next focus?": the break this window saw (`seen`, its end in ms) ran out by
- * time (a skip ends it early, before `seen`), not long ago, no new session has started, and it wasn't answered with
- * Not now (`dismissedOver`). Same rule in the Windows and Apple apps (tests/fixtures/breaks.json).
+ * itself, not long ago, and it wasn't answered with Not now (`dismissedOver`). The timer says when a break ran out
+ * (`breakEndedAt`: never for a skipped or paused one); until it has moved on, a running break at its end counts too.
+ * Same rule in the Windows and Apple apps (tests/fixtures/breaks.json).
  */
 export function breakOver(p, now = Date.now(), seen = null, dismissedOver = null) {
   if (!p || seen == null || dismissedOver === seen) return false;
   const t = typeof now === 'number' ? now : new Date(now).getTime();
   if (t < seen || t - seen >= OVER_FOR_MS) return false;
-  // The old session's focus ended before the break did; a focus phase ending later is a new session.
-  return !(p.phase === 'focus' && (!p.endsAt || new Date(p.endsAt).getTime() > seen));
+  if (p.phase === 'idle') return p.breakEndedAt != null && new Date(p.breakEndedAt).getTime() === seen;
+  if (!p.running || !p.endsAt) return false; // paused
+  const end = new Date(p.endsAt).getTime();
+  // The break itself, run out; or the session before it (both ran out before the timer moved on). Not a new session.
+  return p.phase === 'focus' ? end < seen : end === seen;
 }

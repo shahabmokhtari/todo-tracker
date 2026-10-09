@@ -412,20 +412,17 @@ public final class BoardModel: ObservableObject {
         let due = Breaks.due(board.pomodoro, now: now)
         if let due, due.until != dismissedBreak { return due }
         let seen = due?.until ?? seenBreak
-        guard due == nil, let seen, Breaks.over(phase: board.pomodoro.phase, endsAt: board.pomodoro.endsAt, now: now, seen: seen, dismissedOver: dismissedOver) else { return nil }
+        let p = board.pomodoro
+        guard due == nil, let seen, Breaks.over(phase: p.phase, running: p.isRunning, endsAt: p.endsAt, breakEndedAt: p.breakEndedAt, now: now, seen: seen, dismissedOver: dismissedOver) else { return nil }
         return BreakPrompt(until: seen, isLong: false, isOver: true)
     }
 
     /// What "Start next focus" picks up (nil: no task).
     public var nextFocusTitle: String? { (board.nextFocusItem() ?? dashboard.focus?.item)?.title }
 
-    /// Remembers the break this app saw, and forgets one skipped (it ended before its time: nothing to ask after).
+    /// Remembers the break this app saw (whether it ran out by itself, the timer says).
     private func trackBreak() {
-        if let due = Breaks.due(board.pomodoro, now: now) {
-            if seenBreak != due.until { seenBreak = due.until }
-        } else if let seen = seenBreak, board.pomodoro.phase == .idle, now < seen {
-            seenBreak = nil
-        }
+        if let due = Breaks.due(board.pomodoro, now: now), seenBreak != due.until { seenBreak = due.until }
     }
 
     /// "I'm taking it" (the break timer keeps running), or "Not now" when the break is over.

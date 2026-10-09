@@ -183,56 +183,170 @@
   },
   {
     "name": "the break ran out: back to work",
-    "pomodoro": { "phase": "idle", "running": false, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": null },
+    "pomodoro": {
+      "phase": "idle",
+      "running": false,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null,
+      "breakEndedAt": "2026-01-05T10:05:00Z"
+    },
     "now": "2026-01-05T10:05:30Z",
     "dismissed": null,
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": null,
-    "expect": { "show": false, "over": true }
+    "expect": {
+      "show": false,
+      "over": true
+    }
   },
   {
     "name": "the break ran out before the timer moved on",
-    "pomodoro": { "phase": "shortBreak", "running": true, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": "2026-01-05T10:05:00Z" },
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": true,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:05:00Z",
+      "breakEndedAt": null
+    },
     "now": "2026-01-05T10:05:02Z",
     "dismissed": null,
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": null,
-    "expect": { "show": false, "over": true }
+    "expect": {
+      "show": false,
+      "over": true
+    }
   },
   {
     "name": "break over, answered with Not now",
-    "pomodoro": { "phase": "idle", "running": false, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": null },
+    "pomodoro": {
+      "phase": "idle",
+      "running": false,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null,
+      "breakEndedAt": "2026-01-05T10:05:00Z"
+    },
     "now": "2026-01-05T10:06:00Z",
     "dismissed": "2026-01-05T10:05:00Z",
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": "2026-01-05T10:05:00Z",
-    "expect": { "show": false, "over": false }
+    "expect": {
+      "show": false,
+      "over": false
+    }
   },
   {
     "name": "break over, but the next session already started",
-    "pomodoro": { "phase": "focus", "running": true, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": "2026-01-05T10:31:00Z" },
+    "pomodoro": {
+      "phase": "focus",
+      "running": true,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:31:00Z",
+      "breakEndedAt": null
+    },
     "now": "2026-01-05T10:06:00Z",
     "dismissed": null,
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": null,
-    "expect": { "show": false, "over": false }
+    "expect": {
+      "show": false,
+      "over": false
+    }
   },
   {
     "name": "break over long ago: no more asking",
-    "pomodoro": { "phase": "idle", "running": false, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": null },
+    "pomodoro": {
+      "phase": "idle",
+      "running": false,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null,
+      "breakEndedAt": "2026-01-05T10:05:00Z"
+    },
     "now": "2026-01-05T10:20:00Z",
     "dismissed": null,
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": null,
-    "expect": { "show": false, "over": false }
+    "expect": {
+      "show": false,
+      "over": false
+    }
   },
   {
     "name": "the break still running isn't over",
-    "pomodoro": { "phase": "shortBreak", "running": true, "completedFocusCount": 1, "shortBreakMinutes": 5, "longBreakMinutes": 15, "focusesBeforeLongBreak": 4, "endsAt": "2026-01-05T10:05:00Z" },
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": true,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": "2026-01-05T10:05:00Z",
+      "breakEndedAt": null
+    },
     "now": "2026-01-05T10:03:00Z",
     "dismissed": "2026-01-05T10:05:00Z",
     "seen": "2026-01-05T10:05:00Z",
     "dismissedOver": null,
-    "expect": { "show": false, "over": false }
+    "expect": {
+      "show": false,
+      "over": false
+    }
+  },
+  {
+    "name": "a skipped break isn't over when its time would have ended",
+    "pomodoro": {
+      "phase": "idle",
+      "running": false,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null,
+      "breakEndedAt": null
+    },
+    "now": "2026-01-05T10:05:30Z",
+    "dismissed": null,
+    "seen": "2026-01-05T10:05:00Z",
+    "dismissedOver": null,
+    "expect": {
+      "show": false,
+      "over": false
+    }
+  },
+  {
+    "name": "a paused break isn't over at its old end",
+    "pomodoro": {
+      "phase": "shortBreak",
+      "running": false,
+      "completedFocusCount": 1,
+      "shortBreakMinutes": 5,
+      "longBreakMinutes": 15,
+      "focusesBeforeLongBreak": 4,
+      "endsAt": null,
+      "breakEndedAt": null
+    },
+    "now": "2026-01-05T10:06:00Z",
+    "dismissed": null,
+    "seen": "2026-01-05T10:05:00Z",
+    "dismissedOver": null,
+    "expect": {
+      "show": false,
+      "over": false
+    }
   }
 ]

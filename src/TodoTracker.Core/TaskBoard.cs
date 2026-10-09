@@ -538,7 +538,7 @@ public sealed partial class TaskBoard
             throw new InvalidOperationException("A focus session is already going.");
         }
 
-        var item = NextFocusItem() ?? (fallbackItemId is { } id && Find(id) is { IsDone: false } fallback ? fallback : null);
+        var item = NextFocusItem() ?? (fallbackItemId is { } id && Find(id) is { IsDone: false, IsArchived: false } fallback ? fallback : null);
         StartFocus(item?.Id, actor, now, device);
         return item;
     }

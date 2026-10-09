@@ -77,6 +77,7 @@ public static class BoardSerializer
             PausedRemainingSeconds = board.Pomodoro.PausedRemaining is { } r ? (int)Math.Round(r.TotalSeconds) : null,
             ItemId = board.Pomodoro.ItemId,
             CompletedFocusCount = board.Pomodoro.CompletedFocusCount,
+            BreakEndedAt = board.Pomodoro.BreakEndedAt,
         },
     };
 
@@ -147,7 +148,7 @@ public static class BoardSerializer
         {
             var s = p.Settings;
             board.Pomodoro = new PomodoroTimer(s is null ? null : new PomodoroSettings(s.FocusMinutes, s.ShortBreakMinutes, s.LongBreakMinutes, s.FocusesBeforeLongBreak));
-            board.Pomodoro.Restore(p.Phase, p.EndsAt, p.PausedRemainingSeconds is { } secs ? TimeSpan.FromSeconds(secs) : null, p.ItemId, p.CompletedFocusCount);
+            board.Pomodoro.Restore(p.Phase, p.EndsAt, p.PausedRemainingSeconds is { } secs ? TimeSpan.FromSeconds(secs) : null, p.ItemId, p.CompletedFocusCount, p.BreakEndedAt);
         }
 
         return board;
@@ -383,6 +384,8 @@ public static class BoardSerializer
         public Guid? ItemId { get; set; }
 
         public int CompletedFocusCount { get; set; }
+
+        public DateTimeOffset? BreakEndedAt { get; set; }
     }
 
     private sealed class PomodoroSettingsDocument

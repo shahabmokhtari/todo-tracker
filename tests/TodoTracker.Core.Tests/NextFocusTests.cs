@@ -81,6 +81,48 @@ public sealed class NextFocusTests
     }
 
     [Fact]
+    public void A_break_that_runs_out_by_itself_says_when_a_skipped_or_paused_one_doesnt()
+    {
+        _board.StartFocus(null, Actor.User, T0);
+        _board.TickPomodoro(T0.AddMinutes(31));
+        Assert.Equal(T0.AddMinutes(30), _board.Pomodoro.BreakEndedAt);
+
+        _board.StartNextFocus(null, Actor.User, T0.AddMinutes(32));
+        Assert.Null(_board.Pomodoro.BreakEndedAt);
+
+        _board.TickPomodoro(T0.AddMinutes(32 + 26)); // in the next break
+        _board.SkipFocus(T0.AddMinutes(32 + 27));
+        Assert.Null(_board.Pomodoro.BreakEndedAt);
+
+        _board.StartFocus(null, Actor.User, T0.AddHours(2));
+        _board.TickPomodoro(T0.AddHours(2).AddMinutes(26));
+        _board.PauseFocus(T0.AddHours(2).AddMinutes(27)); // a paused break never runs out
+        _board.TickPomodoro(T0.AddHours(3));
+        Assert.Null(_board.Pomodoro.BreakEndedAt);
+    }
+
+    [Fact]
+    public void When_the_break_ran_out_is_kept_in_the_board_file()
+    {
+        _board.StartFocus(null, Actor.User, T0);
+        _board.TickPomodoro(T0.AddMinutes(31));
+
+        var again = BoardSerializer.Deserialize(BoardSerializer.Serialize(_board));
+
+        Assert.Equal(T0.AddMinutes(30), again.Pomodoro.BreakEndedAt);
+    }
+
+    [Fact]
+    public void An_archived_task_isnt_picked_up()
+    {
+        var old = Task("Old");
+        _board.Complete(old.Id, Actor.User, T0);
+        _board.Archive(old.Id, Actor.User, T0);
+
+        Assert.Null(_board.StartNextFocus(old.Id, Actor.User, T0));
+    }
+
+    [Fact]
     public void Without_any_task_it_starts_a_plain_session()
     {
         Assert.Null(_board.StartNextFocus(null, Actor.User, T0));

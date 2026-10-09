@@ -75,9 +75,10 @@ public sealed partial class BreakScreenViewModel : ObservableObject
     public bool HasNext => NextText.Length > 0;
 
     /// <summary>
-    /// Whether to ask "Break's over": the break this app saw (<paramref name="seen"/>, its end) ran out by time (a skip
-    /// ends it early), not long ago, no new session started, and it wasn't answered with Not now. Mirrors breakOver in
-    /// the web app (tests/fixtures/breaks.json checks both).
+    /// Whether to ask "Break's over": the break this app saw (<paramref name="seen"/>, its end) ran out by itself, not
+    /// long ago, and it wasn't answered with Not now. The timer says when a break ran out (never for a skipped or paused
+    /// one); until it has moved on, a running break at its end counts too. Mirrors breakOver in the web app
+    /// (tests/fixtures/breaks.json checks both).
     /// </summary>
     public static bool Over(PomodoroState? state, DateTimeOffset now, DateTimeOffset? seen, DateTimeOffset? dismissedOver)
     {
@@ -86,8 +87,18 @@ public sealed partial class BreakScreenViewModel : ObservableObject
             return false;
         }
 
-        // The old session's focus ended before the break did; a focus phase ending later is a new session.
-        return !(state.Phase == PomodoroPhase.Focus && (state.EndsAt is not { } focusEnd || focusEnd > end));
+        if (state.Phase == PomodoroPhase.Idle)
+        {
+            return state.BreakEndedAt == end;
+        }
+
+        if (!state.IsRunning || state.EndsAt is not { } ends)
+        {
+            return false; // paused
+        }
+
+        // The break itself, run out; or the session before it (both ran out before the timer moved on). Not a new session.
+        return state.Phase == PomodoroPhase.Focus ? ends < end : ends == end;
     }
 
     /// <summary>When the break is over, or null when none is due now.</summary>
@@ -140,11 +151,6 @@ public sealed partial class BreakScreenViewModel : ObservableObject
         if (due is { } running)
         {
             _seen = running.Until;
-        }
-        else if (_seen is { } seen && _state?.Phase == PomodoroPhase.Idle && now < seen)
-        {
-            // Skipped (here or in another window): it ended before its time, so there's nothing to ask afterwards.
-            _seen = null;
         }
 
         if (due is { } d && d.Until != _dismissed)

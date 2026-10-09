@@ -180,11 +180,6 @@ export function createShell(ctx) {
       remember('tt.break.seen', seenBreak);
     }
 
-    // Skipped (here or in another window): it ended before its time, so there's nothing to ask afterwards.
-    if (seenBreak && p.phase === 'idle' && now < seenBreak) {
-      seenBreak = null;
-      remember('tt.break.seen', null);
-    }
 
     const s = on ? breakState(p, now, dismissedBreak) : { show: false };
     const over = on && !s.show && breakOver(p, now, seenBreak, dismissedOver);

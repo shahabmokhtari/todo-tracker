@@ -73,6 +73,11 @@ internal sealed partial class BreakOverlay : IDisposable
         {
             Sync();
         }
+        else if (e.PropertyName == nameof(BreakScreenViewModel.IsOver))
+        {
+            // The break turned into "Break's over" under the person: a click or key in that moment isn't an answer.
+            _shownAt = DateTime.UtcNow;
+        }
     }
 
     // Raised on another thread. Monitors came or went: cover the screens there are now (or show a break that found
@@ -161,7 +166,8 @@ internal sealed partial class BreakOverlay : IDisposable
             Content = Card(),
             Opacity = SystemParameters.ClientAreaAnimation ? 0 : 1,
         };
-        System.Windows.Automation.AutomationProperties.SetName(window, "Time for a break");
+        // What a screen reader announces follows the screen: the break, or "Break's over".
+        window.SetBinding(System.Windows.Automation.AutomationProperties.NameProperty, new Binding(nameof(BreakScreenViewModel.Title)));
         void Place() => SetWindowPos(new WindowInteropHelper(window).Handle, TopMost, monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, SwpNoActivate);
         window.SourceInitialized += (_, _) => Place();
         // Moving onto a monitor with another scale resizes the window: cover the whole monitor again.
@@ -275,7 +281,7 @@ internal sealed partial class BreakOverlay : IDisposable
         stack.Children.Add(actions);
 
         var card = new Border { Child = stack, Focusable = true, FocusVisualStyle = null, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        System.Windows.Automation.AutomationProperties.SetName(card, "Time for a break");
+        card.SetBinding(System.Windows.Automation.AutomationProperties.NameProperty, new Binding(nameof(BreakScreenViewModel.Title)));
         var grid = new Grid();
         grid.Children.Add(card);
         return grid;

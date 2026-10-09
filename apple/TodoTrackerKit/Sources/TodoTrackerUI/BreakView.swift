@@ -49,6 +49,8 @@ public struct BreakView: View {
             }
         }
         .onAppear { shownAt = Date() }
+        // The break turned into "Break's over" under the person: a click or key in that moment isn't an answer.
+        .onChange(of: model.breakPrompt?.isOver) { _, _ in shownAt = Date() }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(model.breakPrompt?.title ?? "Time for a break")
     }

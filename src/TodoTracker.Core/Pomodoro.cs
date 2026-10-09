@@ -69,6 +69,12 @@ public sealed class PomodoroTimer
 
     public int CompletedFocusCount { get; private set; }
 
+    /// <summary>
+    /// When the last break ran out by itself (null after a skip, a reset, or a new session): the apps ask "Break's over:
+    /// start the next focus?" only then, never for a break that was skipped or is paused.
+    /// </summary>
+    public DateTimeOffset? BreakEndedAt { get; private set; }
+
     public bool IsRunning => EndsAt is not null;
 
     public TimeSpan Remaining(DateTimeOffset now)
@@ -87,6 +93,7 @@ public sealed class PomodoroTimer
         Phase = PomodoroPhase.Focus;
         ItemId = itemId;
         PausedRemaining = null;
+        BreakEndedAt = null;
         EndsAt = now + Settings.DurationOf(PomodoroPhase.Focus);
     }
 
@@ -119,6 +126,7 @@ public sealed class PomodoroTimer
         PausedRemaining = null;
         ItemId = null;
         CompletedFocusCount = 0;
+        BreakEndedAt = null;
     }
 
     /// <summary>Skips the current phase: focus goes to a (short) break without counting; a break ends.</summary>
@@ -131,6 +139,7 @@ public sealed class PomodoroTimer
         else if (Phase != PomodoroPhase.Idle)
         {
             GoIdle();
+            BreakEndedAt = null;
         }
     }
 
@@ -153,18 +162,20 @@ public sealed class PomodoroTimer
 
         var itemId = ItemId;
         GoIdle();
+        BreakEndedAt = endsAt;
         return new PomodoroEvent(PomodoroEventKind.BreakCompleted, itemId, endsAt);
     }
 
     internal void DetachItem() => ItemId = null;
 
-    internal void Restore(PomodoroPhase phase, DateTimeOffset? endsAt, TimeSpan? pausedRemaining, Guid? itemId, int completedFocusCount)
+    internal void Restore(PomodoroPhase phase, DateTimeOffset? endsAt, TimeSpan? pausedRemaining, Guid? itemId, int completedFocusCount, DateTimeOffset? breakEndedAt = null)
     {
         Phase = phase;
         EndsAt = phase == PomodoroPhase.Idle ? null : endsAt;
         PausedRemaining = phase == PomodoroPhase.Idle || endsAt is not null ? null : pausedRemaining;
         ItemId = itemId;
         CompletedFocusCount = Math.Max(0, completedFocusCount);
+        BreakEndedAt = phase == PomodoroPhase.Idle ? breakEndedAt : null;
     }
 
     private void BeginBreak(PomodoroPhase phase, DateTimeOffset from)

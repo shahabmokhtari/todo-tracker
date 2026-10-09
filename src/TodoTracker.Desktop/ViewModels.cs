@@ -299,12 +299,12 @@ public sealed partial class TaskTimerViewModel : ObservableObject
 public sealed record RunningTimerState(Guid ItemId, string Title, DateTimeOffset Start);
 
 /// <summary>Immutable copy of the timer taken inside the store lock (the live timer must not leave the lock).</summary>
-public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration, int CompletedFocusCount = 0, PomodoroSettings? Settings = null)
+public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration, int CompletedFocusCount = 0, PomodoroSettings? Settings = null, DateTimeOffset? BreakEndedAt = null)
 {
     public static PomodoroState Of(PomodoroTimer timer, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(timer);
-        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase), timer.CompletedFocusCount, timer.Settings);
+        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase), timer.CompletedFocusCount, timer.Settings, timer.BreakEndedAt);
     }
 }
 
