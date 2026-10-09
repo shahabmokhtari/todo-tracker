@@ -40,6 +40,12 @@ public sealed class BreakRulesFixtureTests
             Assert.Equal(expect.GetProperty("long").GetBoolean(), due.Value.Long);
             Assert.Equal(expect.GetProperty("tip").GetString(), BreakScreenViewModel.TipFor(due.Value.Until));
         }
+
+        if (expect.TryGetProperty("over", out var over))
+        {
+            DateTimeOffset? At(string key) => c.GetProperty(key).ValueKind == JsonValueKind.Null ? null : c.GetProperty(key).GetDateTimeOffset();
+            Assert.Equal(over.GetBoolean(), BreakScreenViewModel.Over(state, c.GetProperty("now").GetDateTimeOffset(), At("seen"), At("dismissedOver")));
+        }
     }
 
     private static JsonElement Load() =>

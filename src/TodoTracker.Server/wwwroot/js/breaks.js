@@ -35,3 +35,19 @@ export function breakState(p, now = Date.now(), dismissed = null) {
 
 /** A gentle suggestion that changes with each break (stable while it lasts). */
 export const tipFor = (key) => TIPS[Math.abs([...String(key)].reduce((n, c) => (n * 31 + c.charCodeAt(0)) | 0, 7)) % TIPS.length];
+
+/** How long "Break's over" keeps asking after a break ran out (later, the timer's own Start button does). */
+export const OVER_FOR_MS = 15 * 60_000;
+
+/**
+ * Whether to ask "Break's over: start the next focus?": the break this window saw (`seen`, its end in ms) ran out by
+ * time (a skip ends it early, before `seen`), not long ago, no new session has started, and it wasn't answered with
+ * Not now (`dismissedOver`). Same rule in the Windows and Apple apps (tests/fixtures/breaks.json).
+ */
+export function breakOver(p, now = Date.now(), seen = null, dismissedOver = null) {
+  if (!p || seen == null || dismissedOver === seen) return false;
+  const t = typeof now === 'number' ? now : new Date(now).getTime();
+  if (t < seen || t - seen >= OVER_FOR_MS) return false;
+  // The old session's focus ended before the break did; a focus phase ending later is a new session.
+  return !(p.phase === 'focus' && (!p.endsAt || new Date(p.endsAt).getTime() > seen));
+}

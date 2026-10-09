@@ -26,18 +26,34 @@ public sealed partial class BreakScreenViewModel : ObservableObject
         "Step outside or open a window.",
     ];
 
+    /// <summary>How long "Break's over" keeps asking after a break ran out (later, the timer's own Start does).</summary>
+    public static readonly TimeSpan OverFor = TimeSpan.FromMinutes(15);
+
     private readonly Func<Task> _skip;
+    private readonly Func<Task> _startNext;
     private PomodoroState? _state;
     private DateTimeOffset? _until;
     private DateTimeOffset? _dismissed;
 
-    public BreakScreenViewModel(Func<Task> skip)
+    // The break this app saw (shown, or hidden with "I'm taking it"): when it runs out, it asks about the next focus.
+    private DateTimeOffset? _seen;
+    private DateTimeOffset? _dismissedOver;
+
+    public BreakScreenViewModel(Func<Task> skip, Func<Task>? startNext = null)
     {
         _skip = skip;
+        _startNext = startNext ?? (() => Task.CompletedTask);
     }
 
     [ObservableProperty]
     public partial bool IsShown { get; set; }
+
+    /// <summary>"Break's over": the break ran out; Start next focus / Not now (instead of the break's clock).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBreak))]
+    public partial bool IsOver { get; set; }
+
+    public bool IsBreak => !IsOver;
 
     [ObservableProperty]
     public partial bool IsLong { get; set; }
@@ -50,6 +66,29 @@ public sealed partial class BreakScreenViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string TimeText { get; set; } = "0:00";
+
+    /// <summary>"Next: &lt;task&gt;": what Start next focus picks up (empty: no task).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNext))]
+    public partial string NextText { get; set; } = string.Empty;
+
+    public bool HasNext => NextText.Length > 0;
+
+    /// <summary>
+    /// Whether to ask "Break's over": the break this app saw (<paramref name="seen"/>, its end) ran out by time (a skip
+    /// ends it early), not long ago, no new session started, and it wasn't answered with Not now. Mirrors breakOver in
+    /// the web app (tests/fixtures/breaks.json checks both).
+    /// </summary>
+    public static bool Over(PomodoroState? state, DateTimeOffset now, DateTimeOffset? seen, DateTimeOffset? dismissedOver)
+    {
+        if (state is null || seen is not { } end || end == dismissedOver || now < end || now - end >= OverFor)
+        {
+            return false;
+        }
+
+        // The old session's focus ended before the break did; a focus phase ending later is a new session.
+        return !(state.Phase == PomodoroPhase.Focus && (state.EndsAt is not { } focusEnd || focusEnd > end));
+    }
 
     /// <summary>When the break is over, or null when none is due now.</summary>
     public static (DateTimeOffset Until, bool Long)? Due(PomodoroState? state, DateTimeOffset now)
@@ -88,39 +127,73 @@ public sealed partial class BreakScreenViewModel : ObservableObject
         return Tips[(int)(Math.Abs((long)hash) % Tips.Length)];
     }
 
-    internal void Update(PomodoroState state, DateTimeOffset now)
+    internal void Update(PomodoroState state, DateTimeOffset now, string? next = null)
     {
         _state = state;
+        NextText = string.IsNullOrWhiteSpace(next) ? string.Empty : $"Next: {next}";
         Tick(now);
     }
 
     internal void Tick(DateTimeOffset now)
     {
         var due = Due(_state, now);
-        if (due is not { } d || d.Until == _dismissed)
+        if (due is { } running)
         {
-            IsShown = false;
+            _seen = running.Until;
+        }
+        else if (_seen is { } seen && _state?.Phase == PomodoroPhase.Idle && now < seen)
+        {
+            // Skipped (here or in another window): it ended before its time, so there's nothing to ask afterwards.
+            _seen = null;
+        }
+
+        if (due is { } d && d.Until != _dismissed)
+        {
+            if (_until != d.Until || IsOver)
+            {
+                _until = d.Until;
+                IsOver = false;
+                IsLong = d.Long;
+                Title = d.Long ? "Time for a longer break" : "Time for a break";
+                Tip = TipFor(d.Until);
+            }
+
+            var seconds = (int)Math.Ceiling((d.Until - now).TotalSeconds);
+            TimeText = $"{seconds / 60}:{seconds % 60:00}";
+            IsShown = true;
             return;
         }
 
-        if (_until != d.Until)
+        if (due is null && Over(_state, now, _seen, _dismissedOver))
         {
-            _until = d.Until;
-            IsLong = d.Long;
-            Title = d.Long ? "Time for a longer break" : "Time for a break";
-            Tip = TipFor(d.Until);
+            if (!IsOver)
+            {
+                IsOver = true;
+                Title = "Break’s over";
+                Tip = "Ready for the next one? One small step is enough.";
+                TimeText = string.Empty;
+            }
+
+            IsShown = true;
+            return;
         }
 
-        var seconds = (int)Math.Ceiling((d.Until - now).TotalSeconds);
-        TimeText = $"{seconds / 60}:{seconds % 60:00}";
-        IsShown = true;
+        IsShown = false;
     }
 
-    /// <summary>"I'm taking it": the screen goes away; the break timer keeps running.</summary>
+    /// <summary>"I'm taking it" (the break timer keeps running), or "Not now" when the break is over.</summary>
     [RelayCommand]
     private void TakeBreak()
     {
-        _dismissed = _until;
+        if (IsOver)
+        {
+            _dismissedOver = _seen;
+        }
+        else
+        {
+            _dismissed = _until;
+        }
+
         IsShown = false;
     }
 
@@ -129,7 +202,19 @@ public sealed partial class BreakScreenViewModel : ObservableObject
     private async Task SkipBreak()
     {
         _dismissed = _until;
+        _seen = null;
         IsShown = false;
         await _skip().ConfigureAwait(true);
+    }
+
+    /// <summary>The next focus session now (during the break, or when it's over): on the last task, else today's top one.</summary>
+    [RelayCommand]
+    private async Task StartNextFocus()
+    {
+        _dismissed = _until;
+        _dismissedOver = _seen;
+        _seen = null;
+        IsShown = false;
+        await _startNext().ConfigureAwait(true);
     }
 }

@@ -33,7 +33,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         _shell = shell;
         _options = options;
         _store.Changed += OnStoreChanged;
-        Break = new BreakScreenViewModel(SkipPomodoro);
+        Break = new BreakScreenViewModel(SkipPomodoro, StartNextFocus);
         _clockTimer = time.CreateTimer(_ => _shell.RunOnUi(() =>
         {
             var now = _time.GetUtcNow();
@@ -182,7 +182,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         NextUpText = snapshot.NextUp;
         Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
-        Break.Update(snapshot.Pomodoro, now);
+        Break.Update(snapshot.Pomodoro, now, snapshot.NextFocus);
         Timer.Update(snapshot.Timer, now);
         ActiveTitle = snapshot.Timer?.Title ?? Focus?.Title;
     }
@@ -544,6 +544,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task SkipPomodoro() => Pomo(b => b.SkipFocus(_time.GetUtcNow()));
 
+    /// <summary>The next focus session (from the break screen or a notification): on the last task, else the top one.</summary>
+    private Task StartNextFocus() => Run(async () =>
+    {
+        var task = await _store.UpdateAsync(b => b.StartNextFocus(Focus?.Id, Actor.User, _time.GetUtcNow())?.Title).ConfigureAwait(true);
+        return task is null ? "Focus started" : $"Focus started: {task}";
+    });
+
     [RelayCommand]
     private Task ResetPomodoro() => Pomo(b => b.ResetFocus(_time.GetUtcNow()));
 
@@ -647,28 +654,31 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return keep;
     }
 
-    public Task HandleToastActionAsync(ToastAction action, Guid itemId, Guid? reminderId) => action switch
+    /// <summary>A button on a notification: a reminder's (for <paramref name="itemId"/>), or the focus timer's.</summary>
+    public Task HandleToastActionAsync(ToastAction action, Guid? itemId, Guid? reminderId) => (action, itemId) switch
     {
-        ToastAction.Done => Run(async () =>
+        (ToastAction.NextFocus, _) => StartNextFocus(),
+        (ToastAction.Done, { } id) => Run(async () =>
         {
-            await _store.UpdateAsync(b => b.Complete(itemId, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+            await _store.UpdateAsync(b => b.Complete(id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
             return "Done 🎉";
         }),
-        ToastAction.Snooze => Run(async () =>
+        (ToastAction.Snooze, { } id) => Run(async () =>
         {
             await _store.UpdateAsync(b =>
             {
                 var now = _time.GetUtcNow();
                 if (reminderId is { } rid)
                 {
-                    b.DismissReminder(itemId, rid, Actor.User, now);
+                    b.DismissReminder(id, rid, Actor.User, now);
                 }
 
-                b.ScheduleNextAction(itemId, now.AddHours(1), Actor.User, now, notify: true);
+                b.ScheduleNextAction(id, now.AddHours(1), Actor.User, now, notify: true);
             }).ConfigureAwait(true);
             return "Snoozed 1 hour";
         }),
-        _ => OpenItem(itemId),
+        (_, { } id) => OpenItem(id),
+        _ => Task.CompletedTask,
     };
 
     private Task OpenItem(Guid itemId)
@@ -746,7 +756,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         PomodoroState Pomodoro,
         string? PomodoroItem,
         bool GroupMissing,
-        RunningTimerState? Timer = null);
+        RunningTimerState? Timer = null,
+        string? NextFocus = null);
 
     private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
     {
@@ -800,7 +811,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             PomodoroState.Of(board.Pomodoro, now),
             board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
             GroupMissing: false,
-            timer);
+            timer,
+            (board.NextFocusItem() ?? d.Focus?.Item)?.Title);
     }
 
     private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)

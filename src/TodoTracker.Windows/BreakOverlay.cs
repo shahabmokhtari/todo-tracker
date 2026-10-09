@@ -248,16 +248,30 @@ internal sealed partial class BreakOverlay : IDisposable
             return button;
         }
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
-        actions.Children.Add(Action("I’m taking it", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: true));
-        actions.Children.Add(Action("Skip the break", () => _vm.SkipBreakCommand.ExecuteAsync(null), primary: false));
+        var visible = new BooleanToVisibilityConverter();
+        T Shown<T>(T element, string when)
+            where T : FrameworkElement
+        {
+            element.SetBinding(UIElement.VisibilityProperty, new Binding(when) { Converter = visible });
+            return element;
+        }
+
+        // During the break: take it, start the next focus now, or skip it. When it's over: start the next, or not now.
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
+        actions.Children.Add(Shown(Action("I’m taking it", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: true), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("▶ Start next focus now", () => _vm.StartNextFocusCommand.ExecuteAsync(null), primary: false), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("Skip the break", () => _vm.SkipBreakCommand.ExecuteAsync(null), primary: false), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("▶ Start next focus", () => _vm.StartNextFocusCommand.ExecuteAsync(null), primary: true), nameof(BreakScreenViewModel.IsOver)));
+        actions.Children.Add(Shown(Action("Not now", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: false), nameof(BreakScreenViewModel.IsOver)));
 
         var stack = new StackPanel { MaxWidth = 620, Margin = new Thickness(32) };
-        stack.Children.Add(Text(null, 46, white, FontWeights.Normal, "☕"));
+        stack.Children.Add(Shown(Text(null, 46, white, FontWeights.Normal, "☕"), nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(null, 46, white, FontWeights.Normal, "🎯"), nameof(BreakScreenViewModel.IsOver)));
         stack.Children.Add(Text(nameof(BreakScreenViewModel.Title), 34, white, FontWeights.Bold));
         stack.Children.Add(Text(nameof(BreakScreenViewModel.Tip), 19, soft, FontWeights.Normal));
-        stack.Children.Add(clock);
-        stack.Children.Add(Text(null, 15, soft, FontWeights.Normal, "Your focus session is done. Step away; the timer tells you when to come back."));
+        stack.Children.Add(Shown(clock, nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(null, 15, soft, FontWeights.Normal, "Your focus session is done. Step away; the timer tells you when to come back."), nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(nameof(BreakScreenViewModel.NextText), 16, white, FontWeights.SemiBold), nameof(BreakScreenViewModel.HasNext)));
         stack.Children.Add(actions);
 
         var card = new Border { Child = stack, Focusable = true, FocusVisualStyle = null, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };

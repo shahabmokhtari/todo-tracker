@@ -4,9 +4,11 @@ import Foundation
 public struct BreakPrompt: Equatable, Sendable {
     public let until: Date
     public let isLong: Bool
-    public var tip: String { Breaks.tip(for: until) }
+    /// "Break's over": the break ran out (`until` is when); Start next focus / Not now instead of the clock.
+    public var isOver = false
+    public var tip: String { isOver ? "Ready for the next one? One small step is enough." : Breaks.tip(for: until) }
 
-    public var title: String { isLong ? "Time for a longer break" : "Time for a break" }
+    public var title: String { isOver ? "Break’s over" : isLong ? "Time for a longer break" : "Time for a break" }
 }
 
 /// The full-screen break after a focus session: the same rules as the web app and Windows
@@ -39,6 +41,18 @@ public enum Breaks {
         default:
             return nil
         }
+    }
+
+    /// How long "Break's over" keeps asking after a break ran out (later, the timer's own Start does).
+    public static let overFor: TimeInterval = 15 * 60
+
+    /// Whether to ask "Break's over": the break this app saw (`seen`, its end) ran out by time (a skip ends it early),
+    /// not long ago, no new session started, and it wasn't answered with Not now. Same rule as the web app and Windows.
+    public static func over(phase: PomodoroPhase, endsAt: Date?, now: Date, seen: Date?, dismissedOver: Date?) -> Bool {
+        guard let seen, seen != dismissedOver, now >= seen, now.timeIntervalSince(seen) < overFor else { return false }
+        // The old session's focus ended before the break did; a focus phase ending later is a new session.
+        if phase == .focus { return endsAt.map { $0 <= seen } ?? false }
+        return true
     }
 
     public static func due(_ timer: PomodoroTimer, now: Date) -> BreakPrompt? {

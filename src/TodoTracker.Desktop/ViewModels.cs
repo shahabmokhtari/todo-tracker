@@ -33,6 +33,9 @@ public enum ToastAction
     Open,
     Done,
     Snooze,
+
+    /// <summary>The focus timer's notification: start the next focus session.</summary>
+    NextFocus,
 }
 
 /// <summary>Snooze a card: one of the shared quick choices (<see cref="Snooze.Choices"/> id), a typed rule, or until another task is done.</summary>

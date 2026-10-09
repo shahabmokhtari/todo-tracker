@@ -32,6 +32,17 @@ final class BreakModelTests: XCTestCase {
         XCTAssertEqual(model.board.pomodoro.completedFocusCount, 1)
     }
 
+    func testStartNextFocusFromTheBreak() throws {
+        let model = try modelWithFocusEndedJustNow()
+        XCTAssertNotNil(model.breakPrompt)
+
+        model.startNextFocus()
+
+        XCTAssertNil(model.breakPrompt)
+        XCTAssertEqual(model.board.pomodoro.phase, .focus)
+        XCTAssertEqual(model.board.pomodoro.completedFocusCount, 1)
+    }
+
     func testFullScreenBreaksCanBeTurnedOff() throws {
         let model = try modelWithFocusEndedJustNow()
         model.fullScreenBreaks = false

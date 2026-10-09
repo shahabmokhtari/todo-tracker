@@ -288,6 +288,23 @@ public final class TaskBoard {
 
     public func resetFocus() { pomodoro.reset() }
 
+    /// The task "Start next focus" picks up: the last session's, if it's still there and open.
+    public func nextFocusItem() -> WorkItem? {
+        guard let id = pomodoro.itemId, let item = index[id], !item.isDone else { return nil }
+        return item
+    }
+
+    /// "Start next focus": ends the break and starts a session on the last session's task, else `fallback`. A session
+    /// that just ran out counts first; one still running is never restarted. Same as TodoTracker.Core.
+    @discardableResult
+    public func startNextFocus(fallback: UUID?, actor: Actor = .user, now: Date) throws -> WorkItem? {
+        tickPomodoro(now: now)
+        if pomodoro.phase == .focus { throw BoardError.conflict("A focus session is already going.") }
+        let item = nextFocusItem() ?? fallback.flatMap { index[$0] }.flatMap { $0.isDone ? nil : $0 }
+        try startFocus(item?.id, actor: actor, now: now)
+        return item
+    }
+
     @discardableResult
     public func tickPomodoro(now: Date) -> [PomodoroEvent] {
         var events: [PomodoroEvent] = []

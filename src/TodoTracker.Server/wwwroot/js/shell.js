@@ -1,7 +1,7 @@
 // The app shell: views (hash routes), the side navigation (bottom bar on phones), the timer in the top bar, the break
 // screen after a focus session, and the command palette (Ctrl+K).
 
-import { breakState, tipFor } from './breaks.js';
+import { breakState, breakOver, tipFor } from './breaks.js';
 import { rank } from './palette.js';
 import { clock, duration } from './timefmt.js';
 
@@ -138,23 +138,57 @@ export function createShell(ctx) {
   const screen = $('#break');
   let shown = null;
   let shownAt = 0;
+  // The break this window saw (shown, or hidden with "I'm taking it"): when it runs out, it asks about the next focus.
+  let seenBreak = Number(sessionStorage.getItem('tt.break.seen')) || null;
+  let dismissedOver = Number(sessionStorage.getItem('tt.break.over')) || null;
   // The screen can appear mid-sentence: keys and clicks in the first moment are typing, not an answer.
   const settled = () => Date.now() - shownAt > 800;
+  const remember = (key, value) => (value ? sessionStorage.setItem(key, String(value)) : sessionStorage.removeItem(key));
 
   function hideBreak(key) {
-    dismissedBreak = key;
-    sessionStorage.setItem('tt.break.dismissed', String(key));
+    if (String(key).startsWith('over:')) {
+      dismissedOver = Number(String(key).slice(5));
+      remember('tt.break.over', dismissedOver);
+    } else {
+      dismissedBreak = key;
+      remember('tt.break.dismissed', key);
+    }
+
     screen.hidden = true;
     shown = null;
     ctx.restoreFocus?.();
+  }
+
+  /** Ends the break (or the wait after it) and starts a focus session on the last task (else today's top one). */
+  async function startNext(key) {
+    if (!settled()) return;
+    hideBreak(key);
+    seenBreak = null;
+    remember('tt.break.seen', null);
+    await ctx.act(ctx.post('/api/pomodoro/next', { itemId: ctx.dashboard()?.focus?.id }), 'Focus started');
   }
 
   function renderBreak(p) {
     // The focus timer is a plugin: switched off, there are no breaks either. In the Windows app's window, with
     // full-screen breaks on, the app itself shows the break on every screen (it sets this flag).
     const native = window.__ttNativeBreaks === true;
-    const s = ctx.pluginOn('focus-timer') && !native ? breakState(p, Date.now(), dismissedBreak) : { show: false };
-    if (!s.show) {
+    const on = ctx.pluginOn('focus-timer') && !native;
+    const now = Date.now();
+    const during = on ? breakState(p, now, null) : { show: false };
+    if (during.show && seenBreak !== during.until) {
+      seenBreak = during.until;
+      remember('tt.break.seen', seenBreak);
+    }
+
+    // Skipped (here or in another window): it ended before its time, so there's nothing to ask afterwards.
+    if (seenBreak && p.phase === 'idle' && now < seenBreak) {
+      seenBreak = null;
+      remember('tt.break.seen', null);
+    }
+
+    const s = on ? breakState(p, now, dismissedBreak) : { show: false };
+    const over = on && !s.show && breakOver(p, now, seenBreak, dismissedOver);
+    if (!s.show && !over) {
       if (shown) {
         screen.hidden = true;
         shown = null;
@@ -164,26 +198,46 @@ export function createShell(ctx) {
       return;
     }
 
-    const left = Math.max(0, Math.ceil((s.until - Date.now()) / 1000));
-    if (shown === s.key) {
+    const key = over ? `over:${seenBreak}` : s.key;
+    const left = over ? 0 : Math.max(0, Math.ceil((s.until - now) / 1000));
+    if (shown === key) {
       const clockEl = document.getElementById('break-clock');
       if (clockEl) clockEl.textContent = clock(left);
       return;
     }
 
-    shown = s.key;
-    shownAt = Date.now();
-    const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { if (!settled()) return; hideBreak(s.key); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
-    screen.replaceChildren(
-      h('div', { class: 'break-card', tabindex: -1 },
-        h('span', { class: 'break-icon' }, icon('coffee', { size: 40 })),
-        h('h2', { id: 'break-title' }, s.long ? 'Time for a longer break' : 'Time for a break'),
-        h('p', { class: 'break-tip' }, tipFor(s.key)),
-        h('div', { class: 'break-clock', id: 'break-clock', role: 'timer', 'aria-live': 'off' }, clock(left)),
-        h('p', { class: 'break-sub' }, 'Your focus session is done. Step away; the timer tells you when to come back.'),
-        h('div', { class: 'break-actions' },
-          h('button', { class: 'btn primary', type: 'button', onclick: () => { if (settled()) hideBreak(s.key); } }, 'I’m taking it'),
-          skip)));
+    shown = key;
+    shownAt = now;
+    const next = p.nextItemTitle ?? ctx.dashboard()?.focus?.title;
+    const nextLine = next ? h('p', { class: 'break-next' }, 'Next: ', h('strong', null, next)) : null;
+    const startButton = (primary) => h('button', { class: `btn ${primary ? 'primary' : 'light'}`, type: 'button', onclick: () => startNext(key) },
+      icon('play', { size: 16 }), primary ? 'Start next focus' : 'Start next focus now');
+    if (over) {
+      screen.replaceChildren(
+        h('div', { class: 'break-card over', tabindex: -1 },
+          h('span', { class: 'break-icon' }, icon('target', { size: 40 })),
+          h('h2', { id: 'break-title' }, 'Break’s over'),
+          h('p', { class: 'break-tip' }, 'Ready for the next one? One small step is enough.'),
+          nextLine,
+          h('div', { class: 'break-actions' },
+            startButton(true),
+            h('button', { class: 'btn ghost light', type: 'button', onclick: () => { if (settled()) hideBreak(key); } }, 'Not now'))));
+    } else {
+      const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { if (!settled()) return; hideBreak(key); seenBreak = null; remember('tt.break.seen', null); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
+      screen.replaceChildren(
+        h('div', { class: 'break-card', tabindex: -1 },
+          h('span', { class: 'break-icon' }, icon('coffee', { size: 40 })),
+          h('h2', { id: 'break-title' }, s.long ? 'Time for a longer break' : 'Time for a break'),
+          h('p', { class: 'break-tip' }, tipFor(s.key)),
+          h('div', { class: 'break-clock', id: 'break-clock', role: 'timer', 'aria-live': 'off' }, clock(left)),
+          h('p', { class: 'break-sub' }, 'Your focus session is done. Step away; the timer tells you when to come back.'),
+          h('div', { class: 'break-actions' },
+            h('button', { class: 'btn primary', type: 'button', onclick: () => { if (settled()) hideBreak(key); } }, 'I’m taking it'),
+            startButton(false),
+            skip),
+          nextLine));
+    }
+
     ctx.saveFocus?.();
     screen.hidden = false;
     // The card takes focus (not a button): a key pressed while typing can't answer for the user.
