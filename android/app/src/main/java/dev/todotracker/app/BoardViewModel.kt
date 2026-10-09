@@ -14,6 +14,7 @@ import dev.todotracker.core.Dashboard
 import dev.todotracker.core.NewTask
 import dev.todotracker.core.BreakPrompt
 import dev.todotracker.core.Breaks
+import dev.todotracker.core.PomodoroEventKind
 import dev.todotracker.core.PomodoroPhase
 import dev.todotracker.core.QuickCaptureParser
 import dev.todotracker.core.RunningTimer
@@ -81,6 +82,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     var breakPrompt: BreakPrompt? by mutableStateOf(null)
         private set
 
+    /** Whether the app is on screen (it tells the person itself; off screen, a notification does). */
+    var appVisible: Boolean = true
+
+    /** A focus session (true) or a break (false) ran out while the app was off screen: say so now. */
+    var onPhaseEnded: (Boolean) -> Unit = {}
+
     /** Called when the focus timer's next end changes (the app schedules a notification for it); told at once when set. */
     var onFocusEnd: (Instant?, Boolean) -> Unit = { _, _ -> }
         set(value) {
@@ -124,8 +131,11 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     /** Every second: the clocks move; the focus timer moves on (saved); every 30 s the lists follow the clock too. */
     private fun tick(lists: Boolean) {
         now = Instant.now()
-        if (!readOnly && board.tickPomodoro(now).isNotEmpty()) {
+        val events = if (readOnly) emptyList() else board.tickPomodoro(now)
+        if (events.isNotEmpty()) {
             save(BoardCodec.encode(board))
+            // Running in the background (a locked phone): this moved the timer on before the alarm could ring.
+            if (!appVisible) onPhaseEnded(events.last().kind == PomodoroEventKind.FOCUS_COMPLETED)
             refresh()
         } else if (lists) {
             refresh()

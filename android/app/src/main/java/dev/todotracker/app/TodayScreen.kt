@@ -1,8 +1,6 @@
 package dev.todotracker.app
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -230,8 +228,9 @@ private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, 
 
 @Composable
 private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
-    // Scrolls sideways on a narrow phone rather than squeezing the buttons.
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+    // Wraps onto a second line on a narrow phone (every button stays in sight).
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!entry.item.hasOpenChildren) Button(onClick = { vm.complete(entry.item.id) }) { Text("Done") }
         entry.dueReminder?.let { r -> OutlinedButton(onClick = { vm.dismissReminder(entry.item.id, r.id) }) { Text("Dismiss") } }
         LaterMenu(entry.item.id, vm)

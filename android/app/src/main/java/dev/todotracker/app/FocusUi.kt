@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -74,7 +75,8 @@ fun FocusBar(vm: BoardViewModel, onStart: () -> Unit) {
         PomodoroPhase.SHORT_BREAK -> "Break"
         PomodoroPhase.LONG_BREAK -> "Long break"
     } + (f.itemTitle?.takeIf { f.phase != PomodoroPhase.IDLE }?.let { " · $it" } ?: "") + (if (f.phase != PomodoroPhase.IDLE && !f.running) " (paused)" else "")
-    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+    // Above the gesture bar (the app draws edge to edge).
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(34.dp), color = ring, strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)

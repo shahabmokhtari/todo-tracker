@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // When a focus session or break ends with the app closed, the phone says so.
         vm.onFocusEnd = { at, focus -> FocusAlarm.schedule(applicationContext, at, focus) }
+        vm.onPhaseEnded = { focusEnded -> FocusAlarm.notify(applicationContext, focusEnded) }
         setContent {
             TodoTrackerTheme {
                 TodayScreen(vm)
@@ -31,6 +32,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         vm.refresh()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        vm.appVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        vm.appVisible = false
     }
 }
 
