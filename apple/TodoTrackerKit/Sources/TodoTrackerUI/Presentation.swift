@@ -62,4 +62,21 @@ public enum Presentation {
     public static func workstreams(_ dashboard: Dashboard) -> [OverviewEntry] {
         dashboard.overview.filter { !$0.item.children.isEmpty }
     }
+
+    /// A running timer's clock: "4:07", "1:02:09" (same as the web app).
+    public static func clock(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        let (h, m, sec) = (s / 3600, (s % 3600) / 60, s % 60)
+        return h > 0 ? "\(h):" + String(format: "%02d:%02d", m, sec) : "\(m):" + String(format: "%02d", sec)
+    }
+
+    /// Time spent, as people read it: "45 s", "25 min", "1 h 05 min", "12 h" (same as the web app's duration).
+    public static func duration(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds.rounded()))
+        if s < 60 { return "\(s) s" }
+        let minutes = Int((Double(s) / 60).rounded())
+        if minutes < 60 { return "\(minutes) min" }
+        let (h, m) = (minutes / 60, minutes % 60)
+        return m == 0 ? "\(h) h" : "\(h) h " + String(format: "%02d", m) + " min"
+    }
 }

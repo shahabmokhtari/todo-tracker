@@ -48,6 +48,8 @@ final class ServerAPITests: XCTestCase {
         XCTAssertEqual(request(.pomodoro(.start, itemId: item)),
                        ServerRequest(method: "POST", path: "/api/pomodoro/start", body: #"{"itemId":"8b0f2c1e-1111-4a6b-9c1d-000000000001"}"#))
         XCTAssertEqual(request(.pomodoro(.pause, itemId: nil)), ServerRequest(method: "POST", path: "/api/pomodoro/pause"))
+        XCTAssertEqual(request(.startTimer(item)), ServerRequest(method: "POST", path: "/api/timer/start", body: #"{"itemId":"8b0f2c1e-1111-4a6b-9c1d-000000000001"}"#))
+        XCTAssertEqual(request(.stopTimer), ServerRequest(method: "POST", path: "/api/timer/stop"))
         XCTAssertEqual(request(.pomodoro(.next, itemId: item)),
                        ServerRequest(method: "POST", path: "/api/pomodoro/next", body: #"{"itemId":"8b0f2c1e-1111-4a6b-9c1d-000000000001"}"#))
         XCTAssertEqual(request(.setTheme("dark")), ServerRequest(method: "PUT", path: "/api/settings/theme", body: #"{"theme":"dark"}"#))

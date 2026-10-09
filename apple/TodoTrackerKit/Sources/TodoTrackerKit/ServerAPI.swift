@@ -18,6 +18,9 @@ public enum ServerAction: Equatable, Sendable {
     case delete(UUID)
     case addGroup(name: String)
     case pomodoro(PomodoroCommand, itemId: UUID?)
+    /// Time a task (any other timer stops), or stop the timer.
+    case startTimer(UUID)
+    case stopTimer
     case setTheme(String)
 }
 
@@ -81,6 +84,10 @@ public enum ServerAPI {
             return post("/api/groups", ["name": name])
         case let .pomodoro(command, itemId):
             return post("/api/pomodoro/\(command.rawValue)", itemId.map { ["itemId": id($0)] as [String: Any?] })
+        case let .startTimer(item):
+            return post("/api/timer/start", ["itemId": id(item)])
+        case .stopTimer:
+            return post("/api/timer/stop")
         case let .setTheme(theme):
             return ServerRequest(method: "PUT", path: "/api/settings/theme", body: json(["theme": theme]))
         }

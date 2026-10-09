@@ -18,6 +18,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // When a focus session or break ends with the app closed, the phone says so.
+        vm.onPhaseEnds = { ends -> FocusAlarm.schedule(applicationContext, ends) }
+        vm.onPhaseEnded = { end -> FocusAlarm.notify(applicationContext, end) }
         setContent {
             TodoTrackerTheme {
                 TodayScreen(vm)
@@ -28,7 +31,17 @@ class MainActivity : ComponentActivity() {
     // Back to the app: what came back meanwhile (this morning's "tomorrow" tasks) shows at once.
     override fun onResume() {
         super.onResume()
-        vm.refresh()
+        vm.resume()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        vm.appVisible = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        vm.appVisible = false
     }
 }
 

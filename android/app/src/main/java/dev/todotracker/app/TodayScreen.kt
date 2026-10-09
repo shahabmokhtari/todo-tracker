@@ -60,6 +60,24 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
     var noteFor by rememberSaveable { mutableStateOf<String?>(null) }
     var addingGroup by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    // Starting focus is when notifications start to matter (the end of a session or a break, with the app closed).
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+    var askExact by rememberSaveable { mutableStateOf(false) }
+    val startFocusOn: (UUID?) -> Unit = { id ->
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+        vm.startFocus(id)
+        // On time to the minute needs the person's OK on recent Android: offered once, with why.
+        val prefs = context.getSharedPreferences("focus-alarm", android.content.Context.MODE_PRIVATE)
+        if (!FocusAlarm.exactAllowed(context) && !prefs.getBoolean("asked-exact", false)) {
+            prefs.edit().putBoolean("asked-exact", true).apply()
+            askExact = true
+        }
+    }
     val undoable = vm.undoable
     LaunchedEffect(undoable) {
         if (undoable != null) {
@@ -68,23 +86,28 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             vm.undoable = null
         }
     }
-    Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = { FocusBar(vm, onStart = { startFocusOn(null) }) },
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { padding ->
         Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
             Header(vm)
             GroupTabs(vm, onAdd = { addingGroup = true })
             Capture(vm)
             vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp)) }
+            TimerBar(vm)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
                 val focus = vm.dashboard.focus
                 if (focus == null) {
                     item { Text("Nothing is due. Nice.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp)) }
                 } else {
-                    item { FocusCard(focus, vm, onNote = { noteFor = focus.item.id.toString() }) }
+                    item { FocusCard(focus, vm, onNote = { noteFor = focus.item.id.toString() }, onFocus = startFocusOn) }
                 }
                 val rest = vm.dashboard.now.drop(1)
                 if (rest.isNotEmpty()) {
                     item { SectionTitle("Do now", rest.size) }
-                    items(rest, key = { it.item.id }) { entry -> TaskRow(entry, vm, onNote = { noteFor = entry.item.id.toString() }) }
+                    items(rest, key = { it.item.id }) { entry -> TaskRow(entry, vm, onNote = { noteFor = entry.item.id.toString() }, onFocus = startFocusOn) }
                 }
                 if (vm.dashboard.waiting.isNotEmpty()) {
                     item { SectionTitle("Waiting", vm.dashboard.waiting.size) }
@@ -99,6 +122,23 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
     }
     if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
+    if (askExact) {
+        AlertDialog(
+            onDismissRequest = { askExact = false },
+            title = { Text("Ring on time?") },
+            text = { Text("So the end of a focus session or a break is told right when it happens (not a few minutes later), allow Todo Tracker to set alarms.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askExact = false
+                    if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
+                    }
+                }) { Text("Allow") }
+            },
+            dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
+        )
+    }
+    BreakScreen(vm)
 }
 
 @Composable
@@ -187,35 +227,40 @@ private fun Meta(entry: AgendaEntry) {
 }
 
 @Composable
-private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit) {
+private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Text(entry.item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Meta(entry)
-            Actions(entry, vm, onNote)
+            Actions(entry, vm, onNote, onFocus)
         }
     }
 }
 
 @Composable
-private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit) {
+private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(entry.item.title, style = MaterialTheme.typography.titleMedium)
             Meta(entry)
-            Actions(entry, vm, onNote)
+            Actions(entry, vm, onNote, onFocus)
         }
     }
 }
 
 @Composable
-private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
+    // Wraps onto a second line on a narrow phone (every button stays in sight).
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!entry.item.hasOpenChildren) Button(onClick = { vm.complete(entry.item.id) }) { Text("Done") }
         entry.dueReminder?.let { r -> OutlinedButton(onClick = { vm.dismissReminder(entry.item.id, r.id) }) { Text("Dismiss") } }
         LaterMenu(entry.item.id, vm)
         TextButton(onClick = onNote) { Text("Note") }
+        TextButton(onClick = { onFocus(entry.item.id) }) { Text("Focus") }
+        val timing = vm.timer?.item?.id == entry.item.id
+        TextButton(onClick = { vm.toggleTimer(entry.item.id) }) { Text(if (timing) "Stop timer" else "Timer") }
     }
 }
 

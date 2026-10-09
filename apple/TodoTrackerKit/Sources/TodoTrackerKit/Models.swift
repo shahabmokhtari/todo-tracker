@@ -161,6 +161,8 @@ public final class WorkItem: Identifiable {
     public internal(set) var children: [WorkItem] = []
     public internal(set) var reminders: [Reminder] = []
     public internal(set) var notes: [Note] = []
+    /// Time spent on it (TimeTracking.swift).
+    public internal(set) var timeEntries: [TimeEntry] = []
 
     init(id: UUID = UUID(), title: String, priority: Priority, createdAt: Date, groupId: UUID) {
         self.id = id

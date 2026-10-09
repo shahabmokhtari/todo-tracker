@@ -23,6 +23,9 @@ final class ExportFixtureTests: XCTestCase {
         XCTAssertTrue(board.items.contains { $0.title == "Old task" && $0.isDone })
         // Snoozed until another task is done.
         XCTAssertEqual(board.items.first { $0.title == "Announce it" }?.waitingFor?.id, launch.id)
+        // Time spent (25 minutes on the copy).
+        XCTAssertEqual(launch.children[0].timeSpent(Date(), includeSubtasks: false), 25 * 60)
+        XCTAssertEqual(launch.timeSpent(Date()), 25 * 60)
     }
 
     func testAuthorsFromANewerVersionStillRead() throws {

@@ -125,6 +125,7 @@ struct BoardDocument: Codable {
         item.notes = (doc.notes ?? []).map {
             Note(id: $0.id, at: $0.at, text: $0.text ?? "", author: $0.author ?? .user, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
         }
+        item.timeEntries = (doc.time ?? []).map { TimeEntry(id: $0.id, start: $0.start, end: $0.end, source: $0.source ?? .manual, device: $0.device) }
         try board.attach(item, to: parent)
         for child in doc.children ?? [] { try load(child, into: board, parent: item) }
     }
@@ -151,6 +152,7 @@ struct ItemDocument: Codable {
     var groupId: UUID?
     var reminders: [ReminderDocument]?
     var notes: [NoteDocument]?
+    var time: [TimeEntryDocument]?
     var children: [ItemDocument]?
 
     init(_ item: WorkItem) {
@@ -172,8 +174,17 @@ struct ItemDocument: Codable {
         notes = item.notes.isEmpty ? nil : item.notes.map {
             NoteDocument(id: $0.id, at: $0.at, text: $0.text, author: $0.author, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
         }
+        time = item.timeEntries.isEmpty ? nil : item.timeEntries.map { TimeEntryDocument(id: $0.id, start: $0.start, end: $0.end, source: $0.source, device: $0.device) }
         children = item.children.isEmpty ? nil : item.children.map(ItemDocument.init)
     }
+}
+
+struct TimeEntryDocument: Codable {
+    var id: UUID
+    var start: Date
+    var end: Date?
+    var source: TimeSource?
+    var device: String?
 }
 
 struct ReminderDocument: Codable {
