@@ -439,7 +439,13 @@ public final class BoardModel: ObservableObject {
 
     /// Remembers the break this app saw (whether it ran out by itself, the timer says).
     private func trackBreak() {
-        if let due = Breaks.due(board.pomodoro, now: now), seenBreak != due.until { seenBreak = due.until }
+        if let due = Breaks.due(board.pomodoro, now: now) {
+            if seenBreak != due.until { seenBreak = due.until }
+        } else if !usesServer, seenBreak == nil, board.pomodoro.phase == .idle, let ended = board.pomodoro.breakEndedAt {
+            // On the phone, a break that ran out while the app was asleep (a notification said so): back in the app, it
+            // asks about the next one. (The Mac only asks about a break it showed.)
+            seenBreak = ended
+        }
     }
 
     /// "I'm taking it" (the break timer keeps running), or "Not now" when the break is over.
@@ -522,9 +528,11 @@ public final class BoardModel: ObservableObject {
             item.reminders.filter { $0.isDue(current) && $0.notifiedAt == nil }.map { (item.id, $0.id) }
         }
         for (itemId, reminderId) in dueUnnotified { board.markNotified(itemId, reminderId: reminderId, now: current) }
-        if !events.isEmpty || !dueUnnotified.isEmpty { persist() }
+        // A timer left running for half a day was forgotten: it ends (at 12 hours), so the task can be timed again.
+        let closed = isReadOnly ? 0 : board.closeForgottenTimers(now: current)
+        if !events.isEmpty || !dueUnnotified.isEmpty || closed > 0 { persist() }
         // Refresh the lists every 30 s (waiting items wake up); the timer text updates every second.
-        if !events.isEmpty || !dueUnnotified.isEmpty || current.timeIntervalSince(lastRefresh) >= 30 {
+        if !events.isEmpty || !dueUnnotified.isEmpty || closed > 0 || current.timeIntervalSince(lastRefresh) >= 30 {
             refresh()
         } else {
             now = current
@@ -555,14 +563,23 @@ enum NotificationScheduler {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
         // When the focus session or the break ends (with the app closed or the phone locked).
+        // The app may be asleep when the break starts, so the break's end is set up with the session's.
         let p = board.pomodoro
-        if p.isRunning, let end = p.endsAt, end > now, p.phase != .idle {
-            let content = UNMutableNotificationContent()
-            content.title = p.phase == .focus ? "🍅 Focus session done" : "Break is over"
-            content.body = p.phase == .focus ? "Nice work. Stand up, stretch, drink some water." : "Ready for the next focus block? Open to start it."
-            content.sound = .default
-            content.interruptionLevel = .timeSensitive
-            center.add(UNNotificationRequest(identifier: "focus-timer", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, end.timeIntervalSince(now)), repeats: false)))
+        if p.isRunning, let end = p.endsAt, p.phase != .idle {
+            var ends: [(at: Date, focus: Bool)] = [(end, p.phase == .focus)]
+            if p.phase == .focus {
+                let isLong = (p.completedFocusCount + 1) % max(1, p.settings.focusesBeforeLongBreak) == 0
+                ends.append((end.addingTimeInterval(p.settings.duration(of: isLong ? .longBreak : .shortBreak)), false))
+            }
+            for (i, phaseEnd) in ends.enumerated() where phaseEnd.at > now {
+                let content = UNMutableNotificationContent()
+                content.title = phaseEnd.focus ? "🍅 Focus session done" : "Break is over"
+                content.body = phaseEnd.focus ? "Nice work. Stand up, stretch, drink some water." : "Ready for the next focus block? Open to start it."
+                content.sound = .default
+                content.interruptionLevel = .timeSensitive
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, phaseEnd.at.timeIntervalSince(now)), repeats: false)
+                center.add(UNNotificationRequest(identifier: "focus-timer-\(i)", content: content, trigger: trigger))
+            }
         }
         for (item, reminder) in pending {
             let content = UNMutableNotificationContent()

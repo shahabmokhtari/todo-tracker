@@ -29,8 +29,6 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Something just done that can be taken back (shown with an Undo button). */
@@ -52,7 +50,8 @@ data class FocusState(
  */
 class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private val store = BoardFileStore(File(application.filesDir, "board.json"))
-    private val saving = Mutex()
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val saving = Dispatchers.IO.limitedParallelism(1)
     private var board: TaskBoard
 
     var dashboard: Dashboard by mutableStateOf(Dashboard(null, emptyList(), emptyList(), emptyMap()))
@@ -85,21 +84,21 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     /** Whether the app is on screen (it tells the person itself; off screen, a notification does). */
     var appVisible: Boolean = true
 
-    /** A focus session (true) or a break (false) ran out while the app was off screen: say so now. */
-    var onPhaseEnded: (Boolean) -> Unit = {}
+    /** A focus session or a break ran out while the app was off screen: say so now (once per end; the alarm may too). */
+    var onPhaseEnded: (PhaseEnd) -> Unit = {}
 
-    /** Called when the focus timer's next end changes (the app schedules a notification for it); told at once when set. */
-    var onFocusEnd: (Instant?, Boolean) -> Unit = { _, _ -> }
+    /** Called when the focus timer's coming ends change (the app sets alarms for them); told at once when set. */
+    var onPhaseEnds: (List<PhaseEnd>) -> Unit = {}
         set(value) {
             field = value
-            scheduled?.let { value(it.first, it.second) }
+            scheduled?.let { value(it) }
         }
 
     // The break this app saw (shown, or hidden with "I'm taking it"), and the ones answered.
     private var seenBreak: Instant? = null
     private var dismissedBreak: Instant? = null
     private var dismissedOver: Instant? = null
-    private var scheduled: Pair<Instant?, Boolean>? = null
+    private var scheduled: List<PhaseEnd>? = null
 
     init {
         board = try {
@@ -132,10 +131,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private fun tick(lists: Boolean) {
         now = Instant.now()
         val events = if (readOnly) emptyList() else board.tickPomodoro(now)
-        if (events.isNotEmpty()) {
+        // A timer left running for half a day was forgotten: it ends (at 12 hours), so the task can be timed again.
+        val closed = if (readOnly) 0 else board.closeForgottenTimers(now)
+        if (events.isNotEmpty() || closed > 0) {
             save(BoardCodec.encode(board))
             // Running in the background (a locked phone): this moved the timer on before the alarm could ring.
-            if (!appVisible) onPhaseEnded(events.last().kind == PomodoroEventKind.FOCUS_COMPLETED)
+            events.lastOrNull()?.takeIf { !appVisible }?.let { onPhaseEnded(PhaseEnd(it.at, it.kind == PomodoroEventKind.FOCUS_COMPLETED)) }
             refresh()
         } else if (lists) {
             refresh()
@@ -150,16 +151,27 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         timer = board.runningTimer(now)
         val due = Breaks.due(p, now)
         if (due != null && due.until != seenBreak) seenBreak = due.until
+        // A break that ran out while the app was asleep (the phone said so): back in the app, it asks about the next one.
+        if (due == null && seenBreak == null && p.phase == PomodoroPhase.IDLE) seenBreak = p.breakEndedAt
         breakPrompt = when {
             due != null && due.until != dismissedBreak -> due
             due == null && Breaks.over(p.phase, p.isRunning, p.endsAt, p.breakEndedAt, now, seenBreak, dismissedOver) -> BreakPrompt(seenBreak!!, isLong = false, isOver = true)
             else -> null
         }
-        // Tell the phone when this phase ends, so it can say so with the app closed.
-        val next = (if (p.isRunning) p.endsAt else null) to (p.phase == PomodoroPhase.FOCUS)
+        // Tell the phone when the phases end, so it can say so with the app closed: a focus session, and the break that
+        // follows it (the app may be asleep when the break starts), or a break.
+        val end = p.endsAt.takeIf { p.isRunning }
+        val next = when {
+            end == null -> emptyList()
+            p.phase == PomodoroPhase.FOCUS -> {
+                val long = (p.completedFocusCount + 1) % p.settings.focusesBeforeLongBreak.coerceAtLeast(1) == 0
+                listOf(PhaseEnd(end, true), PhaseEnd(end.plus(p.settings.durationOf(if (long) PomodoroPhase.LONG_BREAK else PomodoroPhase.SHORT_BREAK)), false))
+            }
+            else -> listOf(PhaseEnd(end, false))
+        }
         if (next != scheduled) {
             scheduled = next
-            onFocusEnd(next.first, next.second)
+            onPhaseEnds(next)
         }
     }
 
@@ -283,16 +295,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Saves off the screen's thread, one at a time and in order (a newer board is never overwritten by an older one). */
     private fun save(text: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            saving.withLock {
-                try {
-                    store.saveText(text)
-                } catch (e: IOException) {
-                    withContext(Dispatchers.Main) { status = "Couldn't save (${e.message}). Your change is kept on screen; it's saved with the next one." }
-                } catch (e: BoardException) {
-                    withContext(Dispatchers.Main) { status = e.message }
-                }
+        viewModelScope.launch(saving) {
+            try {
+                store.saveText(text)
+            } catch (e: IOException) {
+                withContext(Dispatchers.Main) { status = "Couldn't save (${e.message}). Your change is kept on screen; it's saved with the next one." }
+            } catch (e: BoardException) {
+                withContext(Dispatchers.Main) { status = e.message }
             }
         }
     }

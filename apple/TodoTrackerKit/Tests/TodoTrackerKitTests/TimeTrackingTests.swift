@@ -95,6 +95,32 @@ final class TimeTrackingTests: XCTestCase {
         XCTAssertEqual(item.timeSpent(at(30 * 60)), 12 * 3600)
     }
 
+    func testAForgottenTimerIsClosedAndTheTaskCanBeTimedAgain() throws {
+        let board = TaskBoard()
+        let item = try board.addTask(NewTask("A"), now: t0)
+        try board.startTimer(item.id, now: t0)
+
+        try board.startTimer(item.id, now: at(13 * 60))
+        XCTAssertEqual(item.timeEntries.count, 2)
+        XCTAssertEqual(item.timeEntries[0].end, at(12 * 60))
+
+        XCTAssertEqual(board.closeForgottenTimers(now: at(14 * 60)), 0)
+        XCTAssertEqual(board.closeForgottenTimers(now: at(26 * 60)), 1)
+        XCTAssertNil(board.runningTimer(at(26 * 60)))
+    }
+
+    func testDeletingASubtaskKeepsItsTimeOnTheTask() throws {
+        let board = TaskBoard()
+        let task = try board.addTask(NewTask("Report"), now: t0)
+        let sub = try board.addTask(NewTask("Charts", parentId: task.id), now: t0)
+        try board.startTimer(sub.id, now: t0)
+
+        try board.delete(sub.id, now: at(20))
+
+        XCTAssertNil(board.runningTimer())
+        XCTAssertEqual(task.timeSpent(at(60), includeSubtasks: false), 1200)
+    }
+
     func testTimeIsSavedAndReadBack() throws {
         let board = TaskBoard()
         let item = try board.addTask(NewTask("A"), now: t0)

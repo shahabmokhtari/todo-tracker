@@ -74,8 +74,12 @@ public final class TaskBoard {
 
     public func delete(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
+        // A timer on what's deleted ends now. A subtask's time stays with its task (the work happened).
+        stopTimers(item.selfAndDescendants, now: now)
         if let parent = item.parent {
             parent.children.removeAll { $0 === item }
+            parent.timeEntries.append(contentsOf: item.selfAndDescendants.flatMap(\.timeEntries))
+            parent.timeEntries.sort { $0.start < $1.start }
         } else {
             items.removeAll { $0 === item }
         }

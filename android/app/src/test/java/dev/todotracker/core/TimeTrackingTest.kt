@@ -138,6 +138,47 @@ class TimeTrackingTest {
     }
 
     @Test
+    fun aForgottenTimerIsClosedAndTheTaskCanBeTimedAgain() {
+        val board = TaskBoard()
+        val item = board.addTask(NewTask("A"), now = t0)
+        board.startTimer(item.id, now = t0)
+
+        // Timing it again later doesn't count the forgotten one as running.
+        board.startTimer(item.id, now = at(13 * 60))
+        assertEquals(2, item.timeEntries.size)
+        assertEquals(t0.plus(Duration.ofHours(12)), item.timeEntries[0].end)
+
+        assertEquals(0, board.closeForgottenTimers(at(14 * 60)))
+        assertEquals(1, board.closeForgottenTimers(at(26 * 60)))
+        assertNull(board.runningTimer(at(26 * 60)))
+    }
+
+    @Test
+    fun deletingASubtaskKeepsItsTimeOnTheTask() {
+        val board = TaskBoard()
+        val task = board.addTask(NewTask("Report"), now = t0)
+        val sub = board.addTask(NewTask("Charts", parentId = task.id), now = t0)
+        board.startTimer(sub.id, now = t0)
+
+        board.delete(sub.id, now = at(20))
+
+        assertNull(board.runningTimer())
+        assertEquals(Duration.ofMinutes(20), task.timeSpent(at(60), includeSubtasks = false))
+    }
+
+    @Test
+    fun startingATimerMovesTheCardToDoingAsTheOtherAppsShowIt() {
+        val board = TaskBoard()
+        val task = board.addTask(NewTask("Report"), now = t0)
+        val sub = board.addTask(NewTask("Charts", parentId = task.id), now = t0)
+
+        board.startTimer(sub.id, now = t0)
+
+        val saved = Json.parseToJsonElement(BoardCodec.encode(board)).jsonObject["items"]!!.jsonArray[0].jsonObject
+        assertEquals("doing", saved["stage"]!!.jsonPrimitive.content)
+    }
+
+    @Test
     fun timeAndTheFocusTimerAreSavedAndReadBack() {
         val board = TaskBoard()
         val item = board.addTask(NewTask("A"), now = t0)

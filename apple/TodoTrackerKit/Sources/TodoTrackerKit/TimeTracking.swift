@@ -48,8 +48,25 @@ extension TaskBoard {
     /// A timer running longer than this was forgotten (or its device is gone): it counts this long at most.
     public static let forgottenAfter: TimeInterval = 12 * 3600
 
-    /// This device, as time entries name it.
-    public static var thisDevice: String { ProcessInfo.processInfo.hostName }
+    /// This device, as time entries name it (a fixed name: looking up the host name can block on slow DNS).
+    public static let thisDevice: String = {
+        #if os(iOS)
+        return "iPhone"
+        #else
+        return "Mac"
+        #endif
+    }()
+
+    /// Ends every timer (any device) that has run longer than `forgottenAfter`, at that length. Returns how many ended.
+    @discardableResult
+    public func closeForgottenTimers(now: Date) -> Int {
+        var closed = 0
+        for entry in allItems.flatMap(\.timeEntries) where entry.isRunning && now.timeIntervalSince(entry.start) > Self.forgottenAfter {
+            entry.end = entry.start.addingTimeInterval(Self.forgottenAfter)
+            closed += 1
+        }
+        return closed
+    }
 
     /// The timer that runs (the newest, if sync brought two together), or nil. A forgotten one doesn't count.
     public func runningTimer(_ now: Date? = nil) -> (item: WorkItem, entry: TimeEntry)? {
@@ -68,7 +85,7 @@ extension TaskBoard {
     public func startTimer(_ id: UUID, actor: Actor = .user, now: Date) throws -> TimeEntry {
         let item = try get(id)
         if item.isDone { throw BoardError.conflict("\"\(item.title)\" is already done.") }
-        if let running = runningTimer(), running.item === item { return running.entry }
+        if let running = runningTimer(now), running.item === item { return running.entry }
         // A focus session on another task no longer counts for it (the session itself goes on).
         if pomodoro.phase == .focus, let focused = pomodoro.itemId, focused != item.id { pomodoro.detachItem() }
         let entry = startTimerCore(item, source: .manual, now: now)

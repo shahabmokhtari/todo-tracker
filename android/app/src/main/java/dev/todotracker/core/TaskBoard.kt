@@ -69,8 +69,17 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     fun delete(id: UUID, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
         val parent = item.parent
-        if (parent != null) parent.children.removeAll { it === item } else items.removeAll { it === item }
+        // A timer on what's deleted ends now. A subtask's time stays with its task (the work happened).
+        stopTimers(item.selfAndDescendants, now)
+        if (parent != null) {
+            parent.children.removeAll { it === item }
+            parent.timeEntries.addAll(item.selfAndDescendants.flatMap { it.timeEntries })
+            parent.timeEntries.sortBy { it.start }
+        } else {
+            items.removeAll { it === item }
+        }
         for (removed in item.selfAndDescendants) index.remove(removed.id)
+        if (pomodoro.itemId?.let { index[it] } == null) pomodoro.detachItem()
         nowOrder.removeAll { index[it] == null }
         // Tasks waiting for what's gone come back, like when it's done.
         releaseWaiters(now, item.selfAndDescendants.associate { it.id to it.title })
@@ -215,12 +224,24 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     fun startTimer(id: UUID, actor: Actor = Actor.USER, now: Instant): TimeEntry {
         val item = get(id)
         if (item.isDone) throw BoardException("\"${item.title}\" is already done.")
-        runningTimer()?.takeIf { it.item === item }?.let { return it.entry }
+        runningTimer(now)?.takeIf { it.item === item }?.let { return it.entry }
         // A focus session on another task no longer counts for it (the session itself goes on).
         if (pomodoro.phase == PomodoroPhase.FOCUS && pomodoro.itemId != null && pomodoro.itemId != item.id) pomodoro.detachItem()
         val entry = startTimerCore(item, TimeSource.MANUAL, now)
         log(now, item.id, "timeLogged", "Started the timer on \"${item.title}\"", actor)
         return entry
+    }
+
+    /** Ends every timer (any device) that has run longer than [FORGOTTEN_AFTER], at that length. Returns how many ended. */
+    fun closeForgottenTimers(now: Instant): Int {
+        var closed = 0
+        for (entry in allItems.flatMap { it.timeEntries }) {
+            if (entry.isRunning && Duration.between(entry.start, now) > FORGOTTEN_AFTER) {
+                entry.end = entry.start.plus(FORGOTTEN_AFTER)
+                closed++
+            }
+        }
+        return closed
     }
 
     /** Stops the timer (every running one); the newest is returned. */
@@ -247,6 +268,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         stopTimers(allItems, now)
         val entry = TimeEntry(start = now, source = source, device = THIS_DEVICE)
         item.timeEntries.add(entry)
+        // Starting work on a card moves it to Doing (the board column other apps show; kept as they wrote it).
+        val root = item.ancestors.lastOrNull() ?: item
+        if (!root.isDone && (root.extra?.get("stage") as? kotlinx.serialization.json.JsonPrimitive)?.content != "doing") {
+            root.extra = kotlinx.serialization.json.JsonObject((root.extra ?: emptyMap()) + ("stage" to kotlinx.serialization.json.JsonPrimitive("doing")))
+        }
         return entry
     }
 

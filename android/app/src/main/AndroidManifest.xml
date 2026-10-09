@@ -3,6 +3,8 @@
 
     <!-- When a focus session or a break ends with the app closed (asked for when focus first starts). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- On time to the minute when the phone allows it (else the alarm may come a little late). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:allowBackup="true"
