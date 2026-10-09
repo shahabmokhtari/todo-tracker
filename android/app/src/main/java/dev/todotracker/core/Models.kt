@@ -98,6 +98,9 @@ class WorkItem(
     val reminders: MutableList<Reminder> = mutableListOf()
     val notes: MutableList<Note> = mutableListOf()
 
+    /** Time spent on it (TimeTracking.kt). */
+    val timeEntries: MutableList<TimeEntry> = mutableListOf()
+
     /** What other apps keep on a task that this one doesn't use (tags, labels, time…): written back as it was. */
     var extra: kotlinx.serialization.json.JsonObject? = null
 
@@ -120,6 +123,10 @@ class WorkItem(
         }
 
     val selfAndDescendants: List<WorkItem> get() = listOf(this) + children.flatMap { it.selfAndDescendants }
+
+    /** Time spent on it (with its subtasks, unless asked not to). */
+    fun timeSpent(now: Instant, includeSubtasks: Boolean = true): Duration =
+        (if (includeSubtasks) selfAndDescendants else listOf(this)).flatMap { it.timeEntries }.fold(Duration.ZERO) { sum, e -> sum.plus(e.duration(now)) }
 }
 
 data class NewTask(

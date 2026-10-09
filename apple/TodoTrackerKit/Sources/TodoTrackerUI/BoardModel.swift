@@ -554,6 +554,16 @@ enum NotificationScheduler {
             .prefix(60) // iOS keeps at most 64 pending local notifications.
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
+        // When the focus session or the break ends (with the app closed or the phone locked).
+        let p = board.pomodoro
+        if p.isRunning, let end = p.endsAt, end > now, p.phase != .idle {
+            let content = UNMutableNotificationContent()
+            content.title = p.phase == .focus ? "🍅 Focus session done" : "Break is over"
+            content.body = p.phase == .focus ? "Nice work. Stand up, stretch, drink some water." : "Ready for the next focus block? Open to start it."
+            content.sound = .default
+            content.interruptionLevel = .timeSensitive
+            center.add(UNNotificationRequest(identifier: "focus-timer", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(1, end.timeIntervalSince(now)), repeats: false)))
+        }
         for (item, reminder) in pending {
             let content = UNMutableNotificationContent()
             content.title = "⏰ \(item.title)"

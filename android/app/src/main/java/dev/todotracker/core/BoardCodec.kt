@@ -35,7 +35,7 @@ object BoardCodec {
     private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
     private val itemKeys = setOf(
         "id", "title", "details", "priority", "createdAt", "completedAt", "deadline", "nextActionAt", "after", "sequential",
-        "stepDelayMinutes", "groupId", "reminders", "notes", "children",
+        "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
     )
 
     /** The board in [text]; anything unexpected (not JSON, the wrong shapes) is a [BoardException]. */
@@ -75,7 +75,7 @@ object BoardCodec {
             val uuid = runCatching { UUID.fromString(id.jsonPrimitive.content) }.getOrNull() ?: continue
             if (board.find(uuid) != null && seen.add(uuid)) board.nowOrder.add(uuid)
         }
-        board.pomodoro = doc["pomodoro"]?.takeIf { it !is JsonNull }
+        (doc["pomodoro"] as? JsonObject)?.let { readPomodoro(it, board) }
         board.extra = unknown(doc, boardKeys)
         return board
     }
@@ -103,7 +103,7 @@ object BoardCodec {
                 put("actor", actorJson(a.actor))
             }
         }))
-        board.pomodoro?.let { put("pomodoro", it) }
+        put("pomodoro", pomodoroJson(board))
         if (board.nowOrder.isNotEmpty()) put("nowOrder", JsonArray(board.nowOrder.map { JsonPrimitive(it.toString()) }))
     })
 
@@ -141,6 +141,15 @@ object BoardCodec {
                 n.sourceTitle?.let { put("sourceTitle", it) }
             }
         }))
+        if (i.timeEntries.isNotEmpty()) put("time", JsonArray(i.timeEntries.map { t ->
+            buildJsonObject {
+                put("id", t.id.toString())
+                put("start", formatDate(t.start))
+                t.end?.let { put("end", formatDate(it)) }
+                put("source", t.source.wire)
+                t.device?.let { put("device", it) }
+            }
+        }))
         if (i.children.isNotEmpty()) put("children", JsonArray(i.children.map(::item)))
     }
 
@@ -169,8 +178,51 @@ object BoardCodec {
             val at = no.date("at") ?: continue
             item.notes.add(Note(nid, at, no.string("text").orEmpty(), actor(no["author"]), no.string("sourceUrl"), no.string("sourceTitle")))
         }
+        for (t in o.array("time")) {
+            val to = t.jsonObject
+            val tid = to.uuid("id") ?: continue
+            val start = to.date("start") ?: continue
+            item.timeEntries.add(TimeEntry(tid, start, to.date("end"), TimeSource.of(to.string("source")), to.string("device")))
+        }
         board.attach(item, parent)
         for (child in o.array("children")) load(child.jsonObject, board, item)
+    }
+
+    private val pomodoroKeys = setOf("settings", "phase", "endsAt", "pausedRemainingSeconds", "itemId", "completedFocusCount", "breakEndedAt")
+
+    private fun readPomodoro(p: JsonObject, board: TaskBoard) {
+        (p["settings"] as? JsonObject)?.let { s ->
+            fun minutes(name: String, default: Int) = s[name]?.jsonPrimitive?.intOrNull?.takeIf { it > 0 } ?: default
+            board.pomodoro.settings = PomodoroSettings(minutes("focusMinutes", 25), minutes("shortBreakMinutes", 5), minutes("longBreakMinutes", 15), minutes("focusesBeforeLongBreak", 4))
+        }
+        // A focus session on a task that's gone goes on without it.
+        val itemId = p.uuid("itemId")?.takeIf { board.find(it) != null }
+        board.pomodoro.restore(
+            PomodoroPhase.of(p.string("phase")),
+            p.date("endsAt"),
+            p["pausedRemainingSeconds"]?.jsonPrimitive?.intOrNull?.let { Duration.ofSeconds(it.toLong()) },
+            itemId,
+            p["completedFocusCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            p.date("breakEndedAt"),
+        )
+        board.pomodoroExtra = unknown(p, pomodoroKeys)
+    }
+
+    private fun pomodoroJson(board: TaskBoard): JsonObject = buildJsonObject {
+        val p = board.pomodoro
+        board.pomodoroExtra?.forEach { (key, value) -> put(key, value) }
+        put("settings", buildJsonObject {
+            put("focusMinutes", p.settings.focusMinutes)
+            put("shortBreakMinutes", p.settings.shortBreakMinutes)
+            put("longBreakMinutes", p.settings.longBreakMinutes)
+            put("focusesBeforeLongBreak", p.settings.focusesBeforeLongBreak)
+        })
+        put("phase", p.phase.wire)
+        p.endsAt?.let { put("endsAt", formatDate(it)) }
+        p.pausedRemaining?.let { put("pausedRemainingSeconds", it.seconds.toInt()) }
+        p.itemId?.let { put("itemId", it.toString()) }
+        put("completedFocusCount", p.completedFocusCount)
+        p.breakEndedAt?.let { put("breakEndedAt", formatDate(it)) }
     }
 
     private fun actor(element: JsonElement?): Actor {

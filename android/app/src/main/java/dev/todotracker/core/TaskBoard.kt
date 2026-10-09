@@ -3,7 +3,6 @@ package dev.todotracker.core
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import kotlinx.serialization.json.JsonElement
 
 /**
  * Tasks, groups (tabs) and the activity timeline. Mirrors TodoTracker.Core.TaskBoard (C#) and TaskBoard (Swift):
@@ -17,8 +16,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** The Do now order the person arranged (tasks not listed slot in by the automatic rules). */
     val nowOrder: MutableList<UUID> = mutableListOf()
 
-    /** The focus timer as the other apps wrote it (kept as it is: this app doesn't run it yet). */
-    var pomodoro: JsonElement? = null
+    /** The focus timer (Pomodoro): its phase, when it ends, and the task it times. */
+    val pomodoro = PomodoroTimer()
+
+    /** What the other apps keep in the focus timer that this one doesn't use: written back as it was. */
+    var pomodoroExtra: kotlinx.serialization.json.JsonObject? = null
 
     /** Board-level data other apps keep that this one doesn't use (labels…): written back as it was. */
     var extra: kotlinx.serialization.json.JsonObject? = null
@@ -89,6 +91,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (item.isDone) return
         findBlockingStep(item)?.let { throw BoardException("Finish \"${it.title}\" before \"${item.title}\".") }
         for (d in item.selfAndDescendants) if (!d.isDone) d.completedAt = now
+        stopTimers(item.selfAndDescendants, now)
         log(now, id, "completed", "Completed \"${item.title}\"", actor)
         advanceSequence(item, actor, now)
         releaseWaiters(now)
@@ -200,6 +203,121 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         return group
     }
 
+    // ---- Time: one timer runs at a time; a focus session on a task times it (TaskBoard.Time.cs) ----------------
+
+    /** The timer that runs (the newest, if sync brought two together), or null. A forgotten one doesn't count. */
+    fun runningTimer(now: Instant? = null): RunningTimer? =
+        allItems.flatMap { item -> item.timeEntries.filter { it.isRunning }.map { RunningTimer(item, it) } }
+            .filter { now == null || Duration.between(it.entry.start, now) <= FORGOTTEN_AFTER }
+            .maxByOrNull { it.entry.start }
+
+    /** Starts timing a task; any other timer stops. */
+    fun startTimer(id: UUID, actor: Actor = Actor.USER, now: Instant): TimeEntry {
+        val item = get(id)
+        if (item.isDone) throw BoardException("\"${item.title}\" is already done.")
+        runningTimer()?.takeIf { it.item === item }?.let { return it.entry }
+        // A focus session on another task no longer counts for it (the session itself goes on).
+        if (pomodoro.phase == PomodoroPhase.FOCUS && pomodoro.itemId != null && pomodoro.itemId != item.id) pomodoro.detachItem()
+        val entry = startTimerCore(item, TimeSource.MANUAL, now)
+        log(now, item.id, "timeLogged", "Started the timer on \"${item.title}\"", actor)
+        return entry
+    }
+
+    /** Stops the timer (every running one); the newest is returned. */
+    fun stopTimer(now: Instant): RunningTimer? {
+        val newest = runningTimer()
+        stopTimers(allItems, now)
+        return newest
+    }
+
+    /** Ends the running timers among [items]: each at the start of a newer one, the newest now. */
+    private fun stopTimers(items: List<WorkItem>, now: Instant) {
+        val running = items.flatMap { it.timeEntries }.filter { it.isRunning }.sortedBy { it.start }
+        running.forEachIndexed { i, entry ->
+            var end = if (i < running.size - 1) running[i + 1].start else now
+            if (end.isBefore(entry.start)) end = entry.start
+            // A forgotten timer ends at the most it counts, not hours (or days) later.
+            entry.end = if (Duration.between(entry.start, end) > FORGOTTEN_AFTER) entry.start.plus(FORGOTTEN_AFTER) else end
+        }
+    }
+
+    private fun stopFocusTimer(at: Instant) = stopTimers(allItems.filter { i -> i.timeEntries.any { it.isRunning && it.source == TimeSource.FOCUS } }, at)
+
+    private fun startTimerCore(item: WorkItem, source: TimeSource, now: Instant): TimeEntry {
+        stopTimers(allItems, now)
+        val entry = TimeEntry(start = now, source = source, device = THIS_DEVICE)
+        item.timeEntries.add(entry)
+        return entry
+    }
+
+    // ---- Focus timer -----------------------------------------------------------------------------------------
+
+    /** Starts a focus session (on a task, timed as focus time on it). */
+    fun startFocus(itemId: UUID?, actor: Actor = Actor.USER, now: Instant) {
+        val item = itemId?.let { get(it) }
+        if (item != null && item.isDone) throw BoardException("\"${item.title}\" is already done.")
+        stopFocusTimer(now)
+        pomodoro.startFocus(now, item?.id)
+        if (item != null) {
+            startTimerCore(item, TimeSource.FOCUS, now)
+            log(now, item.id, "focusStarted", "Focus started on \"${item.title}\"", actor)
+        }
+    }
+
+    fun pauseFocus(now: Instant) {
+        if (pomodoro.phase == PomodoroPhase.FOCUS) stopFocusTimer(now)
+        pomodoro.pause(now)
+    }
+
+    fun resumeFocus(now: Instant) {
+        val resuming = pomodoro.phase == PomodoroPhase.FOCUS && !pomodoro.isRunning
+        pomodoro.resume(now)
+        // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
+        val item = pomodoro.itemId?.let { index[it] }
+        if (resuming && item != null && !item.isDone && runningTimer(now) == null) startTimerCore(item, TimeSource.FOCUS, now)
+    }
+
+    /** A session that has already run out ends on time first, so Skip skips the break that followed it. */
+    fun skipFocus(now: Instant) {
+        tickPomodoro(now)
+        if (pomodoro.phase == PomodoroPhase.FOCUS) stopFocusTimer(now)
+        pomodoro.skip(now)
+    }
+
+    fun resetFocus(now: Instant) {
+        stopFocusTimer(now)
+        pomodoro.reset()
+    }
+
+    fun tickPomodoro(now: Instant): List<PomodoroEvent> {
+        val events = mutableListOf<PomodoroEvent>()
+        while (true) {
+            val evt = pomodoro.tick(now) ?: break
+            events.add(evt)
+            if (evt.kind == PomodoroEventKind.FOCUS_COMPLETED) {
+                // The session ended at its end time, whenever this runs (after sleep, say).
+                stopFocusTimer(evt.at)
+                evt.itemId?.let { index[it] }?.let { log(evt.at, it.id, "focusCompleted", "Focus session completed on \"${it.title}\"", Actor.SYSTEM) }
+            }
+        }
+        return events
+    }
+
+    /** The task "Start next focus" picks up: the last session's, if it's still there and open. */
+    fun nextFocusItem(): WorkItem? = pomodoro.itemId?.let { index[it] }?.takeIf { !it.isDone }
+
+    /**
+     * "Start next focus": ends the break and starts a session on the last session's task, else [fallbackItemId]. A
+     * session that just ran out counts first; one still running is never restarted.
+     */
+    fun startNextFocus(fallbackItemId: UUID?, actor: Actor = Actor.USER, now: Instant): WorkItem? {
+        tickPomodoro(now)
+        if (pomodoro.phase == PomodoroPhase.FOCUS) throw BoardException("A focus session is already going.")
+        val item = nextFocusItem() ?: fallbackItemId?.let { index[it] }?.takeIf { !it.isDone }
+        startFocus(item?.id, actor, now)
+        return item
+    }
+
     internal fun attach(item: WorkItem, parent: WorkItem?) {
         if (index.containsKey(item.id)) throw BoardException("Duplicate task id ${item.id}.")
         index[item.id] = item
@@ -248,6 +366,12 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
         const val MAX_TITLE_LENGTH = 300
+
+        /** A timer running longer than this was forgotten (or its device is gone): it counts this long at most. */
+        val FORGOTTEN_AFTER: Duration = Duration.ofHours(12)
+
+        /** This device, as time entries name it. */
+        const val THIS_DEVICE = "Android"
 
         /** Activity not tied to a task (group changes) uses the empty id, like Guid.Empty in C#. */
         val BOARD_SCOPE_ID: UUID = UUID(0L, 0L)

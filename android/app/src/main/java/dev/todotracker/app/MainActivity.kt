@@ -18,6 +18,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // When a focus session or break ends with the app closed, the phone says so.
+        vm.onFocusEnd = { at, focus -> FocusAlarm.schedule(applicationContext, at, focus) }
         setContent {
             TodoTrackerTheme {
                 TodayScreen(vm)
