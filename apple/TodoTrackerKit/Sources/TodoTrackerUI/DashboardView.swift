@@ -133,6 +133,7 @@ public struct DashboardView: View {
             } else {
                 sections
             }
+            if model.runningTimer != nil { TimerBar(model: model) }
             PomodoroBar(model: model)
         }
         .padding(14)
@@ -424,6 +425,8 @@ struct FocusCard: View {
                 SnoozeMenu(model: model, id: entry.item.id, pill: true)
                 PillButton(title: "Note", systemImage: "square.and.pencil") { model.toggleNote(entry.item.id) }
                 PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
+                let timing = model.runningTimer?.item.id == entry.item.id
+                PillButton(title: timing ? "Stop timer" : "Timer", systemImage: timing ? "stop.circle" : "stopwatch") { model.toggleTimer(entry.item.id) }
             }
             if model.openNotes.contains(entry.item.id) {
                 NoteField(model: model, id: entry.item.id)
@@ -587,6 +590,8 @@ struct TaskRow: View {
                     iconButton("square.and.pencil", "Note") { model.toggleNote(entry.item.id) }
                     if entry.state != .waiting {
                         iconButton("play", "Focus") { model.startFocus(entry.item.id) }
+                        let timing = model.runningTimer?.item.id == entry.item.id
+                        iconButton(timing ? "stop.circle" : "stopwatch", timing ? "Stop the timer" : "Time this task") { model.toggleTimer(entry.item.id) }
                     }
                 }
                 .font(.callout)
@@ -646,6 +651,35 @@ struct WorkstreamRow: View {
         if entry.waitingCount > 0 { chips.append(Chip("\(entry.waitingCount) waiting", .info)) }
         if let next = entry.nextWakeAt { chips.append(Chip("next \(RelativeTime.format(next, now: now))", .muted)) }
         return chips
+    }
+}
+
+/// The task being timed: its clock, its name (opens it) and Stop. One timer runs at a time.
+struct TimerBar: View {
+    @ObservedObject var model: BoardModel
+
+    var body: some View {
+        if let running = model.runningTimer {
+            HStack(spacing: 10) {
+                Circle().fill(Color(hex: "#ef4444")).frame(width: 8, height: 8).accessibilityHidden(true)
+                Text(Presentation.clock(running.entry.duration(model.now)))
+                    .font(.headline.monospacedDigit())
+                    .accessibilityLabel("Timing for \(Presentation.duration(running.entry.duration(model.now)))")
+                Text(running.item.title).font(.subheadline).lineLimit(1).truncationMode(.tail)
+                if running.entry.source == .focus {
+                    Text("focus").font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(Color(hex: "#f59e0b").opacity(0.2)))
+                }
+                Spacer(minLength: 0)
+                Button { model.stopTimer() } label: { Image(systemName: "stop.fill") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Stop timing \(running.item.title)")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.background.secondary))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.quaternary, lineWidth: 1))
+        }
     }
 }
 

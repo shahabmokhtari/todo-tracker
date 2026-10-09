@@ -76,4 +76,14 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(AppTheme.named(nil), .system)
         XCTAssertEqual(AppTheme.named("sepia"), .system)
     }
+
+    func testTimeReadsLikeTheWebApp() {
+        // Same as wwwroot/js/timefmt.js (duration and clock).
+        XCTAssertEqual(Presentation.duration(45), "45 s")
+        XCTAssertEqual(Presentation.duration(25 * 60), "25 min")
+        XCTAssertEqual(Presentation.duration(65 * 60), "1 h 05 min")
+        XCTAssertEqual(Presentation.duration(12 * 3600), "12 h")
+        XCTAssertEqual(Presentation.clock(247), "4:07")
+        XCTAssertEqual(Presentation.clock(3847), "1:04:07")
+    }
 }

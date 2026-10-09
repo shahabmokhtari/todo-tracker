@@ -108,6 +108,7 @@ public final class TaskBoard {
             throw BoardError.conflict("Finish \"\(blocker.title)\" before \"\(item.title)\".")
         }
         for d in item.selfAndDescendants where !d.isDone { d.completedAt = now }
+        stopTimers(item.selfAndDescendants, now: now)
         log(now, id, "completed", "Completed \"\(item.title)\"", actor)
         advanceSequence(after: item, actor: actor, now: now)
         releaseWaiters(now: now)
@@ -270,23 +271,43 @@ public final class TaskBoard {
 
     // MARK: Focus timer
 
+    /// Starts a focus session (on a task, timed as focus time on it, like the task's own timer).
     public func startFocus(_ itemId: UUID?, actor: Actor = .user, now: Date) throws {
         let item = try itemId.map { try get($0) }
+        if let item, item.isDone { throw BoardError.conflict("\"\(item.title)\" is already done.") }
+        stopFocusTimer(now)
         pomodoro.startFocus(now: now, itemId: item?.id)
-        if let item { log(now, item.id, "focusStarted", "Focus started on \"\(item.title)\"", actor) }
+        if let item {
+            startTimerCore(item, source: .focus, now: now)
+            log(now, item.id, "focusStarted", "Focus started on \"\(item.title)\"", actor)
+        }
     }
 
-    public func pauseFocus(now: Date) { pomodoro.pause(now: now) }
+    public func pauseFocus(now: Date) {
+        if pomodoro.phase == .focus { stopFocusTimer(now) }
+        pomodoro.pause(now: now)
+    }
 
-    public func resumeFocus(now: Date) { pomodoro.resume(now: now) }
+    public func resumeFocus(now: Date) {
+        let resuming = pomodoro.phase == .focus && !pomodoro.isRunning
+        pomodoro.resume(now: now)
+        // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
+        if resuming, let id = pomodoro.itemId, let item = index[id], !item.isDone, runningTimer(now) == nil {
+            startTimerCore(item, source: .focus, now: now)
+        }
+    }
 
     /// A session that has already run out ends on time first, so Skip skips the break that followed it.
     public func skipFocus(now: Date) {
         tickPomodoro(now: now)
+        if pomodoro.phase == .focus { stopFocusTimer(now) }
         pomodoro.skip(now: now)
     }
 
-    public func resetFocus() { pomodoro.reset() }
+    public func resetFocus(now: Date) {
+        stopFocusTimer(now)
+        pomodoro.reset()
+    }
 
     /// The task "Start next focus" picks up: the last session's, if it's still there and open.
     public func nextFocusItem() -> WorkItem? {
@@ -310,8 +331,12 @@ public final class TaskBoard {
         var events: [PomodoroEvent] = []
         while let evt = pomodoro.tick(now: now) {
             events.append(evt)
-            if evt.kind == .focusCompleted, let id = evt.itemId, let item = index[id] {
-                log(evt.at, id, "focusCompleted", "Focus session completed on \"\(item.title)\"", .system)
+            if evt.kind == .focusCompleted {
+                // The session ended at its end time, whenever this runs (after sleep, say).
+                stopFocusTimer(evt.at)
+                if let id = evt.itemId, let item = index[id] {
+                    log(evt.at, id, "focusCompleted", "Focus session completed on \"\(item.title)\"", .system)
+                }
             }
         }
         return events
@@ -376,7 +401,7 @@ public final class TaskBoard {
         }
     }
 
-    private func log(_ at: Date, _ itemId: UUID, _ kind: String, _ summary: String, _ actor: Actor) {
+    func log(_ at: Date, _ itemId: UUID, _ kind: String, _ summary: String, _ actor: Actor) {
         activity.append(ActivityEntry(at: at, itemId: itemId, kind: kind, summary: summary, actor: actor))
     }
 

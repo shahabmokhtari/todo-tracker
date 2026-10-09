@@ -28,6 +28,13 @@ struct TaskDetailView: View {
                         LabeledContent("State", value: Agenda.state(of: item, now: model.now).rawValue)
                         if let next = item.nextActionAt { LabeledContent("Next action", value: RelativeTime.format(next, now: model.now)) }
                         if let other = item.waitingFor { LabeledContent("Waits for", value: other.title) }
+                        LabeledContent("Time spent", value: Presentation.duration(item.timeSpent(model.now)))
+                        if !item.isDone {
+                            let timing = model.runningTimer?.item.id == item.id
+                            Button { model.toggleTimer(item.id) } label: {
+                                Label(timing ? "Stop the timer" : "Time this task", systemImage: timing ? "stop.circle" : "stopwatch")
+                            }
+                        }
                         if let deadline = item.deadline { LabeledContent("Deadline", value: RelativeTime.format(deadline, now: model.now)) }
                     }
 

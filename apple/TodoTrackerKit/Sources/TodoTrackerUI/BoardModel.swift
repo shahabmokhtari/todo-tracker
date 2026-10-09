@@ -390,7 +390,24 @@ public final class BoardModel: ObservableObject {
 
     public func skipPomodoro() { change(nil, server: .pomodoro(.skip, itemId: nil)) { board.skipFocus(now: $0) } }
 
-    public func resetPomodoro() { change(nil, server: .pomodoro(.reset, itemId: nil)) { _ in board.resetFocus() } }
+    public func resetPomodoro() { change(nil, server: .pomodoro(.reset, itemId: nil)) { board.resetFocus(now: $0) } }
+
+    // MARK: Task timer
+
+    /// The timer that runs now (on any task), or nil.
+    public var runningTimer: (item: WorkItem, entry: TimeEntry)? { board.runningTimer(now) }
+
+    /// Times the task (any other timer stops), or stops it when it's the one timing.
+    public func toggleTimer(_ id: UUID) {
+        if runningTimer?.item.id == id {
+            stopTimer()
+        } else {
+            let title = board.find(id)?.title ?? "the task"
+            change("Timing “\(title)”", server: .startTimer(id)) { _ = try board.startTimer(id, now: $0) }
+        }
+    }
+
+    public func stopTimer() { change("Timer stopped", server: .stopTimer) { _ = board.stopTimer(now: $0) } }
 
     // MARK: Full-screen break
 
