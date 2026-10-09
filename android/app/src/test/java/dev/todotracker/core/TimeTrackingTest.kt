@@ -240,6 +240,38 @@ class TimeTrackingTest {
     }
 
     @Test
+    fun theTimerSaysWhenItsPhasesEndSoThePhoneCanAlarmEvenAfterARestart() {
+        val board = TaskBoard()
+        assertEquals(emptyList<PhaseEnd>(), Breaks.phaseEnds(board.pomodoro))
+
+        board.startFocus(null, now = t0)
+        assertEquals(listOf(PhaseEnd(at(25), true), PhaseEnd(at(30), false)), Breaks.phaseEnds(board.pomodoro))
+
+        board.pauseFocus(at(10))
+        assertEquals(emptyList<PhaseEnd>(), Breaks.phaseEnds(board.pomodoro))
+
+        board.resumeFocus(at(12))
+        board.tickPomodoro(at(28))
+        assertEquals(listOf(PhaseEnd(at(32), false)), Breaks.phaseEnds(board.pomodoro))
+
+        // The fourth session is followed by a long break.
+        val fourth = TaskBoard()
+        repeat(3) { i -> fourth.startFocus(null, now = at(i * 40L)); fourth.tickPomodoro(at(i * 40L + 35)) }
+        fourth.startFocus(null, now = at(200))
+        assertEquals(PhaseEnd(at(225 + 15), false), Breaks.phaseEnds(fourth.pomodoro)[1])
+    }
+
+    @Test
+    fun afterARestartOnlyAPhaseThatJustEndedIsAnnounced() {
+        val ends = listOf(PhaseEnd(at(25), true), PhaseEnd(at(30), false))
+
+        assertNull(Breaks.missed(ends, at(20)))
+        assertEquals(PhaseEnd(at(25), true), Breaks.missed(ends, at(27)))
+        assertEquals(PhaseEnd(at(30), false), Breaks.missed(ends, at(31)))
+        assertNull(Breaks.missed(ends, at(30 + 16))) // long gone: not worth a ring
+    }
+
+    @Test
     fun theBreakClockCountsDownLikeTheOtherApps() {
         assertEquals("4:59", Breaks.clock(at(5), at(0).plusSeconds(1)))
         assertEquals("0:00", Breaks.clock(at(5), at(6)))

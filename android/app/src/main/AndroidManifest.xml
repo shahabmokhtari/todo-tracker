@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- On time to the minute when the phone allows it (else the alarm may come a little late). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- To set the focus timer's alarms again after a restart. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -23,5 +25,12 @@
             </intent-filter>
         </activity>
         <receiver android:name=".app.FocusAlarmReceiver" android:exported="false" />
+        <!-- The phone forgets alarms when it restarts (or the app is updated): they're set again. -->
+        <receiver android:name=".app.RestartReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
