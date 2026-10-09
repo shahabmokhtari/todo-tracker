@@ -9,11 +9,34 @@ data class BreakPrompt(val until: Instant, val isLong: Boolean, val isOver: Bool
     val tip: String get() = if (isOver) "Ready for the next one? One small step is enough." else Breaks.tip(until)
 }
 
+/** When a phase of the focus timer ends: a focus session ([focus]) or a break. */
+data class PhaseEnd(val at: Instant, val focus: Boolean)
+
 /**
  * The full-screen break after a focus session, and "Break's over" when it runs out: the same rules as the web app,
  * Windows and the Apple apps (tests/fixtures/breaks.json checks all of them).
  */
 object Breaks {
+    /**
+     * When the running phases end, for the phone to say so with the app asleep: a focus session's end and the break
+     * after it (long every few sessions), or a break's end. Nothing while paused or idle.
+     */
+    fun phaseEnds(timer: PomodoroTimer): List<PhaseEnd> {
+        val end = timer.endsAt?.takeIf { timer.isRunning } ?: return emptyList()
+        return when (timer.phase) {
+            PomodoroPhase.FOCUS -> {
+                val long = (timer.completedFocusCount + 1) % timer.settings.focusesBeforeLongBreak.coerceAtLeast(1) == 0
+                listOf(PhaseEnd(end, true), PhaseEnd(end.plus(timer.settings.durationOf(if (long) PomodoroPhase.LONG_BREAK else PomodoroPhase.SHORT_BREAK)), false))
+            }
+            PomodoroPhase.IDLE -> emptyList()
+            else -> listOf(PhaseEnd(end, false))
+        }
+    }
+
+    /** The phase end that just went by unannounced (the phone was off): within [overFor], the latest one. */
+    fun missed(ends: List<PhaseEnd>, now: Instant): PhaseEnd? =
+        ends.lastOrNull { !it.at.isAfter(now) }?.takeIf { Duration.between(it.at, now) < overFor }
+
     /** Same tips, in the same order, as the web app. */
     val tips = listOf(
         "Stand up and stretch for a minute.",

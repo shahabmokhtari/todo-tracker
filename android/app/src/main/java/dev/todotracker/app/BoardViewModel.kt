@@ -14,6 +14,7 @@ import dev.todotracker.core.Dashboard
 import dev.todotracker.core.NewTask
 import dev.todotracker.core.BreakPrompt
 import dev.todotracker.core.Breaks
+import dev.todotracker.core.PhaseEnd
 import dev.todotracker.core.PomodoroEventKind
 import dev.todotracker.core.PomodoroPhase
 import dev.todotracker.core.QuickCaptureParser
@@ -166,15 +167,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         }
         // Tell the phone when the phases end, so it can say so with the app closed: a focus session, and the break that
         // follows it (the app may be asleep when the break starts), or a break.
-        val end = p.endsAt.takeIf { p.isRunning }
-        val next = when {
-            end == null -> emptyList()
-            p.phase == PomodoroPhase.FOCUS -> {
-                val long = (p.completedFocusCount + 1) % p.settings.focusesBeforeLongBreak.coerceAtLeast(1) == 0
-                listOf(PhaseEnd(end, true), PhaseEnd(end.plus(p.settings.durationOf(if (long) PomodoroPhase.LONG_BREAK else PomodoroPhase.SHORT_BREAK)), false))
-            }
-            else -> listOf(PhaseEnd(end, false))
-        }
+        val next = Breaks.phaseEnds(p)
         if (next != scheduled) {
             scheduled = next
             onPhaseEnds(next)

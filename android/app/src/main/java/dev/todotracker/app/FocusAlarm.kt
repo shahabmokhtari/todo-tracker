@@ -12,10 +12,11 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.todotracker.R
+import dev.todotracker.core.BoardCodec
+import dev.todotracker.core.Breaks
+import dev.todotracker.core.PhaseEnd
+import java.io.File
 import java.time.Instant
-
-/** When the focus timer's phases end: a focus session (and the break after it), or a break. */
-data class PhaseEnd(val at: Instant, val focus: Boolean)
 
 /**
  * Says when a focus session or a break ends while the app is closed or the phone is locked: alarms at the ends of the
@@ -89,6 +90,28 @@ object FocusAlarm {
     internal fun endOf(intent: Intent): PhaseEnd? {
         val at = intent.getLongExtra(EXTRA_AT, 0L).takeIf { it > 0 } ?: return null
         return PhaseEnd(Instant.ofEpochMilli(at), intent.getBooleanExtra(EXTRA_FOCUS, false))
+    }
+}
+
+/**
+ * The phone forgets every app's alarms when it restarts (and when the app is updated): set them again from the saved
+ * board, and say so right away if a session or a break ended while the phone was off. Only reads the board.
+ */
+class RestartReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        val pending = goAsync()
+        Thread {
+            try {
+                val file = File(context.filesDir, "board.json")
+                val board = runCatching { BoardCodec.decode(file.readText()) }.getOrNull() ?: return@Thread
+                val ends = Breaks.phaseEnds(board.pomodoro)
+                FocusAlarm.schedule(context, ends)
+                Breaks.missed(ends, Instant.now())?.let { FocusAlarm.notify(context, it) }
+            } finally {
+                pending.finish()
+            }
+        }.start()
     }
 }
 
