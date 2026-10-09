@@ -92,8 +92,10 @@ The web app (and the app window on Windows) has five views; switch with the side
 
 Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
 closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add
-by hand. Focus sessions count as time on their task; when one ends, a full-screen break reminds you to rest (skip it
-if you must).
+by hand. Starting a focus session on a task starts that task's timer too (the session's time counts as focus time on
+it). When the session ends, a full-screen break reminds you to rest: take it, skip it, or **Start next focus now**
+(same task, the break ends). When a break you saw runs out, it asks **Break's over: Start next focus** or **Not now**;
+on Windows the notification has the button too. (The iPhone app has the focus timer and breaks but doesn't time tasks.)
 
 To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add rollout steps*), enter one step per line,
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step

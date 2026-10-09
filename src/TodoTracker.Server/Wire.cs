@@ -156,7 +156,10 @@ public sealed record PomodoroDto(
     int FocusMinutes,
     int ShortBreakMinutes,
     int LongBreakMinutes,
-    int FocusesBeforeLongBreak);
+    int FocusesBeforeLongBreak,
+    Guid? NextItemId = null,
+    string? NextItemTitle = null,
+    DateTimeOffset? BreakEndedAt = null);
 
 public sealed record DashboardDto(
     DateTimeOffset ServerTime,
@@ -417,6 +420,9 @@ public static class Wire
             p.Settings.FocusMinutes,
             p.Settings.ShortBreakMinutes,
             p.Settings.LongBreakMinutes,
-            p.Settings.FocusesBeforeLongBreak);
+            p.Settings.FocusesBeforeLongBreak,
+            board.NextFocusItem()?.Id,
+            board.NextFocusItem()?.Title,
+            p.BreakEndedAt);
     }
 }

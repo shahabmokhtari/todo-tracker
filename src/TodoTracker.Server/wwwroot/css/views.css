@@ -447,6 +447,11 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .break-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 8px; }
 .btn.light { color: #f8fafc; border-color: rgb(255 255 255 / .35); background: transparent; }
 .btn.light:hover { border-color: #fff; }
+.break-next { margin: 0; max-width: 100%; color: rgb(248 250 252 / .8); font-size: 15px; overflow-wrap: anywhere; }
+.break-next strong { color: #fff; }
+/* "Break's over": warmer, to pull back towards work. */
+.break-card.over .break-icon { color: #fde68a; animation: none; }
+.break-card.over .break-tip { color: #fef3c7; }
 
 @media print {
   .sidenav, .bottom-nav, .palette, .break-screen, .timer-chip { display: none !important; }

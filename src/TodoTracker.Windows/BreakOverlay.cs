@@ -73,6 +73,11 @@ internal sealed partial class BreakOverlay : IDisposable
         {
             Sync();
         }
+        else if (e.PropertyName == nameof(BreakScreenViewModel.IsOver))
+        {
+            // The break turned into "Break's over" under the person: a click or key in that moment isn't an answer.
+            _shownAt = DateTime.UtcNow;
+        }
     }
 
     // Raised on another thread. Monitors came or went: cover the screens there are now (or show a break that found
@@ -161,7 +166,8 @@ internal sealed partial class BreakOverlay : IDisposable
             Content = Card(),
             Opacity = SystemParameters.ClientAreaAnimation ? 0 : 1,
         };
-        System.Windows.Automation.AutomationProperties.SetName(window, "Time for a break");
+        // What a screen reader announces follows the screen: the break, or "Break's over".
+        window.SetBinding(System.Windows.Automation.AutomationProperties.NameProperty, new Binding(nameof(BreakScreenViewModel.Title)));
         void Place() => SetWindowPos(new WindowInteropHelper(window).Handle, TopMost, monitor.Bounds.X, monitor.Bounds.Y, monitor.Bounds.Width, monitor.Bounds.Height, SwpNoActivate);
         window.SourceInitialized += (_, _) => Place();
         // Moving onto a monitor with another scale resizes the window: cover the whole monitor again.
@@ -248,20 +254,34 @@ internal sealed partial class BreakOverlay : IDisposable
             return button;
         }
 
-        var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
-        actions.Children.Add(Action("I’m taking it", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: true));
-        actions.Children.Add(Action("Skip the break", () => _vm.SkipBreakCommand.ExecuteAsync(null), primary: false));
+        var visible = new BooleanToVisibilityConverter();
+        T Shown<T>(T element, string when)
+            where T : FrameworkElement
+        {
+            element.SetBinding(UIElement.VisibilityProperty, new Binding(when) { Converter = visible });
+            return element;
+        }
+
+        // During the break: take it, start the next focus now, or skip it. When it's over: start the next, or not now.
+        var actions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
+        actions.Children.Add(Shown(Action("I’m taking it", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: true), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("▶ Start next focus now", () => _vm.StartNextFocusCommand.ExecuteAsync(null), primary: false), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("Skip the break", () => _vm.SkipBreakCommand.ExecuteAsync(null), primary: false), nameof(BreakScreenViewModel.IsBreak)));
+        actions.Children.Add(Shown(Action("▶ Start next focus", () => _vm.StartNextFocusCommand.ExecuteAsync(null), primary: true), nameof(BreakScreenViewModel.IsOver)));
+        actions.Children.Add(Shown(Action("Not now", () => { _vm.TakeBreakCommand.Execute(null); return Task.CompletedTask; }, primary: false), nameof(BreakScreenViewModel.IsOver)));
 
         var stack = new StackPanel { MaxWidth = 620, Margin = new Thickness(32) };
-        stack.Children.Add(Text(null, 46, white, FontWeights.Normal, "☕"));
+        stack.Children.Add(Shown(Text(null, 46, white, FontWeights.Normal, "☕"), nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(null, 46, white, FontWeights.Normal, "🎯"), nameof(BreakScreenViewModel.IsOver)));
         stack.Children.Add(Text(nameof(BreakScreenViewModel.Title), 34, white, FontWeights.Bold));
         stack.Children.Add(Text(nameof(BreakScreenViewModel.Tip), 19, soft, FontWeights.Normal));
-        stack.Children.Add(clock);
-        stack.Children.Add(Text(null, 15, soft, FontWeights.Normal, "Your focus session is done. Step away; the timer tells you when to come back."));
+        stack.Children.Add(Shown(clock, nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(null, 15, soft, FontWeights.Normal, "Your focus session is done. Step away; the timer tells you when to come back."), nameof(BreakScreenViewModel.IsBreak)));
+        stack.Children.Add(Shown(Text(nameof(BreakScreenViewModel.NextText), 16, white, FontWeights.SemiBold), nameof(BreakScreenViewModel.HasNext)));
         stack.Children.Add(actions);
 
         var card = new Border { Child = stack, Focusable = true, FocusVisualStyle = null, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        System.Windows.Automation.AutomationProperties.SetName(card, "Time for a break");
+        card.SetBinding(System.Windows.Automation.AutomationProperties.NameProperty, new Binding(nameof(BreakScreenViewModel.Title)));
         var grid = new Grid();
         grid.Children.Add(card);
         return grid;

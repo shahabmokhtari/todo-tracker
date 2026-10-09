@@ -4,9 +4,17 @@ import Foundation
 public struct BreakPrompt: Equatable, Sendable {
     public let until: Date
     public let isLong: Bool
-    public var tip: String { Breaks.tip(for: until) }
+    /// "Break's over": the break ran out (`until` is when); Start next focus / Not now instead of the clock.
+    public var isOver = false
 
-    public var title: String { isLong ? "Time for a longer break" : "Time for a break" }
+    public init(until: Date, isLong: Bool, isOver: Bool = false) {
+        self.until = until
+        self.isLong = isLong
+        self.isOver = isOver
+    }
+    public var tip: String { isOver ? "Ready for the next one? One small step is enough." : Breaks.tip(for: until) }
+
+    public var title: String { isOver ? "Break’s over" : isLong ? "Time for a longer break" : "Time for a break" }
 }
 
 /// The full-screen break after a focus session: the same rules as the web app and Windows
@@ -39,6 +47,20 @@ public enum Breaks {
         default:
             return nil
         }
+    }
+
+    /// How long "Break's over" keeps asking after a break ran out (later, the timer's own Start does).
+    public static let overFor: TimeInterval = 15 * 60
+
+    /// Whether to ask "Break's over": the break this app saw (`seen`, its end) ran out by itself, not long ago, and it
+    /// wasn't answered with Not now. The timer says when a break ran out (never for a skipped or paused one); until it
+    /// has moved on, a running break at its end counts too. Same rule as the web app and Windows.
+    public static func over(phase: PomodoroPhase, running: Bool, endsAt: Date?, breakEndedAt: Date?, now: Date, seen: Date?, dismissedOver: Date?) -> Bool {
+        guard let seen, seen != dismissedOver, now >= seen, now.timeIntervalSince(seen) < overFor else { return false }
+        if phase == .idle { return breakEndedAt == seen }
+        guard running, let end = endsAt else { return false } // paused
+        // The break itself, run out; or the session before it (both ran out before the timer moved on). Not a new session.
+        return phase == .focus ? end < seen : end == seen
     }
 
     public static func due(_ timer: PomodoroTimer, now: Date) -> BreakPrompt? {

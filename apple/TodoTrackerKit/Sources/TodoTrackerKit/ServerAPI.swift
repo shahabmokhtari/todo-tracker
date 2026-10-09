@@ -23,6 +23,8 @@ public enum ServerAction: Equatable, Sendable {
 
 public enum PomodoroCommand: String, Sendable {
     case start, pause, resume, skip, reset
+    /// End the break (or the wait after it) and start the next session on the last task, else the one sent.
+    case next
 }
 
 /// An HTTP request to the server; the body is JSON with sorted keys (nil: none).

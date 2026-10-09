@@ -518,6 +518,31 @@ public sealed partial class TaskBoard
         Pomodoro.Reset();
     }
 
+    /// <summary>
+    /// The task "Start next focus" picks up: the last session's, if it's still there and open (null: none; the apps
+    /// then offer their top task).
+    /// </summary>
+    public WorkItem? NextFocusItem() =>
+        Pomodoro.ItemId is { } id && Find(id) is { IsDone: false, IsArchived: false } item ? item : null;
+
+    /// <summary>
+    /// "Start next focus" (on the break screen, or when the break is over): ends the break and starts a session on
+    /// the last session's task, else on <paramref name="fallbackItemId"/>. A session that just ran out counts first; one
+    /// still running is never restarted (a second click or window mustn't cut it, and its time, short).
+    /// </summary>
+    public WorkItem? StartNextFocus(Guid? fallbackItemId, Actor actor, DateTimeOffset now, string? device = null)
+    {
+        TickPomodoro(now);
+        if (Pomodoro.Phase == PomodoroPhase.Focus)
+        {
+            throw new InvalidOperationException("A focus session is already going.");
+        }
+
+        var item = NextFocusItem() ?? (fallbackItemId is { } id && Find(id) is { IsDone: false, IsArchived: false } fallback ? fallback : null);
+        StartFocus(item?.Id, actor, now, device);
+        return item;
+    }
+
     public IReadOnlyList<PomodoroEvent> TickPomodoro(DateTimeOffset now)
     {
         var events = new List<PomodoroEvent>();

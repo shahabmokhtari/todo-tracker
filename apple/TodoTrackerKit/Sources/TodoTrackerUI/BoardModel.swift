@@ -13,7 +13,10 @@ import UserNotifications
 @MainActor
 public final class BoardModel: ObservableObject {
     @Published public private(set) var dashboard: Dashboard
-    @Published public private(set) var now = Date()
+    @Published public private(set) var now = Date() {
+        // Every tick and every refresh: the break this app saw is tracked for "Break's over".
+        didSet { trackBreak() }
+    }
     @Published public var selectedGroupId: UUID?
     @Published public var quickText = ""
     @Published public var status: String?
@@ -399,21 +402,52 @@ public final class BoardModel: ObservableObject {
     /// The end of the break the user already hid or skipped (it stays hidden for that break).
     @Published private var dismissedBreak: Date?
 
-    /// The break to show now, or nil.
+    /// The break this app saw (shown, or hidden with "I'm taking it"): when it runs out, it asks about the next focus.
+    @Published private var seenBreak: Date?
+    @Published private var dismissedOver: Date?
+
+    /// The break to show now (or "Break's over"), or nil.
     public var breakPrompt: BreakPrompt? {
-        guard fullScreenBreaks, let due = Breaks.due(board.pomodoro, now: now), due.until != dismissedBreak else { return nil }
-        return due
+        guard fullScreenBreaks else { return nil }
+        let due = Breaks.due(board.pomodoro, now: now)
+        if let due, due.until != dismissedBreak { return due }
+        let seen = due?.until ?? seenBreak
+        let p = board.pomodoro
+        guard due == nil, let seen, Breaks.over(phase: p.phase, running: p.isRunning, endsAt: p.endsAt, breakEndedAt: p.breakEndedAt, now: now, seen: seen, dismissedOver: dismissedOver) else { return nil }
+        return BreakPrompt(until: seen, isLong: false, isOver: true)
     }
 
-    /// "I'm taking it": the screen goes away; the break timer keeps running.
+    /// What "Start next focus" picks up (nil: no task).
+    public var nextFocusTitle: String? { (board.nextFocusItem() ?? dashboard.focus?.item)?.title }
+
+    /// Remembers the break this app saw (whether it ran out by itself, the timer says).
+    private func trackBreak() {
+        if let due = Breaks.due(board.pomodoro, now: now), seenBreak != due.until { seenBreak = due.until }
+    }
+
+    /// "I'm taking it" (the break timer keeps running), or "Not now" when the break is over.
     public func takeBreak() {
-        dismissedBreak = Breaks.due(board.pomodoro, now: now)?.until ?? dismissedBreak
+        if breakPrompt?.isOver == true {
+            dismissedOver = seenBreak
+        } else {
+            dismissedBreak = Breaks.due(board.pomodoro, now: now)?.until ?? dismissedBreak
+        }
     }
 
     /// Back to work now: the break ends.
     public func skipBreak() {
         takeBreak()
+        seenBreak = nil
         skipPomodoro()
+    }
+
+    /// The next focus session now (during the break, or when it's over): on the last task, else today's top one.
+    public func startNextFocus() {
+        dismissedBreak = Breaks.due(board.pomodoro, now: now)?.until ?? dismissedBreak
+        dismissedOver = seenBreak
+        seenBreak = nil
+        let fallback = dashboard.focus?.item.id
+        change("Focus started", server: .pomodoro(.next, itemId: fallback)) { try board.startNextFocus(fallback: fallback, now: $0) }
     }
 
     public var pomodoroText: String {

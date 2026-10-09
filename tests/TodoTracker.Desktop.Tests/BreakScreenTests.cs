@@ -77,17 +77,77 @@ public sealed class BreakScreenTests : IDisposable
     }
 
     [Fact]
-    public async Task It_shows_during_a_break_and_goes_away_when_the_break_is_over()
+    public async Task It_shows_during_a_break_and_asks_about_the_next_focus_when_the_break_is_over()
     {
         await StartFocusAsync();
         _time.Advance(TimeSpan.FromMinutes(25));
         await _store.UpdateAsync(b => b.TickPomodoro(_time.GetUtcNow()));
         await _vm.RefreshAsync();
         Assert.True(_vm.Break.IsShown);
+        Assert.False(_vm.Break.IsOver);
+        Assert.Equal("Next: Deep work", _vm.Break.NextText);
 
         _time.Advance(TimeSpan.FromMinutes(5));
 
+        // Changed on purpose by the "start next focus" PR: the break used to just go away here; now the screen turns
+        // into "Break's over" with Start next focus / Not now (it showed this break, so the person is coming back to it).
+        Assert.True(_vm.Break.IsShown);
+        Assert.True(_vm.Break.IsOver);
+        Assert.Equal("Break’s over", _vm.Break.Title);
+
+        _vm.Break.TakeBreakCommand.Execute(null); // Not now
+        _time.Advance(TimeSpan.FromSeconds(2));
         Assert.False(_vm.Break.IsShown);
+    }
+
+    [Fact]
+    public async Task Start_next_focus_from_the_break_times_the_same_task_again()
+    {
+        await StartFocusAsync();
+        _time.Advance(TimeSpan.FromMinutes(25).Add(TimeSpan.FromSeconds(2)));
+        Assert.True(_vm.Break.IsShown);
+
+        await _vm.Break.StartNextFocusCommand.ExecuteAsync(null);
+
+        Assert.False(_vm.Break.IsShown);
+        var (phase, count, timer) = await _store.ReadAsync(b => (b.Pomodoro.Phase, b.Pomodoro.CompletedFocusCount, b.RunningTimer()));
+        Assert.Equal(PomodoroPhase.Focus, phase);
+        Assert.Equal(1, count);
+        Assert.Equal("Deep work", timer!.Value.Item.Title);
+        Assert.Equal(TimeSource.Focus, timer.Value.Entry.Source);
+
+        // Nothing to ask afterwards: the break was ended on purpose.
+        _time.Advance(TimeSpan.FromMinutes(6));
+        Assert.False(_vm.Break.IsShown);
+    }
+
+    [Fact]
+    public async Task A_break_skipped_elsewhere_doesnt_ask_when_its_time_would_have_ended()
+    {
+        await StartFocusAsync();
+        _time.Advance(TimeSpan.FromMinutes(25));
+        await _store.UpdateAsync(b => b.TickPomodoro(_time.GetUtcNow()));
+        await _vm.RefreshAsync();
+        _time.Advance(TimeSpan.FromMinutes(2));
+        await _store.UpdateAsync(b => b.SkipFocus(_time.GetUtcNow())); // in another window
+        await _vm.RefreshAsync();
+
+        _time.Advance(TimeSpan.FromMinutes(4));
+
+        Assert.False(_vm.Break.IsShown);
+    }
+
+    [Fact]
+    public async Task The_notification_when_the_break_is_over_starts_the_next_focus()
+    {
+        await StartFocusAsync();
+        _time.Advance(TimeSpan.FromMinutes(31));
+        await _store.UpdateAsync(b => b.TickPomodoro(_time.GetUtcNow()));
+
+        await _vm.HandleToastActionAsync(ToastAction.NextFocus, null, null);
+
+        Assert.Equal(PomodoroPhase.Focus, await _store.ReadAsync(b => b.Pomodoro.Phase));
+        Assert.Equal("Focus started: Deep work", _vm.StatusMessage);
     }
 
     [Fact]

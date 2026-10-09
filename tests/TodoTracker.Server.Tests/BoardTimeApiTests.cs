@@ -171,6 +171,38 @@ public sealed class BoardTimeApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Start_next_focus_ends_the_break_and_times_the_same_task_again()
+    {
+        var id = await Create("Write report");
+        await _client.PostJson("/api/pomodoro/start", new { itemId = id });
+        _server.Time.Advance(TimeSpan.FromMinutes(26));
+
+        var during = await _client.GetJson("/api/dashboard");
+        Assert.Equal(id, during["pomodoro"]!["nextItemId"]!.GetValue<string>());
+        Assert.Equal("Write report", during["pomodoro"]!["nextItemTitle"]!.GetValue<string>());
+
+        var next = await _client.PostJson("/api/pomodoro/next");
+
+        Assert.Equal("focus", next["phase"]!.GetValue<string>());
+        Assert.Equal(id, next["itemId"]!.GetValue<string>());
+        Assert.Equal("focus", (await _client.GetJson("/api/dashboard"))["timer"]!["source"]!.GetValue<string>());
+
+        // Again while it runs: refused, the session isn't restarted.
+        var again = await _client.PostAsJsonAsync("/api/pomodoro/next", new { });
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    [Fact]
+    public async Task Start_next_focus_without_a_last_task_picks_todays_top_task()
+    {
+        var id = await Create("Write report");
+
+        var next = await _client.PostJson("/api/pomodoro/next");
+
+        Assert.Equal(id, next["itemId"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task A_focus_session_is_timed()
     {
         var id = await Create("Write report");

@@ -84,7 +84,8 @@ struct BoardDocument: Codable {
             endsAt: p.endsAt,
             pausedRemainingSeconds: p.pausedRemaining.map { Int($0.rounded()) },
             itemId: p.itemId,
-            completedFocusCount: p.completedFocusCount)
+            completedFocusCount: p.completedFocusCount,
+            breakEndedAt: p.breakEndedAt)
     }
 
     func toBoard() throws -> TaskBoard {
@@ -101,7 +102,7 @@ struct BoardDocument: Codable {
         board.nowOrder = (nowOrder ?? []).filter { board.find($0) != nil && seen.insert($0).inserted }
         if let p = pomodoro {
             var timer = PomodoroTimer(settings: p.settings ?? PomodoroSettings())
-            timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0)
+            timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0, breakEndedAt: p.breakEndedAt)
             board.pomodoro = timer
         }
         return board
@@ -208,6 +209,7 @@ struct PomodoroDocument: Codable {
     var pausedRemainingSeconds: Int?
     var itemId: UUID?
     var completedFocusCount: Int?
+    var breakEndedAt: Date?
 }
 
 /// Local-first JSON persistence with atomic writes and a `.bak` of the previous version.

@@ -44,6 +44,8 @@ public struct PomodoroTimer: Equatable, Sendable {
     public private(set) var pausedRemaining: TimeInterval?
     public private(set) var itemId: UUID?
     public private(set) var completedFocusCount = 0
+    /// When the last break ran out by itself (nil after a skip, a reset, or a new session): "Break's over" asks only then.
+    public private(set) var breakEndedAt: Date?
 
     public init(settings: PomodoroSettings = PomodoroSettings()) {
         self.settings = settings
@@ -60,6 +62,7 @@ public struct PomodoroTimer: Equatable, Sendable {
         phase = .focus
         self.itemId = itemId
         pausedRemaining = nil
+        breakEndedAt = nil
         endsAt = now.addingTimeInterval(settings.duration(of: .focus))
     }
 
@@ -81,6 +84,7 @@ public struct PomodoroTimer: Equatable, Sendable {
         pausedRemaining = nil
         itemId = nil
         completedFocusCount = 0
+        breakEndedAt = nil
     }
 
     public mutating func skip(now: Date) {
@@ -88,6 +92,7 @@ public struct PomodoroTimer: Equatable, Sendable {
             beginBreak(.shortBreak, from: now)
         } else if phase != .idle {
             goIdle()
+            breakEndedAt = nil
         }
     }
 
@@ -102,17 +107,19 @@ public struct PomodoroTimer: Equatable, Sendable {
         }
         let item = itemId
         goIdle()
+        breakEndedAt = end
         return PomodoroEvent(kind: .breakCompleted, itemId: item, at: end)
     }
 
     mutating func detachItem() { itemId = nil }
 
-    mutating func restore(phase: PomodoroPhase, endsAt: Date?, pausedRemaining: TimeInterval?, itemId: UUID?, completedFocusCount: Int) {
+    mutating func restore(phase: PomodoroPhase, endsAt: Date?, pausedRemaining: TimeInterval?, itemId: UUID?, completedFocusCount: Int, breakEndedAt: Date? = nil) {
         self.phase = phase
         self.endsAt = phase == .idle ? nil : endsAt
         self.pausedRemaining = (phase == .idle || endsAt != nil) ? nil : pausedRemaining
         self.itemId = itemId
         self.completedFocusCount = max(0, completedFocusCount)
+        self.breakEndedAt = phase == .idle ? breakEndedAt : nil
     }
 
     private mutating func beginBreak(_ phase: PomodoroPhase, from: Date) {

@@ -438,6 +438,10 @@ internal static class ApiEndpoints
                     case "reset":
                         b.ResetFocus(now);
                         break;
+                    case "next":
+                        // The last session's task; else the one asked for; else today's top task.
+                        b.StartNextFocus(request?.ItemId ?? Agenda.Build(b, now, recentNoteCount: 0).Focus?.Item.Id, Security.ActorOf(http), now);
+                        break;
                     default:
                         throw new ArgumentException($"Unknown pomodoro action \"{action}\".", nameof(action));
                 }

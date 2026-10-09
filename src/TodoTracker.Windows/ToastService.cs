@@ -41,12 +41,17 @@ internal sealed class ToastService : IDisposable
             });
     }
 
-    public static void ShowFocus(PomodoroEvent evt) =>
+    public static void ShowFocus(PomodoroEvent evt)
+    {
+        var done = evt.Kind == PomodoroEventKind.FocusCompleted;
         new ToastContentBuilder()
             .AddArgument("action", "focus")
-            .AddText(evt.Kind == PomodoroEventKind.FocusCompleted ? "🍅 Focus session done" : "Break is over")
-            .AddText(evt.Kind == PomodoroEventKind.FocusCompleted ? "Nice work. Stand up, stretch, drink some water." : "Ready for the next focus block? Pick one small next step.")
+            .AddText(done ? "🍅 Focus session done" : "Break is over")
+            .AddText(done ? "Nice work. Stand up, stretch, drink some water." : "Ready for the next focus block? Pick one small next step.")
+            // The next session from here too (after the break; or right away, skipping it).
+            .AddButton(new ToastButton().SetContent(done ? "Skip the break, start the next" : "▶ Start next focus").AddArgument("action", nameof(ToastAction.NextFocus)))
             .Show();
+    }
 
     public void Dispose() => ToastNotificationManagerCompat.OnActivated -= OnActivated;
 
@@ -63,13 +68,10 @@ internal sealed class ToastService : IDisposable
             {
                 _window.Activate();
             }
-            if (!args.TryGetValue("item", out var itemText) || !Guid.TryParse(itemText, out var itemId))
-            {
-                return;
-            }
-
-            Guid? reminderId = args.TryGetValue("reminder", out var r) && Guid.TryParse(r, out var rid) ? rid : null;
+            // The action first: the focus timer's buttons aren't about a task.
             var action = args.TryGetValue("action", out var a) && Enum.TryParse<ToastAction>(a, ignoreCase: true, out var parsed) ? parsed : ToastAction.Open;
+            Guid? itemId = args.TryGetValue("item", out var itemText) && Guid.TryParse(itemText, out var id) ? id : null;
+            Guid? reminderId = args.TryGetValue("reminder", out var r) && Guid.TryParse(r, out var rid) ? rid : null;
             await _viewModel.HandleToastActionAsync(action, itemId, reminderId).ConfigureAwait(true);
         });
     }

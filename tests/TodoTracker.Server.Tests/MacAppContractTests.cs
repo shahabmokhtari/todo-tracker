@@ -57,6 +57,7 @@ public sealed class MacAppContractTests : IAsyncLifetime
         await Send(HttpMethod.Post, "/api/pomodoro/resume");
         await Send(HttpMethod.Post, "/api/pomodoro/skip");
         await Send(HttpMethod.Post, "/api/pomodoro/reset");
+        await Send(HttpMethod.Post, "/api/pomodoro/next", $$"""{"itemId":"{{task}}"}""");
         await Send(HttpMethod.Put, "/api/settings/theme", """{"theme":"dark"}""");
         await Send(HttpMethod.Delete, $"/api/items/{step}");
 

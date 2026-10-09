@@ -33,7 +33,7 @@ Product principles:
 | Browser research | The side panel extension attaches the current page's URL and title to a note on the focus task. |
 | Agent help | Copilot (MCP) creates a task, adds rollout steps, logs "deployed ring 0", and schedules the next check. The notes show "Agent: copilot". |
 | Context switch | Group tabs (Work, Personal, custom) filter everything. Badges show how much is waiting in each tab. |
-| Focus | Pomodoro on the current task. A toast suggests a break, and completed sessions are logged on the task. |
+| Focus | Pomodoro on the current task, timed as focus time on it. A full-screen break follows (take it, skip it, or start the next focus now); when a break the app showed runs out, it asks "Break's over: Start next focus / Not now" for up to 15 minutes (`breakOver`, same rule in web, Windows and Apple; `POST /api/pomodoro/next` never restarts a running session). |
 
 ## 3. Architecture
 

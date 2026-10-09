@@ -295,6 +295,8 @@ test('Break: when a focus session ends, a full-screen break shows and can be ski
   await page.keyboard.press('Tab');
   await expect(screen.getByRole('button', { name: 'I’m taking it' })).toBeFocused();
   await page.keyboard.press('Tab');
+  await expect(screen.getByRole('button', { name: 'Start next focus now' })).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(screen.getByRole('button', { name: 'Skip the break' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(screen.getByRole('button', { name: 'I’m taking it' })).toBeFocused();
@@ -494,5 +496,48 @@ test('Later: quick choices with times, a time typed in words, and after another 
   await expect(page.locator('#sec-waiting .item', { hasText: 'Move in' })).toHaveCount(0);
   const back = await (await request.get(`/api/items/${move.id}`, { headers: auth })).json();
   expect(back.state).toBe('actionable');
+  expect(errors).toEqual([]);
+});
+
+test('Break: start the next focus from the break, or when the break is over', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await page.clock.install();
+  const task = await add(request, 'Second deep work block');
+  await request.post('/api/pomodoro/start', { headers: auth, data: { itemId: task.id } });
+  // Only the browser's clock moves here, so the server is asked but not obeyed: the request is what's checked
+  // (the server side is covered by the API tests).
+  const asked = [];
+  await page.route('**/api/pomodoro/next', async (route) => { asked.push(route.request().postDataJSON()); await route.fulfill({ json: {} }); });
+  await open(page, request);
+
+  // During the break: start the next one now, on the same task.
+  await page.clock.fastForward('25:05');
+  const screen = page.locator('#break');
+  await expect(screen.getByRole('heading')).toHaveText(/Time for a/);
+  await expect(screen.locator('.break-next')).toHaveText('Next: Second deep work block');
+  await page.clock.fastForward('00:02');
+  await screen.getByRole('button', { name: 'Start next focus now' }).click();
+  await expect(screen).toBeHidden();
+  expect(asked).toHaveLength(1);
+
+  // A break hidden with "I'm taking it" asks when it's over (the server still says focus: nothing really started).
+  await page.reload();
+  await page.clock.fastForward('00:02');
+  await expect(screen).toBeHidden(); // the one just answered stays away…
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload();
+  await page.clock.fastForward('00:02');
+  await expect(screen.getByRole('heading')).toHaveText(/Time for a/); // …a fresh window shows it again
+  await screen.getByRole('button', { name: 'I’m taking it' }).click({ delay: 900 });
+  await expect(screen).toBeHidden();
+  await page.clock.fastForward('05:00');
+  await expect(screen.getByRole('heading')).toHaveText('Break’s over');
+  await expect(screen.locator('.break-next')).toHaveText('Next: Second deep work block');
+  await page.clock.fastForward('00:02');
+  await screen.getByRole('button', { name: 'Not now' }).click();
+  await expect(screen).toBeHidden();
+  await page.clock.fastForward('00:30');
+  await expect(screen).toBeHidden();
+  expect(asked).toHaveLength(1);
   expect(errors).toEqual([]);
 });

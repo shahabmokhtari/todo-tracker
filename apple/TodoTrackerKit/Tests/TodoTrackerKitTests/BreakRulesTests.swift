@@ -30,6 +30,11 @@ final class BreakRulesTests: XCTestCase {
             let expect = c["expect"] as! [String: Any]
 
             XCTAssertEqual(shown, expect["show"] as! Bool, "\(name): show")
+            if let over = expect["over"] as? Bool {
+                let seen = (c["seen"] as? String).flatMap(BoardCodec.parseDate)
+                let dismissedOver = (c["dismissedOver"] as? String).flatMap(BoardCodec.parseDate)
+                XCTAssertEqual(Breaks.over(phase: PomodoroPhase(rawValue: p["phase"] as! String)!, running: p["running"] as! Bool, endsAt: (p["endsAt"] as? String).flatMap(BoardCodec.parseDate), breakEndedAt: (p["breakEndedAt"] as? String).flatMap(BoardCodec.parseDate), now: now, seen: seen, dismissedOver: dismissedOver), over, "\(name): over")
+            }
             if shown, let due {
                 XCTAssertEqual(due.until, BoardCodec.parseDate(expect["until"] as! String), "\(name): until")
                 XCTAssertEqual(due.isLong, expect["long"] as! Bool, "\(name): long")
@@ -51,6 +56,23 @@ final class BreakRulesTests: XCTestCase {
 
         timer.pause(now: start.addingTimeInterval(60))
         XCTAssertNil(Breaks.due(timer, now: start.addingTimeInterval(3600)))
+    }
+
+    func testStartNextFocusEndsTheBreakAndStartsOnTheSameTask() throws {
+        let start = Date(timeIntervalSince1970: 1_767_607_200)
+        let board = TaskBoard()
+        let item = try board.addTask(NewTask("Write report"), now: start)
+        try board.startFocus(item.id, now: start)
+        board.tickPomodoro(now: start.addingTimeInterval(26 * 60))
+        XCTAssertEqual(board.pomodoro.phase, .shortBreak)
+
+        let next = try board.startNextFocus(fallback: nil, now: start.addingTimeInterval(27 * 60))
+
+        XCTAssertEqual(next?.id, item.id)
+        XCTAssertEqual(board.pomodoro.phase, .focus)
+        XCTAssertEqual(board.pomodoro.completedFocusCount, 1)
+        // Again while it runs: refused, the session isn't restarted.
+        XCTAssertThrowsError(try board.startNextFocus(fallback: nil, now: start.addingTimeInterval(30 * 60)))
     }
 
     func testSkippingRightAfterFocusEndedSkipsThatBreak() throws {
