@@ -25,7 +25,9 @@ data class PhaseEnd(val at: Instant, val focus: Boolean)
  */
 object FocusAlarm {
     private const val CHANNEL = "focus-timer"
-    private const val NOTIFICATION_ID = 7417
+    // Each kind its own: a "Break is over" never quietly replaces an unread "Focus session done".
+    private const val FOCUS_DONE_ID = 7417
+    private const val BREAK_OVER_ID = 7418
     private const val EXTRA_FOCUS = "focus"
     private const val EXTRA_AT = "at"
     private const val PREFS = "focus-alarm"
@@ -73,12 +75,16 @@ object FocusAlarm {
             .setContentText(if (end.focus) "Nice work. Stand up, stretch, drink some water." else "Ready for the next focus block? Open to start it.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setOnlyAlertOnce(true)
             .setAutoCancel(true)
             .setContentIntent(open)
             .build()
-        manager.notify(NOTIFICATION_ID, notification)
+        if (!end.focus) manager.cancel(FOCUS_DONE_ID)
+        manager.notify(if (end.focus) FOCUS_DONE_ID else BREAK_OVER_ID, notification)
     }
+
+    /** Whether alarms can ring on time (Android 12+ asks the person; from Android 14 it's off until they allow it). */
+    fun exactAllowed(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true
 
     internal fun endOf(intent: Intent): PhaseEnd? {
         val at = intent.getLongExtra(EXTRA_AT, 0L).takeIf { it > 0 } ?: return null

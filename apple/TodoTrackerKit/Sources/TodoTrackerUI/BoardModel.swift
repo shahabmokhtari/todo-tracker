@@ -441,11 +441,13 @@ public final class BoardModel: ObservableObject {
     private func trackBreak() {
         if let due = Breaks.due(board.pomodoro, now: now) {
             if seenBreak != due.until { seenBreak = due.until }
-        } else if !usesServer, seenBreak == nil, board.pomodoro.phase == .idle, let ended = board.pomodoro.breakEndedAt {
-            // On the phone, a break that ran out while the app was asleep (a notification said so): back in the app, it
-            // asks about the next one. (The Mac only asks about a break it showed.)
-            seenBreak = ended
+            return
         }
+        #if os(iOS)
+        // On the phone, a break that ran out while the app was asleep (a notification said so): back in the app, it asks
+        // about the next one. (The Mac only asks about a break it showed.)
+        if seenBreak == nil, board.pomodoro.phase == .idle, let ended = board.pomodoro.breakEndedAt { seenBreak = ended }
+        #endif
     }
 
     /// "I'm taking it" (the break timer keeps running), or "Not now" when the break is over.

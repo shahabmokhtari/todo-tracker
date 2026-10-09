@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     // Back to the app: what came back meanwhile (this morning's "tomorrow" tasks) shows at once.
     override fun onResume() {
         super.onResume()
-        vm.refresh()
+        vm.resume()
     }
 
     override fun onStart() {

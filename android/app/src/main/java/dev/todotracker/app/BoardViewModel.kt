@@ -119,6 +119,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Back in the app: the alarms are set again (allowing exact alarms meanwhile makes them ring on time). */
+    fun resume() {
+        scheduled = null
+        refresh()
+    }
+
     fun refresh() {
         if (selectedGroup != null && board.groups.none { it.id == selectedGroup }) selectedGroup = null
         groups = board.groups.map { it.id to it.name }

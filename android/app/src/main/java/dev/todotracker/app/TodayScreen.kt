@@ -63,6 +63,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
     // Starting focus is when notifications start to matter (the end of a session or a break, with the app closed).
     val context = androidx.compose.ui.platform.LocalContext.current
     val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
+    var askExact by rememberSaveable { mutableStateOf(false) }
     val startFocusOn: (UUID?) -> Unit = { id ->
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -70,6 +71,12 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
         vm.startFocus(id)
+        // On time to the minute needs the person's OK on recent Android: offered once, with why.
+        val prefs = context.getSharedPreferences("focus-alarm", android.content.Context.MODE_PRIVATE)
+        if (!FocusAlarm.exactAllowed(context) && !prefs.getBoolean("asked-exact", false)) {
+            prefs.edit().putBoolean("asked-exact", true).apply()
+            askExact = true
+        }
     }
     val undoable = vm.undoable
     LaunchedEffect(undoable) {
@@ -115,6 +122,22 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
     }
     if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
+    if (askExact) {
+        AlertDialog(
+            onDismissRequest = { askExact = false },
+            title = { Text("Ring on time?") },
+            text = { Text("So the end of a focus session or a break is told right when it happens (not a few minutes later), allow Todo Tracker to set alarms.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    askExact = false
+                    if (android.os.Build.VERSION.SDK_INT >= 31) {
+                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
+                    }
+                }) { Text("Allow") }
+            },
+            dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
+        )
+    }
     BreakScreen(vm)
 }
 
