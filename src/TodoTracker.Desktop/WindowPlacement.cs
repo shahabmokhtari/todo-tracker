@@ -40,13 +40,17 @@ public sealed record PlacementBounds(double Left, double Top, double Width, doub
 /// <summary>Where and how the sidebar lives. Persisted per user in <c>desktop.json</c>.</summary>
 /// <param name="Monitor">Stable id (device path) of the chosen monitor; null = primary. See <see cref="MonitorIdentity"/>.</param>
 /// <param name="Floating">Last floating window bounds (null = use a default near the chosen edge).</param>
+/// <param name="Hidden">Hidden by the user: it keeps running in the notification area (also after a restart).</param>
+/// <param name="MakeRoomForRemoteDesktop">Docked: a full-screen Remote Desktop window on its monitor is resized to sit next to it.</param>
 public sealed record WindowPlacement(
     PlacementMode Mode,
     DockEdge Edge,
     string? Monitor,
     double DockWidth,
     bool AlwaysOnTop,
-    PlacementBounds? Floating)
+    PlacementBounds? Floating,
+    bool Hidden = false,
+    bool MakeRoomForRemoteDesktop = true)
 {
     public const double MinDockWidth = 280;
     public const double MaxDockWidth = 600;

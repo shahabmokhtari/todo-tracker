@@ -38,6 +38,12 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
     private const uint MonitorInfoPrimary = 1;
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+    private const uint SwpAsyncWindowPos = 0x4000;
+    private const uint MonitorDefaultToNull = 0;
+    private static readonly IntPtr HwndNoTopmost = new(-2);
     private const string AppBarMessageName = "TodoTracker.Windows.AppBarCallback";
     private const int WmSysCommand = 0x0112;
     private const int ScMaximize = 0xF030;
@@ -59,6 +65,9 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
 
     public bool IsDocked => _registered;
 
+    /// <summary>The sidebar window's handle (once attached).</summary>
+    public IntPtr Handle => _handle;
+
     /// <summary>Width in device-independent pixels reserved at the edge.</summary>
     public double WidthInDips { get; set; } = WindowPlacement.DefaultDockWidth;
 
@@ -75,6 +84,15 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
 
     /// <summary>Raised when Explorer restarts; every AppBar registration is gone and must be re-created.</summary>
     public event EventHandler? ShellRestarted;
+
+    /// <summary>The shell says a full-screen app opened or closed (re-check what covers the sidebar).</summary>
+    public event EventHandler? FullScreenNotified;
+
+    /// <summary>Docked or re-docked (collapsed, expanded, other edge, DPI or taskbar change): the work area changed.</summary>
+    public event EventHandler? Docked;
+
+    /// <summary>The monitor it's docked on (null when not docked).</summary>
+    public DisplayMonitor? DockedMonitor { get; private set; }
 
     /// <summary>When true, maximize requests are ignored (a floating sidebar must not cover the whole screen).</summary>
     public bool BlockMaximize { get; set; }
@@ -206,6 +224,7 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             }
 
             _dockedOn = monitor.Id;
+            DockedMonitor = monitor;
             SHAppBarMessage(AbmQueryPos, ref data);
             if (Edge == DockEdge.Left)
             {
@@ -224,6 +243,9 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
             _window.Top = data.rc.Top / monitor.Scale;
             _window.Width = (data.rc.Right - data.rc.Left) / monitor.Scale;
             _window.Height = (data.rc.Bottom - data.rc.Top) / monitor.Scale;
+
+            // After the stack unwinds: whatever sits next to the sidebar may need to follow its new width.
+            _window.Dispatcher.BeginInvoke(() => Docked?.Invoke(this, EventArgs.Empty));
         }
         finally
         {
@@ -240,8 +262,49 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         }
 
         _registered = false;
+        DockedMonitor = null;
         var data = new AppBarData { cbSize = Marshal.SizeOf<AppBarData>(), hWnd = _handle };
         SHAppBarMessage(AbmRemove, ref data);
+    }
+
+    /// <summary>
+    /// Out of the topmost band and just behind <paramref name="other"/> (a full-screen window): it stops covering it,
+    /// without being activated. Setting WPF's Topmost to false alone would put it in front of every normal window.
+    /// </summary>
+    public void PutBehind(long other)
+    {
+        SetWindowPos(_handle, HwndNoTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+        SetWindowPos(_handle, new IntPtr(other), 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    /// <summary>
+    /// Moves another app's window (physical pixels), without activating it. Asynchronous: a busy or hung window (a
+    /// Remote Desktop client reconnecting) never blocks the sidebar. False when Windows refused.
+    /// </summary>
+    public static bool MoveOtherWindow(long window, PlacementBounds bounds)
+    {
+        ArgumentNullException.ThrowIfNull(bounds);
+        return SetWindowPos(new IntPtr(window), IntPtr.Zero, (int)Math.Round(bounds.Left), (int)Math.Round(bounds.Top), (int)Math.Round(bounds.Width), (int)Math.Round(bounds.Height), SwpNoZOrder | SwpNoActivate | SwpNoOwnerZOrder | SwpAsyncWindowPos);
+    }
+
+    /// <summary>The bounds of the monitor a window is on now (physical pixels); null when it's gone.</summary>
+    public static PlacementBounds? MonitorBoundsOf(long window)
+    {
+        var monitor = MonitorFromWindow(new IntPtr(window), MonitorDefaultToNull);
+        var info = new MonitorInfoEx { Size = sizeof(MonitorInfoEx) };
+        return monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info) ? info.Monitor.ToPixels() : null;
+    }
+
+    /// <summary>The current work area (without the taskbar and docked sidebars) of the monitor at <paramref name="monitorBounds"/>.</summary>
+    public static PlacementBounds? WorkAreaOf(PlacementBounds monitorBounds)
+    {
+        ArgumentNullException.ThrowIfNull(monitorBounds);
+        var rect = new NativeRect((int)monitorBounds.Left, (int)monitorBounds.Top, (int)monitorBounds.Right, (int)monitorBounds.Bottom);
+        var monitor = MonitorFromRect(ref rect, MonitorDefaultToNull);
+        var info = new MonitorInfoEx { Size = sizeof(MonitorInfoEx) };
+        return monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref info)
+            ? info.Work.ToPixels()
+            : null;
     }
 
     public void Dispose()
@@ -315,8 +378,8 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         }
         else if (notification == AbnFullscreenApp)
         {
-            var fullScreenOpening = lParam != IntPtr.Zero;
-            _window.Dispatcher.BeginInvoke(() => _window.Topmost = !fullScreenOpening);
+            // Only a hint: whether the sidebar is actually covered (and by what) is worked out by the watcher.
+            _window.Dispatcher.BeginInvoke(() => FullScreenNotified?.Invoke(this, EventArgs.Empty));
         }
 
         return IntPtr.Zero;
@@ -363,6 +426,12 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
     [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfoEx info);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr MonitorFromRect(ref NativeRect rect, uint flags);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
 
     [LibraryImport("shcore.dll")]
     private static partial int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
@@ -416,5 +485,7 @@ internal sealed unsafe partial class DesktopSidebarHost : IDisposable
         public int Bottom = bottom;
 
         public readonly Int32Rect ToInt32Rect() => new(Left, Top, Right - Left, Bottom - Top);
+
+        public readonly PlacementBounds ToPixels() => new(Left, Top, Right - Left, Bottom - Top);
     }
 }
