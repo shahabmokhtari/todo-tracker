@@ -39,8 +39,38 @@ public sealed class RoomMakerTests
         var maker = new RoomMaker();
         maker.Plan(1, Monitor, Monitor, Room);
 
-        Assert.False(maker.Check(1, Monitor));
+        Assert.Equal(FitCheck.Refused, maker.Check(1, Monitor, lastTry: true));
+        Assert.False(maker.IsPending(1));
         Assert.Empty(maker.Restore(_ => Monitor));
+    }
+
+    [Fact]
+    public void A_slow_client_gets_time_before_it_counts_as_refusing()
+    {
+        // The resize is asynchronous: a busy client (reconnecting) may still be full screen at the first check.
+        var maker = new RoomMaker();
+        maker.Plan(1, Monitor, Monitor, Room);
+        Assert.True(maker.IsPending(1));
+
+        Assert.Equal(FitCheck.Waiting, maker.Check(1, Monitor, lastTry: false));
+        Assert.True(maker.IsPending(1));
+        Assert.Equal(FitCheck.Fitted, maker.Check(1, Room, lastTry: false));
+        Assert.False(maker.IsPending(1));
+
+        // Made full screen again later (by the user): no longer waiting, so the sidebar goes behind it.
+        Assert.False(maker.IsPending(1));
+        Assert.Equal([new RestoreStep(1, Monitor)], maker.Restore(_ => Room));
+    }
+
+    [Fact]
+    public void A_late_resize_is_still_put_back()
+    {
+        var maker = new RoomMaker();
+        maker.Plan(1, Monitor, Monitor, Room);
+        Assert.Equal(FitCheck.Waiting, maker.Check(1, Monitor, lastTry: false));
+
+        // Hidden before the next check, after the move finally landed.
+        Assert.Equal([new RestoreStep(1, Monitor)], maker.Restore(_ => Room));
     }
 
     [Fact]
@@ -50,9 +80,9 @@ public sealed class RoomMakerTests
         maker.Plan(1, Monitor, Monitor, Room);
         maker.Plan(2, Monitor, Monitor, Room);
         maker.Plan(3, Monitor, Monitor, Room);
-        Assert.True(maker.Check(1, Room));
-        Assert.True(maker.Check(2, Room));
-        Assert.True(maker.Check(3, Room));
+        Assert.Equal(FitCheck.Fitted, maker.Check(1, Room, lastTry: true));
+        Assert.Equal(FitCheck.Fitted, maker.Check(2, Room, lastTry: true));
+        Assert.Equal(FitCheck.Fitted, maker.Check(3, Room, lastTry: true));
 
         // 2 was moved or resized by the user since: it stays where they put it. 3 is gone.
         var restored = maker.Restore(handle => handle switch
@@ -100,6 +130,7 @@ public sealed class RoomMakerTests
     [Fact]
     public void Checking_an_unknown_window_says_it_is_fine()
     {
-        Assert.True(new RoomMaker().Check(9, Monitor));
+        Assert.Equal(FitCheck.Fitted, new RoomMaker().Check(9, Monitor, lastTry: true));
+        Assert.False(new RoomMaker().IsPending(9));
     }
 }

@@ -134,6 +134,19 @@ public static class FullScreenRule
 /// <summary>Put a fitted window back to <see cref="Bounds"/> (its monitor: full screen again).</summary>
 public sealed record RestoreStep(long Window, PlacementBounds Bounds);
 
+/// <summary>What a check after fitting a window found.</summary>
+public enum FitCheck
+{
+    /// <summary>It's at its new size (or isn't being fitted).</summary>
+    Fitted,
+
+    /// <summary>Still full screen: the client hasn't handled the resize yet; check again.</summary>
+    Waiting,
+
+    /// <summary>Still full screen at the last check: it won't be resized; left alone from now on.</summary>
+    Refused,
+}
+
 /// <summary>
 /// "Make room for full-screen Remote Desktop": a full-screen Remote Desktop window on the docked sidebar's monitor is
 /// resized to the room next to the sidebar (the monitor's work area) - once per window, so a client (or user) that
@@ -144,6 +157,7 @@ public sealed class RoomMaker
 {
     private readonly HashSet<long> _tried = [];
     private readonly HashSet<long> _gaveUp = [];
+    private readonly HashSet<long> _pending = [];
     private readonly Dictionary<long, (PlacementBounds Monitor, PlacementBounds Room)> _fitted = [];
 
     /// <summary>Where to put <paramref name="window"/>; null: leave it alone (the sidebar goes behind it instead).</summary>
@@ -160,26 +174,48 @@ public sealed class RoomMaker
         }
 
         _fitted[window] = (monitor, room);
+        _pending.Add(window);
         return room;
     }
 
-    /// <summary>A moment after fitting: false (and never again) when the client went back to full screen.</summary>
-    public bool Check(long window, PlacementBounds now)
+    /// <summary>
+    /// A moment after fitting (the resize is asynchronous: a busy client may take a while). Still full screen: Waiting,
+    /// or on the <paramref name="lastTry"/> Refused (and never tried again).
+    /// </summary>
+    public FitCheck Check(long window, PlacementBounds now, bool lastTry)
     {
         ArgumentNullException.ThrowIfNull(now);
-        if (!_fitted.TryGetValue(window, out var fitted) || !FullScreenRule.Fills(now, fitted.Monitor))
+        if (!_fitted.TryGetValue(window, out var fitted))
         {
-            return true;
+            return FitCheck.Fitted;
+        }
+
+        if (!FullScreenRule.Fills(now, fitted.Monitor))
+        {
+            _pending.Remove(window);
+            return FitCheck.Fitted;
+        }
+
+        if (!lastTry)
+        {
+            return FitCheck.Waiting;
         }
 
         Failed(window);
-        return false;
+        return FitCheck.Refused;
     }
+
+    /// <summary>
+    /// Resized but not seen at its new size yet: it doesn't count as covering the sidebar (which would otherwise drop
+    /// behind it for a moment). Once seen fitted, full screen again means the user chose it.
+    /// </summary>
+    public bool IsPending(long window) => _pending.Contains(window);
 
     /// <summary>The window couldn't be resized (or wouldn't stay resized): never tried again.</summary>
     public void Failed(long window)
     {
         _fitted.Remove(window);
+        _pending.Remove(window);
         _gaveUp.Add(window);
     }
 
@@ -207,6 +243,7 @@ public sealed class RoomMaker
             else
             {
                 _fitted.Remove(window);
+                _pending.Remove(window);
             }
         }
 
@@ -226,6 +263,7 @@ public sealed class RoomMaker
             .Select(f => new RestoreStep(f.Key, f.Value.Monitor))
             .ToList();
         _fitted.Clear();
+        _pending.Clear();
         _tried.Clear();
         return steps;
     }

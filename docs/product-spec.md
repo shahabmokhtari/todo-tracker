@@ -159,8 +159,9 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   * **Make room for full-screen Remote Desktop** (*Position* menu, on by default, docked only): a full-screen Remote
     Desktop session (mstsc or Windows App's msrdc, window class `TscShellContainerClass`) that the user is **in**
     (foreground) is resized to the monitor's work area, so it sits next to the sidebar. A session in the background is
-    never touched. Each window is resized at most once: a client that goes back to full screen (or a user who makes it
-    full screen again) is left alone, and the sidebar goes behind it. Only a session filling just that monitor is
+    never touched. Each window is resized at most once: a client that is still full screen three seconds later (or a
+    user who makes it full screen again) is left alone, and the sidebar goes behind it; while a resize is pending the
+    sidebar stays on top. Only a session filling just that monitor is
     fitted (one spanning every monitor isn't squeezed onto one). The resize is asynchronous, so a hung client never
     blocks the sidebar. Fitted sessions follow the room whenever the sidebar re-docks (collapsed, opened, other edge, DPI
     or taskbar change), and go back to full screen (on the monitor they're on now) when the sidebar is hidden, floats,

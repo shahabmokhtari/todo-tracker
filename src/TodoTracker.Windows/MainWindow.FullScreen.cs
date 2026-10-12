@@ -11,6 +11,7 @@ namespace TodoTracker.Windows;
 public partial class MainWindow
 {
     private static readonly TimeSpan FitCheckDelay = TimeSpan.FromSeconds(1);
+    private const int FitChecks = 3;
     private readonly RoomMaker _room = new();
     private FullScreenWatcher? _fullScreen;
 
@@ -54,6 +55,14 @@ public partial class MainWindow
                 UpdateFullScreenWatch();
             }
         };
+        // Brought back over a full-screen window and then left (taskbar, desktop, another monitor): behind it again.
+        Deactivated += (_, _) =>
+        {
+            if (_coveredBy != 0)
+            {
+                ApplyTopmost();
+            }
+        };
         Closed += (_, _) => _fullScreen.Dispose();
     }
 
@@ -89,9 +98,13 @@ public partial class MainWindow
 
     private void OnCoverChanged(CoverResult cover, bool foreground)
     {
-        if (cover.Kind == Coverage.RemoteDesktop && foreground && Placement.MakeRoomForRemoteDesktop && TryMakeRoom(cover.Window))
+        if (cover.Window != 0 && _room.IsPending(cover.Window))
         {
-            // Fitted next to the sidebar: nothing covers it any more (checked again shortly).
+            // Being fitted next to the sidebar (the client hasn't resized yet): it stays on top meanwhile.
+            _coveredBy = 0;
+        }
+        else if (cover.Kind == Coverage.RemoteDesktop && foreground && Placement.MakeRoomForRemoteDesktop && TryMakeRoom(cover.Window))
+        {
             _coveredBy = 0;
         }
         else
@@ -127,18 +140,28 @@ public partial class MainWindow
             return false;
         }
 
+        // The resize is asynchronous: a busy client gets a few seconds before it counts as refusing.
+        var tries = 0;
         var check = new DispatcherTimer { Interval = FitCheckDelay };
         check.Tick += (_, _) =>
         {
-            check.Stop();
-            if (!_quitting && FullScreenWatcher.BoundsOf(window) is { } now && !_room.Check(window, now))
+            tries++;
+            if (_quitting || FullScreenWatcher.BoundsOf(window) is not { } now)
             {
-                // It went back to full screen: the sidebar goes behind it instead.
+                check.Stop();
+                return;
+            }
+
+            var result = _room.Check(window, now, lastTry: tries >= FitChecks);
+            if (result != FitCheck.Waiting)
+            {
+                check.Stop();
+
+                // Fitted: the sidebar stays on top next to it. Refused: it goes behind the session instead.
                 _fullScreen?.Refresh();
             }
         };
         check.Start();
-        _fullScreen?.Refresh();
         return true;
     }
 
