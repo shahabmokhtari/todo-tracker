@@ -117,6 +117,13 @@ internal sealed unsafe partial class FullScreenWatcher : IDisposable
     public static PlacementBounds? BoundsOf(long window) =>
         IsWindow(new IntPtr(window)) && GetWindowRect(new IntPtr(window), out var r) ? new PlacementBounds(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top) : null;
 
+    /// <summary>Whether the window in front is one of this app's (a dialog or menu of the sidebar, the app window).</summary>
+    public static bool ForegroundIsOurs()
+    {
+        var foreground = GetForegroundWindow();
+        return foreground != IntPtr.Zero && GetWindowThreadProcessId(foreground, out var pid) != 0 && pid == Environment.ProcessId;
+    }
+
     private void Evaluate()
     {
         if (_monitor is not { } monitor)

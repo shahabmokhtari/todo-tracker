@@ -74,6 +74,22 @@ public sealed class RoomMakerTests
     }
 
     [Fact]
+    public void A_resize_still_on_its_way_is_undone_or_redirected_too()
+    {
+        // The move is queued: put it back (queued after it, so it wins) even though it's still full screen now.
+        var maker = new RoomMaker();
+        maker.Plan(1, Monitor, Monitor, Room);
+        Assert.Equal([new RestoreStep(1, Monitor)], maker.Restore(_ => Monitor));
+
+        // Collapsed meanwhile: it's sent to the new room rather than dropped (it would land in the old one).
+        maker.Plan(2, Monitor, Monitor, Room);
+        var strip = Room with { Width = 2504 };
+        Assert.Equal([new RestoreStep(2, strip)], maker.Resize(strip, _ => Monitor));
+        Assert.True(maker.IsPending(2));
+        Assert.Equal(FitCheck.Fitted, maker.Check(2, strip, lastTry: false));
+    }
+
+    [Fact]
     public void A_client_that_kept_the_size_is_put_back_full_screen_when_the_room_is_not_needed_anymore()
     {
         var maker = new RoomMaker();
@@ -117,6 +133,11 @@ public sealed class RoomMakerTests
         var maker = new RoomMaker();
         maker.Plan(1, Monitor, Monitor, Room);
         maker.Plan(2, Monitor, Monitor, Room);
+
+        // Seen at their new size first: a fit still on its way is always sent to the new room (see
+        // A_resize_still_on_its_way_is_undone_or_redirected_too), so "moved by the user" only applies after that.
+        maker.Check(1, Room, lastTry: false);
+        maker.Check(2, Room, lastTry: false);
         var strip = Room with { Width = 2504 };
 
         // 2 was moved by the user since: it stays where they put it (and isn't put back later either).

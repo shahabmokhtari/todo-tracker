@@ -235,7 +235,8 @@ public sealed class RoomMaker
                 continue;
             }
 
-            if (current(window) is { } now && FullScreenRule.Near(now, fitted.Room))
+            // Pending: the earlier move is still on its way (it would land in the old room).
+            if (current(window) is { } now && (_pending.Contains(window) || FullScreenRule.Near(now, fitted.Room)))
             {
                 _fitted[window] = (fitted.Monitor, room);
                 steps.Add(new RestoreStep(window, room));
@@ -251,15 +252,16 @@ public sealed class RoomMaker
     }
 
     /// <summary>
-    /// The fitted windows still where they were put (gone, moved or resized ones are left alone), to put back full
-    /// screen. Afterwards nothing is remembered except the windows that refused.
+    /// The fitted windows still where they were put (gone, moved or resized ones are left alone), and ones whose move
+    /// is still on its way (the restore is queued after it, so it wins), to put back full screen. Afterwards nothing is
+    /// remembered except the windows that refused.
     /// </summary>
     /// <param name="current">A window's bounds now; null when it's gone.</param>
     public IReadOnlyList<RestoreStep> Restore(Func<long, PlacementBounds?> current)
     {
         ArgumentNullException.ThrowIfNull(current);
         var steps = _fitted
-            .Where(f => current(f.Key) is { } now && FullScreenRule.Near(now, f.Value.Room))
+            .Where(f => current(f.Key) is { } now && (_pending.Contains(f.Key) || FullScreenRule.Near(now, f.Value.Room)))
             .Select(f => new RestoreStep(f.Key, f.Value.Monitor))
             .ToList();
         _fitted.Clear();

@@ -20,6 +20,9 @@ public partial class MainWindow
 
     private bool _quitting;
 
+    /// <summary>The checks running after fitting a window, by window.</summary>
+    private readonly Dictionary<long, DispatcherTimer> _fitTimers = [];
+
     /// <summary>The full-screen window the sidebar sits behind (0: none).</summary>
     private long _coveredBy;
 
@@ -30,8 +33,9 @@ public partial class MainWindow
         {
             Topmost = false;
 
-            // Just brought back (tray, hotkey) and in use: it stays in front until the user clicks the full-screen window.
-            if (!IsActive)
+            // Just brought back (tray, hotkey) and in use, or one of its dialogs is open: it stays in front until the user
+            // clicks elsewhere (owned dialogs would go behind with it).
+            if (!IsActive && !FullScreenWatcher.ForegroundIsOurs())
             {
                 _appBar.PutBehind(_coveredBy);
             }
@@ -56,13 +60,14 @@ public partial class MainWindow
             }
         };
         // Brought back over a full-screen window and then left (taskbar, desktop, another monitor): behind it again.
-        Deactivated += (_, _) =>
+        // Not for its own dialogs and menus (owned windows would go behind with it): checked once activation settles.
+        Deactivated += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
         {
             if (_coveredBy != 0)
             {
                 ApplyTopmost();
             }
-        };
+        });
         Closed += (_, _) => _fullScreen.Dispose();
     }
 
@@ -140,15 +145,23 @@ public partial class MainWindow
             return false;
         }
 
-        // The resize is asynchronous: a busy client gets a few seconds before it counts as refusing.
+        // The resize is asynchronous: a busy client gets a few seconds before it counts as refusing. One timer per
+        // window: a new fit (after a hide and show) starts its checks afresh.
+        if (_fitTimers.Remove(window, out var earlier))
+        {
+            earlier.Stop();
+        }
+
         var tries = 0;
         var check = new DispatcherTimer { Interval = FitCheckDelay };
+        _fitTimers[window] = check;
         check.Tick += (_, _) =>
         {
             tries++;
             if (_quitting || FullScreenWatcher.BoundsOf(window) is not { } now)
             {
                 check.Stop();
+                _fitTimers.Remove(window);
                 return;
             }
 
@@ -156,6 +169,12 @@ public partial class MainWindow
             if (result != FitCheck.Waiting)
             {
                 check.Stop();
+                _fitTimers.Remove(window);
+                if (result == FitCheck.Refused && DesktopSidebarHost.MonitorBoundsOf(window) is { } full)
+                {
+                    // In case the move still lands later: queued after it, this keeps the session full screen.
+                    DesktopSidebarHost.MoveOtherWindow(window, full);
+                }
 
                 // Fitted: the sidebar stays on top next to it. Refused: it goes behind the session instead.
                 _fullScreen?.Refresh();
@@ -181,6 +200,12 @@ public partial class MainWindow
     private void StopFullScreen()
     {
         _quitting = true;
+        foreach (var timer in _fitTimers.Values)
+        {
+            timer.Stop();
+        }
+
+        _fitTimers.Clear();
         _fullScreen?.Watch(null);
         _watched = null;
         RestoreRoom();
