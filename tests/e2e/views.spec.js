@@ -177,6 +177,12 @@ test('Full-size task: opens from a link, logs time by hand, and closes back to t
 
   const time = drawer.locator('.time-section');
   await time.getByText('Add time by hand').click();
+  // Not caused by this PR (seen on PR #28's CI at 23:50 UTC): "Started" defaults to 30 minutes ago, so 45 minutes ended
+  // 15 minutes in the future. Run in the last quarter hour of a day, the entry crossed midnight and the Reports test
+  // (range ending today) showed only the part before it ("40 min"). Starting an hour ago keeps it in the past.
+  const started = new Date(Date.now() - 60 * 60_000);
+  const local = new Date(started.getTime() - started.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  await time.getByLabel('Started at').fill(local);
   await time.getByRole('spinbutton', { name: 'Minutes' }).fill('45'); // any whole number of minutes
   await time.getByRole('button', { name: 'Add' }).click();
   await expect(time.locator('.time-total')).toContainText('45 min');

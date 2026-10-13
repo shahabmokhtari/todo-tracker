@@ -25,6 +25,15 @@ public sealed class TrayMenuTests : IDisposable
     private static List<string?> Ids(IEnumerable<TrayItem> items) => items.Select(i => i.Id).ToList();
 
     [Fact]
+    public void Hiding_the_sidebar_says_where_it_went_and_how_to_bring_it_back()
+    {
+        Assert.Equal(
+            "Todo Tracker is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back.",
+            TrayMenu.HiddenHint(hotKey: true));
+        Assert.Equal("Todo Tracker is still running. Click its icon here to bring the sidebar back.", TrayMenu.HiddenHint(hotKey: false));
+    }
+
+    [Fact]
     public async Task At_rest_it_offers_to_open_add_and_focus_on_the_task_at_hand()
     {
         await _store.UpdateAsync(b => b.AddTask(new NewTask("Write the report"), Actor.User, T0));

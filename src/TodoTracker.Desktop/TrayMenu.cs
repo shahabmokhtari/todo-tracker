@@ -64,6 +64,12 @@ public static class TrayMenu
         return items;
     }
 
+    /// <summary>What the tray icon says when the sidebar has just been hidden (where it went, how to get it back).</summary>
+    public static string HiddenHint(bool hotKey) =>
+        hotKey
+            ? "Todo Tracker is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back."
+            : "Todo Tracker is still running. Click its icon here to bring the sidebar back.";
+
     /// <summary>What's going on, at a glance: how much is waiting for you, the focus timer, a reminder.</summary>
     public static string Tooltip(SidebarViewModel vm)
     {

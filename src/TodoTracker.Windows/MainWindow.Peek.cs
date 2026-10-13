@@ -150,8 +150,8 @@ public partial class MainWindow
         if (_raisedForPeek)
         {
             // What the placement says now ("Always on top" may have been switched on while it was open).
-            Topmost = Placement.IsTopmost;
             _raisedForPeek = false;
+            ApplyTopmost();
         }
     }
 }

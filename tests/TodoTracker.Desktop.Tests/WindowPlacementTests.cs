@@ -51,6 +51,31 @@ public sealed class WindowPlacementTests : IDisposable
     }
 
     [Fact]
+    public void Hidden_and_making_room_for_remote_desktop_are_remembered()
+    {
+        var store = new WindowPlacementStore(FilePath);
+        var placement = WindowPlacement.Default with { Hidden = true, MakeRoomForRemoteDesktop = false };
+
+        store.Save(placement);
+
+        Assert.Equal(placement, new WindowPlacementStore(FilePath).Load());
+    }
+
+    [Fact]
+    public void Files_from_before_hiding_existed_show_the_sidebar_and_make_room_for_remote_desktop()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(FilePath, """{"mode":"docked","edge":"right","monitor":null,"dockWidth":360,"alwaysOnTop":false,"floating":null}""");
+
+        var placement = new WindowPlacementStore(FilePath).Load();
+
+        Assert.False(placement.Hidden);
+        Assert.True(placement.MakeRoomForRemoteDesktop);
+        Assert.False(WindowPlacement.Default.Hidden);
+        Assert.True(WindowPlacement.Default.MakeRoomForRemoteDesktop);
+    }
+
+    [Fact]
     public void Store_sanitizes_out_of_range_values()
     {
         Directory.CreateDirectory(_dir);

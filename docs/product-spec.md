@@ -149,8 +149,29 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * **Placement** (menu › *Position*), remembered across restarts in `desktop.json`:
   * **Dock right** (default) or **Dock left**. The sidebar registers as a Win32 **AppBar**, so the shell shrinks the
     work area and maximized windows stop at the sidebar. It docks on any monitor (menu lists displays when there are
-    several), re-docks when the shell moves bars or the display or DPI changes, and drops *Topmost* while a
-    full-screen app runs. A docked sidebar is always on top.
+    several), and re-docks when the shell moves bars or the display or DPI changes. A docked sidebar is always on top,
+    except next to a full-screen window (below).
+  * **Full-screen windows** (Remote Desktop, a video, a slide show) ignore the reserved edge. While one is in front on
+    the sidebar's monitor, the docked sidebar goes **behind** it instead of covering part of it, and comes back on top
+    when it closes, is minimized, or a big window (a maximized app) is in front of it. Small windows, tool windows and
+    always-on-top widgets in front don't count. Brought back on purpose (tray, `Ctrl+Alt+Space`), it stays in front
+    until the full-screen window is clicked. Windows' own full-screen signal (`ABN_FULLSCREENAPP`) only triggers a check.
+  * **Make room for full-screen Remote Desktop** (*Position* menu, on by default, docked only): a full-screen Remote
+    Desktop session (mstsc or Windows App's msrdc, window class `TscShellContainerClass`) that the user is **in**
+    (foreground) is resized to the monitor's work area, so it sits next to the sidebar. A session in the background is
+    never touched. Each window is resized at most once: a client that is still full screen three seconds later (or a
+    user who makes it full screen again) is left alone, and the sidebar goes behind it; while a resize is pending the
+    sidebar stays on top. Only a session filling just that monitor is
+    fitted (one spanning every monitor isn't squeezed onto one). The resize is asynchronous, so a hung client never
+    blocks the sidebar. Fitted sessions follow the room whenever the sidebar re-docks (collapsed, opened, other edge, DPI
+    or taskbar change), and go back to full screen (on the monitor they're on now) when the sidebar is hidden, floats,
+    moves to another monitor, the option is turned off, or the app quits. The app's own window counts like any other:
+    maximized over a full-screen session, the sidebar stays on top next to it. `TODOTRACKER_REMOTE_DESKTOP_CLIENTS` (comma-separated process names)
+    replaces the list of clients; system tests use it so a real session is never resized.
+  * **Hide the sidebar** (menu, or the tray icon's menu): gives the screen edge back and keeps running in the
+    notification area; hidden from its own menu, the tray icon says how to bring it back. It stays hidden after a
+    restart (starts straight in the notification area, without a notification, so *Start with Windows* doesn't post
+    one at every sign-in) until it's shown again: tray icon, `Ctrl+Alt+Space`, or starting the app again.
   * **Float as a window:** a normal movable, resizable window (drag the header, resize from any edge) with an optional
     **Always on top**. Its bounds are remembered and pulled back on screen if their monitor is gone. Floating gives the
     screen edge back.
@@ -174,7 +195,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional
   *Start with Windows*.
-* The menu has: Position, Always on top, Connect an AI app, copy the MCP config, copy the API token (for the extension), connect Teams,
+* The menu has: Position (with *Make room for full-screen Remote Desktop*), Always on top, Hide the sidebar, Connect an
+  AI app, copy the MCP config, copy the API token (for the extension), connect Teams,
   and start with Windows.
 * **System test:** `tests/system/placement.system-test.ps1` drives the real app with UI Automation through every
   placement, checks the live work area, window bounds, and topmost state, and verifies placement persists across a

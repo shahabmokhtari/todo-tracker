@@ -194,7 +194,7 @@ public partial class App : Application
         var placement = placementStore?.Load() ?? WindowPlacement.Default with { Mode = PlacementMode.Floating };
         if (args.NoDock)
         {
-            placement = placement with { Mode = PlacementMode.Floating };
+            placement = placement with { Mode = PlacementMode.Floating, Hidden = false };
             placementStore = null;
         }
 
@@ -258,7 +258,18 @@ public partial class App : Application
             events.Pomodoro += (_, p) => window.Dispatcher.BeginInvoke(() => ToastService.ShowFocus(p));
         }
 
-        window.Show();
+        var startHidden = interactive && placement.Hidden;
+        if (startHidden)
+        {
+            // Hidden when it last ran: straight to the notification area. No notification: with "Start with Windows"
+            // that would be one at every sign-in (the hint shows when it's hidden from the menu).
+            window.StartHidden();
+        }
+        else
+        {
+            window.Show();
+        }
+
         await _viewModel.RefreshAsync().ConfigureAwait(true);
         if (serverProblem is not null)
         {

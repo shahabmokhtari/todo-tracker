@@ -33,8 +33,12 @@ internal sealed class TrayIcon : IDisposable
         };
         _refresh.Tick += (_, _) => Update();
         _refresh.Start();
+        _window.HiddenFromMenu += (_, _) => ShowHiddenHint();
         Update();
     }
+
+    /// <summary>A notification by the icon: the sidebar is hidden, still running, and how to get it back.</summary>
+    public void ShowHiddenHint() => _icon.ShowBalloonTip(6000, "Todo Tracker", TrayMenu.HiddenHint(_window.HasHotKey), Forms.ToolTipIcon.None);
 
     public void Dispose()
     {

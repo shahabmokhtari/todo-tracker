@@ -58,6 +58,14 @@ Your choice is remembered. Todo Tracker also sits in the notification area (the 
 sidebar back; right-click it to open the full window, add a task, start or pause the focus timer, hide the sidebar
 (it gives the screen edge back) or quit. A red dot on it means a reminder is due.
 
+**⋯ › Hide the sidebar** puts it away until you want it back: it keeps running in the notification area, also after a
+restart. Click the tray icon, press Ctrl+Alt+Space, or start Todo Tracker again to bring it back.
+
+**Full-screen apps and Remote Desktop:** a full-screen window (a Remote Desktop session, a video) ignores the edge the
+sidebar reserves, so the sidebar goes behind it rather than covering part of it. A full-screen Remote Desktop session
+you're using is resized to sit next to the sidebar instead (turn this off in **⋯ › Position › Make room for
+full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
+
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
 or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put; a task whose
 reminder is due still shows first. Subtasks reorder the same way in the web task panel.
@@ -200,6 +208,11 @@ System tests drive the real sidebar with UI Automation on the live Windows shell
   coordinates), checks that only that display's work area changes, that the display is saved by its stable device
   path, and that a display change keeps the sidebar on it. Needs two or more monitors, so it skips in CI.
   Run it locally after changing placement code.
+* `tests/system/fullscreen.system-test.ps1`: a stand-in full-screen window (`FakeFullScreen.cs`, built with Windows
+  PowerShell) puts the docked sidebar behind it; a stand-in Remote Desktop window is fitted next to it and goes back to
+  full screen when the sidebar is hidden; hidden is remembered across a restart and a second start shows it again; a
+  client that won't be resized is left alone. Runs in Windows CI. It covers the screen and takes the keyboard focus for
+  about half a minute, so don't run it while you work.
 
 | Path | What |
 |---|---|

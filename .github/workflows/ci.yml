@@ -237,6 +237,9 @@ jobs:
       - name: System test (multi-monitor; skips on single-monitor runners)
         shell: pwsh
         run: ./tests/system/multimonitor.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\TodoTracker.exe"
+      - name: System test (full-screen windows, Remote Desktop, hiding)
+        shell: pwsh
+        run: ./tests/system/fullscreen.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\TodoTracker.exe"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -174,7 +174,7 @@ public partial class MainWindow : Window
                 ApplyFloating(placement);
             }
 
-            Topmost = Placement.IsTopmost;
+            ApplyTopmost();
 
             // Chevrons point toward the edge the strip collapses to.
             var left = Placement.Mode == PlacementMode.Docked && Placement.Edge == DockEdge.Left;
@@ -186,6 +186,7 @@ public partial class MainWindow : Window
             _applying = false;
         }
 
+        UpdateFullScreenWatch();
         if (persist)
         {
             Persist();
@@ -197,13 +198,21 @@ public partial class MainWindow : Window
     {
         var live = Placement.Mode == PlacementMode.Floating && IsLoaded && WindowState == WindowState.Normal && !_vm.IsCompact;
         Placement = Placement with { AlwaysOnTop = value, Floating = live ? _appBar.WindowBoundsPixels() : Placement.Floating };
-        Topmost = Placement.IsTopmost;
+        ApplyTopmost();
         Persist();
     }
 
     /// <summary>Saves the effective placement, or the docked preference while docking is temporarily unavailable.</summary>
     private void Persist() =>
-        _placementStore?.Save(_preferred is { } preferred ? preferred with { Floating = Placement.Floating, AlwaysOnTop = Placement.AlwaysOnTop } : Placement);
+        _placementStore?.Save(_preferred is { } preferred
+            ? preferred with
+            {
+                Floating = Placement.Floating,
+                AlwaysOnTop = Placement.AlwaysOnTop,
+                Hidden = Placement.Hidden,
+                MakeRoomForRemoteDesktop = Placement.MakeRoomForRemoteDesktop,
+            }
+            : Placement);
 
     private void ApplyFloating(WindowPlacement placement)
     {
@@ -263,8 +272,17 @@ public partial class MainWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _appBar.Attach();
-        // Restoring what was loaded: nothing new to save.
-        ApplyPlacement(Placement, isFallbackRetry: false, persist: false);
+        if (_interactive)
+        {
+            StartWatchingFullScreen();
+        }
+
+        // Restoring what was loaded: nothing new to save. Started hidden: it's placed when it's shown.
+        if (!_hiddenByUser)
+        {
+            ApplyPlacement(Placement, isFallbackRetry: false, persist: false);
+        }
+
         if (_interactive)
         {
             _hotKey = new GlobalHotKey(this, FocusCapture);
@@ -571,6 +589,17 @@ public partial class MainWindow : Window
         onTop.Checked += (_, _) => SetAlwaysOnTop(true);
         onTop.Unchecked += (_, _) => SetAlwaysOnTop(false);
         menu.Items.Add(onTop);
+        if (_interactive)
+        {
+            var hide = new MenuItem
+            {
+                Header = "Hide the sidebar",
+                ToolTip = "It keeps running in the notification area. Click its icon there" + (HasHotKey ? " or press Ctrl+Alt+Space" : string.Empty) + " to bring it back.",
+            };
+            hide.Click += (_, _) => HideFromMenu();
+            menu.Items.Add(hide);
+        }
+
         menu.Items.Add(new Separator());
         if (On("connect-ai"))
         {
@@ -730,6 +759,7 @@ public partial class MainWindow : Window
     private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         RememberFloatingBounds();
+        StopFullScreen();
         if (_notesFlushed || !_vm.HasUnsavedNotes)
         {
             return;
@@ -815,6 +845,23 @@ public partial class MainWindow : Window
                 };
                 position.Items.Add(Option(label, string.Equals(current, m.Id, StringComparison.OrdinalIgnoreCase), target));
             }
+        }
+
+        if (_interactive)
+        {
+            position.Items.Add(new Separator());
+            var makeRoom = new MenuItem
+            {
+                Header = "Make room for full-screen Remote Desktop",
+                IsCheckable = true,
+                IsChecked = Placement.MakeRoomForRemoteDesktop,
+                IsEnabled = docked,
+                ToolTip = "Docked: a full-screen Remote Desktop session you're using on this screen is resized to sit next to the sidebar. " +
+                    "Off, or when the session won't fit, the sidebar goes behind it instead.",
+            };
+            makeRoom.Checked += (_, _) => SetMakeRoomForRemoteDesktop(true);
+            makeRoom.Unchecked += (_, _) => SetMakeRoomForRemoteDesktop(false);
+            position.Items.Add(makeRoom);
         }
 
         return position;
