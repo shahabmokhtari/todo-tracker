@@ -403,7 +403,7 @@ public partial class MainWindow : Window
 
         var capture = ReferenceEquals(box, CaptureBox);
         var card = !capture && box.DataContext is CardViewModel c && System.Windows.Automation.AutomationProperties.GetName(box) == "Note" ? c : null;
-        if (!capture && card is null || ReadClipboardPictures() is not { } pictures)
+        if (!capture && card is null || ReadClipboardPictures(out var problem) is not { } pictures)
         {
             return;
         }
@@ -411,8 +411,14 @@ public partial class MainWindow : Window
         e.Handled = true;
         if (pictures.Count == 0)
         {
-            _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
+            _vm.StatusMessage = problem ?? "Couldn't read the picture on the clipboard.";
             return;
+        }
+
+        if (problem is not null)
+        {
+            // Some went in, one didn't (too big): say so.
+            _vm.StatusMessage = problem;
         }
 
         if (capture)
@@ -453,8 +459,10 @@ public partial class MainWindow : Window
     /// <see cref="PasteRules"/>), or the clipboard can't be read (the normal paste happens then); empty when it is a
     /// picture that can't be read or is too big.
     /// </summary>
-    private List<(byte[] Bytes, string? FileName)>? ReadClipboardPictures()
+    /// <param name="problem">Why nothing could be taken (e.g. too big), when there's a reason to tell.</param>
+    private static List<(byte[] Bytes, string? FileName)>? ReadClipboardPictures(out string? problem)
     {
+        problem = null;
         // The clipboard belongs to other apps too: any of these calls can fail while one of them holds it.
         List<string> files;
         try
@@ -482,7 +490,7 @@ public partial class MainWindow : Window
                 var big = files.Where(f => new FileInfo(f).Length > MaxPasteBytes).ToList();
                 if (big.Count > 0)
                 {
-                    _vm.StatusMessage = $"{Path.GetFileName(big[0])} is too big to attach (at most 25 MB).";
+                    problem = $"{Path.GetFileName(big[0])} is too big to attach (at most 25 MB).";
                 }
 
                 return files.Except(big).Select(f => (File.ReadAllBytes(f), (string?)Path.GetFileName(f))).ToList();

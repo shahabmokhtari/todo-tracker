@@ -349,20 +349,22 @@ export function createOutlineView(ctx) {
   async function reveal(id, ancestorIds = [], { finished = false } = {}) {
     ancestorIds.forEach((a) => expanded.add(a));
     saveExpanded();
-    if (finished && !showDone) {
-      // A finished task only shows with "Show finished" on.
-      showDone = true;
-      localStorage.setItem(DONE_KEY, '1');
-    }
-    revealing = id;
+    // A finished task only shows with "Show finished" on: on for now, not saved as the user's choice.
+    if (finished && !showDone) showDone = true;
+    // Applied by the next drawing that shows the row (whichever load it comes from); given up after two drawings
+    // without it, so it never jumps there later out of the blue.
+    revealing = { id, misses: 0 };
     await load();
-    // Whatever drawing was going to show it has happened by now: never jump to it later, out of the blue.
-    setTimeout(() => { if (revealing === id) revealing = null; }, 1500);
   }
 
   function applyReveal() {
-    if (!revealing || !focusRow(revealing)) return;
-    const row = root.querySelector(`.orow[data-id="${CSS.escape(revealing)}"]`);
+    // Drawn while the view isn't shown yet (the switch to it comes a moment later): that doesn't count as a miss.
+    if (!revealing || !root.offsetParent) return;
+    if (!focusRow(revealing.id)) {
+      if (++revealing.misses >= 2) revealing = null;
+      return;
+    }
+    const row = root.querySelector(`.orow[data-id="${CSS.escape(revealing.id)}"]`);
     revealing = null;
     row.scrollIntoView({ block: 'center' });
     row.classList.add('revealed');
