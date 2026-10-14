@@ -67,6 +67,15 @@ class SnoozeTest {
         assertEquals(ItemState.ACTIONABLE, Agenda.stateOf(snoozed, t0.plusSeconds(120)))
         assertEquals(ItemState.ACTIONABLE, Agenda.stateOf(waiting, t0.plusSeconds(120)))
         assertTrue(snoozed.reminders.filter { it.kind == ReminderKind.NEXT_ACTION }.all { it.dismissedAt != null })
+
+        // A parent reopened along with its subtask comes back too (its snooze would hide the subtask).
+        val parent = board.addTask(NewTask("Release"), now = t0)
+        val step = board.addTask(NewTask("Ring 0", parentId = parent.id), now = t0)
+        board.scheduleNextAction(parent.id, t0.plusSeconds(86_400), now = t0)
+        board.complete(parent.id, now = t0.plusSeconds(60))
+        board.reopen(step.id, now = t0.plusSeconds(120))
+        assertNull(parent.nextActionAt)
+        assertEquals(ItemState.ACTIONABLE, Agenda.stateOf(step, t0.plusSeconds(120)))
     }
 
     @Test

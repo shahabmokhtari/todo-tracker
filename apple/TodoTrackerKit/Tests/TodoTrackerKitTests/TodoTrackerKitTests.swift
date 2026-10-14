@@ -131,6 +131,14 @@ final class TaskBoardTests: XCTestCase {
         XCTAssertNil(snoozed.nextActionAt)
         XCTAssertNil(waiting.afterId)
         XCTAssertTrue(snoozed.reminders.filter { $0.kind == .nextAction }.allSatisfy { $0.dismissedAt != nil })
+
+        // A parent reopened along with its subtask comes back too (its snooze would hide the subtask).
+        let parent = try board.addTask(NewTask("Release"), now: t0)
+        let step = try board.addTask(NewTask("Ring 0", parentId: parent.id), now: t0)
+        try board.scheduleNextAction(parent.id, at: t0.addingTimeInterval(86_400), now: t0)
+        try board.complete(parent.id, now: t0.addingTimeInterval(60))
+        try board.reopen(step.id, now: t0.addingTimeInterval(120))
+        XCTAssertNil(parent.nextActionAt)
     }
 
     func testDeleteRemovesSubtree() throws {
