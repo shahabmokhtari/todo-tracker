@@ -572,7 +572,7 @@ internal static class ApiEndpoints
                 return new LabelDto(label.Name, label.Color);
             }));
 
-        api.MapPatch("/labels/{name}", (string name, LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+        api.MapPatch("/labels/{**name}", (string name, LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
             {
                 var current = b.FindLabel(name) ?? throw new TaskNotFoundException($"Label \"{name}\" was not found.");
@@ -581,7 +581,7 @@ internal static class ApiEndpoints
                 return new LabelDto(label.Name, label.Color);
             }));
 
-        api.MapDelete("/labels/{name}", async (string name, HttpContext http, IBoardStore store, TimeProvider time) =>
+        api.MapDelete("/labels/{**name}", async (string name, HttpContext http, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b => b.DeleteLabel(name, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();

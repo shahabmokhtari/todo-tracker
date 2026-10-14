@@ -135,7 +135,8 @@ public sealed partial class TaskBoard
             return null;
         }
 
-        return clean.Length <= MaxIconLength && !clean.Any(char.IsControl)
+        // Line and paragraph separators would break the line it's written on (YAML reads them as line breaks).
+        return clean.Length <= MaxIconLength && !clean.Any(c => char.IsControl(c) || c is '\u2028' or '\u2029')
             ? clean
             : throw new ArgumentException($"An icon is an emoji or a few characters (at most {MaxIconLength}).", nameof(icon));
     }

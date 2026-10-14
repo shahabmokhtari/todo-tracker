@@ -148,6 +148,18 @@ public sealed class VaultApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_label_with_a_slash_in_its_name_can_be_changed_and_deleted()
+    {
+        await _client.PostJson("/api/labels", new { name = "Q3/Q4", color = "#64748b" });
+
+        // The web app sends the slash as it is (an encoded %2F stays encoded in a route value).
+        var renamed = await (await _client.PatchAsJsonAsync("/api/labels/Q3/Q4", new { name = "H2/2026 review", color = "#0ea5e9" })).Json();
+        Assert.Equal("H2/2026 review", renamed["name"]!.GetValue<string>());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/labels/H2/2026%20review")).StatusCode);
+    }
+
+    [Fact]
     public async Task Tasks_move_within_the_hierarchy()
     {
         var project = await _client.PostJson("/api/items", new { title = "Project" });

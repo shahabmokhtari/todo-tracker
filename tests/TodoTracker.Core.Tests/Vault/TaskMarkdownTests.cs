@@ -196,6 +196,19 @@ public class TaskMarkdownTests
         Assert.Equal(("📝", "#22c55e"), (child.Icon, child.Color));
     }
 
+    [Theory]
+    [InlineData("a:")]
+    [InlineData("✅:")]
+    [InlineData("#1")]
+    [InlineData("C#")]
+    public void Icons_that_look_like_yaml_are_written_so_the_file_reads_back(string icon)
+    {
+        var board = new TaskBoard();
+        var root = board.AddTask(new NewTask("Plan launch") { Icon = icon }, Actor.User, Now);
+
+        Assert.Equal(icon, TaskMarkdown.Parse(TaskMarkdown.Render(root, Utc), "Plan launch", Utc).Root.Icon);
+    }
+
     [Fact]
     public void An_icon_and_color_typed_in_obsidian_are_read_and_bad_ones_left_out()
     {

@@ -6,6 +6,10 @@ import { THEMES, chooseTheme } from '../themes.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
 
+// A label name may hold "/" (Q3/Q4): it's sent as a path (the server route takes the rest of the path), since an
+// encoded slash (%2F) isn't decoded in a route value.
+const labelUrl = (name) => `/api/labels/${encodeURIComponent(name).replace(/%2F/gi, '/')}`;
+
 const SHORTCUTS = [
   ['N', 'Add a task'],
   ['/', 'Filter'],
@@ -75,7 +79,7 @@ export function createSettingsView(ctx) {
   function labels(list) {
     const save = async (label, body, message) => {
       try {
-        await ctx.api(`/api/labels/${encodeURIComponent(label.name)}`, { method: 'PATCH', body: { name: body.name ?? label.name, color: body.color ?? label.color } });
+        await ctx.api(labelUrl(label.name), { method: 'PATCH', body: { name: body.name ?? label.name, color: body.color ?? label.color } });
         ctx.toast(message);
         load();
       } catch (err) {
@@ -90,7 +94,7 @@ export function createSettingsView(ctx) {
       const remove = h('button', { class: 'icon-btn small', type: 'button', title: 'Remove this label', 'aria-label': `Remove ${label.name}`, onclick: async () => {
         if (!confirm(`Remove the label "${label.name}" from every task?`)) return;
         try {
-          await ctx.api(`/api/labels/${encodeURIComponent(label.name)}`, { method: 'DELETE' });
+          await ctx.api(labelUrl(label.name), { method: 'DELETE' });
           load();
         } catch (err) {
           ctx.toast(err.message, 'error');

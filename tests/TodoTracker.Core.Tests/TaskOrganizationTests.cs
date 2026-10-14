@@ -24,6 +24,7 @@ public class TaskOrganizationTests
 
     [Theory]
     [InlineData("far too long for an icon", null)]
+    [InlineData("a\u2028b", null)]
     [InlineData(null, "blue")]
     [InlineData(null, "#12345")]
     [InlineData(null, "#gggggg")]

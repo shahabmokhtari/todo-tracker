@@ -1136,7 +1136,8 @@ public static partial class TaskMarkdown
 
         // An emoji is written as itself (readable in Obsidian); only text YAML would misread is quoted.
         static string IconScalar(string icon) =>
-            "-?:,[]{}#&*!|>'\"%@`".Contains(icon[0], StringComparison.Ordinal) || icon.Contains(": ", StringComparison.Ordinal) || icon.Contains(" #", StringComparison.Ordinal) || icon != icon.Trim()
+            "-?:,[]{}#&*!|>'\"%@`".Contains(icon[0], StringComparison.Ordinal) || icon.Contains(": ", StringComparison.Ordinal) || icon.Contains(" #", StringComparison.Ordinal)
+                || icon.EndsWith(':') || icon != icon.Trim()
                 ? "\"" + icon.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
                 : icon;
 
