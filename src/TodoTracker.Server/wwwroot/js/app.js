@@ -1,9 +1,9 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, whenText } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
-import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone } from './media.js';
+import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone, imageFiles, pastedName, MAX_PASTE_BYTES } from './media.js';
 import { createShell } from './shell.js';
 import { createLater } from './later.js';
 import { createBoardView } from './views/board.js';
@@ -206,6 +206,9 @@ function render() {
   $('#greeting').textContent = greeting();
   $('#summary').textContent = summaryLine(d);
   renderTabs(d);
+  const pick = $('#capture-group');
+  if (pick.dataset.chosen && pick.dataset.tab !== (state.group ?? '')) delete pick.dataset.chosen;
+  renderCaptureGroup(d);
   renderFocus(d);
   renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c, { orderable: true })), d.now.length, 'Nothing else right now. Nice.');
   renderSection('#sec-waiting', d.waiting.map((c) => card(c, { waiting: true })), d.waiting.length, 'Nothing is parked.');
@@ -213,6 +216,7 @@ function render() {
   const streams = d.overview.filter((o) => o.hasChildren);
   renderSection('#sec-overview', streams.map(workstream), streams.length, 'Tasks with subtasks or rollout steps show up here with progress.');
   renderSection('#sec-notes', d.recentNotes.map(noteRow), d.recentNotes.length, 'Notes you and your agents log appear here.');
+  renderDoneToday(d.doneToday ?? []);
   renderPomodoro(d.pomodoro);
   renderProblems(d.problems ?? []);
   renderFilter();
@@ -367,7 +371,7 @@ function renderFocus(d) {
     sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
   }
   const tagged = [...(f.labels ?? []).map((l) => labelChip(l)), ...(f.tags ?? []).map(tagChip)];
-  if (chips.length || tagged.length) sub.push(h('div', { class: 'meta' }, ...chips.map(chip), ...tagged));
+  if (chips.length || tagged.length) sub.push(h('div', { class: 'meta' }, ...chips.map(cardChip(f)), ...tagged));
 
   const el = h('div', { class: `focus-card${f.needsAttention ? ' attention' : ''}` },
     h('div', { class: 'focus-top' },
@@ -557,12 +561,17 @@ function renderSection(selector, rows, count, emptyText) {
 
 const chip = (c) => h('span', { class: `chip ${c.tone}` }, c.text);
 
+/** A card's chips; a subtask's path opens its parent (the bigger thing it belongs to). */
+const cardChip = (card) => (c) => (c.tone === 'path' && card.parentId
+  ? h('button', { class: 'chip path', type: 'button', title: 'Open the task it belongs to', onclick: (e) => { e.stopPropagation(); openDrawer(card.parentId); } }, icon('tree', { size: 12 }), c.text)
+  : chip(c));
+
 function card(c, { waiting = false, orderable = false } = {}) {
   const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, c.title),
-      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(chip), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
@@ -735,6 +744,23 @@ function avatar(kind, author) {
   return h('span', { class: `avatar ${kind}`, 'aria-hidden': 'true' }, letter);
 }
 
+/** What got done today: a cheer, the tasks (with where they belong), and a way to undo a slip. */
+function renderDoneToday(done) {
+  const section = $('#sec-done');
+  const cheer = section.querySelector('.cheer');
+  const line = cheerLine(done.length);
+  cheer.hidden = !line;
+  cheer.textContent = line ? `🎉 ${line}` : '';
+  renderSection('#sec-done', done.map((d) => h('li', { class: 'done-row' },
+    h('span', { class: 'done-check', 'aria-hidden': 'true' }, icon('check', { size: 13 })),
+    h('div', { class: 'done-text' },
+      h('button', { class: 'link done-title', type: 'button', onclick: () => openDrawer(d.id) }, d.title),
+      d.path.length ? h('span', { class: 'muted small' }, d.path.join(' › ')) : null),
+    h('span', { class: 'muted small' }, new Date(d.completedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })),
+    h('button', { class: 'btn small ghost', type: 'button', title: 'Not done after all', 'aria-label': `Reopen ${d.title}`, onclick: () => act(post(`/api/items/${d.id}/reopen`), 'Reopened') }, icon('undo', { size: 14 }), 'Reopen'))),
+  done.length, 'Finish something and it shows up here.');
+}
+
 function noteRow(n) {
   return h('li', { class: 'note' },
     h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
@@ -888,6 +914,15 @@ async function openDrawer(id, { full = null } = {}) {
     attachmentsNode = fresh;
   };
   const details = acceptMedia(h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown; paste images)', dataset: { field: 'details' } }, item.details ?? ''), id, pastedFile);
+  // A picture pasted into the title goes into the details (a title is one line of text); the title stays as it is.
+  title.addEventListener('paste', (e) => {
+    if (!imageFiles(e.clipboardData).length) return;
+    e.preventDefault();
+    details.focus();
+    details.setSelectionRange(details.value.length, details.value.length);
+    const forward = new ClipboardEvent('paste', { clipboardData: e.clipboardData, bubbles: true, cancelable: true });
+    if (forward.clipboardData) details.dispatchEvent(forward);
+  });
   // Images embedded in the details show under the box (a text box can't show them); redrawn only when they change.
   const detailImages = h('div', { class: 'embeds' });
   let shownNames = '';
@@ -965,10 +1000,6 @@ async function openDrawer(id, { full = null } = {}) {
   };
   renderLabels();
 
-  const group = h('select', { disabled: !!item.parentId, 'aria-label': 'Group', onchange: () => act(post(`/api/items/${id}/move`, { groupId: group.value }), 'Moved') },
-    ...state.dashboard.groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
-  const parent = parentPicker(item);
-
   // ---- Subtasks (any depth) ----
   const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300 });
   const stepsInput = h('textarea', { rows: 3, placeholder: 'Rollout steps, one per line' });
@@ -997,7 +1028,6 @@ async function openDrawer(id, { full = null } = {}) {
   drawer.replaceChildren(
     h('div', { class: 'drawer-head' },
       h('span', { class: 'prio-pill' }, meta.label),
-      h('span', { class: 'crumbs' }, item.path.slice(0, -1).join(' › ')),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? obsidianAnchor(item.obsidianUrl, { class: 'icon-btn', iconOnly: true, file: item.file }) : null,
       h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
@@ -1007,6 +1037,7 @@ async function openDrawer(id, { full = null } = {}) {
       }, icon(showFull ? 'shrink' : 'expand')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
     title,
+    wherePanel(item),
     // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
     h('div', { class: 'drawer-main' },
     waitingBanner(item),
@@ -1017,8 +1048,8 @@ async function openDrawer(id, { full = null } = {}) {
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
     field('Details', details),
     detailImages,
-    h('div', { class: 'row' }, item.parentId ? null : field('Group', group), field('Belongs to', parent),
-      item.parentId || item.completedAt ? null : field('Board', h('select', { 'aria-label': 'Board column', onchange: (e) => act(post(`/api/items/${id}/stage`, { stage: e.target.value }), 'Moved') },
+    item.parentId || item.completedAt ? null : h('div', { class: 'row' },
+      field('Board', h('select', { 'aria-label': 'Board column', onchange: (e) => act(post(`/api/items/${id}/stage`, { stage: e.target.value }), 'Moved') },
         ...[['inbox', 'Inbox'], ['next', 'Next'], ['doing', 'Doing']].map(([v, label]) => h('option', { value: v, selected: v === item.stage }, label))))),
     h('div', { class: 'row buttons' },
       item.completedAt && !item.parentId
@@ -1220,27 +1251,121 @@ function subtaskTree(children, parentId) {
   }));
 }
 
-/** "Belongs to": move the task under another task or back to the top level. Options load on first use. */
-function parentPicker(item) {
-  const select = h('select', { 'aria-label': 'Belongs to' },
-    h('option', { value: '', selected: !item.parentId }, 'Nothing (top level)'),
-    item.parentId ? h('option', { value: item.parentId, selected: true }, item.path.at(-2)) : null);
-  let loaded = false;
-  select.addEventListener('focus', async () => {
-    if (loaded) return;
-    loaded = true;
-    const roots = await api('/api/items');
-    const options = [];
+/** Sets styles from script (the page's content security policy blocks style attributes). Returns the element. */
+function withStyle(el, styles) {
+  for (const [k, v] of Object.entries(styles)) el.style.setProperty(k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`), String(v));
+  return el;
+}
+
+/**
+ * Where a task lives, at the top of its details: its group and parents (each one opens), and Move… to put it in
+ * another group, under another task, or at the top level. A subtask also shows what it's part of: the parent's
+ * progress and the other subtasks next to it.
+ */
+function wherePanel(item) {
+  const groups = state.dashboard?.groups ?? [];
+  const g = groups.find((x) => x.id === item.groupId);
+  const ids = item.pathIds ?? [];
+  const crumbs = item.path.slice(0, -1).map((title, i) =>
+    h('button', { class: 'crumb', type: 'button', title: `Open ${title}`, onclick: () => openDrawer(ids[i]) }, title));
+  const path = h('nav', { class: 'where-path', 'aria-label': 'Where this task is' },
+    h('span', { class: 'where-group' }, withStyle(h('span', { class: 'dot' }), { background: g?.color ?? 'var(--accent)' }), g?.name ?? 'Group'),
+    ...crumbs.flatMap((c) => [h('span', { class: 'sep', 'aria-hidden': 'true' }, '›'), c]),
+    h('button', { class: 'btn small ghost where-move', type: 'button', title: 'Another group, under another task, or on its own', onclick: () => moveDialog(item) }, icon('folder', { size: 14 }), 'Move…'),
+    h('button', { class: 'btn small ghost', type: 'button', title: 'See it with everything around it in the task tree', onclick: () => showInTree(item) }, icon('tree', { size: 14 }), 'Show in tree'));
+  if (!item.parentId) return h('div', { class: 'where' }, path);
+
+  const partOf = h('div', { class: 'part-of', 'aria-busy': 'true' });
+  api(`/api/items/${item.parentId}`).then((parent) => {
+    const done = parent.children.filter((c) => c.completedAt).length;
+    partOf.removeAttribute('aria-busy');
+    partOf.replaceChildren(
+      h('div', { class: 'part-of-head' },
+        h('span', { class: 'muted small' }, 'Part of'),
+        h('button', { class: 'link part-of-title', type: 'button', onclick: () => openDrawer(parent.id) }, parent.title),
+        h('span', { class: 'muted small push-right' }, `${done}/${parent.children.length} done${parent.sequential ? ' · in order' : ''}`)),
+      h('div', { class: 'mini-progress wide', role: 'img', 'aria-label': `${done} of ${parent.children.length} done` }, withStyle(h('span'), { width: `${progressPercent(done, parent.children.length)}%` })),
+      h('ol', { class: 'siblings' }, ...parent.children.map((s) => h('li', { class: `${s.id === item.id ? 'current' : ''}${s.completedAt ? ' done' : ''}` },
+        h('span', { class: 'sib-check', 'aria-hidden': 'true' }, s.completedAt ? icon('check', { size: 12 }) : null),
+        s.id === item.id
+          ? h('span', { class: 'sib-title', 'aria-current': 'true' }, s.title)
+          : h('button', { class: 'link sib-title', type: 'button', onclick: () => openDrawer(s.id) }, s.title)))));
+  }).catch(() => partOf.remove());
+  return h('div', { class: 'where' }, path, partOf);
+}
+
+/** The task in the tree (Tasks): in its group, its parents opened, highlighted. */
+async function showInTree(item) {
+  await closeDrawer();
+  if (!$('#drawer').hidden) return; // couldn't save what was typed: the panel stays open
+  if (state.group && state.group !== item.groupId) { setGroup(item.groupId); refreshAll(); }
+  location.hash = '#/tasks';
+  await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1));
+}
+
+/** Move a task: pick a group, then where in it (at the top level, or under one of its tasks). */
+function moveDialog(item) {
+  const groups = state.dashboard?.groups ?? [];
+  const dialog = h('dialog', { class: 'move-dialog', 'aria-label': `Move ${item.title}` });
+  const groupSelect = h('select', { 'aria-label': 'Group' }, ...groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
+  const search = h('input', { type: 'search', placeholder: 'Find a task to put it under…', 'aria-label': 'Find a task' });
+  const list = h('ul', { class: 'move-list', role: 'listbox', 'aria-label': 'Where it goes' });
+  let roots = [];
+  let target = item.parentId ?? '';
+
+  const inside = new Set();
+  const mark = (n) => { inside.add(n.id); n.children.forEach(mark); };
+  mark(item); // a task can't go under itself or its own subtasks
+
+  const option = (id, label, depth, hint) => withStyle(h('li', {
+    role: 'option', tabindex: 0, class: `move-option${target === id ? ' chosen' : ''}`, 'aria-selected': String(target === id),
+    onclick: () => { target = id; draw(); },
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); target = id; draw(); } },
+  }, depth ? h('span', { class: 'muted', 'aria-hidden': 'true' }, '↳ ') : null, label, hint ? h('span', { class: 'muted small' }, ` ${hint}`) : null), { '--depth': depth });
+
+  function draw() {
+    const q = search.value.trim().toLowerCase();
+    const rows = [option('', h('strong', null, 'On its own'), 0, '(a top-level task)')];
     const walk = (nodes, depth) => nodes.forEach((n) => {
-      if (n.id === item.id) return; // a task can't go inside itself
-      options.push(h('option', { value: n.id, selected: n.id === item.parentId }, `${'  '.repeat(depth)}${depth ? '↳ ' : ''}${n.title}`));
+      if (inside.has(n.id)) return;
+      const matches = !q || n.title.toLowerCase().includes(q);
+      if (matches) rows.push(option(n.id, n.title, q ? 0 : depth));
       walk(n.children.filter((c) => !c.completedAt), depth + 1);
     });
-    walk(roots, 0);
-    select.replaceChildren(h('option', { value: '', selected: !item.parentId }, 'Nothing (top level)'), ...options);
-  });
-  select.addEventListener('change', () => act(post(`/api/items/${item.id}/move`, select.value ? { parentId: select.value } : { toTopLevel: true, groupId: item.groupId }), 'Moved'));
-  return select;
+    walk(roots.filter((r) => r.groupId === groupSelect.value), 0);
+    list.replaceChildren(...rows);
+  }
+
+  const move = () => {
+    const sameGroup = groupSelect.value === item.groupId;
+    let request = null;
+    if (target) {
+      if (target !== item.parentId) request = { parentId: target };
+    } else if (item.parentId || !sameGroup) {
+      request = { toTopLevel: true, groupId: groupSelect.value };
+    }
+
+    dialog.close();
+    if (!request) return;
+    const name = groups.find((g) => g.id === groupSelect.value)?.name;
+    act(post(`/api/items/${item.id}/move`, request), sameGroup ? 'Moved' : `Moved to ${name}`);
+  };
+
+  groupSelect.addEventListener('change', () => { target = ''; draw(); });
+  search.addEventListener('input', draw);
+  dialog.append(
+    h('h2', null, `Move “${item.title}”`),
+    h('label', { class: 'field' }, h('span', null, 'Group'), groupSelect),
+    search,
+    list,
+    h('div', { class: 'row buttons' },
+      h('button', { class: 'btn primary', type: 'button', onclick: move }, 'Move'),
+      h('button', { class: 'btn ghost', type: 'button', onclick: () => dialog.close() }, 'Cancel')));
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  draw();
+  api('/api/items').then((r) => { roots = r; draw(); }).catch(() => {});
 }
 
 /** Full size gives a task the whole window (its own address, #/task/<id>); the side panel keeps the view in sight. */
@@ -1396,13 +1521,86 @@ function toLocalInput(iso) {
 
 $('#capture-icon').append(icon('plus', { size: 20 }));
 
+// Pictures pasted into quick add wait here (shown under the box) and go into the new task's details once it exists.
+const captureFiles = [];
+
+function renderCaptureFiles() {
+  const tray = $('#capture-files');
+  tray.hidden = !captureFiles.length;
+  tray.replaceChildren(...captureFiles.map((f, i) => {
+    const url = URL.createObjectURL(f.file);
+    const img = h('img', { src: url, alt: '', onload: () => URL.revokeObjectURL(url) });
+    return h('span', { class: 'capture-file', title: f.name },
+      img,
+      h('span', { class: 'capture-file-name' }, f.name),
+      h('button', { class: 'icon-btn small', type: 'button', 'aria-label': `Remove ${f.name}`, onclick: () => { captureFiles.splice(i, 1); renderCaptureFiles(); } }, icon('x', { size: 12 })));
+  }));
+}
+
+$('#capture-input').addEventListener('paste', (e) => {
+  const files = imageFiles(e.clipboardData);
+  if (!files.length) return;
+  e.preventDefault();
+  for (const file of files) {
+    if (file.size > MAX_PASTE_BYTES) { toast(`${file.name || 'That file'} is too big to attach (at most 25 MB).`, 'error'); continue; }
+    captureFiles.push({ file, name: pastedName(file) });
+  }
+  renderCaptureFiles();
+});
+
+/** Attaches the waiting pictures to a new task and shows them in its details. */
+async function attachCaptureFiles(itemId, files) {
+  const embeds = [];
+  for (const f of files) {
+    try {
+      const a = await upload(`/api/items/${itemId}/attachments`, f.file, f.name);
+      embeds.push(`![[${a.storedName ?? a.fileName}]]`);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+  if (embeds.length) await patch(`/api/items/${itemId}`, { details: embeds.join('\n') });
+}
+
 $('#capture').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('#capture-input');
-  const text = input.value.trim();
+  const files = captureFiles.splice(0);
+  // A picture alone is enough: the task is named after it (rename it any time).
+  const text = input.value.trim() || (files.length ? files[0].name.replace(/\.[a-z0-9]+$/i, '') : '');
   if (!text) return;
   input.value = '';
-  act(post('/api/capture', { text, groupId: state.group }), 'Added').then((ok) => { if (!ok && !input.value) input.value = text; });
+  renderCaptureFiles();
+  const groupId = $('#capture-group').value || state.group;
+  const elsewhere = groupId && state.group && groupId !== state.group;
+  const name = state.dashboard?.groups.find((g) => g.id === groupId)?.name;
+  const created = post('/api/capture', { text, groupId }).then(async (item) => {
+    if (files.length) await attachCaptureFiles(item.id, files);
+    return item;
+  });
+  act(created, elsewhere && name ? `Added to ${name}` : 'Added').then((ok) => {
+    if (ok) return;
+    if (!input.value) input.value = text;
+    // Nothing was added: the pictures wait again.
+    captureFiles.push(...files);
+    renderCaptureFiles();
+  });
+});
+
+/** Quick add puts the task in the group shown (the first one under All); the picker sends it elsewhere instead. */
+function renderCaptureGroup(d) {
+  const select = $('#capture-group');
+  const chosen = select.dataset.chosen;
+  const target = d.groups.find((g) => g.id === (chosen || state.group)) ?? d.groups[0];
+  select.replaceChildren(...d.groups.map((g) => h('option', { value: g.id, selected: g.id === target?.id }, g.name)));
+  $('#capture-group-dot').style.background = target?.color ?? 'var(--accent)';
+}
+
+$('#capture-group').addEventListener('change', (e) => {
+  // A choice made here sticks until the tab changes (then it follows the tab again).
+  e.target.dataset.chosen = e.target.value;
+  e.target.dataset.tab = state.group ?? '';
+  renderCaptureGroup(state.dashboard);
 });
 
 $('#login-form').addEventListener('submit', async (e) => {

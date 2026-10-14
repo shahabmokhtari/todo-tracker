@@ -337,7 +337,30 @@ export function createOutlineView(ctx) {
       const next = shown[Math.max(0, Math.min(keptAt - 1, shown.length - 1))];
       if (next) focusRow(next.dataset.id);
     }
+
+    applyReveal();
   }
 
-  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks' };
+  /**
+   * Shows a task in the tree: its parents opened, the row in view, focused and briefly highlighted ("Show in tree"
+   * from a task's details). Applied by the next drawing of the tree, whichever load it comes from.
+   */
+  let revealing = null;
+  async function reveal(id, ancestorIds = []) {
+    ancestorIds.forEach((a) => expanded.add(a));
+    saveExpanded();
+    revealing = id;
+    await load();
+  }
+
+  function applyReveal() {
+    if (!revealing || !focusRow(revealing)) return;
+    const row = root.querySelector(`.orow[data-id="${CSS.escape(revealing)}"]`);
+    revealing = null;
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('revealed');
+    setTimeout(() => row.classList.remove('revealed'), 2400);
+  }
+
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks', reveal };
 }

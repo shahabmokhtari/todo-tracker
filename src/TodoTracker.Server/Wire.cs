@@ -39,7 +39,8 @@ public sealed record CardDto(
     long TimeSpentSeconds = 0,
     bool Timing = false,
     Guid? WaitingForId = null,
-    string? WaitingForTitle = null);
+    string? WaitingForTitle = null,
+    Guid? ParentId = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -90,7 +91,8 @@ public sealed record ItemDto(
     string? WaitingForTitle = null,
     DateTimeOffset? WakeAt = null,
     Guid? HeldById = null,
-    string? HeldByTitle = null);
+    string? HeldByTitle = null,
+    IReadOnlyList<Guid>? PathIds = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -174,7 +176,11 @@ public sealed record DashboardDto(
     IReadOnlyList<LabelDto> Labels,
     IReadOnlyList<VaultProblem> Problems,
     string? Query,
-    TimerDto? Timer = null);
+    TimerDto? Timer = null,
+    IReadOnlyList<DoneDto>? DoneToday = null);
+
+/// <summary>Something finished today: <see cref="Path"/> is its parents' titles (empty for a top-level task).</summary>
+public sealed record DoneDto(Guid Id, string Title, IReadOnlyList<string> Path, DateTimeOffset CompletedAt, Guid GroupId);
 
 public sealed record ReportDto(ItemDto? Item, IReadOnlyList<TimelineDto> Timeline);
 
@@ -199,7 +205,8 @@ public static class Wire
             : throw new ArgumentException($"Unknown priority \"{value}\". Use low, normal, high, or critical.", nameof(value));
     }
 
-    public static DashboardDto Dashboard(TaskBoard board, DateTimeOffset now, Guid? groupId, int recentNotes = 5, VaultLinks? links = null, string? query = null)
+    /// <param name="zone">Where "today" is (for what got done today); null: this computer's.</param>
+    public static DashboardDto Dashboard(TaskBoard board, DateTimeOffset now, Guid? groupId, int recentNotes = 5, VaultLinks? links = null, string? query = null, TimeZoneInfo? zone = null)
     {
         if (groupId is { } g)
         {
@@ -237,7 +244,9 @@ public static class Wire
             Labels(board),
             links?.Vault.Problems ?? [],
             string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
-            Timer(board, now));
+            Timer(board, now),
+            Agenda.DoneToday(board, now, zone ?? TimeZoneInfo.Local, groupId)
+                .Select(i => new DoneDto(i.Id, i.Title, i.Path.SkipLast(1).ToList(), i.CompletedAt!.Value, i.GroupId)).ToList());
     }
 
     public static TimerDto Timer(TaskBoard board, DateTimeOffset now) =>
@@ -323,7 +332,8 @@ public static class Wire
             (long)item.TimeSpent(now).TotalSeconds,
             IsTiming(item, timing),
             e.WaitingFor?.Id,
-            e.WaitingFor?.Title);
+            e.WaitingFor?.Title,
+            item.Parent?.Id);
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -358,7 +368,8 @@ public static class Wire
         Wait(item, now) is { } w ? w.WaitingFor?.Title : null,
         Wait(item, now) is { } wake && wake.NextActionAt > now ? wake.NextActionAt : null,
         HeldBy(item, now)?.Id,
-        HeldBy(item, now)?.Title);
+        HeldBy(item, now)?.Title,
+        item.Ancestors().Reverse().Select(a => a.Id).Append(item.Id).ToList());
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>

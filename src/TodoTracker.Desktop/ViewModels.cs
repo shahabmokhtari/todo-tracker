@@ -179,6 +179,22 @@ public sealed record WorkstreamViewModel(Guid Id, string Title, string PriorityC
 
 public sealed record NoteViewModel(Guid NoteId, Guid ItemId, string Text, string ItemTitle, string Meta, string? SourceUrl);
 
+/// <summary>Something finished today: <see cref="Context"/> is where it belongs (its parents), <see cref="Time"/> when.</summary>
+public sealed record DoneViewModel(Guid Id, string Title, string? Context, string Time);
+
+/// <summary>A line to feel good about what got done today (the web app says the same).</summary>
+public static class Cheer
+{
+    public static string? Line(int count) => count switch
+    {
+        <= 0 => null,
+        1 => "First one done. Nice start!",
+        < 5 => $"{count} done today. Keep it going!",
+        < 10 => $"{count} done today. You are on a roll!",
+        _ => $"{count} done today. What a day!",
+    };
+}
+
 public static class PriorityPalette
 {
     public const string Low = "#94a3b8";
@@ -339,4 +355,49 @@ internal static class CollectionSync
     }
 }
 
+/// <summary>A picture pasted into quick add, waiting for the task to be added.</summary>
+public sealed record PendingPicture(string Name, byte[] Png);
 
+/// <summary>
+/// Whether a paste is a picture: there is one, and no real text came with it. Copying from an office app puts the text
+/// and a picture of it on the clipboard (the text wins); a browser's or Teams' "Copy image" and screenshot tools bring
+/// only a link, a file name or path, blank text, or HTML that's just the image (the picture wins). The web app has the
+/// same rule (media.js).
+/// </summary>
+public static partial class PasteRules
+{
+    public static bool IsPicture(bool hasImage, string? text, string? html) => hasImage && !MeaningfulText(text, html);
+
+    public static bool MeaningfulText(string? text, string? html)
+    {
+        var plain = (text ?? string.Empty).Trim();
+        if (plain.Length > 0)
+        {
+            var oneLine = plain.IndexOfAny(['\r', '\n']) < 0;
+            return !(oneLine && (Link().IsMatch(plain) || FilePath().IsMatch(plain) || FileName().IsMatch(plain)));
+        }
+
+        if (string.IsNullOrEmpty(html))
+        {
+            return false;
+        }
+
+        var words = Tags().Replace(Blocks().Replace(html, string.Empty), string.Empty).Replace("&nbsp;", " ", StringComparison.Ordinal).Trim();
+        return words.Length > 0 && !html.Contains("<img", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(https?|file)://\S+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex Link();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^([a-z]:\\|\\\\|/)[^\r\n]*\.[a-z0-9]{2,5}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex FilePath();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[^\\/\r\n]{1,200}\.(png|jpe?g|gif|webp|bmp|avif|heic|tiff?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex FileName();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<(style|script)[\s\S]*?</\1>", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex Blocks();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<[^>]*>")]
+    private static partial System.Text.RegularExpressions.Regex Tags();
+}

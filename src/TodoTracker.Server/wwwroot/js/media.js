@@ -61,11 +61,37 @@ export function pastedName(file, now = new Date()) {
   return ext ? `Pasted image ${stamp(now)}.${ext}` : `Pasted file ${stamp(now)}.bin`;
 }
 
-/** The files in a paste, unless it also holds text (copying from an office app adds a picture of the text). */
+/**
+ * Whether text copied along with a picture is real content (copying from an office app puts the text and a picture of
+ * it on the clipboard: the text wins), not just a link to the picture, its file name or path, blank lines, or HTML
+ * that's only the picture (a browser's or Teams' "Copy image").
+ */
+export function meaningfulText(plain, html) {
+  const text = String(plain ?? '').trim();
+  if (text) {
+    const oneLine = !/[\r\n]/.test(text);
+    const link = /^(https?|file):\/\/\S+$/i.test(text);
+    const path = /^([a-z]:\\|\\\\|\/)[^\r\n]*\.[a-z0-9]{2,5}$/i.test(text);
+    const fileName = /^[^\\/\r\n]{1,200}\.(png|jpe?g|gif|webp|bmp|avif|heic|tiff?)$/i.test(text);
+    return !(oneLine && (link || path || fileName));
+  }
+
+  const markup = String(html ?? '');
+  if (!markup) return false;
+  const words = markup.replace(/<(style|script)[\s\S]*?<\/\1>/gi, '').replace(/<[^>]*>/g, '').replace(/&nbsp;|&#160;/g, ' ').trim();
+  return words.length > 0 && !/<img\b/i.test(markup);
+}
+
+/** The files in a paste, unless it also holds real text (see meaningfulText). */
 export function imageFiles(clipboard) {
   const items = [...(clipboard?.items ?? [])];
-  if (items.some((i) => i.kind === 'string' && i.type === 'text/plain')) return [];
-  return items.filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+  const files = items.filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+  if (!files.length) return [];
+  const hasText = items.some((i) => i.kind === 'string' && (i.type === 'text/plain' || i.type === 'text/html'));
+  if (!hasText) return files;
+  // Without getData (very old browsers) text wins, as it always did.
+  if (typeof clipboard.getData !== 'function') return [];
+  return meaningfulText(clipboard.getData('text/plain'), clipboard.getData('text/html')) ? [] : files;
 }
 
 /** The URL showing an embed of the task's (or its parents') attachment. */

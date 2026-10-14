@@ -69,8 +69,13 @@
             <span class="capture-icon" id="capture-icon"></span>
             <input id="capture-input" maxlength="300" aria-label="Quick add task" placeholder="What's on your mind?">
             <kbd class="capture-kbd" title="Press N anywhere to add">N</kbd>
+            <label class="capture-group" title="Which group the new task goes to">
+              <span class="dot" id="capture-group-dot"></span>
+              <select id="capture-group" aria-label="Add to group"></select>
+            </label>
             <button class="btn primary" type="submit">Add</button>
           </form>
+          <div class="capture-files" id="capture-files" hidden aria-label="Pictures for the new task"></div>
           <div class="hints" id="hints" aria-hidden="true">
             <span class="hint"><code>!!</code> critical</span>
             <span class="hint"><code>!</code> high</span>
@@ -97,6 +102,11 @@
             <div class="column">
               <details id="sec-overview" class="panel section" open>
                 <summary><span class="section-title">Workstreams</span><span class="count"></span></summary>
+                <ul class="list"></ul>
+              </details>
+              <details id="sec-done" class="panel section done-today" open>
+                <summary><span class="section-title">Done today</span><span class="count"></span></summary>
+                <p class="cheer" hidden></p>
                 <ul class="list"></ul>
               </details>
               <details id="sec-notes" class="panel section">

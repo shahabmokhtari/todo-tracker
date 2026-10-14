@@ -48,3 +48,34 @@ public sealed class VisibleWhenConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }
+
+/// <summary>PNG bytes (a pasted picture) as an image to show; null when they can't be read.</summary>
+public sealed class PngImageConverter : IValueConverter
+{
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not byte[] { Length: > 0 } bytes)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new System.IO.MemoryStream(bytes);
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = 72;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception ex) when (ex is NotSupportedException or System.IO.IOException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
+}

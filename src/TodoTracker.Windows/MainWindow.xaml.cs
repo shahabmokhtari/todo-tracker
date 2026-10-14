@@ -70,6 +70,8 @@ public partial class MainWindow : Window
             RememberFloatingBounds();
         };
         SourceInitialized += OnSourceInitialized;
+        // Paste however it's done (keys or right-click): pictures go into notes and quick add.
+        CommandManager.AddPreviewExecutedHandler(this, OnPreviewPaste);
         InitPeek();
         LocationChanged += (_, _) => QueueSave();
         SizeChanged += (_, _) => QueueSave();
@@ -388,41 +390,34 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Ctrl+V (or Shift+Insert) with a picture on the clipboard: attach it to the task and embed it in the note.</summary>
-    private async void OnNotePreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>
+    /// Paste (Ctrl+V, Shift+Insert, or right-click › Paste) with a picture on the clipboard: into a note, it's attached
+    /// to the task and embedded at the caret; into quick add, it waits under the box and goes into the new task.
+    /// </summary>
+    private async void OnPreviewPaste(object sender, ExecutedRoutedEventArgs e)
     {
-        var paste = (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control) || (e.Key == Key.Insert && Keyboard.Modifiers == ModifierKeys.Shift);
-        if (!paste || sender is not TextBox { DataContext: CardViewModel card } box)
+        if (e.Command != ApplicationCommands.Paste || e.OriginalSource is not TextBox box)
         {
             return;
         }
 
-        // The clipboard belongs to other apps too: any of these calls can fail while one of them holds it.
-        byte[] png;
-        try
+        var capture = ReferenceEquals(box, CaptureBox);
+        var card = !capture && box.DataContext is CardViewModel c && System.Windows.Automation.AutomationProperties.GetName(box) == "Note" ? c : null;
+        if (!capture && card is null || ReadClipboardPictures() is not { } pictures)
         {
-            if (Clipboard.ContainsText() || !Clipboard.ContainsImage())
-            {
-                return;
-            }
-
-            e.Handled = true;
-            if (Clipboard.GetImage() is not { } image)
-            {
-                _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
-                return;
-            }
-
-            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
-            using var stream = new MemoryStream();
-            encoder.Save(stream);
-            png = stream.ToArray();
+            return;
         }
-        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException)
+
+        e.Handled = true;
+        if (pictures.Count == 0)
         {
-            e.Handled = true;
             _vm.StatusMessage = "Couldn't read the picture on the clipboard.";
+            return;
+        }
+
+        if (capture)
+        {
+            pictures.ForEach(_vm.AddCapturePicture);
             return;
         }
 
@@ -430,14 +425,17 @@ public partial class MainWindow : Window
         _pendingPastes++;
         try
         {
-            // The box may show another task by now, and text may have been selected meanwhile: insert at the caret
-            // of this task's box only, never in place of a selection.
-            if (await _vm.AttachPastedImageAsync(card, png).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
+            foreach (var png in pictures)
             {
-                var at = box.SelectionStart + box.SelectionLength;
-                var text = (at > 0 && !char.IsWhiteSpace(box.Text[at - 1]) ? " " : string.Empty) + embed;
-                box.Text = box.Text.Insert(at, text);
-                box.CaretIndex = at + text.Length;
+                // The box may show another task by now, and text may have been selected meanwhile: insert at the caret
+                // of this task's box only, never in place of a selection.
+                if (await _vm.AttachPastedImageAsync(card!, png).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
+                {
+                    var at = box.SelectionStart + box.SelectionLength;
+                    var text = (at > 0 && !char.IsWhiteSpace(box.Text[at - 1]) ? " " : string.Empty) + embed;
+                    box.Text = box.Text.Insert(at, text);
+                    box.CaretIndex = at + text.Length;
+                }
             }
         }
         finally
@@ -445,6 +443,47 @@ public partial class MainWindow : Window
             _pendingPastes--;
         }
     }
+
+    /// <summary>
+    /// The pictures on the clipboard as PNGs (a copied image, or image files copied in Explorer); null when the paste
+    /// isn't a picture (text, or a picture with real text: see <see cref="PasteRules"/>); empty when it can't be read.
+    /// </summary>
+    private static List<byte[]>? ReadClipboardPictures()
+    {
+        // The clipboard belongs to other apps too: any of these calls can fail while one of them holds it.
+        try
+        {
+            var files = Clipboard.ContainsFileDropList()
+                ? Clipboard.GetFileDropList().Cast<string>().Where(f => ImageFile().IsMatch(f) && File.Exists(f)).ToList()
+                : [];
+            var hasImage = Clipboard.ContainsImage() || files.Count > 0;
+            var text = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+            var html = Clipboard.ContainsData(DataFormats.Html) ? Clipboard.GetData(DataFormats.Html) as string : null;
+            if (!PasteRules.IsPicture(hasImage, text, html))
+            {
+                return null;
+            }
+
+            var sources = files.Count > 0
+                ? files.Select(f => (System.Windows.Media.Imaging.BitmapSource)System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(f), System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad)).ToList()
+                : Clipboard.GetImage() is { } image ? [image] : [];
+            return sources.Select(source =>
+            {
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+                using var stream = new MemoryStream();
+                encoder.Save(stream);
+                return stream.ToArray();
+            }).ToList();
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException or IOException or UriFormatException)
+        {
+            return [];
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\.(png|jpe?g|gif|bmp|tiff?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ImageFile();
 
     private void OnNoteKeyDown(object sender, KeyEventArgs e)
     {

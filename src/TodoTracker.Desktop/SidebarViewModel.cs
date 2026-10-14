@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TodoTracker.Core;
@@ -53,6 +54,13 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     public ObservableCollection<WorkstreamViewModel> Workstreams { get; } = [];
 
     public ObservableCollection<NoteViewModel> RecentNotes { get; } = [];
+
+    /// <summary>What got done today (newest first): something to look back on.</summary>
+    public ObservableCollection<DoneViewModel> DoneToday { get; } = [];
+
+    /// <summary>A cheer for what got done today; null until something is done.</summary>
+    [ObservableProperty]
+    public partial string? DoneTodayCheer { get; set; }
 
     public PomodoroViewModel Pomodoro { get; } = new();
 
@@ -176,6 +184,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         CollectionSync.Sync(Waiting, snapshot.Waiting.Select(Reuse).ToList());
         CollectionSync.Sync(Workstreams, snapshot.Workstreams);
         CollectionSync.Sync(RecentNotes, snapshot.Notes);
+        CollectionSync.Sync(DoneToday, snapshot.Done ?? []);
+        DoneTodayCheer = Cheer.Line(DoneToday.Count) is { } cheer ? $"🎉 {cheer}" : null;
         NowCount = snapshot.NowCount;
         WaitingCount = snapshot.Waiting.Count;
         HasAttention = snapshot.HasAttention;
@@ -198,8 +208,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task Capture() => Run(async () =>
     {
-        var text = QuickText;
-        await _store.UpdateAsync(b =>
+        var pictures = CapturePictures.ToList();
+        // A picture alone is enough: the task is named after it (rename it any time).
+        var text = string.IsNullOrWhiteSpace(QuickText) && pictures.Count > 0 ? Path.GetFileNameWithoutExtension(pictures[0].Name) : QuickText;
+        var id = await _store.UpdateAsync(b =>
         {
             var now = _time.GetUtcNow();
             var capture = QuickCaptureParser.Parse(text, now, _options.TimeZone);
@@ -208,16 +220,80 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             {
                 b.ScheduleNextAction(item.Id, at, Actor.User, now, notify: true);
             }
+
+            return item.Id;
         }).ConfigureAwait(true);
         QuickText = string.Empty;
-        return "Added";
+        CapturePictures.Clear();
+        if (pictures.Count == 0 || _options.Attach is not { } attach)
+        {
+            return "Added";
+        }
+
+        // The pictures go into the new task's details, the way a paste into its details would put them.
+        var embeds = new List<string>();
+        string? problem = null;
+        foreach (var picture in pictures)
+        {
+            try
+            {
+                embeds.Add($"![[{await attach(id, picture.Name, picture.Png).ConfigureAwait(true)}]]");
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException)
+            {
+                problem = ex.Message;
+            }
+        }
+
+        if (embeds.Count > 0)
+        {
+            var details = string.Join('\n', embeds);
+            await _store.UpdateAsync(b => b.Update(id, new TaskChanges { Details = details }, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        }
+
+        return problem is not null ? $"Added, but couldn't attach a picture: {problem}"
+            : pictures.Count == 1 ? "Added with a picture" : $"Added with {pictures.Count} pictures";
     });
+
+    /// <summary>Pictures pasted into quick add, waiting for the task to be added (they go into its details).</summary>
+    public ObservableCollection<PendingPicture> CapturePictures { get; } = [];
+
+    /// <summary>A picture pasted into quick add: named like Obsidian names pasted images (unique among the waiting ones).</summary>
+    public void AddCapturePicture(byte[] png)
+    {
+        ArgumentNullException.ThrowIfNull(png);
+        var stamp = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone).ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var name = $"Pasted image {stamp}.png";
+        for (var n = 2; CapturePictures.Any(p => p.Name == name); n++)
+        {
+            name = $"Pasted image {stamp} {n}.png";
+        }
+
+        CapturePictures.Add(new PendingPicture(name, png));
+    }
+
+    [RelayCommand]
+    private void RemoveCapturePicture(PendingPicture? picture)
+    {
+        if (picture is not null)
+        {
+            CapturePictures.Remove(picture);
+        }
+    }
 
     [RelayCommand]
     private Task Complete(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
     {
         await _store.UpdateAsync(b => b.Complete(card.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
         return $"Done: {card.Title} 🎉";
+    });
+
+    /// <summary>Not done after all (from Done today): back in Do now.</summary>
+    [RelayCommand]
+    private Task Reopen(DoneViewModel? done) => done is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.Reopen(done.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return $"Reopened: {done.Title}";
     });
 
     [RelayCommand]
@@ -757,7 +833,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         string? PomodoroItem,
         bool GroupMissing,
         RunningTimerState? Timer = null,
-        string? NextFocus = null);
+        string? NextFocus = null,
+        IReadOnlyList<DoneViewModel>? Done = null);
 
     private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
     {
@@ -812,7 +889,12 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
             GroupMissing: false,
             timer,
-            (board.NextFocusItem() ?? d.Focus?.Item)?.Title);
+            (board.NextFocusItem() ?? d.Focus?.Item)?.Title,
+            Agenda.DoneToday(board, now, _options.TimeZone, groupId).Select(i => new DoneViewModel(
+                i.Id,
+                i.Title,
+                i.Parent is null ? null : string.Join(" › ", i.Path.SkipLast(1)),
+                TimeZoneInfo.ConvertTime(i.CompletedAt!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList());
     }
 
     private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)

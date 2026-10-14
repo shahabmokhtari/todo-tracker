@@ -188,8 +188,14 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   3. Quick capture.
   4. Status line.
   5. **Do this now** card.
-  6. Collapsible sections: Do now, Waiting, Workstreams (progress bars; click for the report), and Recent notes.
+  6. Collapsible sections: Do now, Waiting, **Done today**, Workstreams (progress bars; click for the report), and Recent
+     notes.
   7. Focus timer bar.
+* **Done today** (sidebar, web Today, Mac/iOS, Android): what was finished since local midnight, newest first, with a
+  cheer that grows with the count ("First one done. Nice start!" … "12 done today. What a day!"). A subtask shows its
+  parent. A parent finished together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done
+  on their own count. Archived tasks are left out. Each row can be reopened (a slip of the finger is undone in place).
+  Same rule in every core (`Agenda.DoneToday`/`doneToday`), tested in C#, Swift and Kotlin.
 * Card actions: ✓ done, 🔕 dismiss, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
   time…*, *After another task*), ✎ inline note,
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
@@ -209,10 +215,19 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * **Nothing needs a Save button.** The task drawer saves as you type (debounced; edits made during a save are saved
   after it; failures retry; everything is flushed when the panel closes or the page is hidden). Notes save while
   typed and stay one note until you start a new one.
-* The drawer edits the title, labels (toggle chips, add new), tags, priority, deadline, details, group, and where the
-  task belongs (any other task, or the top level). It shows the subtask tree, rollout steps (one per line),
+* The drawer edits the title, labels (toggle chips, add new), tags, priority, deadline and details. It shows the subtask tree, rollout steps (one per line),
   attachments (button or drag and drop; images open inline, everything else downloads), the rich HTML version in a
   sandboxed frame, reminders, notes, and the task's version history with view and restore.
+* **Where a task lives** is at the top of its details: its group and its parents as a path (each opens), **Move…** and
+  **Show in tree**. A subtask also shows what it's **part of**: the parent (opens), its progress, and the other
+  subtasks next to it (the current one highlighted). *Move…* picks a group and where in it: on its own (a top-level task)
+  or under any open task of that group (searchable; never itself or its own subtasks). *Show in tree* opens Tasks with
+  its parents expanded and the task focused and highlighted. In lists, a subtask's path opens its parent.
+* **Quick add picks a group:** the picker by *Add* follows the tab shown (the first group under All); choosing another
+  sends the new task there without changing the tab ("Added to Personal").
+* **Board:** drag the background (a column header, the space between cards) to move around it like a canvas, sideways
+  and up and down; cards, buttons and fields keep their own behavior. Columns snap into place only on touch screens
+  and narrow windows.
 * `report.html?id=…` shows the task tree, progress, and a day-grouped timeline with linked sources. It is printable.
 * Responsive layout down to phone width. It follows the system dark mode and respects reduced motion.
 
@@ -403,6 +418,6 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
 | In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ✅ Ask AI plugin (dashboard panel + sidebar box; Copilot and Claude Code; permissions; warm agent); every optional feature is a switchable plugin ([`docs/plugins.md`](plugins.md)) |
 | Ask AI as a full chat with sessions and history; ACP plus API keys for OpenAI- and Anthropic-compatible APIs | ✅ chats kept, searched, reopened (ACP `session/load` or a primer), renamed, deleted with undo; API models with presets, encrypted keys, same tools and permissions (tested live with Copilot; Claude untested on the dev machine) |
-| Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar |
+| Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar; into quick add (they wait under the box and go into the new task's details; a picture alone names the task) and a task's title (goes into its details). A paste counts as a picture unless real text comes with it (an office copy); a link, file name/path, blank text or HTML that's only the image (browser/Teams "Copy image") doesn't count. Sidebar: Ctrl+V, Shift+Insert and right-click › Paste, also image files copied in Explorer |
 | Browser extension for Edge/Chrome and Safari, with a setup guide while unsigned | ✅ one source, side panel (Edge/Chrome) and popup (Safari app built in CI); guided setup and pairing codes with per-browser access |
 | Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |

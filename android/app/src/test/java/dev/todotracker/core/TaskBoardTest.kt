@@ -17,6 +17,29 @@ class TaskBoardTest {
     private val t0: Instant = Instant.parse("2026-01-05T09:00:00Z")
 
     @Test
+    fun doneTodayListsWhatWasFinishedSinceLocalMidnightAndCheers() {
+        val board = TaskBoard()
+        val newYork = ZoneId.of("America/New_York")
+        val morning = Instant.parse("2026-01-05T14:00:00Z") // 09:00 in New York
+        val yesterday = board.addTask(NewTask("Yesterday's"), now = t0)
+        val release = board.addTask(NewTask("Release"), now = t0)
+        val ring0 = board.addTask(NewTask("Ring 0", parentId = release.id), now = t0)
+        board.addTask(NewTask("Ring 1", parentId = release.id), now = t0)
+        board.complete(yesterday.id, now = morning.minusSeconds(10 * 3600)) // 23:00 Sunday there
+        board.complete(ring0.id, now = morning)
+        board.complete(release.id, now = morning.plusSeconds(300))
+
+        val done = Agenda.doneToday(board, morning.plusSeconds(3600), newYork)
+
+        // Ring 1 was closed by finishing Release: shown once, as Release.
+        assertEquals(listOf("Release", "Ring 0"), done.map { it.title })
+        assertNull(Agenda.cheer(0))
+        assertEquals("First one done. Nice start!", Agenda.cheer(1))
+        assertEquals("3 done today. Keep it going!", Agenda.cheer(3))
+        assertEquals("12 done today. What a day!", Agenda.cheer(12))
+    }
+
+    @Test
     fun stepsUnlockInOrderAfterTheirDelay() {
         val board = TaskBoard()
         val rollout = board.addTask(NewTask("Roll out"), now = t0)

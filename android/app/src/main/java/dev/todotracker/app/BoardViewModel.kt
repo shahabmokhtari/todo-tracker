@@ -22,6 +22,7 @@ import dev.todotracker.core.RunningTimer
 import dev.todotracker.core.Snooze
 import dev.todotracker.core.SnoozeChoice
 import dev.todotracker.core.TaskBoard
+import dev.todotracker.core.WorkItem
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -56,6 +57,9 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private var board: TaskBoard
 
     var dashboard: Dashboard by mutableStateOf(Dashboard(null, emptyList(), emptyList(), emptyMap()))
+        private set
+    /** What got done today (newest first): something to look back on. */
+    var doneToday: List<WorkItem> by mutableStateOf(emptyList())
         private set
     var groups: List<Pair<UUID, String>> by mutableStateOf(emptyList())
         private set
@@ -131,8 +135,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         groups = board.groups.map { it.id to it.name }
         now = Instant.now()
         dashboard = Agenda.build(board, now, selectedGroup)
+        doneToday = Agenda.doneToday(board, now, ZoneId.systemDefault(), selectedGroup)
         showTimers()
     }
+
+    /** Not done after all (from Done today): back in Do now. */
+    fun reopen(id: UUID) { change(null) { board.reopen(id, now = it) } }
 
     /** Every second: the clocks move; the focus timer moves on (saved); every 30 s the lists follow the clock too. */
     private fun tick(lists: Boolean) {

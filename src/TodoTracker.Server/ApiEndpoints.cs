@@ -126,8 +126,8 @@ internal static class ApiEndpoints
         api.MapPost("/launch", (LaunchRequest? request, LaunchCodes codes, TodoTrackerServerOptions options) =>
             new LaunchDto(LaunchUrl(codes, options, request?.Return, null)));
 
-        api.MapGet("/dashboard", (Guid? group, int? notes, string? q, IBoardStore store, TimeProvider time, VaultLinks links) =>
-            store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), group, notes ?? 5, links, q)));
+        api.MapGet("/dashboard", (Guid? group, int? notes, string? q, IBoardStore store, TimeProvider time, VaultLinks links, TodoTrackerServerOptions options) =>
+            store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), group, notes ?? 5, links, q, options.TimeZone)));
 
         api.MapGet("/search", (string? q, IBoardStore store, TimeProvider time, VaultLinks links) =>
             store.ReadAsync(b => Search(b, q, time.GetUtcNow(), links)));

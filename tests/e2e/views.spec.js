@@ -547,3 +547,106 @@ test('Break: start the next focus from the break, or when the break is over', as
   expect(asked).toHaveLength(1);
   expect(errors).toEqual([]);
 });
+test('Board: dragging the background moves around it; dragging a card still moves the card', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await add(request, 'Pan around', { stage: 'next' });
+  await open(page, request, '#/board');
+  // Narrow, so the columns don't all fit.
+  await page.setViewportSize({ width: 700, height: 600 });
+  const board = page.locator('#view-board .board');
+  await expect(board.locator('.kcard', { hasText: 'Pan around' })).toBeVisible();
+  const wide = await board.evaluate((b) => b.scrollWidth > b.clientWidth);
+  expect(wide).toBe(true);
+
+  // Press on the first column's header (not a card, a button or a field) and drag left: the board scrolls right.
+  const head = board.locator('.lane .column-head').first();
+  const box = await head.boundingBox();
+  const start = { x: box.x + box.width - 40, y: box.y + box.height / 2 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x - 120, start.y, { steps: 6 });
+  await expect(board).toHaveClass(/panning/);
+  await page.mouse.up();
+  await expect(board).not.toHaveClass(/panning/);
+  expect(await board.evaluate((b) => b.scrollLeft)).toBeGreaterThan(60);
+
+  // Pressing on a card doesn't pan (cards drag to move them).
+  const card = await board.locator('.kcard', { hasText: 'Pan around' }).boundingBox();
+  await page.mouse.move(card.x + 20, card.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(card.x + 20, card.y + 40, { steps: 4 });
+  await expect(board).not.toHaveClass(/panning/);
+  await page.mouse.up();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(errors).toEqual([]);
+});
+
+test('Today: what got done today shows with a cheer, where it belongs, and can be reopened', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const parent = await add(request, 'Move house');
+  const step = await add(request, 'Pack the kitchen', { parentId: parent.id });
+  await request.post(`/api/items/${step.id}/complete`, { headers: auth });
+  await open(page, request);
+  const done = page.locator('#sec-done');
+  await expect(done.locator('.cheer')).toHaveText(/done today|Nice start/);
+  const row = done.locator('.done-row', { hasText: 'Pack the kitchen' });
+  await expect(row).toContainText('Move house');
+  await row.hover();
+  await row.getByRole('button', { name: 'Reopen Pack the kitchen' }).click();
+  await expect(done.locator('.done-row', { hasText: 'Pack the kitchen' })).toHaveCount(0);
+  const item = await (await request.get(`/api/items/${step.id}`, { headers: auth })).json();
+  expect(item.completedAt).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('Where a task lives: add it to another group, see its parent and siblings, move it under another task, show it in the tree', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const groups = await (await request.get('/api/groups', { headers: auth })).json();
+  const other = groups.find((g) => g.id !== group.id);
+  await open(page, request);
+
+  // Quick add straight into another group (the tab stays where it is).
+  await page.locator('#capture-group').selectOption(other.id);
+  await page.locator('#capture-input').fill('Renew passport');
+  await page.locator('#capture-input').press('Enter');
+  await expect(page.locator('#toast')).toContainText(`Added to ${other.name}`);
+  const all = await (await request.get('/api/items', { headers: auth })).json();
+  expect(all.find((i) => i.title === 'Renew passport').groupId).toBe(other.id);
+
+  // A subtask shows what it's part of, with the steps next to it.
+  const trip = await add(request, 'Plan the island trip');
+  const flights = await add(request, 'Book flights', { parentId: trip.id });
+  await add(request, 'Book hotel near the beach', { parentId: trip.id });
+  const loose = await add(request, 'Pack sunscreen');
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, flights.id);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.where-path')).toContainText('Plan the island trip');
+  await expect(drawer.locator('.part-of')).toContainText('0/2 done');
+  await expect(drawer.locator('.siblings')).toContainText('Book hotel near the beach');
+
+  // Move a loose task under the trip.
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, loose.id);
+  await drawer.getByRole('button', { name: 'Move…' }).click();
+  const dialog = page.locator('.move-dialog');
+  await dialog.getByRole('searchbox', { name: 'Find a task' }).fill('island');
+  await dialog.getByRole('option', { name: /Plan the island trip/ }).click();
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(drawer.locator('.where-path')).toContainText('Plan the island trip');
+  const moved = await (await request.get(`/api/items/${loose.id}`, { headers: auth })).json();
+  expect(moved.parentId).toBe(trip.id);
+
+  // And out again, to the top level.
+  await drawer.getByRole('button', { name: 'Move…' }).click();
+  await page.locator('.move-dialog').getByRole('option', { name: /On its own/ }).click();
+  await page.locator('.move-dialog').getByRole('button', { name: 'Move', exact: true }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${loose.id}`, { headers: auth })).json()).parentId).toBeNull();
+
+  // Show in tree: the tree opens with the subtask's parent expanded and the subtask highlighted.
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, flights.id);
+  await expect(drawer.locator('.title-input')).toHaveValue('Book flights');
+  await drawer.getByRole('button', { name: 'Show in tree' }).click();
+  await expect(page).toHaveURL(/#\/tasks$/);
+  await expect(page.locator(`#view-tasks .orow[data-id="${flights.id}"]`)).toBeVisible();
+  await expect(page.locator(`#view-tasks .orow[data-id="${flights.id}"]`)).toBeFocused();
+  expect(errors).toEqual([]);
+});

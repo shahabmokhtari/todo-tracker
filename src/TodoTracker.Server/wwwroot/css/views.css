@@ -165,9 +165,10 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
   gap: var(--space-3);
   overflow-x: auto;
   padding-bottom: var(--space-2);
-  scroll-snap-type: x mandatory;
   align-items: start;
 }
+/* Columns snap into place on phones; with a mouse the board pans freely (dragging its background). */
+@media (max-width: 640px), (pointer: coarse) { .board { scroll-snap-type: x mandatory; } }
 @media (max-width: 640px) { .board { grid-auto-columns: 84vw; } }
 .lane {
   scroll-snap-align: start;
@@ -390,7 +391,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .drawer-main, .drawer-side { display: contents; }
 @media (min-width: 1100px) {
   .drawer.full { grid-template-columns: minmax(0, 1fr) 340px; column-gap: var(--space-5); align-content: start; }
-  .drawer.full > .drawer-head, .drawer.full > .title-input { grid-column: 1 / -1; }
+  .drawer.full > .drawer-head, .drawer.full > .title-input, .drawer.full > .where { grid-column: 1 / -1; }
   .drawer.full > .drawer-main, .drawer.full > .drawer-side { display: grid; gap: 14px; align-content: start; min-width: 0; }
   .drawer.full > .drawer-side { position: sticky; top: 0; }
   .drawer.full textarea[data-field="details"] { min-height: 260px; }
@@ -514,3 +515,13 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .menu.up { top: auto; bottom: calc(100% + 6px); }
 .snooze-menu { overflow-y: auto; overscroll-behavior: contain; }
 .menu.start { left: 0; right: auto; }
+
+/* Drag the board's background to move around (pan). */
+.board { cursor: grab; }
+.board input, .board textarea { cursor: text; }
+.board.panning { cursor: grabbing; scroll-snap-type: none; user-select: none; }
+.board.panning * { cursor: grabbing !important; }
+
+/* "Show in tree": the task is highlighted for a moment. */
+@keyframes reveal-glow { 0% { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); } 100% { background: transparent; box-shadow: 0 0 0 0 transparent; } }
+.orow.revealed { animation: reveal-glow 2.4s var(--ease) both; border-radius: 10px; }

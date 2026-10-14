@@ -61,6 +61,32 @@ public enum Agenda {
         return item.hasOpenChildren ? .container : .actionable
     }
 
+    /// What got done since midnight (in 	imeZone), newest first. A parent finished together with its subtasks is one
+    /// entry (the subtasks it closed aren't repeated); steps done on their own count. Same rule as the C# core.
+    public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil) -> [WorkItem] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let start = calendar.startOfDay(for: now)
+        return board.allItems
+            .filter { item in
+                guard let at = item.completedAt, at >= start, at <= now else { return false }
+                if let groupId, item.groupId != groupId { return false }
+                return item.parent?.completedAt != at
+            }
+            .sorted { ($0.completedAt ?? now) > ($1.completedAt ?? now) }
+    }
+
+    /// A line to feel good about what got done today (null until something is done); the other apps say the same.
+    public static func cheer(_ count: Int) -> String? {
+        switch count {
+        case ...0: return nil
+        case 1: return "First one done. Nice start!"
+        case ..<5: return "\(count) done today. Keep it going!"
+        case ..<10: return "\(count) done today. You are on a roll!"
+        default: return "\(count) done today. What a day!"
+        }
+    }
+
     public static func effectivePriority(_ item: WorkItem) -> Priority {
         (item.ancestors.map(\.priority) + [item.priority]).max() ?? item.priority
     }

@@ -69,6 +69,25 @@ public static class Agenda
         return item.Ancestors().Select(a => a.Priority).Append(item.Priority).Max();
     }
 
+    /// <summary>
+    /// What got done since midnight (in <paramref name="zone"/>), newest first, archived tasks left out. A parent finished
+    /// together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done on their own count.
+    /// </summary>
+    public static IReadOnlyList<WorkItem> DoneToday(TaskBoard board, DateTimeOffset now, TimeZoneInfo zone, Guid? groupId = null)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(zone);
+        var local = TimeZoneInfo.ConvertTime(now, zone);
+        var midnight = local.Date;
+        var start = new DateTimeOffset(midnight, zone.GetUtcOffset(midnight));
+        return board.AllItems()
+            .Where(i => i.CompletedAt is { } at && at >= start && at <= now && !i.IsArchived
+                && (groupId is null || i.GroupId == groupId)
+                && i.Parent?.CompletedAt != at)
+            .OrderByDescending(i => i.CompletedAt)
+            .ToList();
+    }
+
     public static DashboardSnapshot Build(TaskBoard board, DateTimeOffset now, int recentNoteCount = 5, Guid? groupId = null, TaskQuery? filter = null)
     {
         ArgumentNullException.ThrowIfNull(board);

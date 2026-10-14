@@ -9,6 +9,7 @@
         <local:HexToSoftBrushConverter x:Key="SoftBrush" />
         <local:ToneBrushConverter x:Key="ToneBrush" />
         <local:VisibleWhenConverter x:Key="VisibleWhen" />
+            <local:PngImageConverter x:Key="PngImage" />
 
         <!-- Brand palette (same as the web dashboard). -->
         <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
