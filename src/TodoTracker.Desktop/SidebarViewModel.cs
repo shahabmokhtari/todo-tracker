@@ -224,7 +224,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             return item.Id;
         }).ConfigureAwait(true);
         QuickText = string.Empty;
-        CapturePictures.Clear();
+        // Only the pictures this task took: one pasted while it was being added waits for the next.
+        foreach (var picture in pictures)
+        {
+            CapturePictures.Remove(picture);
+        }
         if (pictures.Count == 0 || _options.Attach is not { } attach)
         {
             return "Added";
@@ -258,15 +262,20 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>Pictures pasted into quick add, waiting for the task to be added (they go into its details).</summary>
     public ObservableCollection<PendingPicture> CapturePictures { get; } = [];
 
-    /// <summary>A picture pasted into quick add: named like Obsidian names pasted images (unique among the waiting ones).</summary>
-    public void AddCapturePicture(byte[] png)
+    /// <summary>
+    /// A picture pasted into quick add: a copied file keeps its name; a copied image is named like Obsidian names
+    /// pasted images. Unique among the waiting ones.
+    /// </summary>
+    public void AddCapturePicture(byte[] png, string? fileName = null)
     {
         ArgumentNullException.ThrowIfNull(png);
         var stamp = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone).ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-        var name = $"Pasted image {stamp}.png";
+        var stem = fileName is null ? $"Pasted image {stamp}" : Path.GetFileNameWithoutExtension(fileName);
+        var extension = fileName is null ? ".png" : Path.GetExtension(fileName);
+        var name = stem + extension;
         for (var n = 2; CapturePictures.Any(p => p.Name == name); n++)
         {
-            name = $"Pasted image {stamp} {n}.png";
+            name = $"{stem} {n}{extension}";
         }
 
         CapturePictures.Add(new PendingPicture(name, png));
@@ -446,7 +455,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// A picture pasted into a note: attached to the task (named like Obsidian names pasted images) and returned as the
     /// embed to put at the caret (<c>![[Pasted image 20261006132517.png]]</c>), or null if it couldn't be stored.
     /// </summary>
-    public async Task<string?> AttachPastedImageAsync(CardViewModel card, byte[] png)
+    public async Task<string?> AttachPastedImageAsync(CardViewModel card, byte[] png, string? fileName = null)
     {
         ArgumentNullException.ThrowIfNull(card);
         ArgumentNullException.ThrowIfNull(png);
@@ -455,7 +464,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             return null;
         }
 
-        var name = $"Pasted image {TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone):yyyyMMddHHmmss}.png";
+        var name = fileName ?? $"Pasted image {TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone):yyyyMMddHHmmss}.png";
         try
         {
             var stored = await attach(card.Id, name, png).ConfigureAwait(true);

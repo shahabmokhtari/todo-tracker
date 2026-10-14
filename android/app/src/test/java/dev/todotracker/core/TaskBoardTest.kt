@@ -33,6 +33,14 @@ class TaskBoardTest {
 
         // Ring 1 was closed by finishing Release: shown once, as Release.
         assertEquals(listOf("Release", "Ring 0"), done.map { it.title })
+
+        // An in-order task finishes itself with its last step: the step still counts (it was done by itself).
+        val rollout = board.addTask(NewTask("Rollout", sequential = true), now = t0)
+        val step1 = board.addTask(NewTask("Step 1", parentId = rollout.id), now = t0)
+        val step2 = board.addTask(NewTask("Step 2", parentId = rollout.id), now = t0)
+        board.complete(step1.id, now = morning.plusSeconds(600))
+        board.complete(step2.id, now = morning.plusSeconds(1200))
+        assertEquals(listOf("Rollout", "Step 2", "Step 1", "Release", "Ring 0"), Agenda.doneToday(board, morning.plusSeconds(3600), newYork).map { it.title })
         assertNull(Agenda.cheer(0))
         assertEquals("First one done. Nice start!", Agenda.cheer(1))
         assertEquals("3 done today. Keep it going!", Agenda.cheer(3))

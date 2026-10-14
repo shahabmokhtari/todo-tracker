@@ -114,6 +114,7 @@ struct BoardDocument: Codable {
         let item = WorkItem(id: doc.id, title: title, priority: doc.priority ?? .normal, createdAt: doc.createdAt, groupId: group)
         item.details = doc.details
         item.completedAt = doc.completedAt
+        item.archivedAt = parent == nil ? doc.archivedAt : nil
         item.deadline = doc.deadline
         item.nextActionAt = doc.nextActionAt
         item.afterId = doc.after
@@ -144,6 +145,7 @@ struct ItemDocument: Codable {
     var priority: Priority?
     var createdAt: Date
     var completedAt: Date?
+    var archivedAt: Date?
     var deadline: Date?
     var nextActionAt: Date?
     var after: UUID?
@@ -162,6 +164,7 @@ struct ItemDocument: Codable {
         priority = item.priority
         createdAt = item.createdAt
         completedAt = item.completedAt
+        archivedAt = item.archivedAt
         deadline = item.deadline
         nextActionAt = item.nextActionAt
         after = item.afterId

@@ -417,7 +417,7 @@ public partial class MainWindow : Window
 
         if (capture)
         {
-            pictures.ForEach(_vm.AddCapturePicture);
+            pictures.ForEach(p => _vm.AddCapturePicture(p.Bytes, p.FileName));
             return;
         }
 
@@ -425,11 +425,11 @@ public partial class MainWindow : Window
         _pendingPastes++;
         try
         {
-            foreach (var png in pictures)
+            foreach (var picture in pictures)
             {
                 // The box may show another task by now, and text may have been selected meanwhile: insert at the caret
                 // of this task's box only, never in place of a selection.
-                if (await _vm.AttachPastedImageAsync(card!, png).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
+                if (await _vm.AttachPastedImageAsync(card!, picture.Bytes, picture.FileName).ConfigureAwait(true) is { } embed && ReferenceEquals(box.DataContext, card))
                 {
                     var at = box.SelectionStart + box.SelectionLength;
                     var text = (at > 0 && !char.IsWhiteSpace(box.Text[at - 1]) ? " " : string.Empty) + embed;
@@ -444,16 +444,22 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>The same limit the web app has for a pasted file.</summary>
+    private const long MaxPasteBytes = 25 * 1024 * 1024;
+
     /// <summary>
-    /// The pictures on the clipboard as PNGs (a copied image, or image files copied in Explorer); null when the paste
-    /// isn't a picture (text, or a picture with real text: see <see cref="PasteRules"/>); empty when it can't be read.
+    /// The pictures on the clipboard: a copied image (as a PNG, no name), or image files copied in Explorer (their own
+    /// bytes and name). Null when the paste isn't a picture (text, or a picture with real text: see
+    /// <see cref="PasteRules"/>), or the clipboard can't be read (the normal paste happens then); empty when it is a
+    /// picture that can't be read or is too big.
     /// </summary>
-    private static List<byte[]>? ReadClipboardPictures()
+    private List<(byte[] Bytes, string? FileName)>? ReadClipboardPictures()
     {
         // The clipboard belongs to other apps too: any of these calls can fail while one of them holds it.
+        List<string> files;
         try
         {
-            var files = Clipboard.ContainsFileDropList()
+            files = Clipboard.ContainsFileDropList()
                 ? Clipboard.GetFileDropList().Cast<string>().Where(f => ImageFile().IsMatch(f) && File.Exists(f)).ToList()
                 : [];
             var hasImage = Clipboard.ContainsImage() || files.Count > 0;
@@ -463,26 +469,43 @@ public partial class MainWindow : Window
             {
                 return null;
             }
-
-            var sources = files.Count > 0
-                ? files.Select(f => (System.Windows.Media.Imaging.BitmapSource)System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(f), System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad)).ToList()
-                : Clipboard.GetImage() is { } image ? [image] : [];
-            return sources.Select(source =>
-            {
-                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
-                using var stream = new MemoryStream();
-                encoder.Save(stream);
-                return stream.ToArray();
-            }).ToList();
         }
-        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException or IOException or UriFormatException)
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException or IOException)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (files.Count > 0)
+            {
+                var big = files.Where(f => new FileInfo(f).Length > MaxPasteBytes).ToList();
+                if (big.Count > 0)
+                {
+                    _vm.StatusMessage = $"{Path.GetFileName(big[0])} is too big to attach (at most 25 MB).";
+                }
+
+                return files.Except(big).Select(f => (File.ReadAllBytes(f), (string?)Path.GetFileName(f))).ToList();
+            }
+
+            if (Clipboard.GetImage() is not { } image)
+            {
+                return [];
+            }
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(image));
+            using var stream = new MemoryStream();
+            encoder.Save(stream);
+            return [(stream.ToArray(), null)];
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.ExternalException or InvalidOperationException or NotSupportedException or ArgumentException or IOException or FormatException or UnauthorizedAccessException)
         {
             return [];
         }
     }
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"\.(png|jpe?g|gif|bmp|tiff?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    [System.Text.RegularExpressions.GeneratedRegex(@"\.(png|jpe?g|gif|bmp|webp|tiff?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
     private static partial System.Text.RegularExpressions.Regex ImageFile();
 
     private void OnNoteKeyDown(object sender, KeyEventArgs e)

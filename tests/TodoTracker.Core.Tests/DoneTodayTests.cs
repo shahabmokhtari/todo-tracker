@@ -45,6 +45,22 @@ public sealed class DoneTodayTests
     }
 
     [Fact]
+    public void The_last_step_of_an_in_order_task_counts_even_though_it_finishes_the_task()
+    {
+        // Review finding: the task finishes itself at the same moment as its last step, and the step was hidden.
+        var release = Add("Release");
+        _board.Update(release.Id, new TaskChanges { Sequential = true }, Actor.User, Morning);
+        var ring0 = Add("Ring 0", release.Id);
+        var ring1 = Add("Ring 1", release.Id);
+        _board.Complete(ring0.Id, Actor.User, Morning);
+        _board.Complete(ring1.Id, Actor.User, Morning.AddHours(1));
+
+        var done = Agenda.DoneToday(_board, Morning.AddHours(2), NewYork);
+
+        Assert.Equal(["Release", "Ring 1", "Ring 0"], done.Select(i => i.Title));
+    }
+
+    [Fact]
     public void Can_be_limited_to_a_group_and_leaves_out_archived_tasks()
     {
         var personal = _board.Groups.Single(g => g.Name == "Personal");

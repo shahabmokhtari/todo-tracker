@@ -34,7 +34,7 @@ object BoardCodec {
 
     private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
     private val itemKeys = setOf(
-        "id", "title", "details", "priority", "createdAt", "completedAt", "deadline", "nextActionAt", "after", "sequential",
+        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
     )
 
@@ -115,6 +115,7 @@ object BoardCodec {
         put("priority", i.priority.wire)
         put("createdAt", formatDate(i.createdAt))
         i.completedAt?.let { put("completedAt", formatDate(it)) }
+        i.archivedAt?.let { put("archivedAt", formatDate(it)) }
         i.deadline?.let { put("deadline", formatDate(it)) }
         i.nextActionAt?.let { put("nextActionAt", formatDate(it)) }
         i.afterId?.let { put("after", it.toString()) }
@@ -160,6 +161,7 @@ object BoardCodec {
         val item = WorkItem(id, title, Priority.of(o.string("priority")), o.date("createdAt") ?: Instant.EPOCH, group)
         item.details = o.string("details")
         item.completedAt = o.date("completedAt")
+        item.archivedAt = if (parent == null) o.date("archivedAt") else null
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")
         item.afterId = o.uuid("after")

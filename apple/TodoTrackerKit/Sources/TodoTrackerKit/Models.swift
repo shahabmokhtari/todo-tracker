@@ -148,6 +148,9 @@ public final class WorkItem: Identifiable {
     public internal(set) var priority: Priority
     public let createdAt: Date
     public internal(set) var completedAt: Date?
+    /// Put away (a finished top-level task, archived on another device): out of every list.
+    public internal(set) var archivedAt: Date?
+    public var isArchived: Bool { root.archivedAt != nil }
     public internal(set) var deadline: Date?
     public internal(set) var nextActionAt: Date?
     /// Snoozed until this task is done ("after task X"); see `waitingFor`.
@@ -181,6 +184,9 @@ public final class WorkItem: Identifiable {
         return other
     }
     public var hasOpenChildren: Bool { children.contains { !$0.isDone } }
+
+    /// The top-level task this one belongs to (itself when it is one).
+    public var root: WorkItem { ancestors.last ?? self }
 
     public var ancestors: [WorkItem] {
         var result: [WorkItem] = []

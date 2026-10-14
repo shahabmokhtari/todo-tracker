@@ -61,19 +61,24 @@ public enum Agenda {
         return item.hasOpenChildren ? .container : .actionable
     }
 
-    /// What got done since midnight (in 	imeZone), newest first. A parent finished together with its subtasks is one
+    /// What got done since midnight (in `timeZone`), newest first. A parent finished together with its subtasks is one
     /// entry (the subtasks it closed aren't repeated); steps done on their own count. Same rule as the C# core.
     public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil) -> [WorkItem] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let start = calendar.startOfDay(for: now)
-        return board.allItems
-            .filter { item in
-                guard let at = item.completedAt, at >= start, at <= now else { return false }
+        // Finished by itself (its own "completed" entry), not closed along with its parent: the last step of an
+        // in-order task counts though it finishes the task at the same moment.
+        let own = Set(board.activity.filter { $0.kind == "completed" && $0.at >= start }.map { "\($0.itemId)|\($0.at.timeIntervalSince1970)" })
+        return board.allItems.enumerated()
+            .filter { _, item in
+                guard let at = item.completedAt, at >= start, at <= now, !item.isArchived else { return false }
                 if let groupId, item.groupId != groupId { return false }
-                return item.parent?.completedAt != at
+                return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)")
             }
-            .sorted { ($0.completedAt ?? now) > ($1.completedAt ?? now) }
+            // Newest first; at the same moment (a task and its last step) in the order of the tree.
+            .sorted { a, b in a.element.completedAt == b.element.completedAt ? a.offset < b.offset : (a.element.completedAt ?? now) > (b.element.completedAt ?? now) }
+            .map(\.element)
     }
 
     /// A line to feel good about what got done today (null until something is done); the other apps say the same.

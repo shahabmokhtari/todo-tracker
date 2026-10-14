@@ -425,6 +425,8 @@ test('Paste: a picture pasted into quick add or a title goes into the new task, 
   await page.locator('#capture-input').fill('Fix the broken chart');
   await paste('#capture-input', { 'text/html': '<img src="https://teams.example/img/chart.png">', 'text/plain': 'https://teams.example/img/chart.png' });
   await expect(page.locator('#capture-files .capture-file')).toHaveCount(1);
+  // The preview really shows (the page's security policy allows data: images).
+  await expect.poll(() => page.locator('#capture-files img').evaluate((img) => img.naturalWidth)).toBe(1);
   await expect(page.locator('#capture-input')).toHaveValue('Fix the broken chart');
   await page.locator('#capture-input').press('Enter');
   await expect(page.locator('#capture-files')).toBeHidden();

@@ -71,7 +71,8 @@ public static class Agenda
 
     /// <summary>
     /// What got done since midnight (in <paramref name="zone"/>), newest first, archived tasks left out. A parent finished
-    /// together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done on their own count.
+    /// together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done on their own count,
+    /// also the last step of an in-order task (which finishes the task at the same moment).
     /// </summary>
     public static IReadOnlyList<WorkItem> DoneToday(TaskBoard board, DateTimeOffset now, TimeZoneInfo zone, Guid? groupId = null)
     {
@@ -80,10 +81,16 @@ public static class Agenda
         var local = TimeZoneInfo.ConvertTime(now, zone);
         var midnight = local.Date;
         var start = new DateTimeOffset(midnight, zone.GetUtcOffset(midnight));
+
+        // Finished by itself (its own "completed" entry), not closed along with its parent.
+        var ownCompletions = board.Activity
+            .Where(a => a.Kind == ActivityKind.Completed && a.At >= start)
+            .Select(a => (a.ItemId, a.At))
+            .ToHashSet();
         return board.AllItems()
             .Where(i => i.CompletedAt is { } at && at >= start && at <= now && !i.IsArchived
                 && (groupId is null || i.GroupId == groupId)
-                && i.Parent?.CompletedAt != at)
+                && (i.Parent?.CompletedAt != at || ownCompletions.Contains((i.Id, at))))
             .OrderByDescending(i => i.CompletedAt)
             .ToList();
     }

@@ -120,6 +120,14 @@ final class TaskBoardTests: XCTestCase {
 
         // Ring 1 was closed by finishing Release: shown once, as Release.
         XCTAssertEqual(done.map(\.title), ["Release", "Ring 0"])
+
+        // An in-order task finishes itself with its last step: the step still counts (it was done by itself).
+        let rollout = try board.addTask(NewTask("Rollout", sequential: true), now: t0)
+        let step1 = try board.addTask(NewTask("Step 1", parentId: rollout.id), now: t0)
+        let step2 = try board.addTask(NewTask("Step 2", parentId: rollout.id), now: t0)
+        try board.complete(step1.id, now: morning.addingTimeInterval(600))
+        try board.complete(step2.id, now: morning.addingTimeInterval(1200))
+        XCTAssertEqual(Agenda.doneToday(board, now: morning.addingTimeInterval(3600), timeZone: newYork).map(\.title), ["Rollout", "Step 2", "Step 1", "Release", "Ring 0"])
         XCTAssertNil(Agenda.cheer(0))
         XCTAssertEqual(Agenda.cheer(1), "First one done. Nice start!")
         XCTAssertEqual(Agenda.cheer(3), "3 done today. Keep it going!")

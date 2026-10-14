@@ -346,11 +346,18 @@ export function createOutlineView(ctx) {
    * from a task's details). Applied by the next drawing of the tree, whichever load it comes from.
    */
   let revealing = null;
-  async function reveal(id, ancestorIds = []) {
+  async function reveal(id, ancestorIds = [], { finished = false } = {}) {
     ancestorIds.forEach((a) => expanded.add(a));
     saveExpanded();
+    if (finished && !showDone) {
+      // A finished task only shows with "Show finished" on.
+      showDone = true;
+      localStorage.setItem(DONE_KEY, '1');
+    }
     revealing = id;
     await load();
+    // Whatever drawing was going to show it has happened by now: never jump to it later, out of the blue.
+    setTimeout(() => { if (revealing === id) revealing = null; }, 1500);
   }
 
   function applyReveal() {

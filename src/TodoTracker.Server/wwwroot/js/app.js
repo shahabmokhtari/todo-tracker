@@ -1300,7 +1300,7 @@ async function showInTree(item) {
   if (!$('#drawer').hidden) return; // couldn't save what was typed: the panel stays open
   if (state.group && state.group !== item.groupId) { setGroup(item.groupId); refreshAll(); }
   location.hash = '#/tasks';
-  await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1));
+  await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1), { finished: !!item.completedAt });
 }
 
 /** Move a task: pick a group, then where in it (at the top level, or under one of its tasks). */
@@ -1317,11 +1317,38 @@ function moveDialog(item) {
   const mark = (n) => { inside.add(n.id); n.children.forEach(mark); };
   mark(item); // a task can't go under itself or its own subtasks
 
+  // A listbox: one Tab stop (the chosen option), arrows/Home/End move, Enter or Space or a click chooses. Choosing
+  // marks the option in place, so the keyboard stays where it is.
+  const options = () => [...list.querySelectorAll('[role="option"]')];
+  function choose(li, focus = false) {
+    target = li.dataset.id;
+    for (const o of options()) {
+      const on = o === li;
+      o.classList.toggle('chosen', on);
+      o.setAttribute('aria-selected', String(on));
+      o.tabIndex = on ? 0 : -1;
+    }
+    if (focus) { li.focus(); li.scrollIntoView({ block: 'nearest' }); }
+  }
+
   const option = (id, label, depth, hint) => withStyle(h('li', {
-    role: 'option', tabindex: 0, class: `move-option${target === id ? ' chosen' : ''}`, 'aria-selected': String(target === id),
-    onclick: () => { target = id; draw(); },
-    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); target = id; draw(); } },
+    role: 'option', tabindex: target === id ? 0 : -1, class: `move-option${target === id ? ' chosen' : ''}`, 'aria-selected': String(target === id), dataset: { id },
+    onclick: (e) => choose(e.currentTarget, true),
   }, depth ? h('span', { class: 'muted', 'aria-hidden': 'true' }, '↳ ') : null, label, hint ? h('span', { class: 'muted small' }, ` ${hint}`) : null), { '--depth': depth });
+
+  list.addEventListener('keydown', (e) => {
+    const all = options();
+    const at = all.indexOf(document.activeElement);
+    const go = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (go !== undefined) {
+      e.preventDefault();
+      choose(all[Math.max(0, Math.min(all.length - 1, go))], true);
+    } else if ((e.key === 'Enter' || e.key === ' ') && at >= 0) {
+      e.preventDefault();
+      choose(all[at], true);
+      if (e.key === 'Enter') move();
+    }
+  });
 
   function draw() {
     const q = search.value.trim().toLowerCase();
@@ -1334,6 +1361,8 @@ function moveDialog(item) {
     });
     walk(roots.filter((r) => r.groupId === groupSelect.value), 0);
     list.replaceChildren(...rows);
+    // Nothing chosen among what's shown: the first option takes the Tab stop.
+    if (!list.querySelector('[tabindex="0"]')) rows[0].tabIndex = 0;
   }
 
   const move = () => {
@@ -1351,8 +1380,18 @@ function moveDialog(item) {
     act(post(`/api/items/${item.id}/move`, request), sameGroup ? 'Moved' : `Moved to ${name}`);
   };
 
-  groupSelect.addEventListener('change', () => { target = ''; draw(); });
+  // Back in its own group, its current place is chosen again (so Move doesn't take a subtask out by surprise).
+  groupSelect.addEventListener('change', () => { target = groupSelect.value === item.groupId ? (item.parentId ?? '') : ''; draw(); });
   search.addEventListener('input', draw);
+  // Enter in the search box picks the first task found (Enter again moves it there).
+  search.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const first = options().find((o) => o.dataset.id) ?? options()[0];
+    if (first) choose(first, true);
+  });
+  // Keys stay in the dialog: Esc closes it (not the task behind it), and the page's shortcuts don't fire.
+  dialog.addEventListener('keydown', (e) => e.stopPropagation());
   dialog.append(
     h('h2', null, `Move “${item.title}”`),
     h('label', { class: 'field' }, h('span', null, 'Group'), groupSelect),
@@ -1527,14 +1566,22 @@ const captureFiles = [];
 function renderCaptureFiles() {
   const tray = $('#capture-files');
   tray.hidden = !captureFiles.length;
-  tray.replaceChildren(...captureFiles.map((f, i) => {
-    const url = URL.createObjectURL(f.file);
-    const img = h('img', { src: url, alt: '', onload: () => URL.revokeObjectURL(url) });
-    return h('span', { class: 'capture-file', title: f.name },
-      img,
-      h('span', { class: 'capture-file-name' }, f.name),
-      h('button', { class: 'icon-btn small', type: 'button', 'aria-label': `Remove ${f.name}`, onclick: () => { captureFiles.splice(i, 1); renderCaptureFiles(); } }, icon('x', { size: 12 })));
-  }));
+  tray.replaceChildren(...captureFiles.map((f, i) => h('span', { class: 'capture-file', title: f.name },
+    // A data: URL (read once when pasted): the page's content security policy allows those for images, not blob: ones.
+    f.preview ? h('img', { src: f.preview, alt: '' }) : h('span', { class: 'capture-file-icon' }, icon('paperclip', { size: 16 })),
+    h('span', { class: 'capture-file-name' }, f.name),
+    h('button', { class: 'icon-btn small', type: 'button', 'aria-label': `Remove ${f.name}`, onclick: () => { captureFiles.splice(i, 1); renderCaptureFiles(); } }, icon('x', { size: 12 })))));
+}
+
+/** A small preview of a pasted picture (null for other files, or if it can't be read). */
+function previewOf(file) {
+  if (!file.type.startsWith('image/')) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
 }
 
 $('#capture-input').addEventListener('paste', (e) => {
@@ -1543,12 +1590,17 @@ $('#capture-input').addEventListener('paste', (e) => {
   e.preventDefault();
   for (const file of files) {
     if (file.size > MAX_PASTE_BYTES) { toast(`${file.name || 'That file'} is too big to attach (at most 25 MB).`, 'error'); continue; }
-    captureFiles.push({ file, name: pastedName(file) });
+    const entry = { file, name: pastedName(file), preview: null };
+    captureFiles.push(entry);
+    previewOf(file).then((preview) => { entry.preview = preview; renderCaptureFiles(); });
   }
   renderCaptureFiles();
 });
 
-/** Attaches the waiting pictures to a new task and shows them in its details. */
+/**
+ * Attaches the waiting pictures to a new task and shows them in its details. Never fails: the task exists by now, so a
+ * problem is reported and the rest still go in (failing would offer to add the task again).
+ */
 async function attachCaptureFiles(itemId, files) {
   const embeds = [];
   for (const f of files) {
@@ -1556,10 +1608,15 @@ async function attachCaptureFiles(itemId, files) {
       const a = await upload(`/api/items/${itemId}/attachments`, f.file, f.name);
       embeds.push(`![[${a.storedName ?? a.fileName}]]`);
     } catch (err) {
-      toast(err.message, 'error');
+      toast(`Added, but couldn't attach ${f.name}: ${err.message}`, 'error');
     }
   }
-  if (embeds.length) await patch(`/api/items/${itemId}`, { details: embeds.join('\n') });
+  if (!embeds.length) return;
+  try {
+    await patch(`/api/items/${itemId}`, { details: embeds.join('\n') });
+  } catch (err) {
+    toast(`Added, but couldn't show the pictures in its details: ${err.message}`, 'error');
+  }
 }
 
 $('#capture').addEventListener('submit', (e) => {

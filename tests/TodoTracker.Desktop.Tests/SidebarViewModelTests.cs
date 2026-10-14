@@ -447,6 +447,11 @@ public sealed class SidebarViewModelTests : IDisposable
         vm.AddCapturePicture([7]);
         await vm.CaptureCommand.ExecuteAsync(null);
         Assert.Equal(1, await _store.ReadAsync(b => b.Items.Count(i => i.Title == "Pasted image 20260105143000")));
+
+        // A file copied in Explorer keeps its name (two with the same name stay apart).
+        vm.AddCapturePicture([1], "Floor plan.jpg");
+        vm.AddCapturePicture([2], "Floor plan.jpg");
+        Assert.Equal(["Floor plan.jpg", "Floor plan 2.jpg"], vm.CapturePictures.Select(p => p.Name));
     }
 
     [Theory]

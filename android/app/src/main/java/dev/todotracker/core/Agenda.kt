@@ -50,10 +50,14 @@ object Agenda {
      */
     fun doneToday(board: TaskBoard, now: Instant, zone: java.time.ZoneId, groupId: UUID? = null): List<WorkItem> {
         val start = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
+        // Finished by itself (its own "completed" entry), not closed along with its parent: the last step of an
+        // in-order task counts though it finishes the task at the same moment.
+        val own = board.activity.filter { it.kind == "completed" && !it.at.isBefore(start) }.map { it.itemId to it.at }.toSet()
         return board.allItems
             .filter { item ->
                 val at = item.completedAt ?: return@filter false
-                !at.isBefore(start) && !at.isAfter(now) && (groupId == null || item.groupId == groupId) && item.parent?.completedAt != at
+                !at.isBefore(start) && !at.isAfter(now) && !item.isArchived && (groupId == null || item.groupId == groupId) &&
+                    (item.parent?.completedAt != at || (item.id to at) in own)
             }
             .sortedByDescending { it.completedAt }
     }

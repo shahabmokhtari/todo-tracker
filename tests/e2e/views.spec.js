@@ -635,10 +635,17 @@ test('Where a task lives: add it to another group, see its parent and siblings, 
   const moved = await (await request.get(`/api/items/${loose.id}`, { headers: auth })).json();
   expect(moved.parentId).toBe(trip.id);
 
-  // And out again, to the top level.
+  // And out again, to the top level (Esc first: it closes the dialog, not the task behind it).
   await drawer.getByRole('button', { name: 'Move…' }).click();
-  await page.locator('.move-dialog').getByRole('option', { name: /On its own/ }).click();
-  await page.locator('.move-dialog').getByRole('button', { name: 'Move', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.move-dialog')).toHaveCount(0);
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole('button', { name: 'Move…' }).click();
+  // The keyboard picks "On its own": Home, then Enter moves it.
+  await page.locator('.move-dialog [role="option"][tabindex="0"]').focus();
+  await page.keyboard.press('Home');
+  await expect(page.locator('.move-dialog [role="option"]').first()).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect.poll(async () => (await (await request.get(`/api/items/${loose.id}`, { headers: auth })).json()).parentId).toBeNull();
 
   // Show in tree: the tree opens with the subtask's parent expanded and the subtask highlighted.

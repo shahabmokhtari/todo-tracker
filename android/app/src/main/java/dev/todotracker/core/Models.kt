@@ -82,6 +82,8 @@ class WorkItem(
 ) {
     var details: String? = null
     var completedAt: Instant? = null
+    /** Put away (a finished top-level task, archived on another device): out of every list. */
+    var archivedAt: Instant? = null
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
 
@@ -110,6 +112,10 @@ class WorkItem(
 
     /** The open task this one waits for (null: none, it's done, or it's gone). */
     val waitingFor: WorkItem? get() = afterId?.let { board?.find(it) }?.takeIf { !it.isDone }
+
+    /** The top-level task this one belongs to (itself when it is one). */
+    val root: WorkItem get() = ancestors.lastOrNull() ?: this
+    val isArchived: Boolean get() = root.archivedAt != null
 
     val ancestors: List<WorkItem>
         get() {

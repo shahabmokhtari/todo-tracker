@@ -289,9 +289,6 @@ public final class BoardModel: ObservableObject {
 
     public func complete(_ id: UUID) { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }
 
-    /// Not done after all (from Done today): back in Do now.
-    public func reopen(_ id: UUID) { change("Reopened", server: .reopen(id)) { try board.reopen(id, now: $0) } }
-
     public func snooze(_ id: UUID, minutes: Int) {
         snooze(id, until: Date().addingTimeInterval(TimeInterval(minutes * 60)))
     }
