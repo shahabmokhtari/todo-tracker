@@ -40,7 +40,10 @@ public sealed record CardDto(
     bool Timing = false,
     Guid? WaitingForId = null,
     string? WaitingForTitle = null,
-    Guid? ParentId = null);
+    Guid? ParentId = null,
+    string? Icon = null,
+    string? Color = null,
+    string? Accent = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -92,7 +95,10 @@ public sealed record ItemDto(
     DateTimeOffset? WakeAt = null,
     Guid? HeldById = null,
     string? HeldByTitle = null,
-    IReadOnlyList<Guid>? PathIds = null);
+    IReadOnlyList<Guid>? PathIds = null,
+    string? Icon = null,
+    string? Color = null,
+    string? Accent = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -127,7 +133,10 @@ public sealed record TreeNodeDto(
     int TotalCount,
     long TimeSpentSeconds,
     bool Timing,
-    IReadOnlyList<TreeNodeDto> Children);
+    IReadOnlyList<TreeNodeDto> Children,
+    string? Icon = null,
+    string? Color = null,
+    string? Accent = null);
 
 /// <summary>A search result: enough to show and act on a task without loading its whole tree.</summary>
 public sealed record SearchHitDto(
@@ -287,7 +296,10 @@ public static class Wire
             leaves.Count,
             (long)item.TimeSpent(now).TotalSeconds,
             IsTiming(item, timing),
-            item.Children.Where(c => keep is null || keep.Contains(c.Id)).Select(c => TreeNode(c, now, board, timing, keep)).ToList());
+            item.Children.Where(c => keep is null || keep.Contains(c.Id)).Select(c => TreeNode(c, now, board, timing, keep)).ToList(),
+            item.Icon,
+            item.Color,
+            board.AccentOf(item));
     }
 
     /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>
@@ -333,7 +345,10 @@ public static class Wire
             IsTiming(item, timing),
             e.WaitingFor?.Id,
             e.WaitingFor?.Title,
-            item.Parent?.Id);
+            item.Parent?.Id,
+            item.Icon,
+            item.Color,
+            board.AccentOf(item));
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -369,7 +384,10 @@ public static class Wire
         Wait(item, now) is { } wake && wake.NextActionAt > now ? wake.NextActionAt : null,
         HeldBy(item, now)?.Id,
         HeldBy(item, now)?.Title,
-        item.Ancestors().Reverse().Select(a => a.Id).Append(item.Id).ToList());
+        item.Ancestors().Reverse().Select(a => a.Id).Append(item.Id).ToList(),
+        item.Icon,
+        item.Color,
+        board.AccentOf(item));
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>

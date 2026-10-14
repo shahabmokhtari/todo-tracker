@@ -3,7 +3,7 @@ namespace TodoTracker.Core.Vault;
 /// <summary>The <c>AGENTS.md</c> written at the vault root so any AI tool reading the folder knows the format.</summary>
 internal static class VaultGuide
 {
-    public const string Marker = "<!-- todo-tracker-guide v2 -->";
+    public const string Marker = "<!-- todo-tracker-guide v3 -->";
 
     public const string Text = Marker + """
 
@@ -30,6 +30,8 @@ internal static class VaultGuide
         status: open              # open | done
         board: doing              # board column: inbox | next | doing (omit = next)
         priority: high            # low | normal | high | critical (omit = normal)
+        icon: 🚀                  # optional: an emoji shown before the title
+        color: "#3b82f6"          # optional: the task's color (quoted); omit = its first label's color
         due: 2026-01-07T17:00     # local time; a date alone means 17:00
         scheduled: 2026-01-06     # "not before": the task waits until then (09:00 for a date alone)
         tags: [release]           # free-form; nested tags use /, e.g. infra/k8s

@@ -219,3 +219,17 @@ export function cheerLine(count) {
   if (count < 10) return `${count} done today. You are on a roll!`;
   return `${count} done today. What a day!`;
 }
+
+/** An icon as stored: trimmed, at most 16 characters (one emoji, even a family or flag); '' for none; null: too long. */
+export function cleanIcon(text) {
+  const clean = String(text ?? '').trim();
+  return clean.length <= 16 ? clean : null;
+}
+
+/** A color as stored: #rrggbb in lower case ('#' optional when typed); '' for none; null: not a color. */
+export function hexColor(text) {
+  const clean = String(text ?? '').trim().toLowerCase();
+  if (!clean) return '';
+  const value = clean.startsWith('#') ? clean : `#${clean}`;
+  return /^#[0-9a-f]{6}$/.test(value) ? value : null;
+}

@@ -6,6 +6,7 @@ import { step, drop, beforeOf, changed } from './order.js';
 import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone, imageFiles, pastedName, MAX_PASTE_BYTES } from './media.js';
 import { createShell } from './shell.js';
 import { createLater } from './later.js';
+import { pickIcon, colorPicker, iconBadge, withAccent } from './looks.js';
 import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
@@ -377,12 +378,13 @@ function renderFocus(d) {
     h('div', { class: 'focus-top' },
       h('span', { class: 'eyebrow' }, icon(f.needsAttention ? 'clock' : 'target', { size: 14 }), f.needsAttention ? 'Reminder' : 'Do this now'),
       h('span', { class: 'prio-pill' }, meta.label)),
-    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, f.title),
+    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, iconBadge(f.icon), f.title),
     sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
     f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
     f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
     actions(f, { big: true }));
   el.style.setProperty('--prio', meta.color);
+  withAccent(el, f.accent);
   // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
   sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
   if (blockIds(f.id).length > 1) {
@@ -570,12 +572,13 @@ function card(c, { waiting = false, orderable = false } = {}) {
   const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
-      h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, c.title),
+      h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, iconBadge(c.icon), c.title),
       h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
+  withAccent(li, c.accent);
   if (orderable) {
     const controls = sortable(li, c.id, { scope: 'now', ids: () => blockIds(c.id), onOrder: arrangeNow, buttons: true });
     li.insertBefore(controls, li.lastElementChild); // before the actions
@@ -1036,12 +1039,24 @@ async function openDrawer(id, { full = null } = {}) {
         onclick: () => setDrawerFull(!showFull, id),
       }, icon(showFull ? 'shrink' : 'expand')),
       h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
-    title,
+    h('div', { class: 'title-row' },
+      h('button', {
+        class: `icon-pick${item.icon ? ' has-icon' : ''}`, type: 'button',
+        title: item.icon ? 'Change the icon' : 'Add an icon', 'aria-label': item.icon ? `Icon ${item.icon}: change it` : 'Add an icon',
+        onclick: async () => {
+          const chosen = await pickIcon(item.icon);
+          if (chosen !== null && chosen !== (item.icon ?? '')) act(patch(`/api/items/${id}`, { icon: chosen }), chosen ? 'Icon set' : 'Icon removed');
+        },
+      }, item.icon ?? icon('sparkles', { size: 18 })),
+      title),
     wherePanel(item),
     // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
     h('div', { class: 'drawer-main' },
     waitingBanner(item),
     h('div', { class: 'chips-row' }, labelPicker),
+    field('Color', colorPicker(item.color, item.labels?.[0]?.color, (color) => {
+      if (color !== (item.color ?? '')) act(patch(`/api/items/${id}`, { color }), color ? 'Color set' : 'Color: its label’s');
+    })),
     field('Tags', tags),
     tagPreview,
     h('p', { class: 'hint' }, 'Labels are colored categories you pick from a list (Urgent, Waiting…). Tags are free words you type, for anything else. Both filter: click one, or use the tag button by the search box.'),

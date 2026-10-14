@@ -55,6 +55,14 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial string Title { get; set; } = string.Empty;
 
+    /// <summary>The task's icon (an emoji) shown before its title; null: none.</summary>
+    [ObservableProperty]
+    public partial string? Icon { get; set; }
+
+    /// <summary>The task's color (its own, else its first label's) as #rrggbb; null: none.</summary>
+    [ObservableProperty]
+    public partial string? Accent { get; set; }
+
     [ObservableProperty]
     public partial string Breadcrumb { get; set; } = string.Empty;
 
@@ -131,6 +139,8 @@ public sealed partial class CardViewModel : ObservableObject
     internal void CopyFrom(CardViewModel other)
     {
         Title = other.Title;
+        Icon = other.Icon;
+        Accent = other.Accent;
         Breadcrumb = other.Breadcrumb;
         Meta = other.Meta;
         PriorityColor = other.PriorityColor;

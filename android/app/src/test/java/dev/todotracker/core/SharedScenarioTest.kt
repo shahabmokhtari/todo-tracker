@@ -62,6 +62,9 @@ class SharedScenarioTest {
 
         val launch = board.items.first { it.title == "Launch the site" }
         assertEquals(Priority.HIGH, launch.priority)
+        // Its icon and color (set in the other apps) are read, and written back unchanged.
+        assertEquals("🚀" to "#0ea5e9", launch.icon to launch.color)
+        assertEquals("🚀", BoardCodec.decode(BoardCodec.encode(board)).items.first { it.title == "Launch the site" }.icon)
         assertEquals(listOf("Write the copy", "Pick images"), launch.children.map { it.title })
         assertEquals(setOf(ActorKind.VAULT, ActorKind.CONNECTOR), launch.notes.map { it.author.kind }.toSet())
         // Snoozed until another task is done.

@@ -270,6 +270,27 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_task_gets_an_icon_and_a_color_and_cards_show_them_or_the_first_labels_color()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Launch", icon = "🚀", labels = new[] { "Urgent" } });
+        var labelColor = (await Dashboard())["now"]![0]!["labels"]![0]!["color"]!.GetValue<string>();
+
+        var card = (await Dashboard())["now"]![0]!;
+        Assert.Equal(("🚀", null, labelColor), (card["icon"]!.GetValue<string>(), card["color"]?.GetValue<string>(), card["accent"]!.GetValue<string>()));
+
+        var colored = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { color = "#3B82F6" })).Json();
+        Assert.Equal(("#3b82f6", "#3b82f6"), (colored["color"]!.GetValue<string>(), colored["accent"]!.GetValue<string>()));
+
+        var bad = await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { color = "blue" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { icon = "", color = "" })).Json();
+        Assert.Null(cleared["icon"]);
+        Assert.Null(cleared["color"]);
+        Assert.Equal(labelColor, cleared["accent"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Patch_can_clear_step_delay_and_rejects_zero()
     {
         var item = await _client.PostJson("/api/items", new { title = "Rollout", sequential = true, stepDelayMinutes = 60 });

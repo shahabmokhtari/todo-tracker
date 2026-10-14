@@ -78,6 +78,12 @@ public sealed class WorkItem
     /// <summary>Where a top-level task is on the board (subtasks follow their task). Tasks without one are in Next.</summary>
     public Stage Stage { get; internal set; } = Stage.Next;
 
+    /// <summary>A small picture for the task: an emoji (or a few characters). Null: none.</summary>
+    public string? Icon { get; internal set; }
+
+    /// <summary>The task's own color (<c>#rrggbb</c>); null: its first label's color (or none).</summary>
+    public string? Color { get; internal set; }
+
     /// <summary>Put away (a finished top-level task): kept, searchable with <c>is:archived</c>, out of every list.</summary>
     public DateTimeOffset? ArchivedAt { get; internal set; }
 
@@ -142,6 +148,10 @@ public sealed record NewTask(string Title)
 
     /// <summary>Where it starts on the board (top-level tasks); null: the inbox.</summary>
     public Stage? Stage { get; init; }
+
+    public string? Icon { get; init; }
+
+    public string? Color { get; init; }
 }
 
 public sealed record TaskChanges
@@ -161,4 +171,12 @@ public sealed record TaskChanges
     public TimeSpan? StepDelay { get; init; }
 
     public bool ClearStepDelay { get; init; }
+
+    public string? Icon { get; init; }
+
+    public bool ClearIcon { get; init; }
+
+    public string? Color { get; init; }
+
+    public bool ClearColor { get; init; }
 }

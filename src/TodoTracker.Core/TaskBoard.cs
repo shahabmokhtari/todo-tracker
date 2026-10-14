@@ -73,6 +73,8 @@ public sealed partial class TaskBoard
             StepDelay = spec.StepDelay,
             OwnGroupId = groupId,
             Stage = spec.Stage ?? Stage.Inbox,
+            Icon = CleanIcon(spec.Icon),
+            Color = CleanColor(spec.Color),
         };
         item.TagList.AddRange(tags);
         item.LabelList.AddRange(labels.Select(l => EnsureLabel(l).Name));
@@ -103,6 +105,8 @@ public sealed partial class TaskBoard
         var item = Get(id);
         var title = changes.Title is null ? item.Title : RequireText(changes.Title, nameof(changes.Title), MaxTitleLength, "A task title is required.");
         ValidateStepDelay(changes.StepDelay);
+        var icon = changes.Icon is null ? null : CleanIcon(changes.Icon);
+        var color = changes.Color is null ? null : CleanColor(changes.Color);
 
         item.Title = title;
         if (changes.Details is not null)
@@ -114,7 +118,53 @@ public sealed partial class TaskBoard
         item.Deadline = changes.ClearDeadline ? null : changes.Deadline ?? item.Deadline;
         item.Sequential = changes.Sequential ?? item.Sequential;
         item.StepDelay = changes.ClearStepDelay ? null : changes.StepDelay ?? item.StepDelay;
+        item.Icon = changes.ClearIcon ? null : icon ?? item.Icon;
+        item.Color = changes.ClearColor ? null : color ?? item.Color;
         Log(now, id, ActivityKind.Updated, $"Updated \"{item.Title}\"", actor);
+    }
+
+    /// <summary>The longest icon (in characters): one emoji, even a family or a flag, or a couple of letters.</summary>
+    public const int MaxIconLength = 16;
+
+    /// <summary>An icon: trimmed, short; blank means none.</summary>
+    internal static string? CleanIcon(string? icon)
+    {
+        var clean = icon?.Trim();
+        if (string.IsNullOrEmpty(clean))
+        {
+            return null;
+        }
+
+        return clean.Length <= MaxIconLength && !clean.Any(char.IsControl)
+            ? clean
+            : throw new ArgumentException($"An icon is an emoji or a few characters (at most {MaxIconLength}).", nameof(icon));
+    }
+
+    /// <summary>A value written by hand (or by another app) that isn't valid is left out rather than failing the load.</summary>
+    internal static string? Lenient(Func<string?, string?> clean, string? value)
+    {
+        try
+        {
+            return clean(value);
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A color as <c>#rrggbb</c> (lower case); blank means none.</summary>
+    internal static string? CleanColor(string? color)
+    {
+        var clean = color?.Trim();
+        if (string.IsNullOrEmpty(clean))
+        {
+            return null;
+        }
+
+        return clean.Length == 7 && clean[0] == '#' && clean.Skip(1).All(char.IsAsciiHexDigit)
+            ? clean.ToLowerInvariant()
+            : throw new ArgumentException("A color is written #rrggbb, e.g. #3b82f6.", nameof(color));
     }
 
     public void Delete(Guid id, Actor actor, DateTimeOffset now)

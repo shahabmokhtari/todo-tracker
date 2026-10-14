@@ -419,7 +419,7 @@ struct FocusCard: View {
                 .background(Capsule().fill(priority.opacity(0.14)))
             }
             Button(action: open) {
-                Text(entry.item.title).font(.title2.weight(.bold)).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                Text(Presentation.titleWithIcon(entry.item)).font(.title2.weight(.bold)).multilineTextAlignment(.leading).foregroundStyle(.primary)
             }
             .buttonStyle(.plain)
             if !entry.breadcrumb.isEmpty {
@@ -595,7 +595,7 @@ struct TaskRow: View {
             PriorityDot(priority: entry.effectivePriority).padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Button(action: open) {
-                    Text(entry.item.title).fontWeight(.semibold).multilineTextAlignment(.leading).foregroundStyle(.primary)
+                    Text(Presentation.titleWithIcon(entry.item)).fontWeight(.semibold).multilineTextAlignment(.leading).foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
                 if !entry.breadcrumb.isEmpty {
@@ -657,7 +657,7 @@ struct WorkstreamRow: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 PriorityDot(priority: entry.topPriority)
-                Text(entry.item.title).fontWeight(.semibold)
+                Text(Presentation.titleWithIcon(entry.item)).fontWeight(.semibold)
                 Spacer()
                 Image(systemName: "doc.text").font(.caption).foregroundStyle(.tertiary)
             }

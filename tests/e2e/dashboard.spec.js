@@ -446,6 +446,8 @@ test('Paste: a picture pasted into quick add or a title goes into the new task, 
   await page.evaluate((id) => { location.hash = `#/task/${id}`; }, added.id);
   const drawer = page.locator('#drawer');
   await expect(drawer.locator('.title-input')).toHaveValue('Fix the broken chart');
+  // The last quick add redraws the open panel when it finishes: paste after that, into the panel that stays.
+  await page.waitForLoadState('networkidle');
   await paste('#drawer .title-input');
   await expect(drawer.locator('.title-input')).toHaveValue('Fix the broken chart');
   await expect(drawer.locator('textarea[data-field="details"]')).toHaveValue(/(!\[\[Pasted image[^\]]*\]\][\s\S]*){2}/);

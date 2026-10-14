@@ -180,6 +180,34 @@ public class TaskMarkdownTests
     }
 
     [Fact]
+    public void Icon_and_color_are_kept_in_the_file_on_a_task_and_a_subtask()
+    {
+        var board = new TaskBoard();
+        var root = board.AddTask(new NewTask("Plan launch") { Icon = "🚀", Color = "#EF4444" }, Actor.User, Now);
+        var step = board.AddTask(new NewTask("Draft") { ParentId = root.Id, Icon = "📝", Color = "#22c55e" }, Actor.User, Now);
+
+        var written = TaskMarkdown.Render(root, Utc);
+        var reread = TaskMarkdown.Parse(written, "Plan launch", Utc).Root;
+
+        Assert.Contains("icon: 🚀", written, StringComparison.Ordinal);
+        Assert.Contains("color: \"#ef4444\"", written, StringComparison.Ordinal);
+        Assert.Equal(("🚀", "#ef4444"), (reread.Icon, reread.Color));
+        var child = reread.Children.Single(c => c.Id == step.Id);
+        Assert.Equal(("📝", "#22c55e"), (child.Icon, child.Color));
+    }
+
+    [Fact]
+    public void An_icon_and_color_typed_in_obsidian_are_read_and_bad_ones_left_out()
+    {
+        var parsed = TaskMarkdown.Parse("---\nicon: 🧾\ncolor: \"#3B82F6\"\n---\n# Taxes\n", "Taxes", Utc);
+        Assert.Equal(("🧾", "#3b82f6"), (parsed.Root.Icon, parsed.Root.Color));
+
+        var bad = TaskMarkdown.Parse("---\nicon: this is far too long to be an icon\ncolor: blue-ish\n---\n# Taxes\n", "Taxes", Utc);
+        Assert.Null(bad.Root.Icon);
+        Assert.Null(bad.Root.Color);
+    }
+
+    [Fact]
     public void Multi_word_tags_survive_the_file_on_a_task_and_on_a_subtask()
     {
         var board = new TaskBoard();

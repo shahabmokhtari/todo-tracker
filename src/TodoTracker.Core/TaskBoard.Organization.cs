@@ -98,6 +98,13 @@ public sealed partial class TaskBoard
     public LabelDefinition? FindLabel(string name) =>
         LabelDefinitionList.Find(l => string.Equals(l.Name, name?.Trim(), StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>The color a task shows with: its own, else its first label's; null: none.</summary>
+    public string? AccentOf(WorkItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return item.Color ?? item.Labels.Select(FindLabel).FirstOrDefault(l => l is not null)?.Color;
+    }
+
     public Attachment AddAttachment(Guid id, string fileName, string path, long size, Actor actor, DateTimeOffset now)
     {
         var item = Get(id);

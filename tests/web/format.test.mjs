@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -179,4 +179,16 @@ test('done today: a cheer that grows with what got done, nothing when nothing is
   assert.equal(cheerLine(3), '3 done today. Keep it going!');
   assert.equal(cheerLine(5), '5 done today. You are on a roll!');
   assert.equal(cheerLine(12), '12 done today. What a day!');
+});
+
+test('an icon is an emoji or a few characters; a color is #rrggbb', () => {
+  assert.equal(cleanIcon('  🚀 '), '🚀');
+  assert.equal(cleanIcon('👨‍👩‍👧'), '👨‍👩‍👧');
+  assert.equal(cleanIcon(''), '');
+  assert.equal(cleanIcon('much too long for an icon'), null);
+  assert.equal(hexColor('#3B82F6'), '#3b82f6');
+  assert.equal(hexColor('3b82f6'), '#3b82f6');
+  assert.equal(hexColor(''), '');
+  assert.equal(hexColor('blue'), null);
+  assert.equal(hexColor('#12345'), null);
 });

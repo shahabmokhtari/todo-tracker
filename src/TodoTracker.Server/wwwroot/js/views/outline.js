@@ -5,6 +5,7 @@
 import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
+import { iconBadge, withAccent } from '../looks.js';
 
 const EXPANDED_KEY = 'tt.outline.expanded';
 const DONE_KEY = 'tt.outline.showDone';
@@ -193,6 +194,7 @@ export function createOutlineView(ctx) {
       class: 'ocheck', type: 'button', tabindex: -1, 'aria-label': node.done ? `Reopen ${node.title}` : `Complete ${node.title}`,
       onclick: () => complete(node),
     }, node.done ? icon('check', { size: 13 }) : null),
+    iconBadge(node.icon),
     title,
     h('span', { class: 'ochips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 2).map((t) => h('span', { class: 'chip tag' }, `#${t}`))),
     h('span', { class: 'ofacts' }, ...facts),
@@ -203,6 +205,7 @@ export function createOutlineView(ctx) {
       h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Open (Ctrl+Enter)', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 13 })),
       moveMenu(node)));
     el.style.setProperty('--depth', depth);
+    withAccent(el, node.accent);
     title.addEventListener('mousedown', (e) => e.stopPropagation());
     return el;
   }

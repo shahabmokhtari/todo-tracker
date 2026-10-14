@@ -241,7 +241,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(entry.item.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Meta(entry)
             Actions(entry, vm, onNote, onFocus)
         }
@@ -252,7 +252,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
 private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(entry.item.title, style = MaterialTheme.typography.titleMedium)
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium)
             Meta(entry)
             Actions(entry, vm, onNote, onFocus)
         }
@@ -336,7 +336,7 @@ private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(entry.item.title, style = MaterialTheme.typography.bodyLarge)
+                Text(titleWithIcon(entry.item), style = MaterialTheme.typography.bodyLarge)
                 entry.wakeAt?.let { Text("back ${relative(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 entry.waitingFor?.let { Text("after “${it.title}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
@@ -382,3 +382,6 @@ private fun CheerLine(text: String) {
             .background(Color(0x1F22C55E), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
+
+/** A task's title with its icon (an emoji, set in the other apps) in front. */
+private fun titleWithIcon(item: WorkItem): String = item.icon?.takeIf { it.isNotBlank() }?.let { "$it ${item.title}" } ?: item.title

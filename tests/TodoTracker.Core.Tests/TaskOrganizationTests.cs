@@ -7,6 +7,56 @@ public class TaskOrganizationTests
     private static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
     private readonly TaskBoard _board = new();
 
+    // ---- Icon and color -------------------------------------------------------------------
+
+    [Fact]
+    public void A_task_gets_an_icon_and_a_color_and_can_lose_them_again()
+    {
+        var item = _board.AddTask(new NewTask("Launch") { Icon = " 🚀 ", Color = "#3B82F6" }, Actor.User, T0);
+        Assert.Equal(("🚀", "#3b82f6"), (item.Icon, item.Color));
+
+        _board.Update(item.Id, new TaskChanges { Icon = "🎯" }, Actor.User, T0);
+        Assert.Equal(("🎯", "#3b82f6"), (item.Icon, item.Color));
+
+        _board.Update(item.Id, new TaskChanges { ClearIcon = true, ClearColor = true }, Actor.User, T0);
+        Assert.Equal((null, null), (item.Icon, item.Color));
+    }
+
+    [Theory]
+    [InlineData("far too long for an icon", null)]
+    [InlineData(null, "blue")]
+    [InlineData(null, "#12345")]
+    [InlineData(null, "#gggggg")]
+    public void Icons_are_short_and_colors_are_hex(string? icon, string? color)
+    {
+        var item = _board.AddTask(new NewTask("Launch"), Actor.User, T0);
+
+        Assert.Throws<ArgumentException>(() => _board.Update(item.Id, new TaskChanges { Icon = icon, Color = color }, Actor.User, T0));
+        Assert.Equal((null, null), (item.Icon, item.Color));
+    }
+
+    [Fact]
+    public void A_task_without_its_own_color_takes_its_first_colored_label()
+    {
+        var plain = _board.AddTask(new NewTask("Plain"), Actor.User, T0);
+        var labeled = _board.AddTask(new NewTask("Labeled") { Labels = ["Urgent"] }, Actor.User, T0);
+        var own = _board.AddTask(new NewTask("Own") { Labels = ["Urgent"], Color = "#123456" }, Actor.User, T0);
+
+        Assert.Null(_board.AccentOf(plain));
+        Assert.Equal(_board.FindLabel("Urgent")!.Color, _board.AccentOf(labeled));
+        Assert.Equal("#123456", _board.AccentOf(own));
+    }
+
+    [Fact]
+    public void Icon_and_color_survive_the_board_file()
+    {
+        _board.AddTask(new NewTask("Launch") { Icon = "🚀", Color = "#ef4444" }, Actor.User, T0);
+
+        var restored = BoardSerializer.Deserialize(BoardSerializer.Serialize(_board));
+
+        Assert.Equal(("🚀", "#ef4444"), (restored.Items[0].Icon, restored.Items[0].Color));
+    }
+
     // ---- Tags ---------------------------------------------------------------------------
 
     [Fact]
