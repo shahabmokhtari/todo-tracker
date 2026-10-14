@@ -17,11 +17,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
 {
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
-    [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, and focus timer state.")]
+    [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, and focus timer state.")]
     public Task<DashboardDto> GetDashboard(
         [Description("Optional group (tab) name or id, e.g. 'work' or 'personal'.")] string? group = null,
         [Description("Optional filter in search syntax, e.g. '#release' or 'label:\"deep work\"'.")] string? query = null) =>
-        Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), ResolveGroup(b, group), 5, links, query)));
+        Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), ResolveGroup(b, group), 5, links, query, options.TimeZone)));
 
     [McpServerTool(Name = "list_tasks", ReadOnly = true), Description("Full task tree (optionally for one group), including ids needed by the other tools.")]
     public Task<List<ItemDto>> ListTasks(string? group = null, bool includeDone = false) =>

@@ -400,3 +400,54 @@ test('Paste: a screenshot pasted into details or a note is attached and shown', 
   await expect(drawer.locator('.notes .note-text img')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
+
+test('Paste: a picture pasted into quick add or a title goes into the new task, also when it comes with a link', async ({ page, request }) => {
+  // Reported: pictures couldn't be pasted when adding a task, and a picture copied from a browser or Teams (which
+  // brings an <img> tag or its link along) didn't paste anywhere.
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const auth = { Authorization: 'Bearer e2e-token-0123456789abcdefghijklmnop' };
+  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+  await expect(page.locator('#board')).toBeVisible();
+
+  const paste = (selector, extra = {}) => page.evaluate(async ({ sel, extra }) => {
+    const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    for (const [type, value] of Object.entries(extra)) data.setData(type, value);
+    data.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+    const box = document.querySelector(sel);
+    box.focus();
+    box.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, { sel: selector, extra });
+
+  // Quick add: the picture waits under the box, then goes into the new task's details.
+  await page.locator('#capture-input').fill('Fix the broken chart');
+  await paste('#capture-input', { 'text/html': '<img src="https://teams.example/img/chart.png">', 'text/plain': 'https://teams.example/img/chart.png' });
+  await expect(page.locator('#capture-files .capture-file')).toHaveCount(1);
+  // The preview really shows (the page's security policy allows data: images).
+  await expect.poll(() => page.locator('#capture-files img').evaluate((img) => img.naturalWidth)).toBe(1);
+  await expect(page.locator('#capture-input')).toHaveValue('Fix the broken chart');
+  await page.locator('#capture-input').press('Enter');
+  await expect(page.locator('#capture-files')).toBeHidden();
+  await expect.poll(async () => {
+    const all = await (await request.get('/api/items', { headers: auth })).json();
+    return all.find((i) => i.title === 'Fix the broken chart')?.details ?? '';
+  }).toMatch(/!\[\[Pasted image \d{14}\.png\]\]/);
+  const added = (await (await request.get('/api/items', { headers: auth })).json()).find((i) => i.title === 'Fix the broken chart');
+  expect(added.attachments).toHaveLength(1);
+
+  // A picture alone is enough: the task is named after it.
+  await paste('#capture-input');
+  await page.locator('#capture-input').press('Enter');
+  await expect.poll(async () => (await (await request.get('/api/items', { headers: auth })).json()).some((i) => /^Pasted image \d{14}$/.test(i.title))).toBe(true);
+
+  // Pasting into a task's title puts the picture in its details (the title stays text).
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, added.id);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Fix the broken chart');
+  await paste('#drawer .title-input');
+  await expect(drawer.locator('.title-input')).toHaveValue('Fix the broken chart');
+  await expect(drawer.locator('textarea[data-field="details"]')).toHaveValue(/(!\[\[Pasted image[^\]]*\]\][\s\S]*){2}/);
+  expect(errors).toEqual([]);
+});

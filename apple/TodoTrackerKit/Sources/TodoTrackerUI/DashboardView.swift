@@ -109,6 +109,7 @@ public struct DashboardView: View {
     var scrollable = true
     @State private var detailId: UUID?
     @State private var showWaiting = false
+    @State private var showDone = true
     @State private var showNotes = false
     @State private var showNow = true
     @State private var showWorkstreams = true
@@ -208,6 +209,37 @@ public struct DashboardView: View {
                         TaskRow(entry: entry, model: model, now: model.now) { detailId = entry.item.id }
                     }
                 } label: { sectionLabel("Waiting", count: model.dashboard.waiting.count) }
+            }
+            Card {
+                DisclosureGroup(isExpanded: $showDone) {
+                    if let cheer = Agenda.cheer(model.doneToday.count) {
+                        Text("🎉 \(cheer)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                            .padding(.vertical, 6).padding(.horizontal, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    } else {
+                        emptyText("Finish something and it shows up here.")
+                    }
+                    ForEach(model.doneToday) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Button { detailId = item.id } label: { Text(item.title).strikethrough().foregroundStyle(.secondary) }
+                                    .buttonStyle(.plain)
+                                if let parent = item.parent {
+                                    Text(parent.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            Button("Reopen") { model.reopen(item.id) }
+                                .buttonStyle(.borderless).font(.caption)
+                                .accessibilityLabel("Reopen \(item.title)")
+                        }
+                        .padding(.vertical, 3)
+                    }
+                } label: { sectionLabel("Done today", count: model.doneToday.count) }
             }
             let streams = Presentation.workstreams(model.dashboard)
             Card {

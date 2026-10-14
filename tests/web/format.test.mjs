@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -171,4 +171,12 @@ test('an iPad (whose Safari says it is a Mac) gets Obsidian from the App Store',
   const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15';
   assert.match(obsidianLink({ url: 'obsidian://x', installed: true, userAgent: mac, touchPoints: 5 }).href, /apps\.apple\.com/);
   assert.equal(obsidianLink({ url: 'obsidian://x', installed: true, userAgent: mac, touchPoints: 0 }).href, 'obsidian://x');
+});
+
+test('done today: a cheer that grows with what got done, nothing when nothing is done yet', () => {
+  assert.equal(cheerLine(0), null);
+  assert.equal(cheerLine(1), 'First one done. Nice start!');
+  assert.equal(cheerLine(3), '3 done today. Keep it going!');
+  assert.equal(cheerLine(5), '5 done today. You are on a roll!');
+  assert.equal(cheerLine(12), '12 done today. What a day!');
 });

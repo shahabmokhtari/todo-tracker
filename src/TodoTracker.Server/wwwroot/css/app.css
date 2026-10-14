@@ -873,3 +873,67 @@ a.embed img { display: block; max-width: min(100%, 360px); max-height: 220px; ob
 .connectors .problems { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; color: var(--danger); font-size: 13px; }
 .connectors .signin strong { font-size: 18px; letter-spacing: .08em; }
 .loop-output { width: 100%; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
+/* Done today: a small celebration of what got finished. */
+.done-today .cheer { margin: 0 16px 6px; padding: 8px 12px; border-radius: 12px; background: var(--ok-soft); color: var(--ok); font-weight: 650; font-size: 14px; }
+.done-row { display: flex; align-items: center; gap: 10px; padding: 6px 6px; border-radius: 10px; }
+.done-row:hover { background: var(--surface-2); }
+.done-check { display: grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 999px; background: var(--ok); color: #fff; }
+.done-text { display: grid; flex: 1; min-width: 0; }
+.done-title { text-align: left; color: var(--text-2); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 60%, transparent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.done-row .btn { opacity: 0; transition: opacity .15s var(--ease); }
+.done-row:hover .btn, .done-row:focus-within .btn { opacity: 1; }
+@media (hover: none) { .done-row .btn { opacity: 1; } }
+
+/* Quick add: which group the new task goes to. */
+.capture-group { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+.capture-group .dot { width: 8px; height: 8px; border-radius: 999px; flex: none; }
+.capture-group select { border: 0; background: transparent; padding: 2px 4px; font: inherit; color: inherit; box-shadow: none; max-width: 140px; cursor: pointer; }
+.capture-group select:focus-visible { outline: 2px solid var(--accent); border-radius: 8px; }
+@media (max-width: 640px) { .capture-group { padding-left: 8px; } .capture-group select { max-width: 84px; } }
+
+/* Where a task lives: its group and parents (each opens), Move…, and for a subtask what it's part of. */
+.where { display: grid; gap: 10px; margin: 2px 0 14px; }
+.where-path { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
+.where-group { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-weight: 600; color: var(--text-2); }
+.where-group .dot { width: 8px; height: 8px; border-radius: 999px; }
+.where-path .sep { color: var(--text-3); }
+.crumb { padding: 3px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumb:hover { background: var(--accent-soft); }
+.where-move { margin-left: auto; }
+.part-of { display: grid; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); }
+.part-of[aria-busy="true"] { min-height: 40px; }
+.part-of-head { display: flex; align-items: baseline; gap: 8px; }
+.part-of-title { font-weight: 700; font-size: 14.5px; text-align: left; }
+.mini-progress.wide { display: block; width: 100%; height: 5px; border-radius: 5px; background: var(--border-strong); overflow: hidden; }
+.mini-progress.wide > span { display: block; height: 100%; background: var(--ok); border-radius: inherit; transition: width .3s var(--ease); }
+.siblings { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.siblings li { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 8px; font-size: 13.5px; }
+.siblings li.current { background: var(--accent-soft); font-weight: 650; }
+.siblings li.done .sib-title { color: var(--text-3); text-decoration: line-through; }
+.sib-check { display: grid; place-items: center; flex: none; width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid var(--border-strong); color: #fff; }
+.siblings li.done .sib-check { background: var(--ok); border-color: var(--ok); }
+.sib-title { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Move… */
+.move-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 48px)); padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface-solid); color: var(--text); box-shadow: var(--shadow-lg, 0 20px 50px rgb(0 0 0 / .25)); }
+.move-dialog[open] { display: grid; gap: 12px; }
+.move-dialog::backdrop { background: rgb(15 23 42 / .35); backdrop-filter: blur(2px); }
+.move-dialog h2 { margin: 0; font-size: 17px; }
+.move-list { list-style: none; margin: 0; padding: 4px; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; }
+.move-option { padding: 7px 10px 7px calc(10px + var(--depth, 0) * 16px); border-radius: 8px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.move-option:hover, .move-option:focus-visible { background: var(--surface-2); outline: none; }
+.move-option.chosen { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+
+/* A subtask's path opens its parent. */
+button.chip.path { gap: 4px; border: 0; font: inherit; font-size: 12px; cursor: pointer; color: var(--text-2); }
+button.chip.path:hover { color: var(--accent); text-decoration: underline; }
+.part-of { align-content: start; }
+.part-of > .mini-progress.wide { flex: none; }
+.siblings { max-height: 200px; overflow: auto; }
+
+/* Pictures pasted into quick add, waiting for the task to be added. */
+.capture-files { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 10px; }
+.capture-file { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 4px; border-radius: 12px; background: var(--surface-solid); border: 1px solid var(--border); font-size: 12.5px; color: var(--text-2); max-width: 280px; }
+.capture-file img { width: 40px; height: 40px; object-fit: cover; border-radius: 8px; flex: none; }
+.capture-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

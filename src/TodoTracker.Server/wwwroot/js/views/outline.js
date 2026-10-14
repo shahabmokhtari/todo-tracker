@@ -337,7 +337,39 @@ export function createOutlineView(ctx) {
       const next = shown[Math.max(0, Math.min(keptAt - 1, shown.length - 1))];
       if (next) focusRow(next.dataset.id);
     }
+
+    applyReveal();
   }
 
-  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks' };
+  /**
+   * Shows a task in the tree: its parents opened, the row in view, focused and briefly highlighted ("Show in tree"
+   * from a task's details). Applied by the next drawing of the tree, whichever load it comes from.
+   */
+  let revealing = null;
+  async function reveal(id, ancestorIds = [], { finished = false } = {}) {
+    ancestorIds.forEach((a) => expanded.add(a));
+    saveExpanded();
+    // A finished task only shows with "Show finished" on: on for now, not saved as the user's choice.
+    if (finished && !showDone) showDone = true;
+    // Applied by the next drawing that shows the row (whichever load it comes from); given up after two drawings
+    // without it, so it never jumps there later out of the blue.
+    revealing = { id, misses: 0 };
+    await load();
+  }
+
+  function applyReveal() {
+    // Drawn while the view isn't shown yet (the switch to it comes a moment later): that doesn't count as a miss.
+    if (!revealing || !root.offsetParent) return;
+    if (!focusRow(revealing.id)) {
+      if (++revealing.misses >= 2) revealing = null;
+      return;
+    }
+    const row = root.querySelector(`.orow[data-id="${CSS.escape(revealing.id)}"]`);
+    revealing = null;
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('revealed');
+    setTimeout(() => row.classList.remove('revealed'), 2400);
+  }
+
+  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks', reveal };
 }

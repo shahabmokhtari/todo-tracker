@@ -61,6 +61,37 @@ public enum Agenda {
         return item.hasOpenChildren ? .container : .actionable
     }
 
+    /// What got done since midnight (in `timeZone`), newest first. A parent finished together with its subtasks is one
+    /// entry (the subtasks it closed aren't repeated); steps done on their own count. Same rule as the C# core.
+    public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil) -> [WorkItem] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let start = calendar.startOfDay(for: now)
+        // Finished by itself (its own "completed" entry), not closed along with its parent: the last step of an
+        // in-order task counts though it finishes the task at the same moment.
+        let own = Set(board.activity.filter { $0.kind == "completed" && $0.at >= start }.map { "\($0.itemId)|\($0.at.timeIntervalSince1970)" })
+        return board.allItems.enumerated()
+            .filter { _, item in
+                guard let at = item.completedAt, at >= start, at <= now, !item.isArchived else { return false }
+                if let groupId, item.groupId != groupId { return false }
+                return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)")
+            }
+            // Newest first; at the same moment (a task and its last step) in the order of the tree.
+            .sorted { a, b in a.element.completedAt == b.element.completedAt ? a.offset < b.offset : (a.element.completedAt ?? now) > (b.element.completedAt ?? now) }
+            .map(\.element)
+    }
+
+    /// A line to feel good about what got done today (null until something is done); the other apps say the same.
+    public static func cheer(_ count: Int) -> String? {
+        switch count {
+        case ...0: return nil
+        case 1: return "First one done. Nice start!"
+        case ..<5: return "\(count) done today. Keep it going!"
+        case ..<10: return "\(count) done today. You are on a roll!"
+        default: return "\(count) done today. What a day!"
+        }
+    }
+
     public static func effectivePriority(_ item: WorkItem) -> Priority {
         (item.ancestors.map(\.priority) + [item.priority]).max() ?? item.priority
     }

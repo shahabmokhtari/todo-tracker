@@ -35,11 +35,28 @@ test('pasted files get a stable, readable name like Obsidian gives them', () => 
 test('only files are taken from a paste; text-only pastes stay text', () => {
   const file = { kind: 'file', getAsFile: () => ({ name: 'image.png', type: 'image/png' }) };
   const text = { kind: 'string', type: 'text/plain' };
-  assert.equal(imageFiles({ items: [file] }).length, 1);
-  assert.equal(imageFiles({ items: [text] }).length, 0);
+  const html = { kind: 'string', type: 'text/html' };
+  const clip = (items, data = {}) => ({ items, getData: (type) => data[type] ?? '' });
+  assert.equal(imageFiles(clip([file])).length, 1);
+  assert.equal(imageFiles(clip([text], { 'text/plain': 'hello' })).length, 0);
   // Copying from an office app puts text and a picture of it on the clipboard: the text wins.
-  assert.equal(imageFiles({ items: [text, file] }).length, 0);
+  assert.equal(imageFiles(clip([text, html, file], { 'text/plain': 'Q3 plan\r\nShip it', 'text/html': '<p>Q3 plan</p><p>Ship it</p>' })).length, 0);
   assert.equal(imageFiles(null).length, 0);
+});
+
+test('a picture copied with only a link, a file path, blank text or an <img> tag is still a picture', () => {
+  // Reported: pasting a picture copied from a browser, Teams or a screenshot tool did nothing (it came with text).
+  const file = { kind: 'file', getAsFile: () => ({ name: 'image.png', type: 'image/png' }) };
+  const text = { kind: 'string', type: 'text/plain' };
+  const html = { kind: 'string', type: 'text/html' };
+  const clip = (items, data = {}) => ({ items, getData: (type) => data[type] ?? '' });
+  assert.equal(imageFiles(clip([html, file], { 'text/html': '<meta charset="utf-8"><img src="https://teams.example/img/1.png" alt="">' })).length, 1);
+  assert.equal(imageFiles(clip([text, html, file], { 'text/plain': 'https://example.com/cat.png', 'text/html': '<img src="https://example.com/cat.png">' })).length, 1);
+  assert.equal(imageFiles(clip([text, file], { 'text/plain': '  \r\n' })).length, 1);
+  assert.equal(imageFiles(clip([text, file], { 'text/plain': 'C:\\Users\\me\\Pictures\\Screenshot 2026-10-14.png' })).length, 1);
+  assert.equal(imageFiles(clip([text, file], { 'text/plain': 'Screenshot 2026-10-14 101500.png' })).length, 1);
+  // An old browser without getData: the file is used only when there's no text at all (as before).
+  assert.equal(imageFiles({ items: [text, file] }).length, 0);
 });
 
 // A textarea, as far as pasting needs one.

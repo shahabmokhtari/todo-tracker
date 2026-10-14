@@ -391,6 +391,87 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Done_today_lists_what_got_finished_with_a_cheer_and_can_reopen_it()
+    {
+        var parent = await Seed("Move house");
+        var step = await _store.UpdateAsync(b => b.AddTask(new NewTask("Pack the kitchen") { ParentId = parent.Id }, Actor.User, T0));
+        await _vm.RefreshAsync();
+        Assert.Empty(_vm.DoneToday);
+        Assert.Null(_vm.DoneTodayCheer);
+
+        await _store.UpdateAsync(b => b.Complete(step.Id, Actor.User, T0));
+        await _vm.RefreshAsync();
+
+        var done = Assert.Single(_vm.DoneToday);
+        Assert.Equal(("Pack the kitchen", "Move house"), (done.Title, done.Context));
+        Assert.Equal("🎉 First one done. Nice start!", _vm.DoneTodayCheer);
+
+        await _vm.ReopenCommand.ExecuteAsync(done);
+
+        Assert.Empty(_vm.DoneToday);
+        Assert.False(await _store.ReadAsync(b => b.Get(step.Id).IsDone));
+        Assert.Contains("Reopened", _vm.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Pictures_pasted_into_quick_add_go_into_the_new_task_and_a_picture_alone_names_it()
+    {
+        // Reported: a picture couldn't be pasted when adding a task (only into a note of an existing one).
+        var attached = new List<(Guid Task, string Name)>();
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc)
+        {
+            Attach = (task, name, bytes) =>
+            {
+                attached.Add((task, name));
+                return Task.FromResult(name);
+            },
+        });
+        await vm.RefreshAsync();
+
+        vm.QuickText = "Fix the broken chart";
+        vm.AddCapturePicture([1, 2, 3]);
+        vm.AddCapturePicture([4, 5]);
+        Assert.Equal(2, vm.CapturePictures.Count);
+        Assert.NotEqual(vm.CapturePictures[0].Name, vm.CapturePictures[1].Name);
+        await vm.CaptureCommand.ExecuteAsync(null);
+
+        var task = await _store.ReadAsync(b => b.Items.Single(i => i.Title == "Fix the broken chart"));
+        Assert.Equal([task.Id, task.Id], attached.Select(a => a.Task));
+        Assert.Equal($"![[{attached[0].Name}]]\n![[{attached[1].Name}]]", task.Details);
+        Assert.Empty(vm.CapturePictures);
+
+        vm.AddCapturePicture([9]);
+        vm.RemoveCapturePictureCommand.Execute(vm.CapturePictures[0]);
+        Assert.Empty(vm.CapturePictures);
+
+        vm.AddCapturePicture([7]);
+        await vm.CaptureCommand.ExecuteAsync(null);
+        Assert.Equal(1, await _store.ReadAsync(b => b.Items.Count(i => i.Title == "Pasted image 20260105143000")));
+
+        // A file copied in Explorer keeps its name (two with the same name stay apart).
+        vm.AddCapturePicture([1], "Floor plan.jpg");
+        vm.AddCapturePicture([2], "Floor plan.jpg");
+        Assert.Equal(["Floor plan.jpg", "Floor plan 2.jpg"], vm.CapturePictures.Select(p => p.Name));
+    }
+
+    [Theory]
+    [InlineData(true, null, null, true)]
+    [InlineData(false, null, null, false)]
+    [InlineData(true, "Q3 plan\r\nShip it", "<p>Q3 plan</p>", false)] // copied from an office app: the text wins
+    [InlineData(true, "hello", null, false)]
+    [InlineData(true, "", "<meta charset=\"utf-8\"><img src=\"https://teams.example/1.png\">", true)] // a browser's or Teams' "Copy image"
+    [InlineData(true, "https://example.com/cat.png", "<img src=\"https://example.com/cat.png\">", true)]
+    [InlineData(true, "  \r\n", null, true)]
+    [InlineData(true, @"C:\Users\me\Pictures\Screenshot 2026-10-14.png", null, true)]
+    [InlineData(true, "Screenshot 2026-10-14 101500.png", null, true)]
+    [InlineData(true, null, "<p>Some words</p>", false)]
+    public void A_paste_is_a_picture_unless_real_text_comes_with_it(bool hasImage, string? text, string? html, bool picture)
+    {
+        // Reported: pictures copied with a link or an <img> tag (browsers, Teams, screenshot tools) didn't paste.
+        Assert.Equal(picture, PasteRules.IsPicture(hasImage, text, html));
+    }
+
+    [Fact]
     public async Task Complete_moves_rollout_to_next_gated_step()
     {
         var x = await Seed("Feature A");

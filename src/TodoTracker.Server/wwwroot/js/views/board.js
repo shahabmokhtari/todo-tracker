@@ -4,6 +4,7 @@
 import { COLUMNS, WIP_LIMIT, columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../boardmodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl } from './common.js';
+import { enablePan } from '../pan.js';
 
 export function createBoardView(ctx) {
   const { h, icon } = ctx;
@@ -208,8 +209,9 @@ export function createBoardView(ctx) {
     // On phones the columns scroll sideways: stay on the column being looked at.
     const scrolled = root.querySelector('.board')?.scrollLeft ?? 0;
     const board = h('div', { class: 'board' }, ...COLUMNS.map(column));
+    enablePan(board);
     root.replaceChildren(
-      h('p', { class: 'view-intro muted' }, 'Drag cards along, or use Alt + arrow keys. Starting a timer moves a card to Doing.'),
+      h('p', { class: 'view-intro muted' }, 'Drag cards along, or use Alt + arrow keys. Drag the background to move around. Starting a timer moves a card to Doing.'),
       board);
     board.scrollLeft = scrolled;
     if (focusId && focusHere) root.querySelector(`.kcard[data-id="${CSS.escape(focusId)}"]`)?.focus({ preventScroll: true });

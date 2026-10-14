@@ -104,6 +104,36 @@ final class TaskBoardTests: XCTestCase {
         XCTAssertThrowsError(try board.addNote(item.id, text: "x", now: t0, sourceUrl: "javascript:alert(1)"))
     }
 
+    func testDoneTodayListsWhatWasFinishedSinceLocalMidnightAndCheers() throws {
+        let board = TaskBoard()
+        let newYork = TimeZone(identifier: "America/New_York")!
+        let morning = BoardCodec.parseDate("2026-01-05T14:00:00.000Z")! // 09:00 in New York
+        let yesterday = try board.addTask(NewTask("Yesterday's"), now: t0)
+        let release = try board.addTask(NewTask("Release"), now: t0)
+        let ring0 = try board.addTask(NewTask("Ring 0", parentId: release.id), now: t0)
+        _ = try board.addTask(NewTask("Ring 1", parentId: release.id), now: t0)
+        try board.complete(yesterday.id, now: morning.addingTimeInterval(-10 * 3600)) // 23:00 Sunday there
+        try board.complete(ring0.id, now: morning)
+        try board.complete(release.id, now: morning.addingTimeInterval(300))
+
+        let done = Agenda.doneToday(board, now: morning.addingTimeInterval(3600), timeZone: newYork)
+
+        // Ring 1 was closed by finishing Release: shown once, as Release.
+        XCTAssertEqual(done.map(\.title), ["Release", "Ring 0"])
+
+        // An in-order task finishes itself with its last step: the step still counts (it was done by itself).
+        let rollout = try board.addTask(NewTask("Rollout", sequential: true), now: t0)
+        let step1 = try board.addTask(NewTask("Step 1", parentId: rollout.id), now: t0)
+        let step2 = try board.addTask(NewTask("Step 2", parentId: rollout.id), now: t0)
+        try board.complete(step1.id, now: morning.addingTimeInterval(600))
+        try board.complete(step2.id, now: morning.addingTimeInterval(1200))
+        XCTAssertEqual(Agenda.doneToday(board, now: morning.addingTimeInterval(3600), timeZone: newYork).map(\.title), ["Rollout", "Step 2", "Step 1", "Release", "Ring 0"])
+        XCTAssertNil(Agenda.cheer(0))
+        XCTAssertEqual(Agenda.cheer(1), "First one done. Nice start!")
+        XCTAssertEqual(Agenda.cheer(3), "3 done today. Keep it going!")
+        XCTAssertEqual(Agenda.cheer(12), "12 done today. What a day!")
+    }
+
     func testCompleteCascadesAndReopenRestoresAncestors() throws {
         let board = TaskBoard()
         let parent = try board.addTask(NewTask("X"), now: t0)

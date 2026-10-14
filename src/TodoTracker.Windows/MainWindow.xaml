@@ -97,7 +97,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="False" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" PreviewKeyDown="OnNotePreviewKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
                             <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>
@@ -219,7 +219,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="10000"
-                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" PreviewKeyDown="OnNotePreviewKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
                             <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
                                     Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                         </Grid>
@@ -306,6 +306,7 @@
             <!-- Quick capture -->
             <Border Grid.Row="2" Margin="0,10,0,0" CornerRadius="18" Padding="12,3,4,3" BorderThickness="1"
                     Background="{DynamicResource ControlFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+                <StackPanel>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -316,11 +317,33 @@
                     <TextBox x:Name="CaptureBox" Grid.Column="1" Text="{Binding QuickText, UpdateSourceTrigger=PropertyChanged}" MaxLength="300"
                              BorderThickness="0" Background="Transparent" VerticalContentAlignment="Center"
                              AutomationProperties.Name="Quick add task" KeyDown="OnCaptureKeyDown"
-                             ToolTip="Add a task. Optional: ! high, !! critical, @2h / @tomorrow defer, due:3d deadline. Ctrl+Alt+Space from anywhere." />
+                             ToolTip="Add a task. Optional: ! high, !! critical, @2h / @tomorrow defer, due:3d deadline. Paste a screenshot to add it to the task. Ctrl+Alt+Space from anywhere." />
                     <TextBlock Grid.Column="1" Text="What's on your mind?" IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center" Opacity="0.5"
                                Visibility="{Binding QuickText, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
                     <Button Grid.Column="2" Content="Add" Style="{StaticResource PrimaryButton}" Margin="4,0,0,0" Command="{Binding CaptureCommand}" />
                 </Grid>
+                <!-- Pictures pasted into quick add wait here; they go into the new task's details. -->
+                <ItemsControl ItemsSource="{Binding CapturePictures}" Focusable="False" Margin="0,2,0,4"
+                              AutomationProperties.Name="Pictures for the new task"
+                              Visibility="{Binding CapturePictures.Count, Converter={StaticResource VisibleWhen}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type d:PendingPicture}">
+                            <Border CornerRadius="10" Padding="4" Margin="0,0,6,0" BorderThickness="1"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" ToolTip="{Binding Name}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding Png, Converter={StaticResource PngImage}}" Width="36" Height="36" Stretch="UniformToFill" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE711;" VerticalAlignment="Center" Margin="2,0,0,0"
+                                            ToolTip="Remove" AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}"
+                                            Command="{Binding DataContext.RemoveCapturePictureCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </StackPanel>
             </Border>
 
             <TextBlock Grid.Row="3" x:Name="Status" Text="{Binding StatusMessage}" Margin="4,6,0,0" Style="{StaticResource Muted}"
@@ -367,6 +390,46 @@
                                 </StackPanel>
                             </Expander.Header>
                             <ItemsControl ItemsSource="{Binding Waiting}" ItemTemplate="{StaticResource CardTemplate}" Focusable="False" Margin="0,2,0,0" />
+                        </Expander>
+                    </Border>
+
+                    <!-- What got done today: something to feel good about, and a way to undo a slip. -->
+                    <Border Style="{StaticResource Panel}">
+                        <Expander IsExpanded="True" Padding="6,4" AutomationProperties.Name="Done today">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Done today" Style="{StaticResource SectionHeader}" />
+                                    <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding DoneToday.Count}" FontSize="11" FontWeight="SemiBold" /></Border>
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel Margin="0,2,0,0">
+                                <Border CornerRadius="10" Padding="10,6" Margin="0,2,0,6" Background="#1F22C55E"
+                                        Visibility="{Binding DoneTodayCheer, Converter={StaticResource VisibleWhen}}">
+                                    <TextBlock Text="{Binding DoneTodayCheer}" FontWeight="SemiBold" Foreground="#16A34A" TextWrapping="Wrap" />
+                                </Border>
+                                <TextBlock Text="Finish something and it shows up here." Style="{StaticResource Muted}" Margin="4,2,0,6"
+                                           Visibility="{Binding DoneTodayCheer, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                                <ItemsControl ItemsSource="{Binding DoneToday}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type d:DoneViewModel}">
+                                            <DockPanel Margin="2,0,0,6">
+                                                <Border DockPanel.Dock="Left" Width="18" Height="18" CornerRadius="9" Background="#22C55E" VerticalAlignment="Top" Margin="0,1,8,0">
+                                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="10" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE7A7;" VerticalAlignment="Top"
+                                                        ToolTip="Not done after all: reopen" AutomationProperties.Name="{Binding Title, StringFormat=Reopen {0}}"
+                                                        Command="{Binding DataContext.ReopenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" TextDecorations="Strikethrough" Opacity="0.8" />
+                                                    <TextBlock Style="{StaticResource Muted}" FontSize="11.5">
+                                                        <Run Text="{Binding Time, Mode=OneWay}" /><Run Text="{Binding Context, Mode=OneWay, StringFormat=' · {0}', TargetNullValue=''}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
                         </Expander>
                     </Border>
 

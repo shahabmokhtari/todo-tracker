@@ -47,7 +47,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.todotracker.core.Agenda
 import dev.todotracker.core.AgendaEntry
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextDecoration
+import dev.todotracker.core.WorkItem
 import dev.todotracker.core.Priority
 import java.time.Duration
 import java.time.Instant
@@ -112,6 +117,11 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
                 if (vm.dashboard.waiting.isNotEmpty()) {
                     item { SectionTitle("Waiting", vm.dashboard.waiting.size) }
                     items(vm.dashboard.waiting, key = { "w" + it.item.id }) { WaitingRow(it, vm) }
+                }
+                if (vm.doneToday.isNotEmpty()) {
+                    item { SectionTitle("Done today", vm.doneToday.size) }
+                    Agenda.cheer(vm.doneToday.size)?.let { cheer -> item { CheerLine(cheer) } }
+                    items(vm.doneToday, key = { "d" + it.id }) { DoneRow(it, vm) }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
             }
@@ -345,5 +355,30 @@ private fun TextDialog(title: String, placeholder: String, onDone: (String) -> B
         // Closes only when it was saved (else what was typed stays, and the reason shows).
         confirmButton = { TextButton(onClick = { if (onDone(text)) onDismiss() }, enabled = text.isNotBlank()) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Something finished today, with where it belongs and a way to undo a slip. */
+@Composable
+private fun DoneRow(item: WorkItem, vm: BoardViewModel) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("✓", color = Color(0xFF16A34A), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(item.title, style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.LineThrough), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            item.parent?.let { Text(it.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        TextButton(onClick = { vm.reopen(item.id) }) { Text("Reopen") }
+    }
+}
+
+/** A cheer for what got done today. */
+@Composable
+private fun CheerLine(text: String) {
+    Text(
+        "🎉 $text",
+        color = Color(0xFF16A34A),
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            .background(Color(0x1F22C55E), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }

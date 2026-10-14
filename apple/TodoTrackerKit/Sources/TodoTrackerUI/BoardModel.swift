@@ -13,6 +13,8 @@ import UserNotifications
 @MainActor
 public final class BoardModel: ObservableObject {
     @Published public private(set) var dashboard: Dashboard
+    /// What got done today (newest first): something to look back on.
+    @Published public private(set) var doneToday: [WorkItem] = []
     @Published public private(set) var now = Date() {
         // Every tick and every refresh: the break this app saw is tracked for "Break's over".
         didSet { trackBreak() }
@@ -256,6 +258,7 @@ public final class BoardModel: ObservableObject {
         now = Date()
         lastRefresh = now
         dashboard = Agenda.build(board, now: now, recentNoteCount: 6, groupId: selectedGroupId)
+        doneToday = Agenda.doneToday(board, now: now, groupId: selectedGroupId)
     }
 
     public func select(group: UUID?) {

@@ -210,3 +210,12 @@ export function toggleTerm(query, term) {
   const kept = list.filter((t) => t.toLowerCase() !== term.toLowerCase());
   return (kept.length === list.length ? [...list, term] : kept).join(' ');
 }
+
+/** A line to feel good about what got done today (null until something is done). */
+export function cheerLine(count) {
+  if (!count) return null;
+  if (count === 1) return 'First one done. Nice start!';
+  if (count < 5) return `${count} done today. Keep it going!`;
+  if (count < 10) return `${count} done today. You are on a roll!`;
+  return `${count} done today. What a day!`;
+}
