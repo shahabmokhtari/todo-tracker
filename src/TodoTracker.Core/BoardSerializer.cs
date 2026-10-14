@@ -102,6 +102,8 @@ public static class BoardSerializer
         Attachments = item.Attachments.Count == 0 ? null : item.Attachments.Select(a => new AttachmentDocument { Id = a.Id, FileName = a.FileName, Path = a.Path, Size = a.Size, AddedAt = a.AddedAt, AddedBy = ToDocument(a.AddedBy) }).ToList(),
         Stage = item.Parent is null && item.Stage != Stage.Next ? item.Stage : null,
         ArchivedAt = item.ArchivedAt,
+        Icon = item.Icon,
+        Color = item.Color,
         Time = item.TimeEntries.Count == 0 ? null : item.TimeEntries.Select(e => new TimeEntryDocument { Id = e.Id, Start = e.Start, End = e.End, Source = e.Source, Device = e.Device }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
@@ -168,6 +170,8 @@ public static class BoardSerializer
             OwnGroupId = doc.GroupId is { } g && board.Groups.Any(x => x.Id == g) ? g : board.DefaultGroupId,
             Stage = doc.Stage ?? Stage.Next,
             ArchivedAt = parent is null ? doc.ArchivedAt : null,
+            Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, doc.Icon),
+            Color = TaskBoard.Lenient(TaskBoard.CleanColor, doc.Color),
         };
         foreach (var e in doc.Time ?? [])
         {
@@ -280,6 +284,10 @@ public static class BoardSerializer
         public Stage? Stage { get; set; }
 
         public DateTimeOffset? ArchivedAt { get; set; }
+
+        public string? Icon { get; set; }
+
+        public string? Color { get; set; }
 
         public List<TimeEntryDocument>? Time { get; set; }
 

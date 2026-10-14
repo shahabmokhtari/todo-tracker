@@ -145,7 +145,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, or labels (tags/labels replace the current ones when given).")]
+    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon or color (tags/labels replace the current ones when given; an empty icon or color removes it).")]
     public Task<ItemDto> UpdateTask(
         McpServer server,
         string taskId,
@@ -154,11 +154,23 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         string? priority = null,
         DateTimeOffset? deadline = null,
         string[]? tags = null,
-        string[]? labels = null) =>
+        string[]? labels = null,
+        [Description("An emoji shown before the title, e.g. 🚀; empty removes it.")] string? icon = null,
+        [Description("A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then).")] string? color = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
-            b.Update(id, new TaskChanges { Title = title, Details = details, Priority = priority is null ? null : Wire.ParsePriority(priority), Deadline = deadline }, actor, now);
+            b.Update(id, new TaskChanges
+            {
+                Title = title,
+                Details = details,
+                Priority = priority is null ? null : Wire.ParsePriority(priority),
+                Deadline = deadline,
+                Icon = string.IsNullOrWhiteSpace(icon) ? null : icon,
+                ClearIcon = icon is not null && string.IsNullOrWhiteSpace(icon),
+                Color = string.IsNullOrWhiteSpace(color) ? null : color,
+                ClearColor = color is not null && string.IsNullOrWhiteSpace(color),
+            }, actor, now);
             if (tags is not null)
             {
                 b.SetTags(id, tags, actor, now);

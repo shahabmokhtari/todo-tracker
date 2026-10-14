@@ -85,9 +85,9 @@ public static partial class TaskMarkdown
     private const string Time = "time";
 
     /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
-    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders"];
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color"];
 
-    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "tags", "labels", "reminders"];
 
     /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
     internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
@@ -274,6 +274,8 @@ public static partial class TaskMarkdown
         state.NeedsWrite |= !done && archived is not null;
 
         root.Stage = ParseStage(fm.Scalar("board"));
+        root.Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, fm.Scalar("icon"));
+        root.Color = TaskBoard.Lenient(TaskBoard.CleanColor, fm.Scalar("color"));
         root.TagList.AddRange(TaskBoard.ReadTags(fm.List("tags")));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
@@ -619,6 +621,8 @@ public static partial class TaskMarkdown
             AfterId = Guid.TryParse(Str(meta, "after"), out var after) ? after : null,
             Sequential = meta?["seq"] is JsonValue seq && seq.TryGetValue<bool>(out var s) && s,
             StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
+            Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, Str(meta, "icon")),
+            Color = TaskBoard.Lenient(TaskBoard.CleanColor, Str(meta, "color")),
         };
         if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
         {
@@ -1031,6 +1035,8 @@ public static partial class TaskMarkdown
         ["board"] = root.Stage.ToString(),
         ["archived"] = root.ArchivedAt is { } a ? VaultText.Utc(a) : string.Empty,
         ["priority"] = root.Priority.ToString(),
+        ["icon"] = root.Icon ?? string.Empty,
+        ["color"] = root.Color ?? string.Empty,
         ["created"] = VaultText.Utc(root.CreatedAt),
         ["completed"] = root.CompletedAt is { } c ? VaultText.Utc(c) : string.Empty,
         ["due"] = root.Deadline is { } d ? VaultText.Utc(d) : string.Empty,
@@ -1095,6 +1101,11 @@ public static partial class TaskMarkdown
                 return root.ArchivedAt is { } archived ? $"archived: {VaultText.Utc(archived)}\n" : null;
             case "priority":
                 return root.Priority == Priority.Normal ? null : $"priority: {root.Priority.ToString().ToLowerInvariant()}\n";
+            case "icon":
+                return root.Icon is { } icon ? $"icon: {IconScalar(icon)}\n" : null;
+            case "color":
+                // Quoted: a bare # starts a comment in YAML.
+                return root.Color is { } color ? $"color: \"{color}\"\n" : null;
             case "created":
                 return $"created: {VaultText.Utc(root.CreatedAt)}\n";
             case "completed":
@@ -1122,6 +1133,13 @@ public static partial class TaskMarkdown
 
         static string? List(string key, IReadOnlyList<string> values) =>
             values.Count == 0 ? null : $"{key}:\n" + string.Concat(values.Select(v => $"  - {VaultText.YamlScalar(v)}\n"));
+
+        // An emoji is written as itself (readable in Obsidian); only text YAML would misread is quoted.
+        static string IconScalar(string icon) =>
+            "-?:,[]{}#&*!|>'\"%@`".Contains(icon[0], StringComparison.Ordinal) || icon.Contains(": ", StringComparison.Ordinal) || icon.Contains(" #", StringComparison.Ordinal)
+                || icon.EndsWith(':') || icon != icon.Trim()
+                ? "\"" + icon.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal) + "\""
+                : icon;
 
         static string? Reminders(IReadOnlyList<Reminder> reminders)
         {
@@ -1325,6 +1343,16 @@ public static partial class TaskMarkdown
         if (item.StepDelay is { } delay)
         {
             meta["delay"] = (long)Math.Round(delay.TotalMinutes);
+        }
+
+        if (item.Icon is { } icon)
+        {
+            meta["icon"] = icon;
+        }
+
+        if (item.Color is { } color)
+        {
+            meta["color"] = color;
         }
 
         if (item.Labels.Count > 0)

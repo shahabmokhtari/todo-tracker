@@ -472,6 +472,23 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Cards_show_the_tasks_icon_and_its_color_or_its_first_labels()
+    {
+        var task = await Seed("Launch");
+        await _store.UpdateAsync(b => b.Update(task.Id, new TaskChanges { Icon = "🚀", Color = "#3b82f6" }, Actor.User, T0));
+        await _vm.RefreshAsync();
+        Assert.Equal(("🚀", "#3b82f6"), (_vm.Focus!.Icon, _vm.Focus.Accent));
+
+        await _store.UpdateAsync(b =>
+        {
+            b.Update(task.Id, new TaskChanges { ClearIcon = true, ClearColor = true }, Actor.User, T0);
+            b.SetLabels(task.Id, ["Urgent"], Actor.User, T0);
+        });
+        await _vm.RefreshAsync();
+        Assert.Equal((null, await _store.ReadAsync(b => b.FindLabel("Urgent")!.Color)), (_vm.Focus!.Icon, _vm.Focus.Accent));
+    }
+
+    [Fact]
     public async Task Complete_moves_rollout_to_next_gated_step()
     {
         var x = await Seed("Feature A");

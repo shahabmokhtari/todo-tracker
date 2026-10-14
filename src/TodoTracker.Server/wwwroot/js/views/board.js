@@ -5,6 +5,7 @@ import { COLUMNS, WIP_LIMIT, columnsOf, wip, dropRequests, keyboardMove, cardFac
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl } from './common.js';
 import { enablePan } from '../pan.js';
+import { iconBadge, withAccent } from '../looks.js';
 
 export function createBoardView(ctx) {
   const { h, icon } = ctx;
@@ -100,7 +101,7 @@ export function createBoardView(ctx) {
       ondragend: () => { dragging = null; el.classList.remove('dragging'); clearMarks(); },
     },
     h('div', { class: 'card-top' },
-      h('span', { class: 'card-title' }, node.title),
+      h('span', { class: 'card-title' }, iconBadge(node.icon), node.title),
       h('div', { class: 'card-actions' },
         node.done ? null : h('button', {
           class: `icon-btn small${node.timing ? ' on' : ''}`, type: 'button', title: node.timing ? 'Stop the timer' : 'Start the timer',
@@ -114,7 +115,7 @@ export function createBoardView(ctx) {
         h('button', { class: 'icon-btn small', type: 'button', title: 'Open details', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 14 })))),
     node.labels.length || node.tags.length ? h('div', { class: 'card-chips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 3).map((t) => h('span', { class: 'chip tag' }, `#${t}`))) : null,
     h('div', { class: 'card-meta' }, due, ...facts.map(fact)));
-    return el;
+    return withAccent(el, node.accent);
   }
 
   function onCardKey(e, node) {

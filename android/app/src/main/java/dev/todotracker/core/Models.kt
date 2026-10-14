@@ -84,6 +84,10 @@ class WorkItem(
     var completedAt: Instant? = null
     /** Put away (a finished top-level task, archived on another device): out of every list. */
     var archivedAt: Instant? = null
+    /** An emoji shown before the title (set in the other apps; kept here). */
+    var icon: String? = null
+    /** The task's own color as #rrggbb (set in the other apps; kept here). */
+    var color: String? = null
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
 

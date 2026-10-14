@@ -49,8 +49,14 @@
                         <Ellipse Width="14" Height="14" Fill="{Binding PriorityColor, Converter={StaticResource SoftBrush}}" />
                         <Ellipse Width="8" Height="8" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
                     </Grid>
+                    <!-- The task's color (its own or its first label's) as a stripe at the edge. -->
+                    <Border Grid.ColumnSpan="2" Width="3" HorizontalAlignment="Left" CornerRadius="2" Margin="-6,1,0,1"
+                            Background="{Binding Accent, Converter={StaticResource HexBrush}}"
+                            Visibility="{Binding Accent, Converter={StaticResource VisibleWhen}}" />
                     <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock FontWeight="SemiBold" TextWrapping="Wrap">
+                            <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
+                        </TextBlock>
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,1,0,0"
                                    Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
                         <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
@@ -138,7 +144,9 @@
                                 <TextBlock x:Name="Eyebrow" Text="DO THIS NOW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}" />
                             </StackPanel>
                         </DockPanel>
-                        <TextBlock Text="{Binding Title}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" />
+                        <TextBlock FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI">
+                            <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
+                        </TextBlock>
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" Margin="0,2,0,0" Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
                         <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" Margin="0,2,0,0" />
                         <WrapPanel Margin="0,2,0,0" Visibility="{Binding HasTagsOrLabels, Converter={StaticResource VisibleWhen}}">

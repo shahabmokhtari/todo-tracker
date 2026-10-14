@@ -525,3 +525,9 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 /* "Show in tree": the task is highlighted for a moment. */
 @keyframes reveal-glow { 0% { background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent); } 100% { background: transparent; box-shadow: 0 0 0 0 transparent; } }
 .orow.revealed { animation: reveal-glow 2.4s var(--ease) both; border-radius: 10px; }
+
+/* Settings > Labels */
+.label-rows { display: grid; gap: 8px; max-width: 420px; }
+.label-row { display: flex; align-items: center; gap: 10px; }
+.label-row input[type="color"] { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; flex: none; }
+.label-row input[type="text"] { flex: 1; min-width: 0; }

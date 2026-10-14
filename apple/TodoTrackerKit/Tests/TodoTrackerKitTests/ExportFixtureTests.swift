@@ -15,6 +15,11 @@ final class ExportFixtureTests: XCTestCase {
 
         let launch = try XCTUnwrap(board.items.first { $0.title == "Launch the site" })
         XCTAssertEqual(launch.priority, .high)
+        // Its icon and color (set in the other apps) are read, and written back unchanged.
+        XCTAssertEqual(launch.icon, "🚀")
+        XCTAssertEqual(launch.color, "#0ea5e9")
+        let again = try BoardCodec.decode(try BoardCodec.encode(board))
+        XCTAssertEqual(again.items.first { $0.title == "Launch the site" }?.icon, "🚀")
         XCTAssertEqual(launch.children.map(\.title), ["Write the copy", "Pick images"])
         XCTAssertTrue(launch.children[1].isDone)
         XCTAssertEqual(board.groups.first { $0.id == launch.groupId }?.name, "Launch team")

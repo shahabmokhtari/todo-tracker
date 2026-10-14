@@ -150,6 +150,10 @@ public final class WorkItem: Identifiable {
     public internal(set) var completedAt: Date?
     /// Put away (a finished top-level task, archived on another device): out of every list.
     public internal(set) var archivedAt: Date?
+    /// An emoji shown before the title (set in the other apps; kept here).
+    public internal(set) var icon: String?
+    /// The task's own color as #rrggbb (set in the other apps; kept here).
+    public internal(set) var color: String?
     public var isArchived: Bool { root.archivedAt != nil }
     public internal(set) var deadline: Date?
     public internal(set) var nextActionAt: Date?

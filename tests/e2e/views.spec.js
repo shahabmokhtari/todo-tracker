@@ -657,3 +657,38 @@ test('Where a task lives: add it to another group, see its parent and siblings, 
   await expect(page.locator(`#view-tasks .orow[data-id="${flights.id}"]`)).toBeFocused();
   expect(errors).toEqual([]);
 });
+
+test('Look: a task gets an icon and a color from its details, cards show them, and labels can be recolored', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const task = await add(request, 'Ship the newsletter', { labels: ['Writing'] });
+  await open(page, request);
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, task.id);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Ship the newsletter');
+
+  // Icon: from the grid.
+  await drawer.getByRole('button', { name: 'Add an icon' }).click();
+  await page.locator('.look-dialog').getByRole('button', { name: '🚀' }).click();
+  await expect(drawer.getByRole('button', { name: 'Icon 🚀: change it' })).toBeVisible();
+
+  // Color: a swatch; the card shows both.
+  await drawer.getByRole('button', { name: '#10b981' }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).color).toBe('#10b981');
+  await page.keyboard.press('Escape');
+  const card = page.locator('#sec-now .item', { hasText: 'Ship the newsletter' }).or(page.locator('.focus-card', { hasText: 'Ship the newsletter' })).first();
+  await expect(card.locator('.task-icon')).toHaveText('🚀');
+  await expect(card).toHaveClass(/has-accent/);
+
+  // Auto: back to its label's color.
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, task.id);
+  await drawer.getByRole('button', { name: /Auto/ }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).color ?? null).toBeNull();
+
+  // Settings > Labels: a new color for the label.
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  const color = page.getByLabel('Color of Writing');
+  await color.evaluate((el) => { el.value = '#ec4899'; el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await expect.poll(async () => (await (await request.get('/api/labels', { headers: auth })).json()).find((l) => l.name === 'Writing')?.color).toBe('#ec4899');
+  expect(errors).toEqual([]);
+});

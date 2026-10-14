@@ -21,7 +21,9 @@ public sealed record CreateItemRequest(
     int? DeferMinutes = null,
     IReadOnlyList<string>? Tags = null,
     IReadOnlyList<string>? Labels = null,
-    string? Stage = null);
+    string? Stage = null,
+    string? Icon = null,
+    string? Color = null);
 
 public sealed record PatchItemRequest(
     string? Title = null,
@@ -33,7 +35,11 @@ public sealed record PatchItemRequest(
     int? StepDelayMinutes = null,
     bool ClearStepDelay = false,
     IReadOnlyList<string>? Tags = null,
-    IReadOnlyList<string>? Labels = null);
+    IReadOnlyList<string>? Labels = null,
+    /// <summary>An emoji; "" removes it.</summary>
+    string? Icon = null,
+    /// <summary>#rrggbb; "" removes it.</summary>
+    string? Color = null);
 
 public sealed record StepsRequest(IReadOnlyList<string>? Titles, int? StepDelayMinutes = null);
 
@@ -175,6 +181,8 @@ internal static class ApiEndpoints
                         Tags = request.Tags,
                         Labels = request.Labels,
                         Stage = request.Stage is null ? null : BoardTimeEndpoints.ParseStage(request.Stage),
+                        Icon = request.Icon,
+                        Color = request.Color,
                     },
                     actor,
                     now);
@@ -219,6 +227,10 @@ internal static class ApiEndpoints
                         Sequential = request.Sequential,
                         StepDelay = Minutes(request.StepDelayMinutes),
                         ClearStepDelay = request.ClearStepDelay,
+                        Icon = string.IsNullOrWhiteSpace(request.Icon) ? null : request.Icon,
+                        ClearIcon = request.Icon is not null && string.IsNullOrWhiteSpace(request.Icon),
+                        Color = string.IsNullOrWhiteSpace(request.Color) ? null : request.Color,
+                        ClearColor = request.Color is not null && string.IsNullOrWhiteSpace(request.Color),
                     },
                     actor,
                     now);
@@ -560,7 +572,7 @@ internal static class ApiEndpoints
                 return new LabelDto(label.Name, label.Color);
             }));
 
-        api.MapPatch("/labels/{name}", (string name, LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+        api.MapPatch("/labels/{**name}", (string name, LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
             {
                 var current = b.FindLabel(name) ?? throw new TaskNotFoundException($"Label \"{name}\" was not found.");
@@ -569,7 +581,7 @@ internal static class ApiEndpoints
                 return new LabelDto(label.Name, label.Color);
             }));
 
-        api.MapDelete("/labels/{name}", async (string name, HttpContext http, IBoardStore store, TimeProvider time) =>
+        api.MapDelete("/labels/{**name}", async (string name, HttpContext http, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b => b.DeleteLabel(name, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();

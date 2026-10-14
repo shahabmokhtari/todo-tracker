@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "groups": [
     {
-      "id": "d13c5d5a-1b99-415e-86d8-6fb907060a8c",
+      "id": "89d4a41f-c755-4f42-bcea-1a5190f43b59",
       "name": "Work",
       "color": "#3b82f6"
     },
     {
-      "id": "ad411fd0-0f8b-4245-9fbb-68e38e4d065f",
+      "id": "029447bd-42e4-4047-8908-f97e8614aab7",
       "name": "Personal",
       "color": "#22c55e"
     },
     {
-      "id": "a2bd2cdd-1d05-4c0f-8570-53b615fe0d18",
+      "id": "703f34ad-054f-4599-b07b-814833254dd8",
       "name": "Launch team",
       "color": "#3b82f6"
     }
@@ -25,17 +25,17 @@
   ],
   "items": [
     {
-      "id": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "id": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "title": "Launch the site",
       "details": "Hero copy first.",
       "priority": "high",
       "createdAt": "2026-01-05T09:00:00.000Z",
       "deadline": "2026-01-08T09:00:00.000Z",
       "nextActionAt": "2026-01-05T11:00:00.000Z",
-      "groupId": "a2bd2cdd-1d05-4c0f-8570-53b615fe0d18",
+      "groupId": "703f34ad-054f-4599-b07b-814833254dd8",
       "reminders": [
         {
-          "id": "b1e07967-58aa-4aec-86c5-e8038907c7f7",
+          "id": "06f88657-aaa7-4890-9e86-465c1251b41a",
           "dueAt": "2026-01-05T11:00:00.000Z",
           "message": "Time to act on: Launch the site",
           "kind": "nextAction"
@@ -43,7 +43,7 @@
       ],
       "notes": [
         {
-          "id": "734db172-5e06-407d-b881-744fa7a40031",
+          "id": "e22ad4df-6558-415e-a5c4-40de9433f191",
           "at": "2026-01-05T09:05:00.000Z",
           "text": "Edited in Obsidian",
           "author": {
@@ -52,7 +52,7 @@
           }
         },
         {
-          "id": "f58838e9-c4d6-4998-915d-21cf4200116b",
+          "id": "4189a48d-5020-438c-b795-b73da794e14f",
           "at": "2026-01-05T09:06:00.000Z",
           "text": "From Notion",
           "author": {
@@ -69,15 +69,17 @@
         "Urgent"
       ],
       "stage": "doing",
+      "icon": "\uD83D\uDE80",
+      "color": "#0ea5e9",
       "children": [
         {
-          "id": "5ef2c8d7-4975-4f59-862b-63c7202ccc20",
+          "id": "d202ced0-9e4c-45ed-93ec-7d427a1baf22",
           "title": "Write the copy",
           "priority": "normal",
           "createdAt": "2026-01-05T09:00:00.000Z",
           "reminders": [
             {
-              "id": "481dfa7a-982c-4684-9bd2-e4e31c5fe522",
+              "id": "47e5df7f-d32f-4fc3-8cad-dd4485bd8126",
               "dueAt": "2026-01-06T09:00:00.000Z",
               "message": "Send the draft",
               "kind": "manual"
@@ -85,7 +87,7 @@
           ],
           "notes": [
             {
-              "id": "b45307dd-a50e-42fb-8cfb-c4f2bace3011",
+              "id": "9084d5cc-69ce-42d0-b388-a04373baa949",
               "at": "2026-01-05T09:07:00.000Z",
               "text": "Draft 1",
               "author": {
@@ -98,7 +100,7 @@
           ],
           "time": [
             {
-              "id": "a05fdb57-0f21-4dca-8b31-26e640348a09",
+              "id": "279f3dc2-4dab-4de1-bf2c-f8703a7b1884",
               "start": "2026-01-05T09:00:00.000Z",
               "end": "2026-01-05T09:25:00.000Z",
               "source": "manual"
@@ -106,7 +108,7 @@
           ]
         },
         {
-          "id": "a57539c0-20ca-4031-b3cf-c5d061e26610",
+          "id": "41fe36f5-a93a-44b3-a468-667c07835a4d",
           "title": "Pick images",
           "priority": "normal",
           "createdAt": "2026-01-05T09:00:00.000Z",
@@ -115,21 +117,21 @@
       ]
     },
     {
-      "id": "9381e2e3-0c10-4cde-a868-2ea067427c7a",
+      "id": "caec688a-5c20-4900-bfb7-32ec976d3d80",
       "title": "Announce it",
       "priority": "normal",
       "createdAt": "2026-01-05T09:00:00.000Z",
-      "after": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
-      "groupId": "a2bd2cdd-1d05-4c0f-8570-53b615fe0d18",
+      "after": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
+      "groupId": "703f34ad-054f-4599-b07b-814833254dd8",
       "stage": "inbox"
     },
     {
-      "id": "7bed4a53-6b02-49f0-84e6-f04b05da480d",
+      "id": "3b3b0c4d-f0d8-4293-8be8-bdbdfbcf112d",
       "title": "Old task",
       "priority": "normal",
       "createdAt": "2026-01-05T09:00:00.000Z",
       "completedAt": "2026-01-05T09:00:00.000Z",
-      "groupId": "a2bd2cdd-1d05-4c0f-8570-53b615fe0d18",
+      "groupId": "703f34ad-054f-4599-b07b-814833254dd8",
       "stage": "inbox",
       "archivedAt": "2026-01-05T09:00:00.000Z"
     }
@@ -155,7 +157,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "itemId": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "kind": "created",
       "summary": "Created \u0022Launch the site\u0022",
       "actor": {
@@ -164,7 +166,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "5ef2c8d7-4975-4f59-862b-63c7202ccc20",
+      "itemId": "d202ced0-9e4c-45ed-93ec-7d427a1baf22",
       "kind": "created",
       "summary": "Added \u0022Write the copy\u0022 to \u0022Launch the site\u0022",
       "actor": {
@@ -174,7 +176,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "a57539c0-20ca-4031-b3cf-c5d061e26610",
+      "itemId": "41fe36f5-a93a-44b3-a468-667c07835a4d",
       "kind": "created",
       "summary": "Added \u0022Pick images\u0022 to \u0022Launch the site\u0022",
       "actor": {
@@ -184,7 +186,7 @@
     },
     {
       "at": "2026-01-05T10:00:00.000Z",
-      "itemId": "a57539c0-20ca-4031-b3cf-c5d061e26610",
+      "itemId": "41fe36f5-a93a-44b3-a468-667c07835a4d",
       "kind": "completed",
       "summary": "Completed \u0022Pick images\u0022",
       "actor": {
@@ -193,7 +195,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "5ef2c8d7-4975-4f59-862b-63c7202ccc20",
+      "itemId": "d202ced0-9e4c-45ed-93ec-7d427a1baf22",
       "kind": "reminderAdded",
       "summary": "Reminder at 2026-01-06 09:00:00Z: Send the draft",
       "actor": {
@@ -202,7 +204,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "itemId": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "kind": "scheduled",
       "summary": "Next action 2026-01-05 11:00:00Z (with reminder)",
       "actor": {
@@ -212,7 +214,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "itemId": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "kind": "moved",
       "summary": "Moved \u0022Launch the site\u0022 to Doing",
       "actor": {
@@ -221,7 +223,7 @@
     },
     {
       "at": "2026-01-05T09:05:00.000Z",
-      "itemId": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "itemId": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "kind": "noteAdded",
       "summary": "Edited in Obsidian",
       "actor": {
@@ -231,7 +233,7 @@
     },
     {
       "at": "2026-01-05T09:06:00.000Z",
-      "itemId": "d2d54b5c-ba5f-4772-85dd-b0f27dafebbc",
+      "itemId": "714a9f0d-17ff-490d-bb9c-34b4c3205898",
       "kind": "noteAdded",
       "summary": "From Notion",
       "actor": {
@@ -241,7 +243,7 @@
     },
     {
       "at": "2026-01-05T09:07:00.000Z",
-      "itemId": "5ef2c8d7-4975-4f59-862b-63c7202ccc20",
+      "itemId": "d202ced0-9e4c-45ed-93ec-7d427a1baf22",
       "kind": "noteAdded",
       "summary": "Draft 1",
       "actor": {
@@ -250,7 +252,7 @@
     },
     {
       "at": "2026-01-05T09:25:00.000Z",
-      "itemId": "5ef2c8d7-4975-4f59-862b-63c7202ccc20",
+      "itemId": "d202ced0-9e4c-45ed-93ec-7d427a1baf22",
       "kind": "timeLogged",
       "summary": "Logged 25 min on \u0022Write the copy\u0022",
       "actor": {
@@ -259,7 +261,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "9381e2e3-0c10-4cde-a868-2ea067427c7a",
+      "itemId": "caec688a-5c20-4900-bfb7-32ec976d3d80",
       "kind": "created",
       "summary": "Created \u0022Announce it\u0022",
       "actor": {
@@ -268,7 +270,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "9381e2e3-0c10-4cde-a868-2ea067427c7a",
+      "itemId": "caec688a-5c20-4900-bfb7-32ec976d3d80",
       "kind": "scheduled",
       "summary": "Waits until \u0022Launch the site\u0022 is done",
       "actor": {
@@ -277,7 +279,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "7bed4a53-6b02-49f0-84e6-f04b05da480d",
+      "itemId": "3b3b0c4d-f0d8-4293-8be8-bdbdfbcf112d",
       "kind": "created",
       "summary": "Created \u0022Old task\u0022",
       "actor": {
@@ -286,7 +288,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "7bed4a53-6b02-49f0-84e6-f04b05da480d",
+      "itemId": "3b3b0c4d-f0d8-4293-8be8-bdbdfbcf112d",
       "kind": "completed",
       "summary": "Completed \u0022Old task\u0022",
       "actor": {
@@ -295,7 +297,7 @@
     },
     {
       "at": "2026-01-05T09:00:00.000Z",
-      "itemId": "7bed4a53-6b02-49f0-84e6-f04b05da480d",
+      "itemId": "3b3b0c4d-f0d8-4293-8be8-bdbdfbcf112d",
       "kind": "archived",
       "summary": "Archived \u0022Old task\u0022",
       "actor": {

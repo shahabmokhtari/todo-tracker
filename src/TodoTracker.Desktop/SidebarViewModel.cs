@@ -940,6 +940,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         {
             Id = item.Id,
             Title = item.Title,
+            Icon = item.Icon,
+            Accent = board.AccentOf(item),
             Breadcrumb = string.Join(" › ", e.Breadcrumb),
             Meta = string.Join(" · ", meta),
             PriorityColor = PriorityPalette.ColorOf(e.EffectivePriority),

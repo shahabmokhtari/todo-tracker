@@ -1,10 +1,14 @@
-// Settings: everything to set up in one place: how it looks (light, dark or the system's), connected apps (Notion,
+// Settings: everything to set up in one place: how it looks (light, dark or the system's), label colors, connected apps (Notion,
 // Microsoft To Do: switch on, sign in, pick what to keep in step), sync, which extras are on, and the keyboard.
 
 import { createConnectorsPanel } from '../plugins/connectors.js';
 import { THEMES, chooseTheme } from '../themes.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
+
+// A label name may hold "/" (Q3/Q4): it's sent as a path (the server route takes the rest of the path), since an
+// encoded slash (%2F) isn't decoded in a route value.
+const labelUrl = (name) => `/api/labels/${encodeURIComponent(name).replace(/%2F/gi, '/')}`;
 
 const SHORTCUTS = [
   ['N', 'Add a task'],
@@ -71,10 +75,42 @@ export function createSettingsView(ctx) {
       } }, icon('cloud', { size: 16 }), 'Sync settings') : null);
   }
 
-  function render(settings, list) {
+  /** Labels: each one's color (tasks without their own color show it), its name, and removing it. */
+  function labels(list) {
+    const save = async (label, body, message) => {
+      try {
+        await ctx.api(labelUrl(label.name), { method: 'PATCH', body: { name: body.name ?? label.name, color: body.color ?? label.color } });
+        ctx.toast(message);
+        load();
+      } catch (err) {
+        ctx.toast(err.message, 'error');
+      }
+    };
+    const row = (label) => {
+      const color = h('input', { type: 'color', value: label.color, 'aria-label': `Color of ${label.name}`, title: 'Color' });
+      color.addEventListener('change', () => save(label, { color: color.value }, `${label.name}: new color`));
+      const name = h('input', { type: 'text', value: label.name, maxlength: 40, 'aria-label': `Name of ${label.name}` });
+      name.addEventListener('change', () => { if (name.value.trim() && name.value.trim() !== label.name) save(label, { name: name.value.trim() }, 'Renamed'); });
+      const remove = h('button', { class: 'icon-btn small', type: 'button', title: 'Remove this label', 'aria-label': `Remove ${label.name}`, onclick: async () => {
+        if (!confirm(`Remove the label "${label.name}" from every task?`)) return;
+        try {
+          await ctx.api(labelUrl(label.name), { method: 'DELETE' });
+          load();
+        } catch (err) {
+          ctx.toast(err.message, 'error');
+        }
+      } }, icon('trash', { size: 14 }));
+      return h('div', { class: 'label-row' }, color, name, remove);
+    };
+    return section('labels', 'Labels', 'Each label has a color: a task without a color of its own shows its first label’s.',
+      list.length ? h('div', { class: 'label-rows' }, ...list.map(row)) : h('p', { class: 'muted small' }, 'No labels yet. Add one from a task’s details.'));
+  }
+
+  function render(settings, list, labelList) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
     root.replaceChildren(h('div', { class: 'settings' },
       appearance(settings.theme ?? 'system'),
+      labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
       plugins(list),
@@ -83,8 +119,8 @@ export function createSettingsView(ctx) {
 
   async function load() {
     try {
-      const [settings, list] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins')]);
-      render(settings, list);
+      const [settings, list, labelList] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels')]);
+      render(settings, list, labelList);
       await connectors.load();
       if (location.hash.includes('plugins')) root.querySelector('#settings-plugins')?.scrollIntoView();
     } catch (err) {

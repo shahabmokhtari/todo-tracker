@@ -115,6 +115,8 @@ struct BoardDocument: Codable {
         item.details = doc.details
         item.completedAt = doc.completedAt
         item.archivedAt = parent == nil ? doc.archivedAt : nil
+        item.icon = doc.icon
+        item.color = doc.color
         item.deadline = doc.deadline
         item.nextActionAt = doc.nextActionAt
         item.afterId = doc.after
@@ -146,6 +148,8 @@ struct ItemDocument: Codable {
     var createdAt: Date
     var completedAt: Date?
     var archivedAt: Date?
+    var icon: String?
+    var color: String?
     var deadline: Date?
     var nextActionAt: Date?
     var after: UUID?
@@ -165,6 +169,8 @@ struct ItemDocument: Codable {
         createdAt = item.createdAt
         completedAt = item.completedAt
         archivedAt = item.archivedAt
+        icon = item.icon
+        color = item.color
         deadline = item.deadline
         nextActionAt = item.nextActionAt
         after = item.afterId

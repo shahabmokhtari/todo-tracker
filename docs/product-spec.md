@@ -76,8 +76,8 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
 |---|---|
 | **Board** | `groups[]`, `labels[]`, `items[]` (roots), `activity[]`, `pomodoro` |
 | **Group (tab)** | `id`, `name` (= its folder; unique, case-insensitive), `color` (`#rrggbb`) |
-| **Label** | `name` (≤40), `color`. Curated and colored; using a new one defines it with the next palette color. |
-| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `tags[]` (free-form, nested with `/`, ≤20), `labels[]`, `attachments[]`, `reminders[]`, `notes[]`, `children[]` (any depth). Tasks can move anywhere in the hierarchy. A top-level task can have a rich HTML version. |
+| **Label** | `name` (≤40), `color`. Curated and colored; using a new one defines it with the next palette color. Settings › Labels changes a label's color or name, or removes it from every task. |
+| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `tags[]` (free-form, nested with `/`, ≤20), `labels[]`, `icon` (an emoji or a few characters, ≤16), `color` (`#rrggbb`), `attachments[]`, `reminders[]`, `notes[]`, `children[]` (any depth). Tasks can move anywhere in the hierarchy. A task shows its **accent**: its own color, else its first label's (`TaskBoard.AccentOf`); the icon goes before the title everywhere (web, sidebar, Mac/iOS, Android; the phones keep both when they save). In the markdown: frontmatter `icon:` / `color:` (quoted), subtasks in their hidden data; invalid values written by hand are left out. A top-level task can have a rich HTML version. |
 | **Attachment** | `id`, `fileName`, `path` (vault-relative), `size`, `addedAt`, `addedBy` |
 | **Reminder** | `id`, `dueAt`, `message`, `kind` (`manual` or `nextAction`), `notifiedAt`, `dismissedAt` |
 | **Note** | `id`, `at`, `text`, `author {kind: user/agent/browser/teams/system/vault, name}`, `sourceUrl` (http/https only), `sourceTitle`. Notes save while being typed (edits within 10 minutes of writing are part of writing it). |
@@ -227,6 +227,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   its parents expanded and the task focused and highlighted. In lists, a subtask's path opens its parent.
 * **Quick add picks a group:** the picker by *Add* follows the tab shown (the first group under All); choosing another
   sends the new task there without changing the tab ("Added to Personal").
+* **A task's look** (details panel): the button by the title picks an **icon** (a grid of common emojis, or type/paste any, or *No icon*); the **Color** row picks *Auto* (its first label's color), a palette color, or any color. Cards, board cards and tree rows show the icon before the title and the color as a stripe and a light tint; the sidebar shows both too.
 * **Board:** drag the background (a column header, the space between cards) to move around it like a canvas, sideways
   and up and down; cards, buttons and fields keep their own behavior. Columns snap into place only on touch screens
   and narrow windows.
@@ -296,7 +297,7 @@ the docs explain the options and risks. The server sends the same short instruct
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |
 | `schedule_next_action`, `add_reminder` | Defer and remind |
-| `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags and labels) |
+| `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon and color) |
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
 | `move_task`, `list_labels` | Reorganize the hierarchy; curated labels |
 | `attach_text`, `get_rich_html`, `set_rich_html` | Text attachments and the rich HTML version |
