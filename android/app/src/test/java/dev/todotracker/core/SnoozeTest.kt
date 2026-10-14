@@ -48,6 +48,28 @@ class SnoozeTest {
     }
 
     @Test
+    fun reopeningBringsBackATaskSnoozedOrWaitingBeforeItWasDone() {
+        // Reported bug: snoozed, completed, reopened: it stayed under Later, so Reopen seemed to do nothing.
+        val board = TaskBoard()
+        val snoozed = board.addTask(NewTask("Enable distributed mode"), now = t0)
+        board.scheduleNextAction(snoozed.id, t0.plusSeconds(2 * 86_400), notify = true, now = t0)
+        val first = board.addTask(NewTask("Get access"), now = t0)
+        val waiting = board.addTask(NewTask("Deploy"), now = t0)
+        board.waitFor(waiting.id, first.id, now = t0)
+        board.complete(snoozed.id, now = t0.plusSeconds(60))
+        board.complete(waiting.id, now = t0.plusSeconds(60))
+
+        board.reopen(snoozed.id, now = t0.plusSeconds(120))
+        board.reopen(waiting.id, now = t0.plusSeconds(120))
+
+        assertNull(snoozed.nextActionAt)
+        assertNull(waiting.afterId)
+        assertEquals(ItemState.ACTIONABLE, Agenda.stateOf(snoozed, t0.plusSeconds(120)))
+        assertEquals(ItemState.ACTIONABLE, Agenda.stateOf(waiting, t0.plusSeconds(120)))
+        assertTrue(snoozed.reminders.filter { it.kind == ReminderKind.NEXT_ACTION }.all { it.dismissedAt != null })
+    }
+
+    @Test
     fun waitingForAnotherTaskUntilItIsDone() {
         val board = TaskBoard()
         val keys = board.addTask(NewTask("Get the keys"), now = t0)

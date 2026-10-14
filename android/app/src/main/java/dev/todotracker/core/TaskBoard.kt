@@ -154,6 +154,13 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         for (d in item.selfAndDescendants.drop(1)) if (d.completedAt == completedAt) d.completedAt = null
         for (a in item.ancestors) if (a.isDone) a.completedAt = null
+        // Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it
+        // was done (it looked as if Reopen did nothing).
+        if (item.nextActionAt != null || item.afterId != null) {
+            item.nextActionAt = null
+            item.afterId = null
+            dismissPendingScheduleReminders(item, now)
+        }
         log(now, id, "reopened", "Reopened \"${item.title}\"", actor)
     }
 

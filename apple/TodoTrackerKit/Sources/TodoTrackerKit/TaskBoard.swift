@@ -185,6 +185,13 @@ public final class TaskBoard {
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil }
         for a in item.ancestors where a.isDone { a.completedAt = nil }
+        // Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it
+        // was done (it looked as if Reopen did nothing).
+        if item.nextActionAt != nil || item.afterId != nil {
+            item.nextActionAt = nil
+            item.afterId = nil
+            dismissPendingScheduleReminders(item, now: now)
+        }
         log(now, id, "reopened", "Reopened \"\(item.title)\"", actor)
     }
 

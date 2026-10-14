@@ -332,6 +332,15 @@ public sealed partial class TaskBoard
             ancestor.CompletedAt = null;
         }
 
+        // Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it
+        // was done (it looked as if Reopen did nothing).
+        if (item.NextActionAt is not null || item.AfterId is not null)
+        {
+            item.NextActionAt = null;
+            item.AfterId = null;
+            DismissPendingScheduleReminders(item, now);
+        }
+
         Log(now, id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor);
     }
 
