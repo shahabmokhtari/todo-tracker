@@ -133,6 +133,8 @@ public final class TaskGroup: Identifiable {
     public let id: UUID
     public internal(set) var name: String
     public internal(set) var color: String?
+    /// How it repeats: completing it moves it on to its next time instead of finishing it.
+    public internal(set) var repeatRule: Recurrence?
 
     init(id: UUID = UUID(), name: String, color: String?) {
         self.id = id
@@ -154,6 +156,8 @@ public final class WorkItem: Identifiable {
     public internal(set) var icon: String?
     /// The task's own color as #rrggbb (set in the other apps; kept here).
     public internal(set) var color: String?
+    /// How it repeats: completing it moves it on to its next time instead of finishing it.
+    public internal(set) var repeatRule: Recurrence?
     public var isArchived: Bool { root.archivedAt != nil }
     public internal(set) var deadline: Date?
     public internal(set) var nextActionAt: Date?

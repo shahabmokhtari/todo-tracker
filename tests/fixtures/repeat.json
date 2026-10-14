@@ -1,0 +1,118 @@
+{
+  "about": "Repeat rules: how they're read and written, the next day they fall on, and how a repeating task moves on when it's done. Checked by the C# core (RecurrenceFixtureTests), Swift (RecurrenceTests) and Kotlin (RecurrenceTest) so every app repeats tasks the same way.",
+  "parse": [
+    { "text": "every day", "canonical": "every day" },
+    { "text": "daily", "canonical": "every day" },
+    { "text": "Every 3 Days", "canonical": "every 3 days" },
+    { "text": "every other week", "canonical": "every 2 weeks" },
+    { "text": "monthly", "canonical": "every month" },
+    { "text": "every weekday", "canonical": "every weekday" },
+    { "text": "every week on Mon, Thu", "canonical": "every week on Monday, Thursday" },
+    { "text": "every week on thursday and monday", "canonical": "every week on Monday, Thursday" },
+    { "text": "every 2 weeks on friday", "canonical": "every 2 weeks on Friday" },
+    { "text": "every tuesday and friday", "canonical": "every week on Tuesday, Friday" },
+    { "text": "every Sunday", "canonical": "every week on Sunday" },
+    { "text": "every month on the 15th", "canonical": "every month on the 15th" },
+    { "text": "every month on the 1st", "canonical": "every month on the 1st" },
+    { "text": "every month on the last day", "canonical": "every month on the last day" },
+    { "text": "every month on the last friday", "canonical": "every month on the last Friday" },
+    { "text": "every month on the 2nd tuesday", "canonical": "every month on the 2nd Tuesday" },
+    { "text": "every 3 months on the 22nd", "canonical": "every 3 months on the 22nd" },
+    { "text": "every year on mar 5", "canonical": "every year on March 5" },
+    { "text": "every year on the 5th of march", "canonical": "every year on March 5" },
+    { "text": "yearly", "canonical": "every year" },
+    { "text": "🔁 every 2 days when done", "canonical": "every 2 days when done" },
+    { "text": "every week until 2026-12-31", "canonical": "every week until 2026-12-31" },
+    { "text": "every day for 5 times", "canonical": "every day for 5 times" },
+    { "text": "every weekday when done for 3 times", "canonical": "every weekday when done for 3 times" },
+    { "text": "sometimes", "error": true },
+    { "text": "every", "error": true },
+    { "text": "every blue", "error": true },
+    { "text": "every 0 days", "error": true },
+    { "text": "every week on", "error": true },
+    { "text": "every month on the 40th", "error": true },
+    { "text": "every month on the 5th tuesday", "error": true },
+    { "text": "every year on feb 30", "error": true },
+    { "text": "every day on monday", "error": true },
+    { "text": "every day until tomorrow", "error": true },
+    { "text": "every day for 0 times", "error": true },
+    { "text": "", "error": true }
+  ],
+  "next": [
+    { "rule": "every day", "anchor": "2026-01-05", "after": "2026-01-05", "next": "2026-01-06" },
+    { "rule": "every 3 days", "anchor": "2026-01-05", "after": "2026-01-06", "next": "2026-01-08" },
+    { "rule": "every 2 days", "anchor": "2026-01-01", "after": "2026-01-10", "next": "2026-01-11" },
+    { "rule": "every weekday", "anchor": "2026-01-09", "after": "2026-01-09", "next": "2026-01-12" },
+    { "rule": "every week", "anchor": "2026-01-07", "after": "2026-01-07", "next": "2026-01-14" },
+    { "rule": "every week on Monday, Thursday", "anchor": "2026-01-05", "after": "2026-01-05", "next": "2026-01-08" },
+    { "rule": "every 2 weeks on Friday", "anchor": "2026-01-09", "after": "2026-01-09", "next": "2026-01-23" },
+    { "rule": "every 2 weeks on Monday, Friday", "anchor": "2026-01-05", "after": "2026-01-09", "next": "2026-01-19" },
+    { "rule": "every week on Sunday", "anchor": "2026-01-04", "after": "2026-01-04", "next": "2026-01-11" },
+    { "rule": "every month on the 31st", "anchor": "2026-01-31", "after": "2026-01-31", "next": "2026-02-28" },
+    { "rule": "every month", "anchor": "2026-01-31", "after": "2026-02-28", "next": "2026-03-31" },
+    { "rule": "every month on the last day", "anchor": "2026-02-28", "after": "2026-02-28", "next": "2026-03-31" },
+    { "rule": "every month on the last Friday", "anchor": "2026-01-30", "after": "2026-01-30", "next": "2026-02-27" },
+    { "rule": "every month on the 2nd Tuesday", "anchor": "2026-01-13", "after": "2026-01-13", "next": "2026-02-10" },
+    { "rule": "every 3 months on the 15th", "anchor": "2026-01-15", "after": "2026-01-15", "next": "2026-04-15" },
+    { "rule": "every year", "anchor": "2026-03-05", "after": "2026-03-05", "next": "2027-03-05" },
+    { "rule": "every year on February 29", "anchor": "2024-02-29", "after": "2024-02-29", "next": "2025-02-28" },
+    { "rule": "every day until 2026-01-06", "anchor": "2026-01-06", "after": "2026-01-06", "next": null }
+  ],
+  "roll": [
+    {
+      "name": "Daily with a deadline: due tomorrow at the same time, waits until tomorrow starts",
+      "rule": "every day", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-05T22:00:00Z",
+      "expect": { "done": false, "due": "2026-01-06T22:00:00Z", "scheduled": "2026-01-06T05:00:00Z", "rule": "every day" }
+    },
+    {
+      "name": "Mondays and Thursdays at 8:30: Thursday 8:30",
+      "rule": "every week on Monday, Thursday", "zone": "America/New_York", "now": "2026-01-05T14:00:00Z", "scheduled": "2026-01-05T13:30:00Z",
+      "expect": { "done": false, "scheduled": "2026-01-08T13:30:00Z", "rule": "every week on Monday, Thursday" }
+    },
+    {
+      "name": "Late: missed days are skipped, next is after today",
+      "rule": "every day", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-02T22:00:00Z",
+      "expect": { "done": false, "due": "2026-01-06T22:00:00Z", "scheduled": "2026-01-06T05:00:00Z", "rule": "every day" }
+    },
+    {
+      "name": "Early: done before Friday, next is the Friday after",
+      "rule": "every week", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-09T22:00:00Z",
+      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-16T05:00:00Z", "rule": "every week" }
+    },
+    {
+      "name": "When done: counted from today",
+      "rule": "every 3 days when done", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-02T22:00:00Z",
+      "expect": { "done": false, "due": "2026-01-08T22:00:00Z", "scheduled": "2026-01-08T05:00:00Z", "rule": "every 3 days when done" }
+    },
+    {
+      "name": "Clocks go forward: still 17:00 local",
+      "rule": "every day", "zone": "America/New_York", "now": "2026-03-07T15:00:00Z", "due": "2026-03-07T22:00:00Z",
+      "expect": { "done": false, "due": "2026-03-08T21:00:00Z", "scheduled": "2026-03-08T05:00:00Z", "rule": "every day" }
+    },
+    {
+      "name": "Waits two days before its deadline: still two days before, at the same time",
+      "rule": "every week", "zone": "America/New_York", "now": "2026-01-09T16:00:00Z", "due": "2026-01-09T22:00:00Z", "scheduled": "2026-01-07T14:00:00Z",
+      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-14T14:00:00Z", "rule": "every week" }
+    },
+    {
+      "name": "No dates yet: from today",
+      "rule": "every week on Monday", "zone": "America/New_York", "now": "2026-01-07T15:00:00Z",
+      "expect": { "done": false, "scheduled": "2026-01-12T05:00:00Z", "rule": "every week on Monday" }
+    },
+    {
+      "name": "Counted: one time fewer left",
+      "rule": "every day for 3 times", "zone": "UTC", "now": "2026-01-05T10:00:00Z",
+      "expect": { "done": false, "scheduled": "2026-01-06T00:00:00Z", "rule": "every day for 2 times" }
+    },
+    {
+      "name": "The last time: done for good",
+      "rule": "every day for 1 time", "zone": "UTC", "now": "2026-01-05T10:00:00Z",
+      "expect": { "done": true }
+    },
+    {
+      "name": "Past its end: done for good",
+      "rule": "every day until 2026-01-05", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-05T22:00:00Z",
+      "expect": { "done": true }
+    }
+  ]
+}

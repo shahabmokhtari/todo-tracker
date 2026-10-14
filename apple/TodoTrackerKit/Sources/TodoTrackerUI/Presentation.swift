@@ -18,8 +18,9 @@ public struct Chip: Hashable, Sendable {
 public enum Presentation {
     /// A task's title with its icon (an emoji, set in the other apps) in front.
     public static func titleWithIcon(_ item: WorkItem) -> String {
-        guard let icon = item.icon, !icon.isEmpty else { return item.title }
-        return "\(icon) \(item.title)"
+        let title = item.repeatRule == nil ? item.title : "\(item.title) 🔁"
+        guard let icon = item.icon, !icon.isEmpty else { return title }
+        return "\(icon) \(title)"
     }
 
     public static func chips(for entry: AgendaEntry, now: Date) -> [Chip] {

@@ -34,7 +34,7 @@ object BoardCodec {
 
     private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
     private val itemKeys = setOf(
-        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "deadline", "nextActionAt", "after", "sequential",
+        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
     )
 
@@ -118,6 +118,7 @@ object BoardCodec {
         i.archivedAt?.let { put("archivedAt", formatDate(it)) }
         i.icon?.let { put("icon", it) }
         i.color?.let { put("color", it) }
+        i.repeat?.let { put("repeat", it.toString()) }
         i.deadline?.let { put("deadline", formatDate(it)) }
         i.nextActionAt?.let { put("nextActionAt", formatDate(it)) }
         i.afterId?.let { put("after", it.toString()) }
@@ -166,6 +167,7 @@ object BoardCodec {
         item.archivedAt = if (parent == null) o.date("archivedAt") else null
         item.icon = o.string("icon")
         item.color = o.string("color")
+        item.repeat = Recurrence.parseOrNull(o.string("repeat"))
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")
         item.afterId = o.uuid("after")

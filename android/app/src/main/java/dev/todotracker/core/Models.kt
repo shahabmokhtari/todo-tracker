@@ -88,6 +88,8 @@ class WorkItem(
     var icon: String? = null
     /** The task's own color as #rrggbb (set in the other apps; kept here). */
     var color: String? = null
+    /** How it repeats: completing it moves it on to its next time instead of finishing it. */
+    var repeat: Recurrence? = null
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
 

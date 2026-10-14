@@ -104,6 +104,7 @@ public static class BoardSerializer
         ArchivedAt = item.ArchivedAt,
         Icon = item.Icon,
         Color = item.Color,
+        Repeat = item.Repeat?.ToString(),
         Time = item.TimeEntries.Count == 0 ? null : item.TimeEntries.Select(e => new TimeEntryDocument { Id = e.Id, Start = e.Start, End = e.End, Source = e.Source, Device = e.Device }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
@@ -172,6 +173,7 @@ public static class BoardSerializer
             ArchivedAt = parent is null ? doc.ArchivedAt : null,
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, doc.Icon),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, doc.Color),
+            Repeat = TaskBoard.ReadRepeat(doc.Repeat),
         };
         foreach (var e in doc.Time ?? [])
         {
@@ -288,6 +290,8 @@ public static class BoardSerializer
         public string? Icon { get; set; }
 
         public string? Color { get; set; }
+
+        public string? Repeat { get; set; }
 
         public List<TimeEntryDocument>? Time { get; set; }
 

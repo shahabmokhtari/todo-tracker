@@ -52,7 +52,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         [Description("ISO-8601 deadline.")] DateTimeOffset? deadline = null,
         [Description("Defer the task (and remind) this many minutes from now.")] int? deferMinutes = null,
         [Description("Free-form tags without '#', e.g. ['release', 'infra/k8s'].")] string[]? tags = null,
-        [Description("Curated labels, e.g. ['Deep work']. Unknown labels are created.")] string[]? labels = null) =>
+        [Description("Curated labels, e.g. ['Deep work']. Unknown labels are created.")] string[]? labels = null,
+        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Completing it then moves it to its next time.")] string? repeat = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var item = b.AddTask(
@@ -65,6 +66,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
                     Deadline = deadline,
                     Tags = tags,
                     Labels = labels,
+                    Repeat = repeat,
                 },
                 actor,
                 now);
@@ -127,7 +129,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "complete_task", Idempotent = true), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step.")]
+    [McpServerTool(Name = "complete_task", Idempotent = true), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that).")]
     public Task<ItemDto> CompleteTask(McpServer server, string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
@@ -145,7 +147,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon or color (tags/labels replace the current ones when given; an empty icon or color removes it).")]
+    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it).")]
     public Task<ItemDto> UpdateTask(
         McpServer server,
         string taskId,
@@ -156,7 +158,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         string[]? tags = null,
         string[]? labels = null,
         [Description("An emoji shown before the title, e.g. 🚀; empty removes it.")] string? icon = null,
-        [Description("A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then).")] string? color = null) =>
+        [Description("A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then).")] string? color = null,
+        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Empty: stops repeating.")] string? repeat = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -170,6 +173,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
                 ClearIcon = icon is not null && string.IsNullOrWhiteSpace(icon),
                 Color = string.IsNullOrWhiteSpace(color) ? null : color,
                 ClearColor = color is not null && string.IsNullOrWhiteSpace(color),
+                Repeat = string.IsNullOrWhiteSpace(repeat) ? null : repeat,
+                ClearRepeat = repeat is not null && string.IsNullOrWhiteSpace(repeat),
             }, actor, now);
             if (tags is not null)
             {

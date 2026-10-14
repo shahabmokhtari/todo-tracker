@@ -210,6 +210,24 @@ public class TaskMarkdownTests
     }
 
     [Fact]
+    public void A_repeat_rule_is_kept_in_the_file_on_a_task_and_a_subtask_and_bad_ones_left_out()
+    {
+        var board = new TaskBoard();
+        var root = board.AddTask(new NewTask("Chores") { Repeat = "every week on mon, thu" }, Actor.User, Now);
+        var step = board.AddTask(new NewTask("Bins out") { ParentId = root.Id, Repeat = "every 2 weeks on Tuesday" }, Actor.User, Now);
+
+        var written = TaskMarkdown.Render(root, Utc);
+        var reread = TaskMarkdown.Parse(written, "Chores", Utc).Root;
+
+        Assert.Contains("repeat: every week on Monday, Thursday\n", written, StringComparison.Ordinal);
+        Assert.Equal("every week on Monday, Thursday", reread.Repeat?.ToString());
+        Assert.Equal("every 2 weeks on Tuesday", reread.Children.Single(c => c.Id == step.Id).Repeat?.ToString());
+
+        Assert.Equal("every weekday", TaskMarkdown.Parse("---\nrepeat: Every weekday\n---\n# Stand-up\n", "Stand-up", Utc).Root.Repeat?.ToString());
+        Assert.Null(TaskMarkdown.Parse("---\nrepeat: whenever\n---\n# Stand-up\n", "Stand-up", Utc).Root.Repeat);
+    }
+
+    [Fact]
     public void An_icon_and_color_typed_in_obsidian_are_read_and_bad_ones_left_out()
     {
         var parsed = TaskMarkdown.Parse("---\nicon: 🧾\ncolor: \"#3B82F6\"\n---\n# Taxes\n", "Taxes", Utc);

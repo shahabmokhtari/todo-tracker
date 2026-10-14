@@ -85,9 +85,9 @@ public static partial class TaskMarkdown
     private const string Time = "time";
 
     /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
-    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color"];
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color", "repeat"];
 
-    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "repeat", "tags", "labels", "reminders"];
 
     /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
     internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
@@ -276,6 +276,7 @@ public static partial class TaskMarkdown
         root.Stage = ParseStage(fm.Scalar("board"));
         root.Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, fm.Scalar("icon"));
         root.Color = TaskBoard.Lenient(TaskBoard.CleanColor, fm.Scalar("color"));
+        root.Repeat = TaskBoard.ReadRepeat(fm.Scalar("repeat"));
         root.TagList.AddRange(TaskBoard.ReadTags(fm.List("tags")));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
@@ -623,6 +624,7 @@ public static partial class TaskMarkdown
             StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, Str(meta, "icon")),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, Str(meta, "color")),
+            Repeat = TaskBoard.ReadRepeat(Str(meta, "repeat")),
         };
         if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
         {
@@ -1044,6 +1046,7 @@ public static partial class TaskMarkdown
         ["after"] = root.AfterId?.ToString() ?? string.Empty,
         ["sequential"] = root.Sequential ? "true" : "false",
         ["step-delay"] = root.StepDelay is { } s ? ((long)s.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
+        ["repeat"] = root.Repeat?.ToString() ?? string.Empty,
         ["tags"] = string.Join('\u001f', root.Tags),
         ["labels"] = string.Join('\u001f', root.Labels),
         ["reminders"] = string.Join('\u001e', root.Reminders.Select(r => $"{r.Id}|{VaultText.Utc(r.DueAt)}|{r.Message}|{r.Kind}|{r.NotifiedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{r.DismissedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}")),
@@ -1121,6 +1124,8 @@ public static partial class TaskMarkdown
                 return root.Sequential ? "sequential: true\n" : null;
             case "step-delay":
                 return root.StepDelay is { } s ? $"step-delay: {VaultText.Duration(s)}\n" : null;
+            case "repeat":
+                return root.Repeat is { } repeat ? $"repeat: {repeat}\n" : null;
             case "tags":
                 return List("tags", root.Tags);
             case "labels":
@@ -1353,6 +1358,11 @@ public static partial class TaskMarkdown
         if (item.Color is { } color)
         {
             meta["color"] = color;
+        }
+
+        if (item.Repeat is { } repeat)
+        {
+            meta["repeat"] = repeat.ToString();
         }
 
         if (item.Labels.Count > 0)

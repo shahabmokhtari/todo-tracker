@@ -692,3 +692,43 @@ test('Look: a task gets an icon and a color from its details, cards show them, a
   await expect.poll(async () => (await (await request.get('/api/labels', { headers: auth })).json()).find((l) => l.name === 'Writing')?.color).toBe('#ec4899');
   expect(errors).toEqual([]);
 });
+
+test('Repeat: a task set to repeat from its details moves on when done, counts as done today, and can be put back', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const task = await add(request, 'Water the plants');
+  await open(page, request);
+  await page.evaluate((id) => { location.hash = `#/task/${id}`; }, task.id);
+  const drawer = page.locator('#drawer');
+  await expect(drawer.locator('.title-input')).toHaveValue('Water the plants');
+
+  // A rule that isn't understood says why and isn't saved.
+  const rule = drawer.getByRole('combobox', { name: 'Repeat' });
+  await rule.fill('now and then');
+  await rule.press('Enter');
+  await expect.poll(() => rule.evaluate((el) => el.validationMessage)).toContain('every weekday');
+  expect((await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).repeat ?? null).toBeNull();
+
+  await rule.fill('Every 2 days');
+  await rule.press('Enter');
+  await expect(drawer.getByRole('combobox', { name: 'Repeat' })).toHaveValue('every 2 days');
+  await page.keyboard.press('Escape');
+
+  // The card shows it repeats; done moves it on (it waits for its next time) and it shows in Done today.
+  const card = page.locator('#sec-now .item', { hasText: 'Water the plants' }).or(page.locator('.focus-card', { hasText: 'Water the plants' })).first();
+  await expect(card).toContainText('🔁');
+  await request.post(`/api/items/${task.id}/complete`, { headers: auth });
+  await page.reload();
+  const done = page.locator('#sec-done');
+  const row = done.locator('.done-row', { hasText: 'Water the plants' });
+  await expect(row).toBeVisible();
+  const moved = await (await request.get(`/api/items/${task.id}`, { headers: auth })).json();
+  expect(moved.completedAt).toBeNull();
+  expect(new Date(moved.nextActionAt).getTime()).toBeGreaterThan(Date.now());
+
+  // Not done after all: back now.
+  await row.hover();
+  await row.getByRole('button', { name: 'Reopen Water the plants' }).click();
+  await expect(done.locator('.done-row', { hasText: 'Water the plants' })).toHaveCount(0);
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).nextActionAt ?? null).toBeNull();
+  expect(errors).toEqual([]);
+});

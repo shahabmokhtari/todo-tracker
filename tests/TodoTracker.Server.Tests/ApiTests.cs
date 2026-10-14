@@ -291,6 +291,26 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_repeating_task_moves_on_when_done_and_its_rule_can_change()
+    {
+        var bad = await _client.PostAsJsonAsync("/api/items", new { title = "Plants", repeat = "now and then" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var item = await _client.PostJson("/api/items", new { title = "Plants", repeat = "every 3 days", deadline = ServerFixture.T0.AddHours(2) });
+        Assert.Equal("every 3 days", item["repeat"]!.GetValue<string>());
+
+        var done = await _client.PostJson($"/api/items/{item.Id()}/complete", new { });
+        Assert.Null(done["completedAt"]);
+        Assert.True(done["deadline"]!.GetValue<DateTimeOffset>() > ServerFixture.T0.AddDays(2));
+        Assert.Equal(item.Id(), (await Dashboard())["doneToday"]![0]!["id"]!.GetValue<string>());
+
+        var weekly = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { repeat = "weekly" })).Json();
+        Assert.Equal("every week", weekly["repeat"]!.GetValue<string>());
+        var stopped = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { repeat = "" })).Json();
+        Assert.Null(stopped["repeat"]);
+    }
+
+    [Fact]
     public async Task Patch_can_clear_step_delay_and_rejects_zero()
     {
         var item = await _client.PostJson("/api/items", new { title = "Rollout", sequential = true, stepDelayMinutes = 60 });

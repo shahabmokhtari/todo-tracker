@@ -903,7 +903,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                 i.Id,
                 i.Title,
                 i.Parent is null ? null : string.Join(" › ", i.Path.SkipLast(1)),
-                TimeZoneInfo.ConvertTime(i.CompletedAt!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList());
+                TimeZoneInfo.ConvertTime(Agenda.DoneAt(board, i)!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList());
     }
 
     private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)
@@ -999,6 +999,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         if (item.Deadline is { } deadline)
         {
             chips.Add(e.IsOverdue ? new($"overdue {RelativeTime.Format(deadline, now)}", "danger") : new($"due {RelativeTime.Format(deadline, now)}", "warn"));
+        }
+
+        if (item.Repeat is { } repeat)
+        {
+            chips.Add(new($"🔁 {repeat}", "muted"));
         }
 
         if (item.Notes.Count > 0)

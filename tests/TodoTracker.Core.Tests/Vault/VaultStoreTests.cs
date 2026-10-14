@@ -277,6 +277,31 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Checking_a_repeating_task_in_obsidian_moves_it_to_its_next_time()
+    {
+        var store = Open();
+        var water = await store.UpdateAsync(b => b.AddTask(new NewTask("Water plants") { Repeat = "every day", Deadline = T0.AddHours(8) }, Actor.User, T0));
+        var file = P("Work", "Water plants.md");
+        Assert.Contains("repeat: every day", await File.ReadAllTextAsync(file), StringComparison.Ordinal);
+
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("status: open", "status: done", StringComparison.Ordinal));
+        _time.Advance(TimeSpan.FromMinutes(5));
+        store.MarkDirty();
+
+        var (done, due, entry) = await store.ReadAsync(b => (b.Get(water.Id).IsDone, b.Get(water.Id).Deadline, b.Activity.Last(a => a.ItemId == water.Id)));
+        Assert.False(done);
+        Assert.Equal(T0.AddDays(1).AddHours(8), due);
+        Assert.Equal((ActivityKind.Completed, ActorKind.Vault), (entry.Kind, entry.Actor.Kind));
+        var text = await File.ReadAllTextAsync(file);
+        Assert.Contains("status: open", text, StringComparison.Ordinal);
+        Assert.Contains("due: 2026-01-06T17:00", text, StringComparison.Ordinal);
+
+        // Read again (another process, or the next start): it stays moved on, not completed a second time.
+        store.MarkDirty();
+        Assert.Equal(1, await store.ReadAsync(b => b.Activity.Count(a => a.ItemId == water.Id && a.Kind == ActivityKind.Completed)));
+    }
+
+    [Fact]
     public async Task Checking_a_box_in_obsidian_brings_back_what_waits_for_it_with_a_reminder()
     {
         var store = Open();

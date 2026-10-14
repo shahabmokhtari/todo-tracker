@@ -2,6 +2,10 @@ package dev.todotracker.core
 
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.UUID
 
 /**
@@ -99,6 +103,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         val item = get(id)
         if (item.isDone) return
         findBlockingStep(item)?.let { throw BoardException("Finish \"${it.title}\" before \"${item.title}\".") }
+        if (tryRollForward(item, actor, now)) {
+            // What waited for this time of it comes back.
+            releaseWaiters(now, finished = item.id)
+            return
+        }
         for (d in item.selfAndDescendants) if (!d.isDone) d.completedAt = now
         stopTimers(item.selfAndDescendants, now)
         log(now, id, "completed", "Completed \"${item.title}\"", actor)
@@ -129,11 +138,12 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     }
 
     /** Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why. */
-    private fun releaseWaiters(now: Instant, deleted: Map<UUID, String> = emptyMap()) {
+    private fun releaseWaiters(now: Instant, deleted: Map<UUID, String> = emptyMap(), finished: UUID? = null) {
         for (waiter in allItems) {
             val afterId = waiter.afterId ?: continue
             val other = index[afterId]
             val why = when {
+                other != null && afterId == finished -> "\"${other.title}\" is done"
                 // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
                 other == null -> deleted[afterId]?.let { "\"$it\" was deleted" } ?: continue
                 other.isDone -> "\"${other.title}\" is done"
@@ -149,7 +159,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
     fun reopen(id: UUID, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
-        val completedAt = item.completedAt ?: return
+        val completedAt = item.completedAt
+        if (completedAt == null) {
+            if (wasRolledForward(item)) undoRollForward(item, actor, now)
+            return
+        }
         item.completedAt = null
         val reopened = mutableListOf(item)
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
@@ -404,6 +418,74 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
     private fun log(at: Instant, itemId: UUID, kind: String, summary: String, actor: Actor) {
         activity.add(ActivityEntry(at, itemId, kind, summary, actor))
+    }
+
+    // ---- Repeating tasks (same rules as TodoTracker.Core.TaskBoard.Repeat.cs) ------------------------------------
+
+    /** Where the user lives: a repeating task's next time is a calendar day there. */
+    var zone: ZoneId = ZoneId.systemDefault()
+
+    /**
+     * Done with this time of a repeating task: it moves on to its next time instead of finishing (deadline to that day
+     * at the same time; it waits until then, the same days before the deadline and at the same time as it waited
+     * before, else from the start of that day), its subtasks open again and this time's reminders and timer end.
+     * False when it doesn't repeat (any more): then it's simply done.
+     */
+    private fun tryRollForward(item: WorkItem, actor: Actor, now: Instant): Boolean {
+        val rule = item.repeat ?: return false
+        if (rule.count == 1) return false
+        val today = now.atZone(zone).toLocalDate()
+        val scheduled = item.deadline ?: item.nextActionAt
+        val anchor = if (rule.whenDone || scheduled == null) today else scheduled.atZone(zone).toLocalDate()
+        val next = rule.next(anchor, if (anchor.isAfter(today)) anchor else today) ?: return false
+
+        val waitedUntil = item.nextActionAt
+        val reminded = waitedUntil != null && item.reminders.any { it.kind == ReminderKind.NEXT_ACTION && it.dueAt == waitedUntil }
+        val due = item.deadline
+        val lead = if (due != null && waitedUntil != null) {
+            maxOf(0L, due.atZone(zone).toLocalDate().toEpochDay() - waitedUntil.atZone(zone).toLocalDate().toEpochDay())
+        } else {
+            0L
+        }
+        if (due != null) item.deadline = ZonedDateTime.of(next, due.atZone(zone).toLocalTime(), zone).toInstant()
+        val back = if (waitedUntil != null) {
+            ZonedDateTime.of(next.minusDays(lead), waitedUntil.atZone(zone).toLocalTime(), zone).toInstant()
+        } else {
+            next.atStartOfDay(zone).toInstant()
+        }
+        item.nextActionAt = back
+        item.afterId = null
+        dismissPendingScheduleReminders(item, now)
+        for (r in item.reminders) if (r.dismissedAt == null && r.dueAt.isBefore(back)) r.dismissedAt = now
+        if (reminded && back.isAfter(now)) item.reminders.add(Reminder(dueAt = back, message = defaultReminderMessage(item), kind = ReminderKind.NEXT_ACTION))
+        for (d in item.selfAndDescendants.drop(1)) d.completedAt = null
+        stopTimers(item.selfAndDescendants, now)
+        // Doing ends with this time of it (the board column other apps show; kept as they wrote it).
+        if (item.parent == null && (item.extra?.get("stage") as? kotlinx.serialization.json.JsonPrimitive)?.content == "doing") {
+            item.extra = kotlinx.serialization.json.JsonObject(item.extra!! - "stage")
+        }
+        item.repeat = rule.countedDown()
+        log(now, item.id, "completed", "Completed \"${item.title}\" (repeats: next ${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
+        return true
+    }
+
+    /** Whether this repeating task's last change was moving on to its next time (so "not done after all" can undo it). */
+    fun wasRolledForward(item: WorkItem): Boolean =
+        item.repeat != null && !item.isDone &&
+            activity.lastOrNull { it.itemId == item.id && (it.kind == "completed" || it.kind == "reopened") }?.kind == "completed"
+
+    /** "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now. */
+    private fun undoRollForward(item: WorkItem, actor: Actor, now: Instant) {
+        val rule = item.repeat ?: return
+        val due = item.deadline
+        if (due != null) {
+            val day = due.atZone(zone).toLocalDate()
+            rule.previous(day, day)?.let { item.deadline = ZonedDateTime.of(it, due.atZone(zone).toLocalTime(), zone).toInstant() }
+        }
+        bringBack(item, now)
+        item.nextActionAt = null
+        item.repeat = rule.countedUp()
+        log(now, item.id, "reopened", "Reopened \"${item.title}\" (not done after all)", actor)
     }
 
     companion object {

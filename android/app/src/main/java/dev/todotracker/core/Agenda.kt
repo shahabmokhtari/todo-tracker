@@ -53,14 +53,24 @@ object Agenda {
         // Finished by itself (its own "completed" entry), not closed along with its parent: the last step of an
         // in-order task counts though it finishes the task at the same moment.
         val own = board.activity.filter { it.kind == "completed" && !it.at.isBefore(start) }.map { it.itemId to it.at }.toSet()
-        return board.allItems
+        val finished = board.allItems
             .filter { item ->
                 val at = item.completedAt ?: return@filter false
                 !at.isBefore(start) && !at.isAfter(now) && !item.isArchived && (groupId == null || item.groupId == groupId) &&
                     (item.parent?.completedAt != at || (item.id to at) in own)
             }
-            .sortedByDescending { it.completedAt }
+            .map { it to it.completedAt!! }
+        // A repeating task done today has moved on to its next time (open again): its "completed" entry tells.
+        val moved = board.allItems
+            .filter { !it.isArchived && board.wasRolledForward(it) && (groupId == null || it.groupId == groupId) }
+            .mapNotNull { item -> doneAt(board, item)?.let { item to it } }
+            .filter { (_, at) -> !at.isBefore(start) && !at.isAfter(now) }
+        return (finished + moved).sortedByDescending { it.second }.map { it.first }
     }
+
+    /** When it was done: when it was finished, or for a repeating task that moved on, when its last time was done. */
+    fun doneAt(board: TaskBoard, item: WorkItem): Instant? =
+        item.completedAt ?: if (board.wasRolledForward(item)) board.activity.lastOrNull { it.itemId == item.id && it.kind == "completed" }?.at else null
 
     /** A line to feel good about what got done today (null until something is done); the other apps say the same. */
     fun cheer(count: Int): String? = when {

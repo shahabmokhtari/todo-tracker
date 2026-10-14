@@ -23,7 +23,8 @@ public sealed record CreateItemRequest(
     IReadOnlyList<string>? Labels = null,
     string? Stage = null,
     string? Icon = null,
-    string? Color = null);
+    string? Color = null,
+    string? Repeat = null);
 
 public sealed record PatchItemRequest(
     string? Title = null,
@@ -39,7 +40,9 @@ public sealed record PatchItemRequest(
     /// <summary>An emoji; "" removes it.</summary>
     string? Icon = null,
     /// <summary>#rrggbb; "" removes it.</summary>
-    string? Color = null);
+    string? Color = null,
+    /// <summary>A repeat rule ("every weekday"); "" stops it repeating.</summary>
+    string? Repeat = null);
 
 public sealed record StepsRequest(IReadOnlyList<string>? Titles, int? StepDelayMinutes = null);
 
@@ -183,6 +186,7 @@ internal static class ApiEndpoints
                         Stage = request.Stage is null ? null : BoardTimeEndpoints.ParseStage(request.Stage),
                         Icon = request.Icon,
                         Color = request.Color,
+                        Repeat = request.Repeat,
                     },
                     actor,
                     now);
@@ -231,6 +235,8 @@ internal static class ApiEndpoints
                         ClearIcon = request.Icon is not null && string.IsNullOrWhiteSpace(request.Icon),
                         Color = string.IsNullOrWhiteSpace(request.Color) ? null : request.Color,
                         ClearColor = request.Color is not null && string.IsNullOrWhiteSpace(request.Color),
+                        Repeat = string.IsNullOrWhiteSpace(request.Repeat) ? null : request.Repeat,
+                        ClearRepeat = request.Repeat is not null && string.IsNullOrWhiteSpace(request.Repeat),
                     },
                     actor,
                     now);

@@ -84,6 +84,9 @@ public sealed class WorkItem
     /// <summary>The task's own color (<c>#rrggbb</c>); null: its first label's color (or none).</summary>
     public string? Color { get; internal set; }
 
+    /// <summary>How it repeats: completing it moves it on to its next time instead of finishing it. Null: it doesn't.</summary>
+    public Recurrence? Repeat { get; internal set; }
+
     /// <summary>Put away (a finished top-level task): kept, searchable with <c>is:archived</c>, out of every list.</summary>
     public DateTimeOffset? ArchivedAt { get; internal set; }
 
@@ -152,6 +155,9 @@ public sealed record NewTask(string Title)
     public string? Icon { get; init; }
 
     public string? Color { get; init; }
+
+    /// <summary>A repeat rule (<see cref="Recurrence"/>), e.g. "every weekday".</summary>
+    public string? Repeat { get; init; }
 }
 
 public sealed record TaskChanges
@@ -179,4 +185,8 @@ public sealed record TaskChanges
     public string? Color { get; init; }
 
     public bool ClearColor { get; init; }
+
+    public string? Repeat { get; init; }
+
+    public bool ClearRepeat { get; init; }
 }

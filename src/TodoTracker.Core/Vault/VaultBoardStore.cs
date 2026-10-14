@@ -569,6 +569,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         var board = TaskBoard.CreateEmpty();
+        board.TimeZone = _options.TimeZone;
         var groupFolders = new Dictionary<Guid, string>();
         foreach (var (id, folder, color) in groups)
         {
@@ -722,9 +723,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     continue;
                 }
 
+                var rolled = false;
                 if (item.IsDone)
                 {
-                    _board.CompleteExternally(item, actor, now);
+                    rolled = _board.CompleteExternally(item, actor, now, _caches.Blocked);
                 }
                 else
                 {
@@ -733,7 +735,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     _board.LogExternal(item.Id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor, now);
                 }
 
-                lastToggle[item.Id] = item.IsDone ? ActivityKind.Completed : ActivityKind.Reopened;
+                lastToggle[item.Id] = item.IsDone || rolled ? ActivityKind.Completed : ActivityKind.Reopened;
                 changed = true;
             }
 

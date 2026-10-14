@@ -95,10 +95,11 @@ test('metaChips turn card facts into short, toned chips', () => {
     { text: '2 notes', tone: 'muted' },
   ]);
 
-  const waiting = metaChips({ wakeAt: '2026-01-06T09:00:00Z', deadline: '2026-01-07T09:00:00Z', noteCount: 1 }, { waiting: true, now });
+  const waiting = metaChips({ wakeAt: '2026-01-06T09:00:00Z', deadline: '2026-01-07T09:00:00Z', noteCount: 1, repeat: 'every weekday' }, { waiting: true, now });
   assert.deepEqual(waiting, [
     { text: 'back in 1d', tone: 'info' },
     { text: 'due in 2d', tone: 'warn' },
+    { text: '🔁 every weekday', tone: 'muted' },
     { text: '1 note', tone: 'muted' },
   ]);
 });
