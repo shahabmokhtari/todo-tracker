@@ -114,7 +114,9 @@ ordered by wake time, then priority.
 **Sequences.** Completing step *n* sets step *n+1*'s gate to `completedAt + stepDelay`, or keeps an existing later
 gate. Completing a locked step, or anything under one, is rejected with "Finish X first". Completing the last step
 completes the sequence. Completing a parent completes all of its open descendants, and the UIs ask first. Reopening
-that parent reopens exactly the children that action closed. Reopening a child reopens its ancestors.
+that parent reopens exactly the children that action closed. Reopening a child reopens its ancestors. A reopened task
+is back in **Do now**: a snooze or "after another task" wait set before it was done is cleared (and its reminder
+dismissed), so Reopen never seems to do nothing.
 
 **Snooze / schedule.** Sets `nextActionAt` and (default) adds a `nextAction` reminder at that time. Rescheduling
 dismisses the previous undelivered schedule reminder and any reminder that is already due (even if delivered), so "Later" on a ringing reminder really moves the task to *Waiting* and reminders never stack.

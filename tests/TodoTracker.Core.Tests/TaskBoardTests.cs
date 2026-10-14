@@ -221,6 +221,74 @@ public class TaskBoardTests
     }
 
     [Fact]
+    public void Reopening_brings_the_task_back_now_even_if_it_was_snoozed_or_waiting_before_it_was_done()
+    {
+        // Reported bug: snoozed, then completed, then reopened: it stayed under Later until the snooze ended, so
+        // "Reopen" seemed to do nothing. Reopening means "I want to do this again": it's back in Do now.
+        var snoozed = _board.AddTask(new NewTask("Enable distributed mode"), Actor.User, T0);
+        _board.ScheduleNextAction(snoozed.Id, T0.AddDays(2), Actor.User, T0, notify: true);
+        var first = _board.AddTask(new NewTask("Get access"), Actor.User, T0);
+        var waiting = _board.AddTask(new NewTask("Deploy"), Actor.User, T0);
+        _board.WaitFor(waiting.Id, first.Id, Actor.User, T0);
+        _board.Complete(snoozed.Id, Actor.User, T0.AddMinutes(1));
+        _board.Complete(waiting.Id, Actor.User, T0.AddMinutes(1));
+
+        _board.Reopen(snoozed.Id, Actor.User, T0.AddMinutes(2));
+        _board.Reopen(waiting.Id, Actor.User, T0.AddMinutes(2));
+
+        Assert.Null(snoozed.NextActionAt);
+        Assert.Null(waiting.AfterId);
+        Assert.Equal(ItemState.Actionable, Agenda.StateOf(snoozed, T0.AddMinutes(2)));
+        Assert.Equal(ItemState.Actionable, Agenda.StateOf(waiting, T0.AddMinutes(2)));
+
+        // The snooze's reminder won't nag about a task that's already back.
+        Assert.All(snoozed.Reminders.Where(r => r.Kind == ReminderKind.NextAction), r => Assert.NotNull(r.DismissedAt));
+    }
+
+    [Fact]
+    public void Reopening_a_subtask_does_not_clear_its_own_snooze_from_the_parent()
+    {
+        // Only the reopened task comes back: a parent that wasn't done keeps a snooze the user set on it.
+        var parent = _board.AddTask(new NewTask("Release"), Actor.User, T0);
+        var step = _board.AddTask(new NewTask("Ring 0") { ParentId = parent.Id }, Actor.User, T0);
+        _board.Complete(step.Id, Actor.User, T0);
+        _board.ScheduleNextAction(parent.Id, T0.AddDays(1), Actor.User, T0);
+
+        _board.Reopen(step.Id, Actor.User, T0.AddMinutes(1));
+
+        Assert.Equal(T0.AddDays(1), parent.NextActionAt);
+    }
+
+    [Fact]
+    public void Reopening_a_subtask_of_a_snoozed_parent_that_was_done_brings_both_back()
+    {
+        // Review finding: the parent, reopened along with it, kept its snooze, which hides its subtasks too.
+        var parent = _board.AddTask(new NewTask("Release"), Actor.User, T0);
+        var step = _board.AddTask(new NewTask("Ring 0") { ParentId = parent.Id }, Actor.User, T0);
+        _board.ScheduleNextAction(parent.Id, T0.AddDays(1), Actor.User, T0);
+        _board.Complete(parent.Id, Actor.User, T0.AddMinutes(1));
+
+        _board.Reopen(step.Id, Actor.User, T0.AddMinutes(2));
+
+        Assert.Null(parent.NextActionAt);
+        Assert.Equal(ItemState.Actionable, Agenda.StateOf(step, T0.AddMinutes(2)));
+    }
+
+    [Fact]
+    public void Reopening_keeps_a_due_reminder_set_by_hand_when_an_old_snooze_had_already_ended()
+    {
+        // Review finding: an expired snooze still counted as "hidden", and its clean-up dismissed due manual reminders.
+        var item = _board.AddTask(new NewTask("Call back"), Actor.User, T0);
+        _board.ScheduleNextAction(item.Id, T0.AddHours(1), Actor.User, T0);
+        var manual = _board.AddReminder(item.Id, T0.AddHours(3), "Call at 3", Actor.User, T0);
+        _board.Complete(item.Id, Actor.User, T0.AddHours(2));
+
+        _board.Reopen(item.Id, Actor.User, T0.AddHours(4));
+
+        Assert.Null(_board.Get(item.Id).Reminders.Single(r => r.Id == manual.Id).DismissedAt);
+    }
+
+    [Fact]
     public void Step_delay_must_be_at_least_a_minute()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

@@ -114,6 +114,33 @@ final class TaskBoardTests: XCTestCase {
         XCTAssertFalse(parent.isDone)
     }
 
+    func testReopeningBringsBackATaskSnoozedOrWaitingBeforeItWasDone() throws {
+        // Reported bug: snoozed, completed, reopened: it stayed under Later, so Reopen seemed to do nothing.
+        let board = TaskBoard()
+        let snoozed = try board.addTask(NewTask("Enable distributed mode"), now: t0)
+        try board.scheduleNextAction(snoozed.id, at: t0.addingTimeInterval(2 * 86_400), notify: true, now: t0)
+        let first = try board.addTask(NewTask("Get access"), now: t0)
+        let waiting = try board.addTask(NewTask("Deploy"), now: t0)
+        try board.waitFor(waiting.id, after: first.id, now: t0)
+        try board.complete(snoozed.id, now: t0.addingTimeInterval(60))
+        try board.complete(waiting.id, now: t0.addingTimeInterval(60))
+
+        try board.reopen(snoozed.id, now: t0.addingTimeInterval(120))
+        try board.reopen(waiting.id, now: t0.addingTimeInterval(120))
+
+        XCTAssertNil(snoozed.nextActionAt)
+        XCTAssertNil(waiting.afterId)
+        XCTAssertTrue(snoozed.reminders.filter { $0.kind == .nextAction }.allSatisfy { $0.dismissedAt != nil })
+
+        // A parent reopened along with its subtask comes back too (its snooze would hide the subtask).
+        let parent = try board.addTask(NewTask("Release"), now: t0)
+        let step = try board.addTask(NewTask("Ring 0", parentId: parent.id), now: t0)
+        try board.scheduleNextAction(parent.id, at: t0.addingTimeInterval(86_400), now: t0)
+        try board.complete(parent.id, now: t0.addingTimeInterval(60))
+        try board.reopen(step.id, now: t0.addingTimeInterval(120))
+        XCTAssertNil(parent.nextActionAt)
+    }
+
     func testDeleteRemovesSubtree() throws {
         let board = TaskBoard()
         let parent = try board.addTask(NewTask("X"), now: t0)

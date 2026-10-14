@@ -182,10 +182,25 @@ public final class TaskBoard {
         let item = try get(id)
         guard let completedAt = item.completedAt else { return }
         item.completedAt = nil
+        var reopened = [item]
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
-        for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil }
-        for a in item.ancestors where a.isDone { a.completedAt = nil }
+        for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil; reopened.append(d) }
+        for a in item.ancestors where a.isDone { a.completedAt = nil; reopened.append(a) }
+        for back in reopened { bringBack(back, now: now) }
         log(now, id, "reopened", "Reopened \"\(item.title)\"", actor)
+    }
+
+    /// Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it was
+    /// done (it looked as if Reopen did nothing). Only a snooze or wait still in effect is cleared, with its pending
+    /// snooze reminder; reminders set by hand stay.
+    private func bringBack(_ item: WorkItem, now: Date) {
+        let snoozed = item.nextActionAt.map { $0 > now } ?? false
+        guard snoozed || item.afterId != nil else { return }
+        let hidden = snoozed || item.waitingFor != nil
+        item.nextActionAt = nil
+        item.afterId = nil
+        guard hidden else { return }
+        for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil { r.dismissedAt = now }
     }
 
     /// Defers the item until `at`; with `notify`, a reminder fires at that time.

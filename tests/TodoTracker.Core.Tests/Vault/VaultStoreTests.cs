@@ -232,6 +232,28 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Unchecking_a_snoozed_task_in_obsidian_brings_it_back_now()
+    {
+        // Review finding: reopening by editing the file kept the snooze set before it was done (hidden under Later).
+        var store = Open();
+        var item = await Add(store, "Enable distributed mode");
+        await store.UpdateAsync(b =>
+        {
+            b.ScheduleNextAction(item.Id, T0.AddDays(2), Actor.User, T0, notify: true);
+            b.Complete(item.Id, Actor.User, T0);
+        });
+        var file = P("Work", "Enable distributed mode.md");
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("status: done", "status: open", StringComparison.Ordinal));
+        _time.Advance(TimeSpan.FromMinutes(5));
+        store.MarkDirty();
+
+        var (done, next) = await store.ReadAsync(b => (b.Get(item.Id).IsDone, b.Get(item.Id).NextActionAt));
+        Assert.False(done);
+        Assert.Null(next);
+        Assert.DoesNotContain("scheduled:", await File.ReadAllTextAsync(file), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Checking_a_step_in_obsidian_completes_it_unlocks_the_next_and_logs_the_edit()
     {
         var store = Open();

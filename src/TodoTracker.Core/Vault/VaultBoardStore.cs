@@ -728,6 +728,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 }
                 else
                 {
+                    // Like Reopen in the app: back in Do now, not hidden behind a snooze set before it was done.
+                    TaskBoard.BringBack(item, now);
                     _board.LogExternal(item.Id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor, now);
                 }
 

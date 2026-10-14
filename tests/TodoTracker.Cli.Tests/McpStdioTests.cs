@@ -53,9 +53,22 @@ public sealed class McpStdioTests : IDisposable
         await using var client = await Connect();
         await _tt.Ok("add", "Added from the terminal");
 
-        var result = await client.CallToolAsync("search_tasks", new Dictionary<string, object?> { ["query"] = "terminal" }, cancellationToken: TestContext.Current.CancellationToken);
+        // Not caused by the reopen change (failed once on PR #29's Windows CI, "[]"): the running server notices the
+        // new file through the file system's change notifications, which can arrive a moment after `tt add` returns.
+        // "Visible" means shortly after, so the search is retried for a few seconds.
+        var text = string.Empty;
+        for (var attempt = 0; attempt < 20 && !text.Contains("Added from the terminal", StringComparison.Ordinal); attempt++)
+        {
+            if (attempt > 0)
+            {
+                await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
 
-        Assert.Contains("Added from the terminal", ((TextContentBlock)result.Content[0]).Text, StringComparison.Ordinal);
+            var result = await client.CallToolAsync("search_tasks", new Dictionary<string, object?> { ["query"] = "terminal" }, cancellationToken: TestContext.Current.CancellationToken);
+            text = ((TextContentBlock)result.Content[0]).Text;
+        }
+
+        Assert.Contains("Added from the terminal", text, StringComparison.Ordinal);
     }
 
     private async Task<McpClient> Connect()

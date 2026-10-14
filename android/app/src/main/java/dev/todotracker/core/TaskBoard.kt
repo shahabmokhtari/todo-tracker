@@ -151,10 +151,27 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         val item = get(id)
         val completedAt = item.completedAt ?: return
         item.completedAt = null
+        val reopened = mutableListOf(item)
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
-        for (d in item.selfAndDescendants.drop(1)) if (d.completedAt == completedAt) d.completedAt = null
-        for (a in item.ancestors) if (a.isDone) a.completedAt = null
+        for (d in item.selfAndDescendants.drop(1)) if (d.completedAt == completedAt) { d.completedAt = null; reopened.add(d) }
+        for (a in item.ancestors) if (a.isDone) { a.completedAt = null; reopened.add(a) }
+        for (back in reopened) bringBack(back, now)
         log(now, id, "reopened", "Reopened \"${item.title}\"", actor)
+    }
+
+    /**
+     * Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it was
+     * done (it looked as if Reopen did nothing). Only a snooze or wait still in effect is cleared, with its pending
+     * snooze reminder; reminders set by hand stay.
+     */
+    private fun bringBack(item: WorkItem, now: Instant) {
+        val snoozed = item.nextActionAt?.isAfter(now) == true
+        if (!snoozed && item.afterId == null) return
+        val hidden = snoozed || item.waitingFor != null
+        item.nextActionAt = null
+        item.afterId = null
+        if (!hidden) return
+        for (r in item.reminders) if (r.kind == ReminderKind.NEXT_ACTION && r.dismissedAt == null) r.dismissedAt = now
     }
 
     /** Defers the item until [at]; with [notify], a reminder fires at that time. */

@@ -320,19 +320,53 @@ public sealed partial class TaskBoard
         var completedAt = item.CompletedAt;
         item.CompletedAt = null;
         item.Root.ArchivedAt = null;
+        var reopened = new List<WorkItem> { item };
 
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         foreach (var descendant in item.SelfAndDescendants().Skip(1).Where(d => d.CompletedAt == completedAt))
         {
             descendant.CompletedAt = null;
+            reopened.Add(descendant);
         }
 
         foreach (var ancestor in item.Ancestors().Where(a => a.IsDone))
         {
             ancestor.CompletedAt = null;
+            reopened.Add(ancestor);
+        }
+
+        foreach (var back in reopened)
+        {
+            BringBack(back, now);
         }
 
         Log(now, id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor);
+    }
+
+    /// <summary>
+    /// Reopening means "I want to do this again": back in Do now, not hidden behind a snooze or a wait set before it was
+    /// done (it looked as if Reopen did nothing). Only a snooze or wait still in effect is cleared, with its pending
+    /// snooze reminder; reminders set by hand stay.
+    /// </summary>
+    internal static void BringBack(WorkItem item, DateTimeOffset now)
+    {
+        if (item.NextActionAt <= now && item.AfterId is null)
+        {
+            return;
+        }
+
+        var hidden = item.NextActionAt > now || item.WaitingFor is not null;
+        item.NextActionAt = null;
+        item.AfterId = null;
+        if (!hidden)
+        {
+            return;
+        }
+
+        foreach (var reminder in item.ReminderList.Where(r => r.Kind == ReminderKind.NextAction && r.DismissedAt is null))
+        {
+            reminder.DismissedAt = now;
+        }
     }
 
     /// <summary>Defers the item until <paramref name="at"/>. With <paramref name="notify"/>, a reminder fires at that time.</summary>
