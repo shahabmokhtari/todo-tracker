@@ -11,12 +11,16 @@ public sealed class LaunchCodes(TimeProvider time)
 {
     public static readonly TimeSpan DefaultLifetime = TimeSpan.FromMinutes(2);
     private const int MaxOutstanding = 256;
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _codes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (DateTimeOffset Expires, bool Owner)> _codes = new(StringComparer.Ordinal);
 
-    public string Create(TimeSpan? lifetime = null)
+    /// <summary>
+    /// A code; <paramref name="owner"/>: made by the app itself (the sidebar, the tray, tt, the console), so the session
+    /// it opens is the owner's (see <see cref="AppSessions"/>). One asked for over HTTP with the API token isn't.
+    /// </summary>
+    public string Create(TimeSpan? lifetime = null, bool owner = false)
     {
         var now = time.GetUtcNow();
-        foreach (var expired in _codes.Where(c => c.Value <= now).Select(c => c.Key).ToList())
+        foreach (var expired in _codes.Where(c => c.Value.Expires <= now).Select(c => c.Key).ToList())
         {
             _codes.TryRemove(expired, out _);
         }
@@ -27,10 +31,19 @@ public sealed class LaunchCodes(TimeProvider time)
         }
 
         var code = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        _codes[code] = now + (lifetime ?? DefaultLifetime);
+        _codes[code] = (now + (lifetime ?? DefaultLifetime), owner);
         return code;
     }
 
-    public bool TryRedeem(string? code) =>
-        code is not null && _codes.TryRemove(code, out var expires) && expires > time.GetUtcNow();
+    public bool TryRedeem(string? code, out bool owner)
+    {
+        owner = false;
+        if (code is null || !_codes.TryRemove(code, out var entry) || entry.Expires <= time.GetUtcNow())
+        {
+            return false;
+        }
+
+        owner = entry.Owner;
+        return true;
+    }
 }

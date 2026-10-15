@@ -106,6 +106,19 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_add_a_hook_that_waits_for_the_users_approval()
+    {
+        var hook = await Call("add_hook", new() { ["event"] = "taskCompleted", ["bash"] = "cat >> done.jsonl", ["powershell"] = "$input | Add-Content done.jsonl", ["groups"] = new[] { "Work" } });
+        var id = hook.GetProperty("id").GetString()!;
+
+        Assert.Equal("needs approval", hook.GetProperty("state").GetString());
+        Assert.Equal(id, (await Call("list_hooks", new())).EnumerateArray().Single().GetProperty("id").GetString());
+        Assert.Equal("needs approval", (await Call("set_hook_enabled", new() { ["hookId"] = id, ["enabled"] = true })).GetProperty("state").GetString());
+        await Call("remove_hook", new() { ["hookId"] = id });
+        Assert.Empty((await Call("list_hooks", new())).EnumerateArray());
+    }
+
+    [Fact]
     public async Task Agent_can_plan_a_block_of_time_for_a_task()
     {
         var task = await Call("create_task", new() { ["title"] = "Deep work" });

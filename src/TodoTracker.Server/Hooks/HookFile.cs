@@ -47,6 +47,34 @@ public sealed class HookFile
 
 public sealed class HookSpec
 {
+    /// <summary>Its handle for editing (written by the app; one written by hand without it gets one from its content).</summary>
+    public string? Id { get; set; }
+
+    /// <summary><c>false</c>: switched off (kept, doesn't run).</summary>
+    public bool? Enabled { get; set; }
+
+    /// <summary>
+    /// Added or changed by an AI agent (or another app with the API token): it doesn't run until you approve it in
+    /// Settings › Hooks or with <c>tt hooks approve</c>.
+    /// </summary>
+    public bool? NeedsApproval { get; set; }
+
+    /// <summary>Who added or last changed it (an agent's name, or <c>you</c>).</summary>
+    public string? AddedBy { get; set; }
+
+    public DateTimeOffset? AddedAt { get; set; }
+
+    /// <summary>New (random) with every change to what it does: what an approval names, so it can't be guessed.</summary>
+    public string? Revision { get; set; }
+
+    /// <summary>Whether it runs: switched on, and approved if an agent added or changed it.</summary>
+    [JsonIgnore]
+    public bool IsActive => Enabled != false && NeedsApproval != true;
+
+    /// <summary><c>on</c>, <c>off</c>, or <c>needs approval</c>.</summary>
+    [JsonIgnore]
+    public string State => NeedsApproval == true ? "needs approval" : Enabled == false ? "off" : "on";
+
     /// <summary><c>command</c> (runs a program) or <c>http</c> (posts the event).</summary>
     public string Type { get; set; } = "command";
 
@@ -60,10 +88,12 @@ public sealed class HookSpec
 
     public int? TimeoutSec { get; set; }
 
+    [JsonConverter(typeof(VerbatimKeys))]
     public Dictionary<string, string>? Env { get; set; }
 
     public string? Url { get; set; }
 
+    [JsonConverter(typeof(VerbatimKeys))]
     public Dictionary<string, string>? Headers { get; set; }
 
     /// <summary>Only for these; a task-less event (a break) runs only when nothing about a task is asked.</summary>
@@ -75,11 +105,14 @@ public sealed class HookSpec
     public const int DefaultTimeoutSec = 30;
     public const int MaxTimeoutSec = 600;
 
+    [JsonIgnore]
     public TimeSpan Timeout => TimeSpan.FromSeconds(Math.Clamp(TimeoutSec ?? DefaultTimeoutSec, 1, MaxTimeoutSec));
 
     /// <summary>The script for this computer, or null when there's none for it.</summary>
+    [JsonIgnore]
     public string? Script => OperatingSystem.IsWindows() ? Powershell : Bash;
 
+    [JsonIgnore]
     public string Label => Name ?? (Type == "http" ? Url : Script) ?? Type;
 
     /// <summary>Why this hook can't run, or null when it can.</summary>
@@ -127,6 +160,49 @@ public sealed class HookSpec
         return (m.Groups is not { Count: > 0 } groups || (task.Group is not null && groups.Contains(task.Group, StringComparer.OrdinalIgnoreCase)))
             && (m.Tags is not { Count: > 0 } tags || tags.Any(t => task.Tags.Contains(t.TrimStart('#'), StringComparer.OrdinalIgnoreCase)))
             && (m.Labels is not { Count: > 0 } labels || labels.Any(l => task.Labels.Contains(l, StringComparer.OrdinalIgnoreCase)));
+    }
+}
+
+/// <summary>
+/// Names written exactly as given (variable names are case-sensitive): not changed by a serializer's dictionary key
+/// policy (the API's turns keys into camelCase).
+/// </summary>
+public sealed class VerbatimKeys : JsonConverter<Dictionary<string, string>>
+{
+    public override Dictionary<string, string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("Expected names and values.");
+        }
+
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            var name = reader.GetString() ?? throw new JsonException("A name is missing.");
+            reader.Read();
+            result[name] = reader.TokenType == JsonTokenType.String ? reader.GetString()! : throw new JsonException($"\"{name}\" needs a text value.");
+        }
+
+        return result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, Dictionary<string, string> value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+        writer.WriteStartObject();
+        foreach (var (name, text) in value)
+        {
+            writer.WriteString(name, text);
+        }
+
+        writer.WriteEndObject();
     }
 }
 

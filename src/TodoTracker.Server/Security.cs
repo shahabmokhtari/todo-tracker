@@ -58,11 +58,18 @@ internal static class Security
     public const string ClientHeader = "X-TodoTracker-Client";
     public const string ActorHeader = "X-TodoTracker-Actor";
     private const string ActorKey = "tt.actor";
+    private const string SessionKey = "tt.session";
 
     private static readonly string[] LoopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
 
     public static Actor ActorOf(HttpContext context) =>
         context.Items.TryGetValue(ActorKey, out var actor) && actor is Actor a ? a : Actor.User;
+
+    /// <summary>
+    /// The request comes from a session the app opened itself (see <see cref="AppSessions"/>), so from the person at this
+    /// computer; not from something holding the API token (an AI agent, a script, another app).
+    /// </summary>
+    public static bool IsAppSession(HttpContext context) => context.Items.TryGetValue(SessionKey, out var session) && session is true;
 
     public static async Task Guard(HttpContext context, RequestDelegate next, TodoTrackerServerOptions options, ApiToken token)
     {
@@ -122,7 +129,8 @@ internal static class Security
 
             context.Items[ActorKey] = new Actor(ActorKind.Browser);
         }
-        else if (token.Matches(context.Request.Cookies[CookieName]))
+        else if (context.Request.Cookies[CookieName] is { } cookie
+            && (context.RequestServices.GetService<AppSessions>()?.Check(cookie) is { Valid: true } session ? session : token.Matches(cookie) ? (Valid: true, Owner: false) : default) is { Valid: true } signedIn)
         {
             if (mutating && !hasClientHeader)
             {
@@ -131,6 +139,10 @@ internal static class Security
             }
 
             context.Items[ActorKey] = Actor.User;
+
+            // Only a session the app opened itself is the person at this computer (an older cookie holding the token, or
+            // a sign-in with the token, could be anything that has the token).
+            context.Items[SessionKey] = signedIn.Owner;
         }
         else
         {
@@ -156,8 +168,8 @@ internal static class Security
         ("POST", new("^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(complete|notes|schedule)/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
     ];
 
-    public static void SetSessionCookie(HttpResponse response, ApiToken token) =>
-        response.Cookies.Append(CookieName, token.Value, new CookieOptions
+    public static void SetSessionCookie(HttpResponse response, string secret) =>
+        response.Cookies.Append(CookieName, secret, new CookieOptions
         {
             HttpOnly = true,
             SameSite = SameSiteMode.Strict,

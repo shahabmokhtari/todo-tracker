@@ -8,8 +8,37 @@ a break starting. Extensions and scripts can also listen to everything as it hap
 Hooks are in `hooks.json` in the app's data folder. Settings › Hooks shows the exact path. On Windows it's
 `%LOCALAPPDATA%\TodoTracker\hooks.json`; the `TODOTRACKER_DATA` environment variable moves the folder.
 
-The file is on this computer only. It isn't in the synced tasks folder, and nothing in the app writes it: no API, no AI
-tool. Only someone who can edit files on this computer decides what runs. Changes apply at once (no restart).
+The file is on this computer only (it isn't in the synced tasks folder). Changes apply at once (no restart). There are
+four ways to change it:
+
+* **Settings › Hooks** in the app: add, change, switch on or off, remove, approve.
+* **`tt hooks`**: `list`, `add <event> --powershell … --bash … | --url …`, `edit <id>`, `enable`/`disable <id>`,
+  `approve <id> <version>`, `remove <id>`, `test [event]`, `path` (`tt help hooks` for the options).
+* **AI agents**: the MCP tools `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook`; or the REST API
+  (`POST /api/hooks`, `PUT /api/hooks/{id}`, `POST /api/hooks/{id}/enabled`, `DELETE /api/hooks/{id}`).
+* By hand: edit the file.
+
+**Approval.** A hook runs code on your computer, so what an AI agent (or anything else with the API token, or `tt` run
+with `--as`/`TT_AGENT`) adds or changes is saved with `"needsApproval": true` and doesn't run until you approve it: in
+Settings › Hooks (it shows everything it would do) or with `tt hooks approve <id> <version>` (`tt hooks list` shows
+everything it would do and its version). Approving names the version you looked at: if it changed since, it isn't
+approved (each change gets a new random revision, so a version can't be matched by trying). Changing a hook that waits for approval keeps it waiting;
+only approving approves. Switching a hook off or removing it needs no approval.
+
+Who is "you": `tt` run without `--as`, and a window the app opened itself (the sidebar, Settings in the app window,
+*Open in browser* from the tray or the Mac app). Those links come from the app's own process, or with the owner key
+(`owner-key` next to `api-token` in the data folder, never sent by the server). A browser signed in by pasting the API
+token, or with a link asked for with the token alone, is treated like anything else holding the token: what it adds
+waits for approval and it can't approve (and an ordinary link never replaces an owner's session in that browser).
+Hooks you add from the app or with `tt` run at once.
+
+An agent can't set or change a hook's environment variables or folder (they could make a harmless-looking command run
+something else), and sees the values of headers and variables hidden (`•••`; sent back unchanged, they keep their
+values).
+
+A change made in the app, by `tt` or by an agent rewrites the file (it never overwrites a file it can't read: fix that
+first), so comments in a hand-edited file don't survive it. Each hook gets an `id`; one written by hand without it gets
+one from its content.
 
 ```json
 {
@@ -47,6 +76,7 @@ Each key is an event name, or `*` for every event. A hook is one of these:
 | `url`, `headers` | Where an `http` hook posts, and extra headers (it also sends `X-Todo-Tracker-Event`) |
 | `match` | Only for some events: `groups`, `tags`, `labels` (any one of each list given), `actors` (`user`, `agent`, `vault`, `system`, `connector`, or an agent's name). An event without a task (a break) runs a hook only when its `match` doesn't ask about the task |
 | `name` | What Settings shows for it (default: what it runs) |
+| `id`, `enabled`, `needsApproval`, `addedBy`, `addedAt` | Kept by the app: its handle, `false` when switched off, `true` while an agent's hook waits for approval, and who added or changed it when |
 
 A command hook gets the event as JSON on standard input, and `TT_EVENT`, `TT_EVENT_ID`, `TT_TASK_ID` and `TT_TASK_TITLE`
 in its environment (PowerShell hooks read and write UTF-8). Hooks run one at a time, in the background, never holding

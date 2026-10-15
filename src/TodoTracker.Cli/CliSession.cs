@@ -32,6 +32,9 @@ internal sealed class CliSession : IDisposable
 
     public Actor Actor { get; }
 
+    /// <summary>The app's settings for this run (its data folder, time zone…).</summary>
+    public TodoTrackerServerOptions Options => _options;
+
     public bool Json { get; }
 
     public CliOutput Output { get; }

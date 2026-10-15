@@ -254,12 +254,15 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   *Plan* field sets it by keyboard; cards show `🗓 10:00–10:30`; a repeating task's block moves with it. Stored as
   `plannedAt`/`plannedMinutes` (JSON), `planned:`/`planned-length:` (frontmatter); REST `POST /api/items/{id}/plan`,
   `GET /api/plan`; MCP `plan_task`.
-* **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only, never written by the
-  app, its API or AI tools) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
+* **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only; edited in Settings ›
+  Hooks, with `tt hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
+  or by hand) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
   to a URL when something happens: `taskCompleted`, `reminderDue`, `noteAdded`, `focusEnded`… with filters by group,
   tag, label and who did it. Events come from the activity log (app, agents, Obsidian, sync), each once, also across
-  restarts; hooks run one at a time in the background with a timeout. Settings › Hooks shows the path, a sample, the
-  hooks and their last runs, and tries an event. `GET /api/events` streams every event (server-sent events) to extensions
+  restarts; hooks run one at a time in the background with a timeout. A hook an agent (anything with the API token, or
+  `tt --as`) adds or changes waits for approval (`needsApproval`) that only the signed-in app or `tt` can give; the app
+  shows exactly what it would run. Settings › Hooks lists the hooks (on, off, needs approval), adds and changes them, shows
+  their last runs and tries an event. `GET /api/events` streams every event (server-sent events) to extensions
   and scripts; server plugins subscribe to `HookService.Published`.
 * **A task's look** (details panel): the button by the title picks an **icon** (a grid of common emojis, or type/paste any, or *No icon*); the **Color** row picks *Auto* (its first label's color), a palette color, or any color. Cards, board cards and tree rows show the icon before the title and the color as a stripe and a light tint; the sidebar shows both too.
 * **Board:** drag the background (a column header, the space between cards) to move around it like a canvas, sideways

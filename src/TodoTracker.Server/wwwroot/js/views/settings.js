@@ -106,10 +106,60 @@ export function createSettingsView(ctx) {
       list.length ? h('div', { class: 'label-rows' }, ...list.map(row)) : h('p', { class: 'muted small' }, 'No labels yet. Add one from a task’s details.'));
   }
 
-  /** Hooks: what runs when something happens (hooks.json on this computer; the app never writes it), recent runs, a try. */
+  /**
+   * Hooks: what runs when something happens (hooks.json on this computer). Add, change, switch on or off, remove; what
+   * an AI agent added or changed waits here for approval (it shows exactly what would run). Recent runs, and a try.
+   */
   function hooks(status) {
     const when = (at) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    const events = Object.keys(status.events);
+    const events = Object.keys(status.events).filter((e) => e !== 'test');
+    const call = async (url, options, message) => {
+      try {
+        await ctx.api(url, options);
+        if (message) ctx.toast(message);
+        load();
+      } catch (err) {
+        ctx.toast(err.message, 'error');
+      }
+    };
+
+    const form = hookForm(events, status, call);
+    const row = (x) => {
+      const pending = x.state === 'needs approval';
+      const toggle = h('input', { type: 'checkbox', checked: x.hook.enabled !== false, 'aria-label': `${x.label}: on`, title: 'On or off',
+        onchange: () => call(`/api/hooks/${encodeURIComponent(x.id)}/enabled`, { method: 'POST', body: { enabled: toggle.checked } }) });
+      // Everything it would do: a name alone could say anything.
+      const m = x.hook.match ?? {};
+      const pairs = (o, sep) => Object.entries(o ?? {}).map(([k, v]) => `${k}${sep}${v}`).join(', ');
+      const only = [['groups', m.groups], ['tags', m.tags], ['labels', m.labels], ['done by', m.actors]].filter(([, v]) => v?.length).map(([k, v]) => `${k} ${v.join(', ')}`).join('; ');
+      const what = [
+        x.hook.powershell && `PowerShell: ${x.hook.powershell}`,
+        x.hook.bash && `bash: ${x.hook.bash}`,
+        x.hook.url && `Web address: ${x.hook.url}`,
+        x.hook.headers && `Headers: ${pairs(x.hook.headers, ': ')}`,
+        x.hook.env && `Variables: ${pairs(x.hook.env, '=')}`,
+        x.hook.cwd && `Folder: ${x.hook.cwd}`,
+        x.hook.timeoutSec && `Time limit: ${x.hook.timeoutSec} s`,
+        only && `Only for: ${only}`,
+      ].filter(Boolean).join('\n');
+      return h('li', { class: `hook-row${pending ? ' pending' : ''}`, dataset: { id: x.id } },
+        h('div', { class: 'hook-head' },
+          toggle,
+          h('code', null, x.event),
+          h('span', { class: 'hook-label' }, x.label),
+          h('span', { class: `chip ${pending ? 'warn' : x.state === 'off' ? 'muted' : 'info'}` }, x.state),
+          h('span', { class: 'hook-actions' },
+            pending && status.canApprove ? h('button', { class: 'btn small primary', type: 'button', onclick: () => call(`/api/hooks/${encodeURIComponent(x.id)}/approve`, { method: 'POST', body: { version: x.version } }, 'Approved: it runs from now on') }, icon('check', { size: 14 }), 'Approve') : null,
+            h('button', { class: 'icon-btn small', type: 'button', title: 'Change', 'aria-label': `Change ${x.label}`, onclick: () => form.open(x) }, icon('pencil', { size: 14 })),
+            h('button', { class: 'icon-btn small', type: 'button', title: 'Remove', 'aria-label': `Remove ${x.label}`, onclick: () => {
+              if (confirm(`Remove the hook "${x.label}"?`)) call(`/api/hooks/${encodeURIComponent(x.id)}`, { method: 'DELETE' }, 'Removed');
+            } }, icon('trash', { size: 14 })))),
+        pending ? h('p', { class: 'small hook-why' }, `Added or changed by ${x.hook.addedBy ?? 'an agent'}. It runs only after you approve it. What it would do:`) : null,
+        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Todo Tracker app (the sidebar, Open in browser from the tray, or the Mac app), or run: tt hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
+        pending ? h('pre', { class: 'hook-sample' }, what) : null,
+        x.problem ? h('p', { class: 'hook-problem small' }, x.problem) : null);
+    };
+
     const pick = h('select', { 'aria-label': 'Event to try' }, ...events.map((e) => h('option', { value: e, selected: e === 'taskCompleted' }, e)));
     const tryIt = h('button', { class: 'btn', type: 'button', onclick: async () => {
       tryIt.disabled = true;
@@ -123,21 +173,14 @@ export function createSettingsView(ctx) {
         tryIt.disabled = false;
       }
     } }, icon('play', { size: 14 }), 'Try it');
-    const sample = h('pre', { class: 'hook-sample' }, status.sample);
-    const copy = h('button', { class: 'btn small ghost', type: 'button', onclick: async () => {
-      try { await navigator.clipboard.writeText(status.sample); ctx.toast('Copied'); } catch { ctx.toast('Couldn’t copy: select the text instead', 'error'); }
-    } }, icon('note', { size: 14 }), 'Copy');
+
     return section('hooks', 'Hooks',
-      'Run your own script, or call a web address, when something happens: a task done, a reminder, a break. Hooks live in a file on this computer only; the app (and the AI tools) never change it.',
-      h('p', { class: 'small' }, h('span', { class: 'muted' }, 'File: '), h('code', null, status.path)),
+      'Run your own script, or call a web address, when something happens: a task done, a reminder, a break. Hooks you add here run right away; ones an AI agent adds or changes wait for your approval.',
+      h('p', { class: 'small' }, h('span', { class: 'muted' }, 'File: '), h('code', null, status.path), h('span', { class: 'muted' }, ' (also: tt hooks)')),
       status.problem ? h('p', { class: 'hook-problem', role: 'alert' }, status.problem) : null,
-      status.exists
-        ? (status.hooks.length
-          ? h('ul', { class: 'hook-list' }, ...status.hooks.map((x) => h('li', null, h('code', null, x.event), ' ', h('span', { class: 'muted small' }, x.type), ' ', x.label,
-            x.problem ? h('span', { class: 'hook-problem small' }, ` – ${x.problem}`) : null)))
-          : h('p', { class: 'muted small' }, 'The file has no hooks yet.'))
-        : h('div', null, h('p', { class: 'muted small' }, 'No hooks yet. Save this as that file to start (change what it runs first):'), sample, copy),
-      h('div', { class: 'row' }, pick, tryIt),
+      status.hooks.length ? h('ul', { class: 'hook-list' }, ...status.hooks.map(row)) : h('p', { class: 'muted small' }, 'No hooks yet.'),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => form.open(null) }, icon('plus', { size: 14 }), 'Add a hook'), pick, tryIt),
+      form.element,
       status.runs.length
         ? h('table', { class: 'hook-runs' },
           h('thead', null, h('tr', null, ...['When', 'Event', 'Hook', 'Result'].map((t) => h('th', null, t)))),
@@ -148,6 +191,78 @@ export function createSettingsView(ctx) {
       h('p', { class: 'muted small' }, 'Extensions and scripts can also listen: GET /api/events (server-sent events, with the API token). See docs/hooks.md.'));
   }
 
+  /** Adding or changing a hook: when, what (a command for Windows and/or Linux and macOS, or a web address), and for what. */
+  function hookForm(events, status, call) {
+    const element = h('form', { class: 'hook-form', hidden: true, 'aria-label': 'Hook' });
+    let editing = null;
+    const list = (v) => (v ?? []).join(', ');
+    const split = (v) => v.split(',').map((x) => x.trim()).filter(Boolean);
+    const field = (label, control, hint) => h('label', { class: 'field' }, h('span', null, label), control, hint ? h('span', { class: 'muted small' }, hint) : null);
+    const eventPick = h('select', { 'aria-label': 'When' }, h('option', { value: '*' }, 'Every event (*)'), ...events.map((e) => h('option', { value: e, title: status.events[e] }, `${e} — ${status.events[e]}`)));
+    const kind = h('select', { 'aria-label': 'What it does' }, h('option', { value: 'command' }, 'Run a command'), h('option', { value: 'http' }, 'Call a web address'));
+    const powershell = h('textarea', { rows: 3, 'aria-label': 'PowerShell (Windows)', placeholder: '$e = [Console]::In.ReadToEnd() | ConvertFrom-Json; …' });
+    const bash = h('textarea', { rows: 3, 'aria-label': 'bash (Linux, macOS)', placeholder: 'jq -r .task.title >> ~/done.log' });
+    const url = h('input', { type: 'url', 'aria-label': 'Web address', placeholder: 'https://example.com/webhook' });
+    const name = h('input', { maxlength: 100, 'aria-label': 'Name', placeholder: 'What it is, in a few words' });
+    const timeout = h('input', { type: 'number', min: 1, max: 600, 'aria-label': 'Time limit (seconds)', placeholder: '30' });
+    const groups = h('input', { 'aria-label': 'Only for groups', placeholder: 'Work, Personal' });
+    const tags = h('input', { 'aria-label': 'Only for tags', placeholder: 'deploy' });
+    const labels = h('input', { 'aria-label': 'Only for labels', placeholder: 'Urgent' });
+    const actors = h('input', { 'aria-label': 'Only when done by', placeholder: 'user, agent, vault…' });
+    const commandFields = h('div', null, field('PowerShell (Windows)', powershell), field('bash (Linux, macOS)', bash, 'The event comes as JSON on standard input.'));
+    const httpFields = h('div', null, field('Web address', url, 'The event is posted as JSON.'));
+    const showKind = () => { commandFields.hidden = kind.value !== 'command'; httpFields.hidden = kind.value !== 'http'; };
+    kind.addEventListener('change', showKind);
+    const title = h('h3', null, 'Add a hook');
+
+    element.append(title,
+      h('div', { class: 'row' }, field('When', eventPick), field('What it does', kind)),
+      commandFields, httpFields,
+      h('div', { class: 'row' }, field('Name', name), field('Time limit (seconds)', timeout)),
+      h('details', null, h('summary', null, 'Only for some tasks'),
+        h('div', { class: 'row' }, field('Groups', groups), field('Tags', tags)),
+        h('div', { class: 'row' }, field('Labels', labels), field('Done by', actors))),
+      h('div', { class: 'row buttons' },
+        h('button', { class: 'btn primary', type: 'submit' }, 'Save'),
+        h('button', { class: 'btn ghost', type: 'button', onclick: () => { element.hidden = true; } }, 'Cancel')));
+
+    element.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const hook = {
+        type: kind.value,
+        powershell: powershell.value || null, bash: bash.value || null, url: url.value || null,
+        name: name.value || null, timeoutSec: timeout.value ? Number(timeout.value) : null,
+        match: { groups: split(groups.value), tags: split(tags.value), labels: split(labels.value), actors: split(actors.value) },
+      };
+      // What the form doesn't show (headers, variables, folder) stays as it was.
+      if (editing) Object.assign(hook, { headers: editing.hook.headers ?? null, env: editing.hook.env ?? null, cwd: editing.hook.cwd ?? null });
+      const body = { event: eventPick.value, hook };
+      if (editing) call(`/api/hooks/${encodeURIComponent(editing.id)}`, { method: 'PUT', body }, 'Hook changed');
+      else call('/api/hooks', { method: 'POST', body }, 'Hook added');
+    });
+
+    function open(entry) {
+      editing = entry;
+      const x = entry?.hook ?? {};
+      title.textContent = entry ? `Change “${entry.label}”` : 'Add a hook';
+      eventPick.value = entry?.event ?? 'taskCompleted';
+      kind.value = x.type ?? 'command';
+      powershell.value = x.powershell ?? '';
+      bash.value = x.bash ?? '';
+      url.value = x.url ?? '';
+      name.value = x.name ?? '';
+      timeout.value = x.timeoutSec ?? '';
+      groups.value = list(x.match?.groups);
+      tags.value = list(x.match?.tags);
+      labels.value = list(x.match?.labels);
+      actors.value = list(x.match?.actors);
+      showKind();
+      element.hidden = false;
+      eventPick.focus();
+    }
+
+    return { element, open };
+  }
   function render(settings, list, labelList, hookStatus) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
     root.replaceChildren(h('div', { class: 'settings' },

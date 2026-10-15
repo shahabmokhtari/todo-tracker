@@ -181,6 +181,75 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
         }
     }
 
+    public void Hooks(IReadOnlyList<TodoTracker.Server.Hooks.HookEntry> hooks, string path, string? problem)
+    {
+        if (problem is not null)
+        {
+            output.WriteLine(problem);
+        }
+
+        if (hooks.Count == 0)
+        {
+            output.WriteLine($"No hooks yet ({path}). Add one: tt hooks add taskCompleted --bash 'cat >> ~/done.jsonl' --powershell '$input | Add-Content $HOME\\done.jsonl'");
+            return;
+        }
+
+        foreach (var h in hooks)
+        {
+            var state = h.Problem ?? h.State;
+            output.WriteLine($"{h.Id}  {h.Event,-16} {state,-15} {h.Hook.Label}{(h.Hook.NeedsApproval == true ? $"  (added by {h.Hook.AddedBy})" : string.Empty)}");
+
+            // A hook waiting for approval shows everything it would do (its name alone could say anything).
+            if (h.Hook.NeedsApproval == true)
+            {
+                HookDetails(h, indent: "    ");
+                output.WriteLine($"    Approve it: tt hooks approve {h.Id} {h.Version[..TodoTracker.Server.Hooks.HookStore.MinVersionPrefix]}");
+            }
+        }
+
+        output.WriteLine();
+        output.WriteLine($"File: {path}");
+    }
+
+    /// <summary>Everything a hook does: what it runs (or calls), with which variables, where, and for what.</summary>
+    public void HookDetails(TodoTracker.Server.Hooks.HookEntry h, string indent = "  ")
+    {
+        var x = h.Hook;
+        void Show(string what, string? value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                output.WriteLine($"{indent}{what}: {value.Replace("\n", "\n" + indent + "  ", StringComparison.Ordinal)}");
+            }
+        }
+
+        Show("PowerShell", x.Powershell);
+        Show("bash", x.Bash);
+        Show("Web address", x.Url);
+        Show("Headers", x.Headers is { Count: > 0 } headers ? string.Join(", ", headers.Select(p => $"{p.Key}: {p.Value}")) : null);
+        Show("Variables", x.Env is { Count: > 0 } env ? string.Join(", ", env.Select(p => $"{p.Key}={p.Value}")) : null);
+        Show("Folder", x.Cwd);
+        Show("Time limit", x.TimeoutSec is { } t ? $"{t} s" : null);
+        Show("Only for", x.Match is { } m ? string.Join("; ", new[] { ("groups", m.Groups), ("tags", m.Tags), ("labels", m.Labels), ("done by", m.Actors) }.Where(p => p.Item2 is { Count: > 0 }).Select(p => $"{p.Item1} {string.Join(", ", p.Item2!)}")) : null);
+    }
+
+    public void HookRuns(IReadOnlyList<TodoTracker.Server.Hooks.HookRun> runs)
+    {
+        if (runs.Count == 0)
+        {
+            output.WriteLine("No hook runs for that event (none set up, or they're off or waiting for approval).");
+        }
+
+        foreach (var r in runs)
+        {
+            output.WriteLine($"{(r.Ok ? "OK    " : "FAILED")} {r.Hook}{(r.ExitCode is { } code && !r.Ok ? $" (exit {code})" : string.Empty)}");
+            if (r.Output is { } text)
+            {
+                output.WriteLine("  " + text.Replace("\n", "\n  ", StringComparison.Ordinal));
+            }
+        }
+    }
+
     public void Labels(IReadOnlyList<LabelDto> labels)
     {
         if (labels.Count == 0)

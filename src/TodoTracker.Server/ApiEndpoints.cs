@@ -105,13 +105,14 @@ internal static class ApiEndpoints
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-        app.MapGet("/auth", (string? code, string? @return, HttpResponse response, ApiToken apiToken, LaunchCodes launchCodes) =>
+        app.MapGet("/auth", (string? code, string? @return, HttpRequest request, HttpResponse response, AppSessions sessions, LaunchCodes launchCodes) =>
         {
             // A used or expired code grants nothing but still lands on the page: an existing session keeps working,
             // otherwise the sign-in screen appears (better than a bare 401 after a double click or slow browser start).
-            if (launchCodes.TryRedeem(code))
+            // A link that isn't the owner's never replaces this browser's owner session.
+            if (launchCodes.TryRedeem(code, out var owner) && (owner || !sessions.Check(request.Cookies[Security.CookieName]).Owner))
             {
-                Security.SetSessionCookie(response, apiToken);
+                Security.SetSessionCookie(response, sessions.Create(owner));
             }
 
             return Results.Redirect(SafeReturnPath(@return));
@@ -119,21 +120,24 @@ internal static class ApiEndpoints
 
         var api = app.MapGroup("/api").AddEndpointFilter(MapDomainErrors);
 
-        api.MapPost("/login", (LoginRequest request, HttpResponse response, ApiToken apiToken) =>
+        api.MapPost("/login", (LoginRequest request, HttpResponse response, ApiToken apiToken, AppSessions sessions) =>
         {
             if (!apiToken.Matches(request.Token?.Trim()))
             {
                 return Results.Unauthorized();
             }
 
-            Security.SetSessionCookie(response, apiToken);
+            // Signed in with the token: anything holding it could do the same, so not the owner's session.
+            Security.SetSessionCookie(response, sessions.Create(owner: false));
             return Results.NoContent();
         });
 
         api.MapGet("/connection", (ApiToken token, TodoTrackerServerOptions options) => Connection(token, options));
 
-        api.MapPost("/launch", (LaunchRequest? request, LaunchCodes codes, TodoTrackerServerOptions options) =>
-            new LaunchDto(LaunchUrl(codes, options, request?.Return, null)));
+        // An app on this computer that sends the owner key (from the data folder) gets the owner's link; the token alone
+        // gets an ordinary one.
+        api.MapPost("/launch", (LaunchRequest? request, HttpContext http, LaunchCodes codes, OwnerKey ownerKey, TodoTrackerServerOptions options) =>
+            new LaunchDto(LaunchUrl(codes, options, request?.Return, null, owner: ownerKey.Matches(http.Request.Headers[OwnerKey.Header].ToString()))));
 
         api.MapGet("/dashboard", (Guid? group, int? notes, string? q, IBoardStore store, TimeProvider time, VaultLinks links, TodoTrackerServerOptions options) =>
             store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), group, notes ?? 5, links, q, options.TimeZone)));
@@ -530,8 +534,8 @@ internal static class ApiEndpoints
         return new ConnectionDto(baseUrl, mcpUrl, token.Value, config);
     }
 
-    internal static string LaunchUrl(LaunchCodes codes, TodoTrackerServerOptions options, string? returnPath, TimeSpan? lifetime) =>
-        $"{options.BaseUrl}/auth?code={Uri.EscapeDataString(codes.Create(lifetime))}&return={Uri.EscapeDataString(SafeReturnPath(returnPath))}";
+    internal static string LaunchUrl(LaunchCodes codes, TodoTrackerServerOptions options, string? returnPath, TimeSpan? lifetime, bool owner) =>
+        $"{options.BaseUrl}/auth?code={Uri.EscapeDataString(codes.Create(lifetime, owner))}&return={Uri.EscapeDataString(SafeReturnPath(returnPath))}";
 
     /// <summary>Only same-origin absolute paths, so a launch link can never become an open redirect.</summary>
     internal static string SafeReturnPath(string? path) =>
