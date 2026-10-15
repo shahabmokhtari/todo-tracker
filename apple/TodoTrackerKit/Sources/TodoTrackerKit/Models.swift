@@ -240,6 +240,7 @@ public final class WorkItem: Identifiable {
 public struct RepeatUndo: Equatable, Codable {
     public var deadline: Date?
     public var nextActionAt: Date?
+    public var plannedAt: Date?
 }
 
 public struct NewTask {

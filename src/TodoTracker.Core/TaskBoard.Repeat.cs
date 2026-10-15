@@ -36,7 +36,7 @@ public sealed partial class TaskBoard
             return false;
         }
 
-        item.RepeatUndo = new RepeatUndo(item.Deadline, item.NextActionAt);
+        item.RepeatUndo = new RepeatUndo(item.Deadline, item.NextActionAt, item.PlannedAt);
         var waitedUntil = item.NextActionAt;
         var reminded = waitedUntil is { } w && item.ReminderList.Exists(r => r.Kind == ReminderKind.NextAction && r.DueAt == w);
         var lead = item.Deadline is { } due && waitedUntil is { } waited ? Math.Max(0, LocalDate(due).DayNumber - LocalDate(waited).DayNumber) : 0;
@@ -106,6 +106,7 @@ public sealed partial class TaskBoard
         {
             item.Deadline = undo.Deadline;
             item.NextActionAt = undo.NextActionAt;
+            item.PlannedAt = undo.PlannedAt ?? item.PlannedAt;
         }
         else
         {

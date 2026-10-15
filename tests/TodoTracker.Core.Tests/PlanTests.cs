@@ -51,6 +51,12 @@ public sealed class PlanTests
 
         Assert.Equal(Morning.AddDays(1).AddHours(1), standup.PlannedAt);
         Assert.Equal(15, standup.PlannedMinutes);
+
+        // Not done after all: the block is back where it was (the file keeps that too).
+        var file = TaskMarkdown.Parse(TaskMarkdown.Render(standup, Context), "Standup notes", Context).Root;
+        Assert.Equal(Morning.AddHours(1), file.RepeatUndo?.PlannedAt);
+        _board.Reopen(standup.Id, Actor.User, Morning.AddHours(1).AddMinutes(11));
+        Assert.Equal(Morning.AddHours(1), standup.PlannedAt);
     }
 
     [Fact]

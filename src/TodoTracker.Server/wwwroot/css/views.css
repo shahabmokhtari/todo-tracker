@@ -97,7 +97,9 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
   inset: auto 0 0 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* One column per view shown (an extra that's off leaves no gap). */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
   background: var(--surface);
   backdrop-filter: saturate(180%) blur(18px);
@@ -579,7 +581,9 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .plan-block.done .plan-block-title { text-decoration: line-through; }
 .plan-block-time { font-size: 10.5px; color: var(--muted, #64748b); }
 .plan-block-title { font-weight: 600; overflow-wrap: anywhere; }
-.plan-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; cursor: ns-resize; }
+.plan-resize { position: absolute; left: 0; right: 0; bottom: 0; height: 9px; cursor: ns-resize; touch-action: none; }
+.plan-block.done { cursor: pointer; }
+.plan-block.cont { border-top-left-radius: 0; border-top-right-radius: 0; }
 .plan-resize:hover { background: color-mix(in srgb, var(--task-accent, var(--accent)) 35%, transparent); }
 .plan-now { position: absolute; left: 0; right: 0; top: var(--top); height: 2px; background: var(--danger); pointer-events: none; }
 .plan-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }

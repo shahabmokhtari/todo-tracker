@@ -153,7 +153,7 @@ class WorkItem(
 }
 
 /** A repeating task's deadline and wait before it moved on (see [WorkItem.repeatUndo]). */
-data class RepeatUndo(val deadline: Instant?, val nextActionAt: Instant?)
+data class RepeatUndo(val deadline: Instant?, val nextActionAt: Instant?, val plannedAt: Instant? = null)
 
 data class NewTask(
     val title: String,

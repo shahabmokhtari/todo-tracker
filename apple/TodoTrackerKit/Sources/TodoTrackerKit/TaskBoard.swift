@@ -247,7 +247,7 @@ public final class TaskBoard {
         let rule = repeatRule.pinned(to: anchor)
         guard let next = rule.next(anchor: anchor, after: max(anchor, today)) else { return false }
 
-        item.repeatUndo = RepeatUndo(deadline: item.deadline, nextActionAt: item.nextActionAt)
+        item.repeatUndo = RepeatUndo(deadline: item.deadline, nextActionAt: item.nextActionAt, plannedAt: item.plannedAt)
         let waitedUntil = item.nextActionAt
         let reminded = waitedUntil.map { w in item.reminders.contains { $0.kind == .nextAction && $0.dueAt == w } } ?? false
         var lead = 0
@@ -285,6 +285,7 @@ public final class TaskBoard {
         if let undo = item.repeatUndo {
             item.deadline = undo.deadline
             item.nextActionAt = undo.nextActionAt
+            item.plannedAt = undo.plannedAt ?? item.plannedAt
         } else {
             if let due = item.deadline {
                 let day = localDay(due)

@@ -142,7 +142,7 @@ public sealed class WorkItem
 }
 
 /// <summary>A repeating task's deadline and wait before it moved on (see <see cref="WorkItem.RepeatUndo"/>).</summary>
-public sealed record RepeatUndo(DateTimeOffset? Deadline, DateTimeOffset? NextActionAt);
+public sealed record RepeatUndo(DateTimeOffset? Deadline, DateTimeOffset? NextActionAt, DateTimeOffset? PlannedAt = null);
 
 public sealed record NewTask(string Title)
 {

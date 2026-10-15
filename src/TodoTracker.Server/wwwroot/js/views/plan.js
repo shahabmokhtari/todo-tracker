@@ -7,6 +7,7 @@ import { iconBadge, repeatMark, withAccent } from '../looks.js';
 import { latest } from './common.js';
 
 const SNAP = 15;
+const MAX_MINUTES = 12 * 60;
 const PX_PER_MIN = 0.9;
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -38,17 +39,26 @@ export function createPlanView(ctx) {
   const root = document.getElementById('view-plan');
   let anchor = new Date();
   let plan = null;
+  // Busy: a block being resized (a redraw would drop it). Scroll to work hours on the next draw (not on every poll).
+  let resizing = false;
+  let scrollToWork = true;
   const fetchPlan = latest((url) => ctx.api(url));
   const groupQuery = () => (ctx.state.group ? `group=${ctx.state.group}` : '');
 
   async function load({ quiet = false } = {}) {
     try {
+      // Each group has its own settings: another group's (after switching) can't pick the days.
+      const group = ctx.state.group ?? null;
+      if (plan && plan.group !== group) {
+        plan = null;
+        scrollToWork = true;
+      }
       const settings = plan?.settings ?? await ctx.api(`/api/plan/settings?${groupQuery()}`);
       const start = firstDay(anchor, settings.view, settings.weekStart);
       const days = settings.view === 'week' ? 7 : 1;
       const reply = await fetchPlan(`/api/plan?from=${isoDay(start)}&days=${days}&${groupQuery()}`);
-      if (!reply.current) return;
-      plan = reply.value;
+      if (!reply.current || resizing) return;
+      plan = { ...reply.value, group };
       render();
     } catch (err) {
       if (!quiet) ctx.toast(err.message, 'error');
@@ -59,6 +69,7 @@ export function createPlanView(ctx) {
     try {
       const next = await ctx.api(`/api/plan/settings?${groupQuery()}`, { method: 'PUT', body: { ...plan.settings, ...change } });
       plan = { ...plan, settings: next };
+      scrollToWork = true;
       await load();
     } catch (err) {
       ctx.toast(err.message, 'error');
@@ -87,17 +98,32 @@ export function createPlanView(ctx) {
     return kept.length ? kept : all;
   }
 
-  function range() {
+  /** A block per day it covers (one crossing midnight goes on until the end of its day and carries on the next). */
+  function segments(b) {
+    const start = new Date(b.start);
+    const end = new Date(start.getTime() + b.minutes * 60000);
+    const parts = [];
+    let day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    while (day < end) {
+      const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+      const from = Math.max(start, day);
+      const to = Math.min(end, next);
+      parts.push({ day: isoDay(day), from: Math.round((from - day) / 60000), to: Math.round((to - day) / 60000), cont: start < day, last: end <= next });
+      day = next;
+    }
+    return parts;
+  }
+
+  function range(days) {
     const s = plan.settings;
     if (s.hours === 'full') return [0, 24 * 60];
-    // Work hours, stretched to show any block outside them.
+    // Work hours, stretched to show any block outside them on the days shown.
+    const shown = new Set(days.map(isoDay));
     let from = s.workStart;
     let to = s.workEnd;
-    for (const b of plan.blocks) {
-      const start = new Date(b.start);
-      const m = minutesOf(start);
-      from = Math.min(from, Math.floor(m / 60) * 60);
-      to = Math.max(to, Math.min(24 * 60, Math.ceil((m + b.minutes) / 60) * 60));
+    for (const seg of plan.blocks.flatMap(segments).filter((x) => shown.has(x.day))) {
+      from = Math.min(from, Math.floor(seg.from / 60) * 60);
+      to = Math.max(to, Math.min(24 * 60, Math.ceil(seg.to / 60) * 60));
     }
     return [from, to];
   }
@@ -162,50 +188,57 @@ export function createPlanView(ctx) {
       items.length ? h('ul', null, ...items) : h('p', { class: 'muted small' }, 'Everything to do now is planned.'));
   }
 
-  function block(b, from) {
+  function block(b, seg, from) {
     const start = new Date(b.start);
-    const top = (minutesOf(start) - from) * PX_PER_MIN;
+    const top = (seg.from - from) * PX_PER_MIN;
     const end = new Date(start.getTime() + b.minutes * 60000);
+    // A done block stays where it was (done tasks can't be planned again).
+    const movable = !b.done;
     const el = h('div', {
-      class: `plan-block${b.done ? ' done' : ''}`, draggable: 'true', role: 'button', tabindex: 0, dataset: { id: b.id },
+      class: `plan-block${b.done ? ' done' : ''}${seg.cont ? ' cont' : ''}`, draggable: String(movable), role: 'button', tabindex: 0, dataset: { id: b.id },
       'aria-label': `${b.title}, ${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${b.done ? ', done' : ''}`,
       onclick: (e) => { if (!e.target.closest('.plan-resize')) ctx.openDrawer(b.id); },
       onkeydown: (e) => { if (e.key === 'Enter') ctx.openDrawer(b.id); },
     },
     h('span', { class: 'plan-block-time' }, `${hhmm(minutesOf(start))}–${hhmm(minutesOf(end))}`),
     h('span', { class: 'plan-block-title' }, b.done ? icon('check', { size: 12 }) : null, iconBadge(b.icon), b.title, repeatMark(b.repeat)),
-    h('span', { class: 'plan-resize', title: 'Drag to make it longer or shorter', 'aria-hidden': 'true' }));
+    movable && seg.last ? h('span', { class: 'plan-resize', title: 'Drag to make it longer or shorter', 'aria-hidden': 'true' }) : null);
     el.style.setProperty('--top', `${top}px`);
-    el.style.setProperty('--height', `${Math.max(b.minutes * PX_PER_MIN, 18)}px`);
+    el.style.setProperty('--height', `${Math.max((seg.to - seg.from) * PX_PER_MIN, 18)}px`);
     withAccent(el, b.accent);
+    if (!movable) return el;
     el.addEventListener('dragstart', (e) => {
-      // Where in the block it was picked up, so it lands where it's dropped.
-      const grab = (e.offsetY ?? 0) / PX_PER_MIN;
+      // Where in the block it was picked up (from its start), so it lands where it's dropped.
+      const segStart = new Date(`${seg.day}T00:00:00`).getTime() + seg.from * 60000;
+      const grab = (segStart - start.getTime()) / 60000 + (e.offsetY ?? 0) / PX_PER_MIN;
       e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: b.id, minutes: b.minutes, grab }));
       el.classList.add('dragging');
     });
     el.addEventListener('dragend', () => el.classList.remove('dragging'));
-    resizable(el, b);
+    if (seg.last) resizable(el, b, seg);
     return el;
   }
 
   /** The bottom edge: drag to change how long (snapped to 15 minutes). */
-  function resizable(el, b) {
+  function resizable(el, b, seg) {
     const handle = el.querySelector('.plan-resize');
     handle.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       el.draggable = false;
+      resizing = true;
       const startY = e.clientY;
+      const before = b.minutes - (seg.to - seg.from); // the part on earlier days
       let minutes = b.minutes;
       handle.setPointerCapture(e.pointerId);
       const moveTo = (ev) => {
-        minutes = Math.max(SNAP, Math.round((b.minutes + (ev.clientY - startY) / PX_PER_MIN) / SNAP) * SNAP);
-        el.style.setProperty('--height', `${minutes * PX_PER_MIN}px`);
+        minutes = Math.min(MAX_MINUTES, Math.max(SNAP, Math.round((b.minutes + (ev.clientY - startY) / PX_PER_MIN) / SNAP) * SNAP));
+        el.style.setProperty('--height', `${Math.max(minutes - before, SNAP) * PX_PER_MIN}px`);
       };
       const done = () => {
         handle.removeEventListener('pointermove', moveTo);
         el.draggable = true;
+        resizing = false;
         if (minutes !== b.minutes) planTask(b.id, new Date(b.start), minutes);
       };
       handle.addEventListener('pointermove', moveTo);
@@ -216,10 +249,10 @@ export function createPlanView(ctx) {
 
   function dayColumn(day, from, to) {
     const key = isoDay(day);
-    const blocks = plan.blocks.filter((b) => isoDay(new Date(b.start)) === key);
+    const parts = plan.blocks.flatMap((b) => segments(b).filter((s) => s.day === key).map((s) => block(b, s, from)));
     const deadlines = plan.deadlines.filter((d) => isoDay(new Date(d.deadline)) === key);
     const col = h('div', { class: 'plan-day', dataset: { day: key }, 'aria-label': day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) },
-      ...blocks.map((b) => block(b, from)));
+      ...parts);
     col.style.setProperty('--height', `${(to - from) * PX_PER_MIN}px`);
     if (key === isoDay(new Date())) {
       col.classList.add('today');
@@ -253,8 +286,9 @@ export function createPlanView(ctx) {
   }
 
   function render() {
-    const [from, to] = range();
     const days = shownDays();
+    const [from, to] = range(days);
+    const scrolled = root.querySelector('.plan-body')?.scrollTop;
     const columns = days.map((d) => dayColumn(d, from, to));
     const hours = [];
     for (let m = Math.ceil(from / 60) * 60; m < to; m += 60) {
@@ -271,16 +305,24 @@ export function createPlanView(ctx) {
     grid.style.setProperty('--days', String(days.length));
     grid.style.setProperty('--hour', `${60 * PX_PER_MIN}px`);
     root.replaceChildren(h('div', { class: 'plan' }, toolbar(), h('div', { class: 'plan-main' }, unplannedList(), grid)));
-    // Start at work hours (or the current time) rather than midnight.
+    // The whole day starts at work hours rather than midnight; a redraw (a poll) keeps where it was scrolled to.
     const body = grid.querySelector('.plan-body');
-    if (plan.settings.hours === 'full' && body) body.scrollTop = Math.max(0, (plan.settings.workStart - 30) * PX_PER_MIN);
+    if (scrollToWork) {
+      scrollToWork = false;
+      if (plan.settings.hours === 'full') body.scrollTop = Math.max(0, (plan.settings.workStart - 30) * PX_PER_MIN);
+    } else if (scrolled != null) {
+      body.scrollTop = scrolled;
+    }
   }
+
+  /** Something that a redraw would undo: a resize, or the settings being edited. */
+  const busy = () => resizing || !!root.querySelector('.plan-settings:not([hidden])');
 
   return {
     root,
-    show: () => { plan = null; load(); },
-    refresh: () => load({ quiet: true }),
-    poll: () => load({ quiet: true }),
+    show: () => { plan = null; scrollToWork = true; load(); },
+    refresh: () => { if (!resizing) load({ quiet: true }); },
+    poll: () => { if (!busy()) load({ quiet: true }); },
     title: 'Plan',
   };
 }

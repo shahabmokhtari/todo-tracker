@@ -107,7 +107,7 @@ public static class BoardSerializer
         Repeat = item.Repeat?.ToString(),
         PlannedAt = item.PlannedAt,
         PlannedMinutes = item.PlannedMinutes,
-        RepeatUndo = item.RepeatUndo is { } undo ? new RepeatUndoDocument { Deadline = undo.Deadline, NextActionAt = undo.NextActionAt } : null,
+        RepeatUndo = item.RepeatUndo is { } undo ? new RepeatUndoDocument { Deadline = undo.Deadline, NextActionAt = undo.NextActionAt, PlannedAt = undo.PlannedAt } : null,
         Time = item.TimeEntries.Count == 0 ? null : item.TimeEntries.Select(e => new TimeEntryDocument { Id = e.Id, Start = e.Start, End = e.End, Source = e.Source, Device = e.Device }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
@@ -179,7 +179,7 @@ public static class BoardSerializer
             Repeat = TaskBoard.ReadRepeat(doc.Repeat),
             PlannedAt = doc.PlannedAt,
             PlannedMinutes = TaskBoard.ReadPlanMinutes(doc.PlannedMinutes),
-            RepeatUndo = doc.RepeatUndo is { } undo ? new RepeatUndo(undo.Deadline, undo.NextActionAt) : null,
+            RepeatUndo = doc.RepeatUndo is { } undo ? new RepeatUndo(undo.Deadline, undo.NextActionAt, undo.PlannedAt) : null,
         };
         foreach (var e in doc.Time ?? [])
         {
@@ -429,5 +429,7 @@ public static class BoardSerializer
         public DateTimeOffset? Deadline { get; set; }
 
         public DateTimeOffset? NextActionAt { get; set; }
+
+        public DateTimeOffset? PlannedAt { get; set; }
     }
 }

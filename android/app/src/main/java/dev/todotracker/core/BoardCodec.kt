@@ -125,6 +125,7 @@ object BoardCodec {
             put("repeatUndo", buildJsonObject {
                 undo.deadline?.let { put("deadline", formatDate(it)) }
                 undo.nextActionAt?.let { put("nextActionAt", formatDate(it)) }
+                undo.plannedAt?.let { put("plannedAt", formatDate(it)) }
             })
         }
         i.deadline?.let { put("deadline", formatDate(it)) }
@@ -178,7 +179,7 @@ object BoardCodec {
         item.repeat = Recurrence.parseOrNull(o.string("repeat"))
         item.plannedAt = o.date("plannedAt")
         item.plannedMinutes = o["plannedMinutes"]?.jsonPrimitive?.intOrNull
-        item.repeatUndo = (o["repeatUndo"] as? JsonObject)?.let { RepeatUndo(it.date("deadline"), it.date("nextActionAt")) }
+        item.repeatUndo = (o["repeatUndo"] as? JsonObject)?.let { RepeatUndo(it.date("deadline"), it.date("nextActionAt"), it.date("plannedAt")) }
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")
         item.afterId = o.uuid("after")

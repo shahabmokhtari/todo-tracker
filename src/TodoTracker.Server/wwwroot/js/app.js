@@ -1235,7 +1235,7 @@ async function loadPlugins() {
   }
   state.plugins = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
   // Views that are extras (Plan) leave the navigation when they're off.
-  document.querySelectorAll('[data-view="plan"]').forEach((a) => { a.hidden = !pluginOn('plan'); });
+  document.querySelectorAll('.nav-link[data-view="plan"], .bottom-link[data-view="plan"]').forEach((a) => { a.hidden = !pluginOn('plan'); });
   if (state.dashboard) render();
   for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
     try {

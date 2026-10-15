@@ -630,7 +630,7 @@ public static partial class TaskMarkdown
             Repeat = TaskBoard.ReadRepeat(Str(meta, "repeat")),
             PlannedAt = VaultText.ParseInstant(Str(meta, "plan")),
             PlannedMinutes = TaskBoard.ReadPlanMinutes(Long(meta, "planMin")),
-            RepeatUndo = meta?["repeatUndo"] is JsonObject undo ? new RepeatUndo(VaultText.ParseInstant(Str(undo, "due")), VaultText.ParseInstant(Str(undo, "next"))) : null,
+            RepeatUndo = meta?["repeatUndo"] is JsonObject undo ? new RepeatUndo(VaultText.ParseInstant(Str(undo, "due")), VaultText.ParseInstant(Str(undo, "next")), VaultText.ParseInstant(Str(undo, "plan"))) : null,
         };
         if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
         {
@@ -1393,7 +1393,7 @@ public static partial class TaskMarkdown
 
         if (item.RepeatUndo is { } undo)
         {
-            meta["repeatUndo"] = new JsonObject { ["due"] = undo.Deadline is { } ud ? VaultText.Utc(ud) : null, ["next"] = undo.NextActionAt is { } un ? VaultText.Utc(un) : null };
+            meta["repeatUndo"] = new JsonObject { ["due"] = undo.Deadline is { } ud ? VaultText.Utc(ud) : null, ["next"] = undo.NextActionAt is { } un ? VaultText.Utc(un) : null, ["plan"] = undo.PlannedAt is { } up ? VaultText.Utc(up) : null };
         }
 
         if (item.Labels.Count > 0)
@@ -1663,9 +1663,10 @@ public static partial class TaskMarkdown
     private static string? Str(JsonObject? meta, string key) =>
         meta?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
-    /// <summary><c>due 2026-01-02T17:00:00Z, scheduled -</c> (a dash: none).</summary>
+    /// <summary><c>due 2026-01-02T17:00:00Z, scheduled -</c> (a dash: none), and <c>, planned …</c> when it had a block.</summary>
     private static string? RepeatUndoText(RepeatUndo? undo) =>
-        undo is null ? null : $"due {(undo.Deadline is { } d ? VaultText.Utc(d) : "-")}, scheduled {(undo.NextActionAt is { } n ? VaultText.Utc(n) : "-")}";
+        undo is null ? null : $"due {(undo.Deadline is { } d ? VaultText.Utc(d) : "-")}, scheduled {(undo.NextActionAt is { } n ? VaultText.Utc(n) : "-")}"
+            + (undo.PlannedAt is { } p ? $", planned {VaultText.Utc(p)}" : string.Empty);
 
     private static RepeatUndo? ParseRepeatUndo(string? text)
     {
@@ -1675,10 +1676,10 @@ public static partial class TaskMarkdown
         }
 
         static DateTimeOffset? Read(string value) => value == "-" ? null : VaultText.ParseInstant(value);
-        return new RepeatUndo(Read(m.Groups["due"].Value), Read(m.Groups["next"].Value));
+        return new RepeatUndo(Read(m.Groups["due"].Value), Read(m.Groups["next"].Value), m.Groups["plan"].Success ? Read(m.Groups["plan"].Value) : null);
     }
 
-    [GeneratedRegex(@"^\s*due\s+(?<due>\S+)\s*,\s*scheduled\s+(?<next>\S+)\s*$")]
+    [GeneratedRegex(@"^\s*due\s+(?<due>[^\s,]+)\s*,\s*scheduled\s+(?<next>[^\s,]+)\s*(?:,\s*planned\s+(?<plan>[^\s,]+)\s*)?$")]
     private static partial Regex RepeatUndoPattern();
 
     private static long? Long(JsonObject? meta, string key) =>

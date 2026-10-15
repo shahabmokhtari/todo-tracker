@@ -447,7 +447,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         val rule = repeat.pinnedTo(anchor)
         val next = rule.next(anchor, if (anchor.isAfter(today)) anchor else today) ?: return false
 
-        item.repeatUndo = RepeatUndo(item.deadline, item.nextActionAt)
+        item.repeatUndo = RepeatUndo(item.deadline, item.nextActionAt, item.plannedAt)
         val waitedUntil = item.nextActionAt
         val reminded = waitedUntil != null && item.reminders.any { it.kind == ReminderKind.NEXT_ACTION && it.dueAt == waitedUntil }
         val due = item.deadline
@@ -496,6 +496,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (undo != null) {
             item.deadline = undo.deadline
             item.nextActionAt = undo.nextActionAt
+            item.plannedAt = undo.plannedAt ?: item.plannedAt
         } else {
             val due = item.deadline
             if (due != null) {
