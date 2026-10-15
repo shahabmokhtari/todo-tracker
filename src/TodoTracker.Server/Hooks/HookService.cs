@@ -438,8 +438,24 @@ public sealed partial class HookService : BackgroundService
             timeout.CancelAfter(hook.Timeout);
             try
             {
-                await process.StandardInput.WriteAsync(e.ToJson().AsMemory(), timeout.Token).ConfigureAwait(false);
-                process.StandardInput.Close();
+                try
+                {
+                    await process.StandardInput.WriteAsync(e.ToJson().AsMemory(), timeout.Token).ConfigureAwait(false);
+                    process.StandardInput.Close();
+                }
+                catch (IOException)
+                {
+                    // It finished without reading the event (a broken pipe): fine, its exit code tells how it went.
+                    // Let go of the input now (what's left in it can't be written; disposing again later is then a no-op).
+                    try
+                    {
+                        process.StandardInput.Dispose();
+                    }
+                    catch (IOException)
+                    {
+                        // Same broken pipe.
+                    }
+                }
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
 
                 // Something it left running in the background can hold its output open: that's in the time limit too.
