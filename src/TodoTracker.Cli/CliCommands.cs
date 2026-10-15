@@ -575,15 +575,21 @@ internal static class CliCommands
             case "edit":
                 var current = store.Get(Id());
                 var changed = store.Update(current.Id, a.Value("event"), Fill(current.Hook, a), author, s.Now);
-                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It waits for approval: tt hooks approve {h.Id}." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
+                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval: tt hooks approve {h.Id}." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
                 break;
             case "enable" or "disable":
                 var toggled = store.SetEnabled(Id(), verb == "enable");
                 await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "approve":
-                var approved = store.Approve(Id(), author);
-                await s.Print(approved, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
+                // Approves exactly what's shown here (a change made meanwhile isn't approved).
+                var pending = store.Get(Id());
+                var approved = store.Approve(pending.Id, pending.Version, author);
+                await s.Print(approved, (o, h) =>
+                {
+                    o.HookDetails(pending);
+                    o.Line($"Hook {h.Id} is {h.State}.");
+                }).ConfigureAwait(false);
                 break;
             case "remove" or "delete":
                 var id = Id();

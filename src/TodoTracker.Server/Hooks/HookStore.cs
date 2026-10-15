@@ -7,8 +7,26 @@ namespace TodoTracker.Server.Hooks;
 /// <summary>What removing a hook says: which one went.</summary>
 public sealed record HookRemoved(string Removed);
 
-/// <summary>A hook with its event and handle, as Settings, the API, the AI tools and <c>tt hooks</c> show it.</summary>
-public sealed record HookEntry(string Id, string Event, HookSpec Hook, string State, string? Problem);
+/// <summary>
+/// A hook with its event and handle, as Settings, the API, the AI tools and <c>tt hooks</c> show it. <see cref="Version"/>
+/// changes with anything about what it does: approving names the version that was looked at.
+/// </summary>
+public sealed record HookEntry(string Id, string Event, HookSpec Hook, string State, string? Problem, string Version)
+{
+    /// <summary>The same, with the values of headers and environment variables hidden (secrets for whoever set them).</summary>
+    public HookEntry Redacted()
+    {
+        if (Hook.Headers is null && Hook.Env is null)
+        {
+            return this;
+        }
+
+        var copy = JsonSerializer.Deserialize<HookSpec>(JsonSerializer.Serialize(Hook, HookFile.Json), HookFile.Json)!;
+        copy.Headers = copy.Headers?.ToDictionary(p => p.Key, _ => "•••", StringComparer.Ordinal);
+        copy.Env = copy.Env?.ToDictionary(p => p.Key, _ => "•••", StringComparer.Ordinal);
+        return this with { Hook = copy };
+    }
+}
 
 /// <summary>
 /// Who's changing hooks. <see cref="Trusted"/>: the person at this computer (the app, or <c>tt</c>): their hooks run
@@ -29,8 +47,10 @@ public sealed class HookStore
     public const int MaxScriptLength = 8000;
     public const int MaxListLength = 50;
 
+    private static readonly TimeSpan LockWait = TimeSpan.FromSeconds(5);
+
     private readonly Lock _lock = new();
-    private (DateTime Stamp, HookFile? File, string? Problem) _cache = (DateTime.MinValue, null, null);
+    private ((DateTime Time, long Length) Stamp, HookFile? File, string? Problem) _cache = ((DateTime.MinValue, -1), null, null);
 
     public HookStore(string dataDirectory)
     {
@@ -65,7 +85,7 @@ public sealed class HookStore
         ArgumentNullException.ThrowIfNull(hook);
         ArgumentNullException.ThrowIfNull(author);
         var name = CleanEvent(eventName);
-        var clean = Clean(hook);
+        var clean = Clean(hook, author);
         return Change(file =>
         {
             clean.Id = NewId(file);
@@ -86,7 +106,7 @@ public sealed class HookStore
     {
         ArgumentNullException.ThrowIfNull(hook);
         ArgumentNullException.ThrowIfNull(author);
-        var clean = Clean(hook);
+        var clean = Clean(hook, author);
         var name = eventName is null ? null : CleanEvent(eventName);
         return Change(file =>
         {
@@ -94,6 +114,13 @@ public sealed class HookStore
             clean.Id = id;
             clean.Enabled = old.Enabled;
             Stamp(clean, author, now);
+
+            // Only approving approves: your change to a hook waiting for approval keeps it waiting (and says who added it).
+            if (old.NeedsApproval == true)
+            {
+                clean.NeedsApproval = true;
+                clean.AddedBy = old.AddedBy;
+            }
             var target = name ?? oldEvent;
             var list = file.Hooks[oldEvent];
             var index = list.IndexOf(old);
@@ -128,18 +155,27 @@ public sealed class HookStore
         return id;
     });
 
-    /// <summary>Lets an agent's hook run. Only the person at this computer can approve.</summary>
-    public HookEntry Approve(string id, HookAuthor author)
+    /// <summary>
+    /// Lets an agent's hook run. Only the person at this computer can approve, and only the <paramref name="version"/>
+    /// they looked at: one changed since then isn't approved (look at it again).
+    /// </summary>
+    public HookEntry Approve(string id, string? version, HookAuthor author)
     {
         ArgumentNullException.ThrowIfNull(author);
         if (!author.Trusted)
         {
-            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks, or with tt hooks approve.");
+            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks of the Todo Tracker app, or with tt hooks approve.");
         }
 
         return Change(file =>
         {
-            Find(file, id).Hook.NeedsApproval = null;
+            var (_, hook) = Find(file, id);
+            if (version is not null && version != VersionOf(hook))
+            {
+                throw new InvalidOperationException("This hook changed since you looked at it. Look at it again before approving.");
+            }
+
+            hook.NeedsApproval = null;
             return id;
         });
     }
@@ -158,23 +194,85 @@ public sealed class HookStore
 
     // ---- inside ---------------------------------------------------------------------------------
 
+    /// <summary>
+    /// Reads the file afresh (never the copy readers share), changes it and writes it back, holding a lock that the
+    /// server and <c>tt</c> share, so neither loses the other's change.
+    /// </summary>
     private HookEntry Change(Func<HookFile, string?> change)
     {
         lock (_lock)
         {
-            var (file, problem) = ReadLocked();
-            if (problem is not null)
+            using var crossProcess = AcquireFileLock();
+            try
             {
-                throw new InvalidOperationException($"{problem} Fix the file first ({FilePath}).");
+                var (file, problem) = Parse();
+                if (problem is not null)
+                {
+                    throw new InvalidOperationException($"{problem} Fix the file first ({FilePath}).");
+                }
+
+                file ??= new HookFile();
+                var id = change(file);
+                Write(file);
+                _cache = ((DateTime.MinValue, -1), null, null);
+                var (saved, _) = ReadLocked();
+                return id is null ? new HookEntry(string.Empty, string.Empty, new HookSpec(), string.Empty, null, string.Empty) : Entries(saved).First(e => e.Id == id);
+            }
+            finally
+            {
+                _cache = ((DateTime.MinValue, -1), null, null);
+            }
+        }
+    }
+
+    private FileStream AcquireFileLock()
+    {
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath)!);
+        var until = DateTime.UtcNow + LockWait;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+            }
+            catch (IOException) when (DateTime.UtcNow < until)
+            {
+                Thread.Sleep(50);
+            }
+        }
+    }
+
+    /// <summary>hooks.json read from disk now (a new object every time).</summary>
+    private (HookFile? File, string? Problem) Parse()
+    {
+        if (!File.Exists(FilePath))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var file = JsonSerializer.Deserialize<HookFile>(ReadShared(), HookFile.Json);
+            if (file is not null)
+            {
+                file.Hooks ??= new(StringComparer.Ordinal);
+                AssignIds(file);
             }
 
-            file ??= new HookFile();
-            var id = change(file);
-            Write(file);
-            _cache = (DateTime.MinValue, null, null);
-            var (saved, _) = ReadLocked();
-            return id is null ? new HookEntry(string.Empty, string.Empty, new HookSpec(), string.Empty, null) : Entries(saved).First(e => e.Id == id);
+            return (file, file is null ? "hooks.json is empty." : null);
         }
+        catch (JsonException ex)
+        {
+            return (null, $"hooks.json can't be read: {ex.Message}");
+        }
+    }
+
+    /// <summary>Reads without keeping a writer from replacing the file meanwhile.</summary>
+    private string ReadShared()
+    {
+        using var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 
     private (HookFile? File, string? Problem) ReadLocked()
@@ -183,28 +281,17 @@ public sealed class HookStore
         {
             if (!File.Exists(FilePath))
             {
-                _cache = (DateTime.MinValue, null, null);
+                _cache = ((DateTime.MinValue, -1), null, null);
                 return (null, null);
             }
 
-            var stamp = File.GetLastWriteTimeUtc(FilePath);
+            // The time and the length: a second write within the clock's tick still shows.
+            var info = new FileInfo(FilePath);
+            var stamp = (info.LastWriteTimeUtc, info.Length);
             if (stamp != _cache.Stamp || (_cache.File is null && _cache.Problem is null))
             {
-                try
-                {
-                    var file = JsonSerializer.Deserialize<HookFile>(File.ReadAllText(FilePath), HookFile.Json);
-                    if (file is not null)
-                    {
-                        file.Hooks ??= new(StringComparer.Ordinal);
-                        AssignIds(file);
-                    }
-
-                    _cache = (stamp, file, file is null ? "hooks.json is empty." : null);
-                }
-                catch (JsonException ex)
-                {
-                    _cache = (stamp, null, $"hooks.json can't be read: {ex.Message}");
-                }
+                var (file, problem) = Parse();
+                _cache = (stamp, file, problem);
             }
 
             return (_cache.File, _cache.Problem);
@@ -219,18 +306,46 @@ public sealed class HookStore
     {
         var dir = System.IO.Path.GetDirectoryName(FilePath)!;
         Directory.CreateDirectory(dir);
-        var temp = FilePath + ".tmp";
+        var temp = $"{FilePath}.{Guid.NewGuid():N}.tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(file, HookFile.Json) + "\n");
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(temp, UnixFileMode.UserRead | UnixFileMode.UserWrite);
         }
 
-        File.Move(temp, FilePath, overwrite: true);
+        // Someone reading it this very moment (an editor, another process) can hold up the swap briefly.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Move(temp, FilePath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 20)
+            {
+                Thread.Sleep(50);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                File.Delete(temp);
+                throw new IOException($"hooks.json couldn't be saved: {ex.Message}", ex);
+            }
+        }
     }
 
     private static IEnumerable<HookEntry> Entries(HookFile? file) =>
-        (file?.Hooks ?? []).SelectMany(p => p.Value.Select(h => new HookEntry(h.Id!, p.Key, h, h.State, h.Problem() ?? (p.Key == "*" || EventNames.All.ContainsKey(p.Key) ? null : $"\"{p.Key}\" isn't an event."))));
+        (file?.Hooks ?? []).SelectMany(p => p.Value.Select(h => new HookEntry(h.Id!, p.Key, h, h.State, h.Problem() ?? (p.Key == "*" || EventNames.All.ContainsKey(p.Key) ? null : $"\"{p.Key}\" isn't an event."), VersionOf(h))));
+
+    /// <summary>What a hook does (not its state), hashed.</summary>
+    internal static string VersionOf(HookSpec hook)
+    {
+        var content = new HookSpec
+        {
+            Type = hook.Type, Powershell = hook.Powershell, Bash = hook.Bash, Cwd = hook.Cwd, TimeoutSec = hook.TimeoutSec, Env = hook.Env,
+            Url = hook.Url, Headers = hook.Headers, Match = hook.Match, Name = hook.Name,
+        };
+        return Hash(JsonSerializer.Serialize(content, HookFile.Json)) + Hash(hook.AddedAt?.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)[..4];
+    }
 
     private static (string Event, HookSpec Hook) Find(HookFile file, string id) =>
         file.Hooks.SelectMany(p => p.Value.Select(h => (p.Key, h))).FirstOrDefault(x => x.h.Id == id) is ({ } e, { } h)
@@ -288,8 +403,15 @@ public sealed class HookStore
     }
 
     /// <summary>Only what a hook is (its state is the store's), checked and trimmed.</summary>
-    private static HookSpec Clean(HookSpec hook)
+    private static HookSpec Clean(HookSpec hook, HookAuthor author)
     {
+        // What a command sees besides its own text (variables like BASH_ENV or PATH, its folder) could run other code
+        // than what's shown for approval: only you set those.
+        if (!author.Trusted && (hook.Env is { Count: > 0 } || !string.IsNullOrWhiteSpace(hook.Cwd)))
+        {
+            throw new ArgumentException("An agent can't set a hook's environment variables or folder. Ask the user to add them in Settings › Hooks or with tt hooks.");
+        }
+
         static string? Text(string? value, int max, string what)
         {
             var clean = string.IsNullOrWhiteSpace(value) ? null : value.Trim();

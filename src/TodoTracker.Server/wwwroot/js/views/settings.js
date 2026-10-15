@@ -128,7 +128,20 @@ export function createSettingsView(ctx) {
       const pending = x.state === 'needs approval';
       const toggle = h('input', { type: 'checkbox', checked: x.hook.enabled !== false, 'aria-label': `${x.label}: on`, title: 'On or off',
         onchange: () => call(`/api/hooks/${encodeURIComponent(x.id)}/enabled`, { method: 'POST', body: { enabled: toggle.checked } }) });
-      const what = x.hook.type === 'http' ? x.hook.url : [x.hook.powershell && `PowerShell: ${x.hook.powershell}`, x.hook.bash && `bash: ${x.hook.bash}`].filter(Boolean).join('\n');
+      // Everything it would do: a name alone could say anything.
+      const m = x.hook.match ?? {};
+      const pairs = (o, sep) => Object.entries(o ?? {}).map(([k, v]) => `${k}${sep}${v}`).join(', ');
+      const only = [['groups', m.groups], ['tags', m.tags], ['labels', m.labels], ['done by', m.actors]].filter(([, v]) => v?.length).map(([k, v]) => `${k} ${v.join(', ')}`).join('; ');
+      const what = [
+        x.hook.powershell && `PowerShell: ${x.hook.powershell}`,
+        x.hook.bash && `bash: ${x.hook.bash}`,
+        x.hook.url && `Web address: ${x.hook.url}`,
+        x.hook.headers && `Headers: ${pairs(x.hook.headers, ': ')}`,
+        x.hook.env && `Variables: ${pairs(x.hook.env, '=')}`,
+        x.hook.cwd && `Folder: ${x.hook.cwd}`,
+        x.hook.timeoutSec && `Time limit: ${x.hook.timeoutSec} s`,
+        only && `Only for: ${only}`,
+      ].filter(Boolean).join('\n');
       return h('li', { class: `hook-row${pending ? ' pending' : ''}`, dataset: { id: x.id } },
         h('div', { class: 'hook-head' },
           toggle,
@@ -136,12 +149,13 @@ export function createSettingsView(ctx) {
           h('span', { class: 'hook-label' }, x.label),
           h('span', { class: `chip ${pending ? 'warn' : x.state === 'off' ? 'muted' : 'info'}` }, x.state),
           h('span', { class: 'hook-actions' },
-            pending ? h('button', { class: 'btn small primary', type: 'button', onclick: () => call(`/api/hooks/${encodeURIComponent(x.id)}/approve`, { method: 'POST' }, 'Approved: it runs from now on') }, icon('check', { size: 14 }), 'Approve') : null,
+            pending && status.canApprove ? h('button', { class: 'btn small primary', type: 'button', onclick: () => call(`/api/hooks/${encodeURIComponent(x.id)}/approve`, { method: 'POST', body: { version: x.version } }, 'Approved: it runs from now on') }, icon('check', { size: 14 }), 'Approve') : null,
             h('button', { class: 'icon-btn small', type: 'button', title: 'Change', 'aria-label': `Change ${x.label}`, onclick: () => form.open(x) }, icon('pencil', { size: 14 })),
             h('button', { class: 'icon-btn small', type: 'button', title: 'Remove', 'aria-label': `Remove ${x.label}`, onclick: () => {
               if (confirm(`Remove the hook "${x.label}"?`)) call(`/api/hooks/${encodeURIComponent(x.id)}`, { method: 'DELETE' }, 'Removed');
             } }, icon('trash', { size: 14 })))),
         pending ? h('p', { class: 'small hook-why' }, `Added or changed by ${x.hook.addedBy ?? 'an agent'}. It runs only after you approve it. What it would do:`) : null,
+        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Todo Tracker app (the sidebar, or Open in browser from the tray), or run tt hooks approve ${x.id}.`) : null,
         pending ? h('pre', { class: 'hook-sample' }, what) : null,
         x.problem ? h('p', { class: 'hook-problem small' }, x.problem) : null);
     };
@@ -220,6 +234,8 @@ export function createSettingsView(ctx) {
         name: name.value || null, timeoutSec: timeout.value ? Number(timeout.value) : null,
         match: { groups: split(groups.value), tags: split(tags.value), labels: split(labels.value), actors: split(actors.value) },
       };
+      // What the form doesn't show (headers, variables, folder) stays as it was.
+      if (editing) Object.assign(hook, { headers: editing.hook.headers ?? null, env: editing.hook.env ?? null, cwd: editing.hook.cwd ?? null });
       const body = { event: eventPick.value, hook };
       if (editing) call(`/api/hooks/${encodeURIComponent(editing.id)}`, { method: 'PUT', body }, 'Hook changed');
       else call('/api/hooks', { method: 'POST', body }, 'Hook added');

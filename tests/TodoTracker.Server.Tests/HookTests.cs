@@ -104,13 +104,81 @@ public sealed class HookTests : IAsyncLifetime
 
     }
 
-    /// <summary>The signed-in app: its session cookie and its header (what the web app and the sidebar send).</summary>
-    private HttpClient AppClient()
+    /// <summary>A browser session from <paramref name="cookie"/> (with the app's header, as the web app sends).</summary>
+    private HttpClient SessionClient(string cookie)
     {
         var client = _server.Client(authenticated: false);
-        client.DefaultRequestHeaders.Add("Cookie", $"tt_session={ServerFixture.Token}");
+        client.DefaultRequestHeaders.Add("Cookie", $"tt_session={cookie}");
         client.DefaultRequestHeaders.Add("X-TodoTracker-Client", "web");
         return client;
+    }
+
+    private static string SessionCookie(HttpResponseMessage response) =>
+        response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0]["tt_session=".Length..];
+
+    /// <summary>The owner's session: opened from a link the app made itself (as the sidebar and the tray do).</summary>
+    private HttpClient AppClient()
+    {
+        var link = new Uri(TodoTrackerHost.CreateLaunchUrl(_server.App.Services));
+        using var client = _server.Client(authenticated: false);
+        using var response = client.GetAsync(link.PathAndQuery).GetAwaiter().GetResult();
+        return SessionClient(SessionCookie(response));
+    }
+
+    [Fact]
+    public async Task Only_a_session_the_app_opened_itself_can_approve_not_one_from_the_api_token()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        var id = (await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 }))["id"]!.GetValue<string>();
+
+        // Whatever holds the token can sign in, or send the token as the cookie, or ask for a launch link over HTTP:
+        // none of those is the person at this computer.
+        using var tokenCookie = SessionClient(ServerFixture.Token);
+        using var signIn = _server.Client(authenticated: false);
+        signIn.DefaultRequestHeaders.Add("X-TodoTracker-Client", "web");
+        using var loggedIn = SessionClient(SessionCookie(await signIn.PostAsJsonAsync("/api/login", new { token = ServerFixture.Token })));
+        var link = (await agent.PostJson("/api/launch", new { }))["url"]!.GetValue<string>();
+        using var launched = SessionClient(SessionCookie(await _server.Client(authenticated: false).GetAsync(new Uri(link).PathAndQuery)));
+        foreach (var client in new[] { tokenCookie, loggedIn, launched })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync($"/api/hooks/{id}/approve", new { })).StatusCode);
+            Assert.Equal("needs approval", (await client.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["state"]!.GetValue<string>());
+            Assert.False((await client.GetJson("/api/hooks"))["canApprove"]!.GetValue<bool>());
+        }
+
+        using var app = AppClient();
+        Assert.True((await app.GetJson("/api/hooks"))["canApprove"]!.GetValue<bool>());
+        Assert.Equal("on", (await app.PostJson($"/api/hooks/{id}/approve", new { }))["state"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Approving_is_for_the_version_you_looked_at_and_agents_cant_set_variables_or_a_folder()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        using var app = AppClient();
+        var seen = await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 });
+        var id = seen["id"]!.GetValue<string>();
+        await agent.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", powershell = "exit 7", bash = "exit 7" } });
+
+        Assert.Equal(HttpStatusCode.Conflict, (await app.PostAsJsonAsync($"/api/hooks/{id}/approve", new { version = seen["version"]!.GetValue<string>() })).StatusCode);
+
+        // Your change to it doesn't approve it either.
+        Assert.Equal("needs approval", (await (await app.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", powershell = "exit 7", bash = "exit 7", name = "renamed" } })).Json())["state"]!.GetValue<string>());
+
+        var sneaky = await agent.PostAsJsonAsync("/api/hooks", new { @event = "taskCompleted", hook = new { type = "command", bash = "echo hi", powershell = "echo hi", env = new { BASH_ENV = "/tmp/x.sh" } } });
+        Assert.Equal(HttpStatusCode.BadRequest, sneaky.StatusCode);
+    }
+
+    [Fact]
+    public async Task Header_and_variable_values_are_hidden_from_anything_but_the_owners_session()
+    {
+        using var app = AppClient();
+        var added = await app.PostJson("/api/hooks", new { @event = "reminderDue", hook = new { type = "http", url = "https://example.com/hook", headers = new Dictionary<string, string> { ["Authorization"] = "Bearer secret" } } });
+
+
+        // Names come back as written (the API's camelCase doesn't touch them: variable names are case-sensitive).
+        Assert.Equal("•••", (await _client.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
+        Assert.Equal("Bearer secret", (await app.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
     }
 
     private static object Exit0 => new { type = "command", powershell = "exit 0", bash = "exit 0", name = "quiet" };
@@ -131,11 +199,14 @@ public sealed class HookTests : IAsyncLifetime
         Assert.Equal("on", (await app.PostJson($"/api/hooks/{id}/approve"))["state"]!.GetValue<string>());
         Assert.Single((await agent.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
 
-        // A change by the agent needs approval again; one made in the app doesn't.
+        // A change by the agent needs approval again; your change to it keeps it waiting (only approving approves),
+        // and one to a hook that isn't waiting runs at once.
         var edited = await (await agent.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", powershell = "exit 1", bash = "exit 1" } })).Json();
         Assert.Equal("needs approval", edited["state"]!.GetValue<string>());
         var mine = await (await app.PutAsJsonAsync($"/api/hooks/{id}", new { @event = "noteAdded", hook = Exit0 })).Json();
-        Assert.Equal(("on", "noteAdded"), (mine["state"]!.GetValue<string>(), mine["event"]!.GetValue<string>()));
+        Assert.Equal(("needs approval", "noteAdded"), (mine["state"]!.GetValue<string>(), mine["event"]!.GetValue<string>()));
+        Assert.Equal("on", (await app.PostJson($"/api/hooks/{id}/approve", new { version = mine["version"]!.GetValue<string>() }))["state"]!.GetValue<string>());
+        Assert.Equal("on", (await (await app.PutAsJsonAsync($"/api/hooks/{id}", new { @event = "noteAdded", hook = new { type = "command", powershell = "exit 0", bash = "exit 0", name = "mine" } })).Json())["state"]!.GetValue<string>());
 
         Assert.Equal("off", (await app.PostJson($"/api/hooks/{id}/enabled", new { enabled = false }))["state"]!.GetValue<string>());
         Assert.Equal(HttpStatusCode.NoContent, (await app.DeleteAsync($"/api/hooks/{id}")).StatusCode);

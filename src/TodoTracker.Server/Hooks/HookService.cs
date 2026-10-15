@@ -18,10 +18,10 @@ namespace TodoTracker.Server.Hooks;
 public sealed record HookRun(DateTimeOffset At, string Event, string EventId, string Hook, bool Ok, int? ExitCode, string? Output, long Milliseconds);
 
 /// <summary>What Settings › Hooks shows.</summary>
-public sealed record HookStatus(string Path, bool Exists, string? Problem, IReadOnlyList<HookInfo> Hooks, IReadOnlyList<HookRun> Runs, IReadOnlyDictionary<string, string> Events, string Sample);
+public sealed record HookStatus(string Path, bool Exists, string? Problem, IReadOnlyList<HookInfo> Hooks, IReadOnlyList<HookRun> Runs, IReadOnlyDictionary<string, string> Events, string Sample, bool CanApprove = false);
 
 /// <summary>A hook as Settings shows it: what it is (<see cref="Hook"/>, to edit), and whether it runs.</summary>
-public sealed record HookInfo(string Id, string Event, string Type, string Label, string State, string? Problem, HookSpec Hook);
+public sealed record HookInfo(string Id, string Event, string Type, string Label, string State, string? Problem, HookSpec Hook, string Version);
 
 /// <summary>
 /// Turns what happens (the activity log: in the app, by agents, in the files, by sync, and the focus timer) into
@@ -309,7 +309,7 @@ public sealed partial class HookService : BackgroundService
     public HookStatus Status()
     {
         var (_, problem) = _hooks.Read();
-        var hooks = _hooks.List().Select(e => new HookInfo(e.Id, e.Event, e.Hook.Type, e.Hook.Label, e.State, e.Problem ?? NoScript(e.Hook), e.Hook)).ToList();
+        var hooks = _hooks.List().Select(e => new HookInfo(e.Id, e.Event, e.Hook.Type, e.Hook.Label, e.State, e.Problem ?? NoScript(e.Hook), e.Hook, e.Version)).ToList();
         lock (_runs)
         {
             return new HookStatus(HooksPath, _hooks.Exists, problem, hooks, _runs.AsEnumerable().Reverse().ToList(), EventNames.All, HookFile.Sample);

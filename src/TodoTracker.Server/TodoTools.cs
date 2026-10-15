@@ -404,7 +404,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     // ---- Hooks: what runs when something happens. An agent's hook waits for the person's approval. ----------------
 
     [McpServerTool(Name = "list_hooks", ReadOnly = true), Description("The hooks set up on this computer: what runs (a command or a web address) when something happens in Todo Tracker, and whether each is on, off or waiting for approval.")]
-    public Task<IReadOnlyList<Hooks.HookEntry>> ListHooks() => Guard(() => Task.FromResult(hooks.List()));
+    public Task<IReadOnlyList<Hooks.HookEntry>> ListHooks() => Guard(() => Task.FromResult<IReadOnlyList<Hooks.HookEntry>>(hooks.List().Select(h => h.Redacted()).ToList()));
 
     [McpServerTool(Name = "add_hook"), Description("Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user approves it in Todo Tracker (Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.")]
     public Task<Hooks.HookEntry> AddHook(
@@ -428,10 +428,10 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             Name = name,
             TimeoutSec = timeoutSec,
             Match = new Hooks.HookMatch { Groups = groups?.ToList(), Tags = tags?.ToList(), Labels = labels?.ToList(), Actors = actors?.ToList() },
-        }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow())));
+        }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow()).Redacted()));
 
     [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.")]
-    public Task<Hooks.HookEntry> SetHookEnabled(string hookId, bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled)));
+    public Task<Hooks.HookEntry> SetHookEnabled(string hookId, bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled).Redacted()));
 
     [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook (by its id from list_hooks).")]
     public Task<Hooks.HookRemoved> RemoveHook(string hookId) => Guard(() =>

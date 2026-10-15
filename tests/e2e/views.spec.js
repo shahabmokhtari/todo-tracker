@@ -733,7 +733,10 @@ test('Repeat: a task set to repeat from its details moves on when done, counts a
   expect(errors).toEqual([]);
 });
 
-test('Hooks: add one in Settings (it runs at once), approve one an AI agent added, try them, remove one', async ({ page, request }) => {
+test('Hooks: add and change one in Settings, see exactly what an agent asks to run, switch off and remove', async ({ page, request }) => {
+  // This browser signed in with a link asked for over HTTP with the API token (as anything holding the token could):
+  // not the owner's session, so what it adds waits for approval too, and it can't approve (the app's own sessions can;
+  // the server tests cover that).
   const errors = watchErrors(page);
   page.on('dialog', (d) => d.accept());
   await open(page, request);
@@ -741,7 +744,6 @@ test('Hooks: add one in Settings (it runs at once), approve one an AI agent adde
   const hooks = page.locator('#settings-hooks');
   await expect(hooks).toContainText('hooks.json');
 
-  // Yours: added in the app, on at once.
   await hooks.getByRole('button', { name: 'Add a hook' }).click();
   await hooks.getByRole('combobox', { name: 'When' }).selectOption('taskCompleted');
   await hooks.getByRole('textbox', { name: 'PowerShell (Windows)' }).fill('exit 0');
@@ -749,23 +751,29 @@ test('Hooks: add one in Settings (it runs at once), approve one an AI agent adde
   await hooks.getByRole('textbox', { name: 'Name' }).fill('Log what got done');
   await hooks.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('#toast')).toContainText('Hook added');
-  await expect(hooks.locator('.hook-row', { hasText: 'Log what got done' })).toContainText('on');
+  const mine = hooks.locator('.hook-row', { hasText: 'Log what got done' });
+  await expect(mine).toContainText('needs approval');
 
-  // An agent's: waits for approval, shows what it would run.
-  await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Agent hook' } } });
+  // An agent's hook: every detail of what it would run is shown, and how to approve it.
+  await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'reminderDue', hook: { type: 'command', powershell: 'exit 0', bash: 'curl -d @- https://example.com/push', name: 'Agent hook', timeoutSec: 20 } } });
   await page.evaluate(() => { location.hash = '#/today'; });
   await page.evaluate(() => { location.hash = '#/settings'; });
   const pending = hooks.locator('.hook-row', { hasText: 'Agent hook' });
-  await expect(pending).toContainText('needs approval');
   await expect(pending).toContainText('Added or changed by claude');
-  await pending.getByRole('button', { name: 'Approve' }).click();
-  await expect(pending).toContainText('on');
+  await expect(pending.locator('.hook-sample')).toContainText('bash: curl -d @- https://example.com/push');
+  await expect(pending.locator('.hook-sample')).toContainText('Time limit: 20 s');
+  await expect(pending).toContainText('tt hooks approve');
+  await expect(pending.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 
-  await hooks.getByRole('combobox', { name: 'Event to try' }).selectOption('taskCompleted');
-  await hooks.getByRole('button', { name: 'Try it' }).click();
-  await expect(page.locator('#toast')).toContainText('2 of 2 hooks worked');
-
-  await pending.getByRole('button', { name: 'Remove Agent hook' }).click();
+  // Change it: the form keeps what it doesn't show; switch it off; remove it.
+  await pending.getByRole('button', { name: 'Change Agent hook' }).click();
+  await hooks.getByRole('textbox', { name: 'Name' }).fill('Agent hook renamed');
+  await hooks.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('#toast')).toContainText('Hook changed');
+  const renamed = hooks.locator('.hook-row', { hasText: 'Agent hook renamed' });
+  await renamed.getByRole('checkbox').uncheck();
+  await expect(renamed).toContainText('needs approval');
+  await renamed.getByRole('button', { name: 'Remove Agent hook renamed' }).click();
   await expect(hooks.locator('.hook-row', { hasText: 'Agent hook' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

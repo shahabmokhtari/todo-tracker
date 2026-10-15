@@ -20,9 +20,17 @@ four ways to change it:
 
 **Approval.** A hook runs code on your computer, so what an AI agent (or anything else with the API token, or `tt` run
 with `--as`/`TT_AGENT`) adds or changes is saved with `"needsApproval": true` and doesn't run until you approve it: in
-Settings › Hooks (it shows exactly what would run) or with `tt hooks approve <id>`. Only the signed-in app and `tt` run
-by you can approve. Switching a hook off or removing it needs no approval. Hooks you add in the app or with `tt` run at
-once.
+Settings › Hooks (it shows everything it would do) or with `tt hooks approve <id>` (it prints it). Approving names the
+version you looked at: if it changed since, it isn't approved. Changing a hook that waits for approval keeps it waiting;
+only approving approves. Switching a hook off or removing it needs no approval.
+
+Who is "you": `tt` run without `--as`, and a window the app opened itself (the sidebar, Settings in the app window,
+or *Open in browser* from the tray). A browser signed in by pasting the API token, or with a link asked for over the
+API, is treated like anything else holding the token: what it adds waits for approval and it can't approve. Hooks you
+add from the app or with `tt` run at once.
+
+An agent can't set a hook's environment variables or folder (they could make a harmless-looking command run something
+else), and sees the values of headers and variables hidden.
 
 A change made in the app, by `tt` or by an agent rewrites the file (it never overwrites a file it can't read: fix that
 first), so comments in a hand-edited file don't survive it. Each hook gets an `id`; one written by hand without it gets

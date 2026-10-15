@@ -52,6 +52,7 @@ public static class TodoTrackerHost
         services.AddSingleton(ApiToken.LoadOrCreate(options));
         services.AddSingleton(_ => InstanceLock.Acquire(options.DataDirectory));
         services.AddSingleton<LaunchCodes>();
+        services.AddSingleton<AppSessions>();
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();
         Plugins.PluginHost.AddServices(services, options);
@@ -150,7 +151,8 @@ public static class TodoTrackerHost
     public static string CreateLaunchUrl(IServiceProvider services, string returnPath = "/", TimeSpan? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(services);
-        return ApiEndpoints.LaunchUrl(services.GetRequiredService<LaunchCodes>(), services.GetRequiredService<TodoTrackerServerOptions>(), returnPath, lifetime);
+        // Made in this process (the sidebar, the tray, the console): the session it opens is the owner's.
+        return ApiEndpoints.LaunchUrl(services.GetRequiredService<LaunchCodes>(), services.GetRequiredService<TodoTrackerServerOptions>(), returnPath, lifetime, owner: true);
     }
 
     /// <summary>Embedded web UI assets, exposed for hosts that want to check they are present.</summary>

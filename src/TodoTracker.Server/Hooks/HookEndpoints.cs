@@ -12,6 +12,9 @@ public sealed record HookRequest(string? Event, HookSpec? Hook);
 
 public sealed record HookEnabledRequest(bool Enabled);
 
+/// <summary>Approving names the version that was looked at (a hook changed since then isn't approved).</summary>
+public sealed record HookApproveRequest(string? Version);
+
 /// <summary>
 /// Settings › Hooks: what's set up, adding and changing hooks, recent runs, trying one; and the event stream. What the
 /// signed-in app changes runs at once; what anything with the API token (an AI agent, a script) adds or changes waits
@@ -25,21 +28,33 @@ internal static class HookEndpoints
     internal static HookAuthor AuthorOf(HttpContext http) =>
         Security.IsAppSession(http) ? HookAuthor.You : new HookAuthor(Security.ActorOf(http) is { Kind: ActorKind.Agent, Name: { } name } ? name : "an app with the API token", Trusted: false);
 
+    private static IResult Shown(HttpContext http, HookEntry entry) => Results.Ok(Security.IsAppSession(http) ? entry : entry.Redacted());
+
     public static void Map(IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
 
-        api.MapGet("/hooks", (HookService hooks) => Results.Ok(hooks.Status()));
+        // The owner's session sees everything and may approve; anything else sees header and variable values hidden.
+        api.MapGet("/hooks", (HttpContext http, HookService hooks) =>
+        {
+            var owner = Security.IsAppSession(http);
+            var status = hooks.Status();
+            return Results.Ok(status with
+            {
+                CanApprove = owner,
+                Hooks = owner ? status.Hooks : status.Hooks.Select(h => h with { Hook = new HookEntry(h.Id, h.Event, h.Hook, h.State, h.Problem, h.Version).Redacted().Hook }).ToList(),
+            });
+        });
 
         api.MapPost("/hooks", (HookRequest request, HttpContext http, HookStore store, TimeProvider time) =>
-            Results.Ok(store.Add(request.Event ?? string.Empty, request.Hook ?? throw new ArgumentException("Say what the hook does (hook)."), AuthorOf(http), time.GetUtcNow())));
+            Shown(http, store.Add(request.Event ?? string.Empty, request.Hook ?? throw new ArgumentException("Say what the hook does (hook)."), AuthorOf(http), time.GetUtcNow())));
 
         api.MapPut("/hooks/{id}", (string id, HookRequest request, HttpContext http, HookStore store, TimeProvider time) =>
-            Results.Ok(store.Update(id, request.Event, request.Hook ?? throw new ArgumentException("Say what the hook does (hook)."), AuthorOf(http), time.GetUtcNow())));
+            Shown(http, store.Update(id, request.Event, request.Hook ?? throw new ArgumentException("Say what the hook does (hook)."), AuthorOf(http), time.GetUtcNow())));
 
-        api.MapPost("/hooks/{id}/enabled", (string id, HookEnabledRequest request, HookStore store) => Results.Ok(store.SetEnabled(id, request.Enabled)));
+        api.MapPost("/hooks/{id}/enabled", (string id, HookEnabledRequest request, HttpContext http, HookStore store) => Shown(http, store.SetEnabled(id, request.Enabled)));
 
-        api.MapPost("/hooks/{id}/approve", (string id, HttpContext http, HookStore store) => Results.Ok(store.Approve(id, AuthorOf(http))));
+        api.MapPost("/hooks/{id}/approve", (string id, HookApproveRequest? request, HttpContext http, HookStore store) => Shown(http, store.Approve(id, request?.Version, AuthorOf(http))));
 
         api.MapDelete("/hooks/{id}", (string id, HookStore store) =>
         {

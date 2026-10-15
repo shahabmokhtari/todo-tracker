@@ -85,10 +85,12 @@ public sealed class HookSpec
 
     public int? TimeoutSec { get; set; }
 
+    [JsonConverter(typeof(VerbatimKeys))]
     public Dictionary<string, string>? Env { get; set; }
 
     public string? Url { get; set; }
 
+    [JsonConverter(typeof(VerbatimKeys))]
     public Dictionary<string, string>? Headers { get; set; }
 
     /// <summary>Only for these; a task-less event (a break) runs only when nothing about a task is asked.</summary>
@@ -155,6 +157,49 @@ public sealed class HookSpec
         return (m.Groups is not { Count: > 0 } groups || (task.Group is not null && groups.Contains(task.Group, StringComparer.OrdinalIgnoreCase)))
             && (m.Tags is not { Count: > 0 } tags || tags.Any(t => task.Tags.Contains(t.TrimStart('#'), StringComparer.OrdinalIgnoreCase)))
             && (m.Labels is not { Count: > 0 } labels || labels.Any(l => task.Labels.Contains(l, StringComparer.OrdinalIgnoreCase)));
+    }
+}
+
+/// <summary>
+/// Names written exactly as given (variable names are case-sensitive): not changed by a serializer's dictionary key
+/// policy (the API's turns keys into camelCase).
+/// </summary>
+public sealed class VerbatimKeys : JsonConverter<Dictionary<string, string>>
+{
+    public override Dictionary<string, string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("Expected names and values.");
+        }
+
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            var name = reader.GetString() ?? throw new JsonException("A name is missing.");
+            reader.Read();
+            result[name] = reader.TokenType == JsonTokenType.String ? reader.GetString()! : throw new JsonException($"\"{name}\" needs a text value.");
+        }
+
+        return result;
+    }
+
+    public override void Write(Utf8JsonWriter writer, Dictionary<string, string> value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
+        writer.WriteStartObject();
+        foreach (var (name, text) in value)
+        {
+            writer.WriteString(name, text);
+        }
+
+        writer.WriteEndObject();
     }
 }
 
