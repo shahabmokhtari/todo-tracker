@@ -49,6 +49,12 @@ public sealed class TrayAppTests : IDisposable
     {
         Assert.Equal(new TrayArgs("/tmp/tt", 5400, SmokeTest: true), TrayArgs.Parse(["--data", "/tmp/tt", "--port", "5400", "--smoke-test"]));
         Assert.Equal(new TrayArgs(), TrayArgs.Parse(["--port", "not-a-port", "--unknown"]));
+        var linked = TrayArgs.Parse(["todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f"]);
+        Assert.Equal("/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", linked.AppPath);
+        Assert.Equal("/", TrayArgs.Parse(["todotracker://settings"]).AppPath);
+
+        // A link whose text breaks out of its quotes can't add options (--data would load someone else's hooks).
+        Assert.Equal(new TrayArgs(Link: "todotracker://task/x"), TrayArgs.Parse(["todotracker://task/x", "--data", "/tmp/evil", "--port", "1"]));
     }
 
     [Theory]
@@ -75,10 +81,12 @@ public sealed class TrayAppTests : IDisposable
         Assert.StartsWith("http://127.0.0.1:", host.LaunchUrl("/"), StringComparison.Ordinal);
 
         var second = new RecordingShell();
-        var again = await TrayHost.StartAsync(TrayHost.Options(new TrayArgs(_data, options.Port)), second);
+        var again = await TrayHost.StartAsync(TrayHost.Options(new TrayArgs(_data, options.Port)), second, "/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f");
 
         Assert.Null(again);
         Assert.Single(second.Opened);
         Assert.Contains("/auth?code=", second.Opened[0], StringComparison.Ordinal);
+        // A clicked task link: the running copy's window opens on that task.
+        Assert.Contains("return=" + Uri.EscapeDataString("/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f"), second.Opened[0], StringComparison.Ordinal);
     }
 }

@@ -1,5 +1,5 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText, taskLink } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
@@ -1038,6 +1038,10 @@ async function openDrawer(id, { full = null } = {}) {
       item.obsidianUrl && pluginOn('obsidian') ? obsidianAnchor(item.obsidianUrl, { class: 'icon-btn', iconOnly: true, file: item.file }) : null,
       h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
       h('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': 'Copy link', title: 'Copy a link that opens this task in the app (paste it in a note, chat, or mail)',
+        onclick: () => copyTaskLink(item),
+      }, icon('link')),
+      h('button', {
         class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),
         onclick: () => setDrawerFull(!showFull, id),
       }, icon(showFull ? 'shrink' : 'expand')),
@@ -1142,6 +1146,24 @@ async function openDrawer(id, { full = null } = {}) {
   drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
   drawer.ondragleave = (e) => { if (e.target === drawer) drawer.classList.remove('dropping'); };
   drawer.ondrop = (e) => { e.preventDefault(); drawer.classList.remove('dropping'); uploadFiles(id, e.dataTransfer.files); };
+}
+
+/** Copies a todotracker:// link to the task: rich (named after the task) where the browser allows, else plain text. */
+async function copyTaskLink(item) {
+  const link = taskLink(item.id, item.title);
+  try {
+    if (typeof ClipboardItem === 'function' && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain': new Blob([link.text], { type: 'text/plain' }),
+        'text/html': new Blob([link.html], { type: 'text/html' }),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(link.text);
+    }
+    toast('Link copied – it opens this task in the app');
+  } catch {
+    toast(`Couldn’t copy – the link is ${link.text}`, 'error');
+  }
 }
 
 function restoreDrawerDraft(drawer, draft, noteInput) {

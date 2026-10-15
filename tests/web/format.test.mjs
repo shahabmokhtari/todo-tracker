@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText, taskLink } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -197,4 +197,11 @@ test('plannedText says the block short: today just the times, another day with i
   const now = new Date(2026, 0, 5, 9, 0);
   assert.equal(plannedText(new Date(2026, 0, 5, 10, 0).toISOString(), 90, now), '10:00–11:30');
   assert.equal(plannedText(new Date(2026, 0, 6, 8, 15).toISOString(), null, now), 'Tue 08:15–08:45');
+});
+
+test('taskLink opens the app on the task and pastes as a link named after it', () => {
+  const link = taskLink('4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f', 'Fix <the> "bug" & ship');
+  assert.equal(link.text, 'todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f');
+  assert.equal(link.html, '<a href="todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f">Fix &lt;the&gt; &quot;bug&quot; &amp; ship</a>');
+  assert.equal(taskLink('x', '  ').html, '<a href="todotracker://task/x">Task</a>');
 });

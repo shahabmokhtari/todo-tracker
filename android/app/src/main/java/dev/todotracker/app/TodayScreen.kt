@@ -132,6 +132,11 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
     }
     if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
+    // A todotracker://task/<id> link: the task, with what you can do with it here.
+    vm.openTaskId?.let { id ->
+        val item = vm.itemOf(id)
+        if (item != null) LinkedTaskDialog(item, vm, onNote = { noteFor = id.toString() }) else LaunchedEffect(id) { vm.openTaskId = null }
+    }
     if (askExact) {
         AlertDialog(
             onDismissRequest = { askExact = false },
@@ -149,6 +154,34 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         )
     }
     BreakScreen(vm)
+}
+
+@Composable
+private fun LinkedTaskDialog(item: WorkItem, vm: BoardViewModel, onNote: () -> Unit) {
+    val close = { vm.openTaskId = null }
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text(listOfNotNull(item.icon, item.title).joinToString(" ")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (item.isDone) Text("Done", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
+                item.details?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = {
+            if (item.isDone) {
+                TextButton(onClick = { vm.reopen(item.id); close() }) { Text("Not done") }
+            } else {
+                TextButton(onClick = { vm.complete(item.id); close() }) { Text("Done") }
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = { onNote(); close() }) { Text("Add note") }
+                TextButton(onClick = close) { Text("Close") }
+            }
+        },
+    )
 }
 
 @Composable

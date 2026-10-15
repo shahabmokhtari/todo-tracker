@@ -35,6 +35,13 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+    # todotracker://task/<id> links open the task (TaskLinks).
+    info:
+      path: Support/Info-iOS.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.todotracker.task-link
+            CFBundleURLSchemes: [todotracker]
   TodoTracker-macOS:
     type: application
     platform: macOS
@@ -51,12 +58,16 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSAppleEventsUsageDescription: Todo Tracker puts your tasks in a note when you choose Copy to Apple Notes.
         ENABLE_HARDENED_RUNTIME: YES
-    # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only).
+    # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only); todotracker://task/<id>
+    # links open the task (TaskLinks).
     info:
       path: Support/Info-macOS.plist
       properties:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.todotracker.task-link
+            CFBundleURLSchemes: [todotracker]
     entitlements:
       path: App/TodoTracker-macOS.entitlements
       properties:

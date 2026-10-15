@@ -18,6 +18,7 @@ Use the `todo-tracker` MCP tools. If they aren't available, use the `tt` command
 | See what to do now and what is waiting | `get_dashboard` | `tt now` |
 | Find tasks (`#tag`, `label:x`, `group:work`, `is:done`) | `search_tasks` | `tt list <query>` |
 | Read one task (subtasks, notes, file) | `get_task` | `tt show <task>` |
+| Link to a task (in a reply, a note, a chat): clicking it opens the task in the app | the task's `link` (`todotracker://task/<id>`) | `tt show <task>`, `tt open <task>` |
 | Capture a task or a subtask | `create_task` (`parentId` for a subtask) | `tt add <title> [--under <task>]` |
 | Break work into ordered steps | `add_steps` | `tt steps <task> <step>…` |
 | Log progress ("did X, next Y") | `add_note` | `tt note <task> <text>` |

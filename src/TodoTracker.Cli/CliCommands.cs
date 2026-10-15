@@ -20,7 +20,8 @@ internal static class CliCommands
             "Or use options: tt add Renew passport --due 7d --tag admin", Add),
         new CliCommand("list", "tt list [filter] [-g group] [--all]", "Find tasks",
             "Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.", List),
-        new CliCommand("show", "tt show <task>", "A task with its subtasks, notes and file", null, Show),
+        new CliCommand("show", "tt show <task>", "A task with its subtasks, notes, file and link", null, Show),
+        new CliCommand("open", "tt open <task>", "Open a task in the app (its todotracker:// link)", "tt show prints the link, to paste in a note, chat or mail.", Open),
         new CliCommand("done", "tt done <task> | tt done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as tt prints them); words are one task's title.", Done),
         new CliCommand("reopen", "tt reopen <task>", "Undo done", null, Reopen),
         new CliCommand("first", "tt first <task> | tt first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
@@ -148,6 +149,24 @@ internal static class CliCommands
         var reference = a.WordsFrom(0, "which task");
         var item = await s.Read(b => Wire.Item(TaskResolver.Resolve(b, reference), s.Now, b, s.Links)).ConfigureAwait(false);
         await s.Print(item, (o, i) => o.Item(i, s.Links.Vault.RootPath)).ConfigureAwait(false);
+    }
+
+    private static async Task Open(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        var reference = a.WordsFrom(0, "which task");
+        var item = await s.Read(b => TaskResolver.Resolve(b, reference)).ConfigureAwait(false);
+        var link = TaskLinks.ForTask(item.Id);
+        try
+        {
+            s.Context.OpenLink(link);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
+        {
+            throw new InvalidOperationException($"Couldn't open {link} ({ex.Message}). Is the Todo Tracker app installed and started once?", ex);
+        }
+
+        await s.Print(new { item.Id, item.Title, Link = link }, (o, x) => o.Line($"Opened {x.Title}  {x.Link}")).ConfigureAwait(false);
     }
 
     private static async Task Done(CliSession s, CliArgs a)

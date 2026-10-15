@@ -18,6 +18,18 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Show_prints_the_tasks_link_and_open_opens_it_in_the_app()
+    {
+        var id = (await _tt.Json("add", "Book dentist")).Str("id");
+
+        Assert.Contains($"link: todotracker://task/{id}", await _tt.Ok("show", "dentist"), StringComparison.Ordinal);
+        var opened = await _tt.Ok("open", "dentist");
+
+        Assert.Equal([$"todotracker://task/{id}"], _tt.OpenedLinks);
+        Assert.Contains("Opened Book dentist", opened, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Add_understands_quick_capture_words_and_options()
     {
         var item = await _tt.Json("add", "Ship report !! due:3d #release", "--group", "personal", "--label", "Deep work", "--details", "Q3 numbers");

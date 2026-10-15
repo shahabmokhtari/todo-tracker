@@ -1,5 +1,6 @@
 package dev.todotracker.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -26,6 +27,17 @@ class MainActivity : ComponentActivity() {
                 TodayScreen(vm)
             }
         }
+        // Started by a todotracker://task/<id> link (not again after rotation, nor when reopened from Recents, which
+        // hands back the old link).
+        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromHistory) vm.openLink(intent?.dataString)
+    }
+
+    // A link clicked while the app runs (singleTask: links always come to this one board, never a second copy).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        vm.openLink(intent.dataString)
     }
 
     // Back to the app: what came back meanwhile (this morning's "tomorrow" tasks) shows at once.

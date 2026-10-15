@@ -40,6 +40,38 @@ public sealed class SingleInstanceTests
     }
 
     [Fact]
+    public async Task A_later_launch_with_a_link_hands_it_to_the_running_instance()
+    {
+        var name = Unique();
+        var received = new TaskCompletionSource<string>();
+        var shown = false;
+        using var holding = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+
+        var first = Task.Factory.StartNew(
+            () =>
+            {
+                using var instance = SingleInstance.TryAcquire(name)!;
+                instance.OnShowRequested(() => shown = true);
+                instance.OnMessage(m => received.TrySetResult(m));
+                holding.Set();
+                release.Wait();
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        holding.Wait(TestContext.Current.CancellationToken);
+
+        var second = SingleInstance.TryAcquire(name, message: "todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f");
+
+        Assert.Null(second);
+        Assert.Equal("todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", await received.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.False(shown);
+        release.Set();
+        await first;
+    }
+
+    [Fact]
     public async Task A_restart_gets_the_lock_once_the_old_instance_lets_go()
     {
         var name = Unique();

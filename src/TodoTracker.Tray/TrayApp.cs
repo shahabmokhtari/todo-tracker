@@ -47,7 +47,7 @@ internal sealed class TrayApp : Application
         };
         try
         {
-            _host = await TrayHost.StartAsync(options, new TrayShell()).ConfigureAwait(true);
+            _host = await TrayHost.StartAsync(options, new TrayShell(), Args.AppPath).ConfigureAwait(true);
         }
 #pragma warning disable CA1031 // Last chance at startup: say what went wrong instead of vanishing.
         catch (Exception ex)
@@ -80,6 +80,11 @@ internal sealed class TrayApp : Application
         var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         timer.Tick += (_, _) => Update();
         timer.Start();
+        if (Args.AppPath != "/")
+        {
+            // Started by a todotracker://task/<id> link: the app on that task.
+            new TrayShell().OpenUrl(_host.LaunchUrl(Args.AppPath));
+        }
     }
 
     private void Update()

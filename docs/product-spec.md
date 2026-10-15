@@ -370,6 +370,23 @@ with **single-use launch codes**: `POST /api/launch` returns `/auth?code=…&ret
 2 minutes and accepts local paths only. The long-lived API token therefore never appears in URLs, browser history,
 or history sync.
 
+### Task links (`todotracker://task/<id>`)
+Every task has a link that opens the installed app on it (`TaskLinks` in the core, with the same rules in Swift and
+Kotlin; shared test cases). Only two shapes are followed: `todotracker://task/<guid>` (any case, with or without
+dashes, a trailing `/`, `?…` or `#…` ignored) and the bare scheme (just the app); anything else is ignored, so a
+crafted link can't reach another page or action. Copied from the task header (web) or a sidebar card (Windows) as
+plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `tt show`, opened
+by `tt open`.
+
+* A link is the only argument that counts when the app is started with one: its text can never add options.
+* **Windows**: the app writes `HKCU\Software\Classes\todotracker` at each start (only the user's own instance: the
+  default data folder and port). A second launch with a link hands it to the running one over a per-session named
+  pipe (`PipeOptions.CurrentUserOnly`, ≤2 KB, validated again on arrival) and exits; the app window opens on the
+  task. A link clicked inside the app window opens there.
+* **macOS / iOS**: `CFBundleURLTypes` + `onOpenURL` open the task's details. **Android**: a `VIEW`/`BROWSABLE`
+  intent filter (`singleTask`, so a link never starts a second copy of the board) shows the task with Done and Add note. **Linux**: the `.desktop` file handles
+  `x-scheme-handler/todotracker`; a running tray opens its window on the task through `/api/launch`.
+
 ## 8. Security (local server)
 
 * Kestrel binds to loopback only. Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.

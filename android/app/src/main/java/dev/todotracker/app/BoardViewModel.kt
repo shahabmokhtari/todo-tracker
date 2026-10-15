@@ -22,6 +22,7 @@ import dev.todotracker.core.RunningTimer
 import dev.todotracker.core.Snooze
 import dev.todotracker.core.SnoozeChoice
 import dev.todotracker.core.TaskBoard
+import dev.todotracker.core.TaskLinks
 import dev.todotracker.core.WorkItem
 import java.io.File
 import java.io.IOException
@@ -240,6 +241,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         if (group == null) dashboard.groupCounts.values.sumOf { it.now } else dashboard.groupCounts[group]?.now ?: 0
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
+
+    /** The task a todotracker:// link asked to open (shown over Today until closed). */
+    var openTaskId: UUID? by mutableStateOf(null)
+
+    /** A clicked todotracker://task/<id> link: that task opens (anything else is ignored). */
+    fun openLink(link: String?) {
+        val target = TaskLinks.target(link)
+        if (target is TaskLinks.Target.Task) {
+            if (board.find(target.id) == null) status = "That task isn't on this phone" else openTaskId = target.id
+        }
+    }
+
+    fun itemOf(id: UUID): WorkItem? = board.find(id)
 
     /** Quick capture: "Call mum @tomorrow !high due:3d". True when it was added. */
     fun capture(text: String): Boolean = change("Added") { now ->

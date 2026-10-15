@@ -7,6 +7,7 @@ running, and `tt mcp` serves them to AI apps over MCP (stdio).
 tt                                  what to do now
 tt add 'Renew passport !! due:7d #admin'
 tt done passport
+tt open passport                    open the task in the app (tt show prints its todotracker:// link)
 tt hooks add taskCompleted --bash 'cat >> ~/done.jsonl'   run a script when a task is done (tt help hooks)
 tt mcp                              MCP server for Claude Desktop, Claude Code, Copilot CLI, VS Code
 ```

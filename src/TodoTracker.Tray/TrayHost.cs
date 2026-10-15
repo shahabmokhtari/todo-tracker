@@ -40,8 +40,11 @@ internal sealed class TrayHost : IAsyncDisposable
         Port = args.Port ?? TodoTrackerServerOptions.DefaultPort,
     };
 
-    /// <summary>Starts the server; null when another copy already runs it (its window was opened instead).</summary>
-    public static async Task<TrayHost?> StartAsync(TodoTrackerServerOptions options, IDesktopShell shell)
+    /// <summary>
+    /// Starts the server; null when another copy already runs it (its window was opened instead, on
+    /// <paramref name="path"/>: "/" or a deep link's task, "/#/task/&lt;id&gt;").
+    /// </summary>
+    public static async Task<TrayHost?> StartAsync(TodoTrackerServerOptions options, IDesktopShell shell, string path = "/")
     {
         ArgumentNullException.ThrowIfNull(options);
         WebApplication server;
@@ -51,7 +54,7 @@ internal sealed class TrayHost : IAsyncDisposable
         }
         catch (StoreLockedException)
         {
-            await OpenRunningAsync(options, shell).ConfigureAwait(true);
+            await OpenRunningAsync(options, shell, path).ConfigureAwait(true);
             return null;
         }
 
@@ -63,7 +66,7 @@ internal sealed class TrayHost : IAsyncDisposable
         catch (StoreLockedException)
         {
             await server.DisposeAsync().ConfigureAwait(true);
-            await OpenRunningAsync(options, shell).ConfigureAwait(true);
+            await OpenRunningAsync(options, shell, path).ConfigureAwait(true);
             return null;
         }
         catch
@@ -92,7 +95,7 @@ internal sealed class TrayHost : IAsyncDisposable
     }
 
     /// <summary>Another copy runs the tasks folder: open its full window (with its token, from the data folder).</summary>
-    private static async Task OpenRunningAsync(TodoTrackerServerOptions options, IDesktopShell shell)
+    private static async Task OpenRunningAsync(TodoTrackerServerOptions options, IDesktopShell shell, string path)
     {
         var tokenFile = Path.Combine(options.DataDirectory, "api-token");
         if (!File.Exists(tokenFile))
@@ -110,7 +113,8 @@ internal sealed class TrayHost : IAsyncDisposable
             {
                 http.DefaultRequestHeaders.Add(OwnerKey.Header, key);
             }
-            using var response = await http.PostAsync(new Uri("/api/launch", UriKind.Relative), new StringContent("{\"return\":\"/\"}", System.Text.Encoding.UTF8, "application/json")).ConfigureAwait(false);
+            using var body = new StringContent(JsonSerializer.Serialize(new { @return = path }), System.Text.Encoding.UTF8, "application/json");
+            using var response = await http.PostAsync(new Uri("/api/launch", UriKind.Relative), body).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
             if (doc.RootElement.TryGetProperty("url", out var url) && url.GetString() is { } link)
             {
