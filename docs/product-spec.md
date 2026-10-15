@@ -99,9 +99,11 @@ Tags and labels are inherited, so `#release` also finds the steps of a tagged pr
 **Needs attention.** The item has a due, undismissed reminder and is not locked or done. This surfaces waiting and
 container items in *Do now*.
 
-**Do now** holds actionable items plus attention items. Attention items (a due reminder) come first, as their own
-block. After that, **the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or
-Alt+↑/↓ (agents use `put_first`, the CLI `tt first`); moves stay within a block. Tasks they never placed come after
+**Do now** holds actionable items plus attention items. A task whose reminder just went off comes first: one never
+placed, or whose reminder went off after Do now was last arranged (`NowArrangedAt`, kept with the order). After that,
+**the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or Alt+↑/↓ (agents use
+`put_first`, the CLI `tt first`), anywhere in the list: a task whose reminder was already due when they arranged it
+stays where they put it. Tasks they never placed come after
 the ones they did, in the automatic order: effective priority (the maximum of the item and its ancestors), then
 overdue, then deadline, then age, so capturing something new never takes over the chosen focus. The first one is the
 **focus**. The order is shared by every app and process (`.todo-tracker/state.json`); arranging one group's tab keeps

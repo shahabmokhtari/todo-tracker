@@ -346,11 +346,11 @@ internal static class ApiEndpoints
             }));
 
         // Manual order: the Do now list as someone arranged it (drag, arrows), "put first", and sibling order.
-        api.MapPost("/now/order", async (OrderRequest request, IBoardStore store) =>
+        api.MapPost("/now/order", async (OrderRequest request, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b =>
             {
-                b.ArrangeNow(request.Ids ?? []);
+                b.ArrangeNow(request.Ids ?? [], time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return Results.NoContent();

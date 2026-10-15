@@ -133,12 +133,17 @@ public static class Agenda
         var rank = board.NowOrder.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
         var nowList = Order(nowAll.Where(e => InScope(e.Item)).ToList());
 
-        // A due reminder comes first; then what's planned for now (its block in the Plan view is on); then the person's
-        // own order, and tasks they never placed by the automatic rules.
+        // A reminder that just went off comes first: its task was never placed, or the reminder went off after Do now
+        // was last arranged. Then what's planned for now (its block in the Plan view is on); then the person's own order
+        // (tasks with a reminder they've seen included), and tasks they never placed by the automatic rules.
+        bool Fresh(AgendaEntry e) => e.NeedsAttention
+            && (!rank.ContainsKey(e.Item.Id) || board.NowArrangedAt is not { } arranged || e.Item.Reminders.Any(r => r.IsDue(now) && r.DueAt > arranged));
+
         List<AgendaEntry> Order(List<AgendaEntry> entries)
         {
+            var fresh = entries.Where(Fresh).ToList();
             var planned = entries.Where(e => !e.NeedsAttention && e.Item.IsPlannedAt(now)).OrderBy(e => e.Item.PlannedAt).ToList();
-            return Arrange(entries.Where(e => e.NeedsAttention), rank).Concat(planned).Concat(Arrange(entries.Where(e => !e.NeedsAttention && !planned.Contains(e)), rank)).ToList();
+            return Arrange(fresh, rank).Concat(planned).Concat(Arrange(entries.Where(e => !fresh.Contains(e) && !planned.Contains(e)), rank)).ToList();
         }
 
         // Back at a time first (soonest first); then those waiting for another task.

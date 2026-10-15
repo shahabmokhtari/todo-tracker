@@ -67,8 +67,9 @@ you're using is resized to sit next to the sidebar instead (turn this off in **�
 full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
 
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put; a task whose
-reminder is due still shows first. Subtasks reorder the same way in the web task panel.
+or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put. A reminder that
+goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
+the web task panel.
 
 Type a task in the box at the top and press Enter:
 

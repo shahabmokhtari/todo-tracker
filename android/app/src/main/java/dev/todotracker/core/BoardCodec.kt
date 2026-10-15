@@ -32,7 +32,7 @@ object BoardCodec {
     fun parseDate(text: String): Instant? =
         runCatching { Instant.parse(text) }.getOrNull() ?: runCatching { OffsetDateTime.parse(text).toInstant() }.getOrNull()
 
-    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
+    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder", "nowArrangedAt")
     private val itemKeys = setOf(
         "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "plannedAt", "plannedMinutes", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
@@ -75,6 +75,7 @@ object BoardCodec {
             val uuid = runCatching { UUID.fromString(id.jsonPrimitive.content) }.getOrNull() ?: continue
             if (board.find(uuid) != null && seen.add(uuid)) board.nowOrder.add(uuid)
         }
+        board.nowArrangedAt = doc.string("nowArrangedAt")?.let(::parseDate)
         (doc["pomodoro"] as? JsonObject)?.let { readPomodoro(it, board) }
         board.extra = unknown(doc, boardKeys)
         return board
@@ -105,6 +106,7 @@ object BoardCodec {
         }))
         put("pomodoro", pomodoroJson(board))
         if (board.nowOrder.isNotEmpty()) put("nowOrder", JsonArray(board.nowOrder.map { JsonPrimitive(it.toString()) }))
+        board.nowArrangedAt?.let { put("nowArrangedAt", formatDate(it)) }
     })
 
     private fun item(i: WorkItem): JsonObject = buildJsonObject {

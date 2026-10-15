@@ -20,6 +20,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** The Do now order the person arranged (tasks not listed slot in by the automatic rules). */
     val nowOrder: MutableList<UUID> = mutableListOf()
 
+    /** When Do now was last arranged: a reminder going off after it brings its task back to the top. */
+    var nowArrangedAt: Instant? = null
+
     /** The focus timer (Pomodoro): its phase, when it ends, and the task it times. */
     val pomodoro = PomodoroTimer()
 

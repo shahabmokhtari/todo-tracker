@@ -14,6 +14,8 @@ public final class TaskBoard {
     public internal(set) var pomodoro = PomodoroTimer()
     /// The Do now order the person arranged (tasks not listed slot in by the automatic rules).
     public internal(set) var nowOrder: [UUID] = []
+    /// When Do now was last arranged: a reminder going off after it brings its task back to the top.
+    public internal(set) var nowArrangedAt: Date?
     private var index: [UUID: WorkItem] = [:]
 
     public init(seedDefaultGroups: Bool = true) {

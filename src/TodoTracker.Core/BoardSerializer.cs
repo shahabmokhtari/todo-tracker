@@ -62,6 +62,7 @@ public static class BoardSerializer
         Labels = board.Labels.Count == 0 ? null : board.Labels.Select(l => new LabelDocument { Name = l.Name, Color = l.Color }).ToList(),
         Items = board.Items.Select(ToDocument).ToList(),
         NowOrder = board.NowOrder.Count == 0 ? null : board.NowOrder.ToList(),
+        NowArrangedAt = board.NowArrangedAt,
         Activity = board.Activity.Select(a => new ActivityDocument { At = a.At, ItemId = a.ItemId, Kind = a.Kind, Summary = a.Summary, Actor = ToDocument(a.Actor) }).ToList(),
         Pomodoro = new PomodoroDocument
         {
@@ -149,6 +150,7 @@ public static class BoardSerializer
         }
 
         board.NowOrderList.AddRange((doc.NowOrder ?? []).Where(id => board.Find(id) is not null).Distinct());
+        board.NowArrangedAt = doc.NowArrangedAt;
 
         if (doc.Pomodoro is { } p)
         {
@@ -241,6 +243,8 @@ public static class BoardSerializer
 
         /// <summary>The Do now order the person arranged (optional; older files have none).</summary>
         public List<Guid>? NowOrder { get; set; }
+
+        public DateTimeOffset? NowArrangedAt { get; set; }
     }
 
     private sealed class GroupDocument

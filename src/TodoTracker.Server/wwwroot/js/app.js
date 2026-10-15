@@ -402,22 +402,18 @@ function renderFocus(d) {
 const nowIds = () => state.dashboard?.now.map((c) => c.id) ?? [];
 
 /**
- * Tasks with a due reminder always come first, so moves stay within a block: the reminder block or the rest.
- * (Moving a task above a reminder would just snap back.)
+ * The tasks a task moves among: all of Do now, a task with a due reminder too (once placed, it stays where it's put;
+ * only a reminder going off later brings it back to the top).
  */
-function blockIds(id) {
-  const now = state.dashboard?.now ?? [];
-  const attention = now.find((c) => c.id === id)?.needsAttention ?? false;
-  return now.filter((c) => !!c.needsAttention === attention).map((c) => c.id);
+function blockIds() {
+  return nowIds();
 }
 
-/** Shows the new order of one block right away, then saves the whole Do now order (one save at a time). */
-function arrangeNow(blockOrder, movedId) {
+/** Shows the new order right away, then saves it (one save at a time). */
+function arrangeNow(order, movedId) {
   const d = state.dashboard;
-  if (!d || !blockOrder.length) return;
-  const attention = d.now.find((c) => c.id === blockOrder[0])?.needsAttention ?? false;
-  const other = d.now.filter((c) => !!c.needsAttention !== attention).map((c) => c.id);
-  const ids = attention ? [...blockOrder, ...other] : [...other, ...blockOrder];
+  if (!d || !order.length) return;
+  const ids = order;
   if (!changed(nowIds(), ids)) return;
   const byId = new Map(d.now.map((c) => [c.id, c]));
   d.now = ids.map((id) => byId.get(id)).filter(Boolean);
