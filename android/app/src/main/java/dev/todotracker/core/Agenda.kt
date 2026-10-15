@@ -109,7 +109,10 @@ object Agenda {
         val rank = HashMap<UUID, Int>()
         board.nowOrder.forEachIndexed { i, id -> rank.putIfAbsent(id, i) }
         val scoped = nowAll.filter { inScope(it.second.item) }
-        val nowList = arrange(scoped.filter { it.second.needsAttention }, rank) + arrange(scoped.filter { !it.second.needsAttention }, rank)
+        // After a due reminder: what's planned for now (its block in the Plan view is on), ahead of the arranged order.
+        val planned = scoped.filter { !it.second.needsAttention && it.second.item.isPlannedAt(now) }.sortedBy { it.second.item.plannedAt }
+        val nowList = arrange(scoped.filter { it.second.needsAttention }, rank) + planned.map { it.second } +
+            arrange(scoped.filter { !it.second.needsAttention && it !in planned }, rank)
 
         val waitingList = waitingAll.filter { inScope(it.second.item) }.sortedWith { a, b ->
             val x = a.second

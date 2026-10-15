@@ -11,8 +11,10 @@ export const VIEWS = [
   { id: 'tasks', name: 'Tasks', icon: 'tree', key: '3' },
   { id: 'done', name: 'Done', icon: 'archive', key: '4' },
   { id: 'reports', name: 'Reports', icon: 'pie', key: '5' },
-  // Not in the view lists: the side bar's Settings button and Alt+6 lead to it.
-  { id: 'settings', name: 'Settings', icon: 'settings', key: '6', nav: false },
+  // An extra (plugin "plan"): hidden when it's switched off.
+  { id: 'plan', name: 'Plan', icon: 'calendar', key: '6', plugin: 'plan' },
+  // Not in the view lists: the side bar's Settings button and Alt+7 lead to it.
+  { id: 'settings', name: 'Settings', icon: 'settings', key: '7', nav: false },
 ];
 
 /** The view and task a location hash names: #/board, #/task/<id> (a task, full size, over the last view). */
@@ -261,7 +263,7 @@ export function createShell(ctx) {
   function commands() {
     const d = ctx.dashboard();
     const list = [
-      ...VIEWS.map((v) => ({ title: `Go to ${v.name}`, keywords: `view ${v.id}`, icon: v.icon, hint: `Alt+${v.key}`, run: () => { location.hash = `#/${v.id}`; } })),
+      ...VIEWS.filter((v) => !document.querySelector(`.nav-link[data-view="${v.id}"]`)?.hidden).map((v) => ({ title: `Go to ${v.name}`, keywords: `view ${v.id}`, icon: v.icon, hint: `Alt+${v.key}`, run: () => { location.hash = `#/${v.id}`; } })),
       { title: 'New task', keywords: 'add capture create', icon: 'plus', hint: 'N', run: () => ctx.capture() },
       d?.timer?.running ? { title: `Stop the timer (${d.timer.title})`, keywords: 'timer stop', icon: 'stop', run: () => ctx.act(ctx.post('/api/timer/stop'), 'Timer stopped') } : null,
       d?.focus ? { title: `Start the timer on “${d.focus.title}”`, keywords: 'timer start track', icon: 'timer', run: () => ctx.act(ctx.post('/api/timer/start', { itemId: d.focus.id }), 'Timer started') } : null,
@@ -368,9 +370,11 @@ export function createShell(ctx) {
       return;
     }
 
-    if (e.altKey && !e.ctrlKey && /^[1-6]$/.test(e.key)) {
+    // Alt+1… goes to the view with that key (an extra that's switched off, like Plan, isn't there).
+    const target = e.altKey && !e.ctrlKey ? VIEWS.find((v) => v.key === e.key) : null;
+    if (target && !document.querySelector(`.nav-link[data-view="${target.id}"]`)?.hidden) {
       e.preventDefault();
-      location.hash = `#/${VIEWS[Number(e.key) - 1].id}`;
+      location.hash = `#/${target.id}`;
     }
   });
 

@@ -132,7 +132,12 @@ public enum Agenda {
         var rank: [UUID: Int] = [:]
         for (i, id) in board.nowOrder.enumerated() where rank[id] == nil { rank[id] = i }
         let scoped = nowAll.filter { inScope($0.entry.item) }
-        let nowList = arrange(scoped.filter { $0.entry.needsAttention }, rank: rank) + arrange(scoped.filter { !$0.entry.needsAttention }, rank: rank)
+        // After a due reminder: what's planned for now (its block in the Plan view is on), ahead of the arranged order.
+        let planned = scoped.filter { !$0.entry.needsAttention && $0.entry.item.isPlanned(at: now) }
+            .sorted { ($0.entry.item.plannedAt ?? now) < ($1.entry.item.plannedAt ?? now) }
+        let plannedIds = Set(planned.map { $0.entry.item.id })
+        let nowList = arrange(scoped.filter { $0.entry.needsAttention }, rank: rank) + planned.map(\.entry)
+            + arrange(scoped.filter { !$0.entry.needsAttention && !plannedIds.contains($0.entry.item.id) }, rank: rank)
 
         let waitingList = waitingAll.filter { inScope($0.entry.item) }.sorted { a, b in
             let x = a.entry, y = b.entry

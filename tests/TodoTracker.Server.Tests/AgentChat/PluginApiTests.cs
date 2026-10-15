@@ -67,7 +67,9 @@ public sealed class PluginApiTests : IAsyncLifetime
         // This PR added the sync providers (OneDrive, iCloud Drive, gist): each is its own plugin.
         // The connectors PR added Notion, Microsoft To Do and Copy for Loop: each is its own plugin (so the list grew;
         // nothing else changed).
-        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "history", "obsidian", "browser-extension", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "loop", "teams"], ids);
+        // The planner PR added the Plan view as an extra ("plan", switchable like the others): the list grew by it
+        // because this PR registered it; nothing else changed.
+        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "plan", "history", "obsidian", "browser-extension", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "loop", "teams"], ids);
     }
 
     [Fact]

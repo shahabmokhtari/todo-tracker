@@ -62,6 +62,8 @@ internal static partial class OpenApiSetup
         ["POST api/timer/stop"] = ("stopTimer", "Stop the timer"),
         ["POST api/items/{id}/time"] = ("logTime", "Add time spent on a task (start and end)"),
         ["GET api/reports"] = ("getReport", "Time tracked per day, group and task, tasks done, and a timeline (from/to local dates)"),
+        ["GET api/plan"] = ("getPlan", "What's planned (blocks of time to work on tasks) in the days shown, deadlines in them, and what's to do but not planned yet"),
+        ["POST api/items/{id}/plan"] = ("planTask", "Plan a block of time to work on a task (start, minutes), or take it off the plan (no start)"),
     };
 
     // Sign-in plumbing, settings, deletes, binary uploads/downloads and the event stream stay out of the AI surface.
@@ -71,7 +73,7 @@ internal static partial class OpenApiSetup
         "DELETE api/items/{id}", "PATCH api/groups/{id}", "DELETE api/groups/{id}", "GET api/export",
         "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings", "PUT api/settings/theme",
         "POST api/labels", "PATCH api/labels/{**name}", "DELETE api/labels/{**name}",
-        "GET api/history", "POST api/history/commit", "GET api/hooks", "POST api/hooks/test",
+        "GET api/history", "POST api/history/commit", "GET api/hooks", "POST api/hooks/test", "GET api/plan/settings", "PUT api/plan/settings",
         "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",
         "POST api/archive", "PUT api/items/{id}/time/{entryId}", "DELETE api/items/{id}/time/{entryId}",
     };

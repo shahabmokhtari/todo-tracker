@@ -1006,6 +1006,15 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             chips.Add(new($"🔁 {repeat}", "muted"));
         }
 
+        if (item.PlannedAt is { } planned)
+        {
+            // Same words as the web's plannedText: "10:00–10:30" today, "Tue 10:00–11:30" another day.
+            var from = TimeZoneInfo.ConvertTime(planned, TimeZoneInfo.Local);
+            var to = from + item.PlannedLength;
+            var day = from.Date == TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local).Date ? string.Empty : from.ToString("ddd ", CultureInfo.InvariantCulture);
+            chips.Add(new($"🗓 {day}{from.ToString("HH:mm", CultureInfo.InvariantCulture)}–{to.ToString("HH:mm", CultureInfo.InvariantCulture)}", "info"));
+        }
+
         if (item.Notes.Count > 0)
         {
             chips.Add(new(item.Notes.Count == 1 ? "1 note" : $"{item.Notes.Count} notes", "muted"));

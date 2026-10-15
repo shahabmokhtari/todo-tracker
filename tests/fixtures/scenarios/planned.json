@@ -1,0 +1,25 @@
+{
+  "name": "Planned now: a task whose planned block is on is the one to do now (after a due reminder), ahead of the arranged order; one planned for later isn't",
+  "now": "2026-01-05T10:15:00.000Z",
+  "board": {
+    "schemaVersion": 1,
+    "items": [
+      { "id": "00000000-0000-4000-8000-000000000b01", "title": "Urgent thing", "priority": "critical", "createdAt": "2026-01-05T08:00:00.000Z" },
+      { "id": "00000000-0000-4000-8000-000000000b02", "title": "Write the report", "priority": "low", "createdAt": "2026-01-05T08:01:00.000Z", "plannedAt": "2026-01-05T10:00:00.000Z", "plannedMinutes": 60 },
+      { "id": "00000000-0000-4000-8000-000000000b03", "title": "Review PRs", "priority": "normal", "createdAt": "2026-01-05T08:02:00.000Z", "plannedAt": "2026-01-05T11:00:00.000Z" },
+      { "id": "00000000-0000-4000-8000-000000000b04", "title": "Standup notes", "priority": "normal", "createdAt": "2026-01-05T08:03:00.000Z", "plannedAt": "2026-01-05T09:30:00.000Z" },
+      { "id": "00000000-0000-4000-8000-000000000b05", "title": "Answer mail", "priority": "normal", "createdAt": "2026-01-05T08:04:00.000Z",
+        "reminders": [ { "id": "00000000-0000-4000-8000-000000000c01", "dueAt": "2026-01-05T10:00:00.000Z", "message": "Answer mail", "kind": "manual" } ] }
+    ],
+    "activity": []
+  },
+  "expect": {
+    "focus": "00000000-0000-4000-8000-000000000b05",
+    "now": [ "00000000-0000-4000-8000-000000000b05", "00000000-0000-4000-8000-000000000b02", "00000000-0000-4000-8000-000000000b01", "00000000-0000-4000-8000-000000000b03", "00000000-0000-4000-8000-000000000b04" ],
+    "waiting": [],
+    "attention": [ "00000000-0000-4000-8000-000000000b05" ],
+    "states": {
+      "00000000-0000-4000-8000-000000000b02": "actionable"
+    }
+  }
+}

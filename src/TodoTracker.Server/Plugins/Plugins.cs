@@ -104,6 +104,7 @@ public sealed class PluginHost
         new AgentChat.AgentChatPlugin(),
         new ConnectAiPlugin(),
         new FocusTimerPlugin(),
+        new PlanPlugin(),
         new HistoryPlugin(),
         new ObsidianPlugin(),
         new BrowserExtensionPlugin(),
@@ -202,6 +203,16 @@ public sealed class ConnectAiPlugin : ITodoPlugin
 public sealed class FocusTimerPlugin : ITodoPlugin
 {
     public PluginInfo Info { get; } = new("focus-timer", "Focus timer", "A Pomodoro-style timer linked to the task you're working on.");
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+    }
+}
+
+/// <summary>The Plan view: a day or week grid to plan blocks of time for tasks (the data and API stay either way).</summary>
+public sealed class PlanPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("plan", "Plan", "A day and week planner: drag tasks onto times to plan blocks of work.");
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {

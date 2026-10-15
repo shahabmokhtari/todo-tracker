@@ -11,6 +11,7 @@ import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
 import { createReportsView } from './views/reports.js';
+import { createPlanView } from './views/plan.js';
 import { createSettingsView } from './views/settings.js';
 import { followTheme as follow } from './themes.js';
 import { duration, toLocalInput as localInput } from './timefmt.js';
@@ -1072,6 +1073,7 @@ async function openDrawer(id, { full = null } = {}) {
       await act(Promise.resolve(), text ? 'Repeats' : 'Doesn’t repeat any more');
     })),
     item.repeat ? h('p', { class: 'hint' }, 'Done moves it to its next time (its deadline and when it comes back move along).') : null,
+    pluginOn('plan') ? planField(item) : null,
     field('Details', details),
     detailImages,
     item.parentId || item.completedAt ? null : h('div', { class: 'row' },
@@ -1232,6 +1234,8 @@ async function loadPlugins() {
     return;
   }
   state.plugins = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
+  // Views that are extras (Plan) leave the navigation when they're off.
+  document.querySelectorAll('.nav-link[data-view="plan"], .bottom-link[data-view="plan"]').forEach((a) => { a.hidden = !pluginOn('plan'); });
   if (state.dashboard) render();
   for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
     try {
@@ -1327,6 +1331,28 @@ async function showInTree(item) {
   if (state.group && state.group !== item.groupId) { setGroup(item.groupId); refreshAll(); }
   location.hash = '#/tasks';
   await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1), { finished: !!item.completedAt });
+}
+
+/**
+ * When to work on it (a block on the Plan view): a start and how long; saved when changed. The keyboard way to plan
+ * (the Plan view drags). "Off the plan" takes the block away.
+ */
+function planField(item) {
+  if (item.completedAt) return null;
+  const start = h('input', { type: 'datetime-local', step: 900, value: toLocalInput(item.plannedAt), 'aria-label': 'Planned start' });
+  const lengths = [15, 30, 45, 60, 90, 120, 180, 240];
+  const current = item.plannedMinutes ?? 30;
+  const minutes = h('select', { 'aria-label': 'Planned for' },
+    ...[...new Set([...lengths, current])].sort((a, b) => a - b).map((m) => h('option', { value: m, selected: m === current }, m < 60 ? `${m} min` : `${m / 60} h`)));
+  const save = () => {
+    if (!start.value) return;
+    act(post(`/api/items/${item.id}/plan`, { start: new Date(start.value).toISOString(), minutes: Number(minutes.value) }), 'Planned');
+  };
+  start.addEventListener('change', save);
+  minutes.addEventListener('change', save);
+  return h('label', { class: 'field' }, h('span', null, 'Plan'),
+    h('div', { class: 'row plan-field' }, start, minutes,
+      item.plannedAt ? h('button', { class: 'btn small ghost', type: 'button', onclick: (e) => { e.preventDefault(); act(post(`/api/items/${item.id}/plan`, {}), 'Off the plan'); } }, icon('x', { size: 14 }), 'Off the plan') : null));
 }
 
 /** Move a task: pick a group, then where in it (at the top level, or under one of its tasks). */
@@ -1758,7 +1784,7 @@ const ctx = {
 const shell = createShell(ctx);
 const later = createLater(ctx);
 ctx.pluginHost = pluginHost;
-ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), settings: createSettingsView(ctx) };
+ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), plan: createPlanView(ctx), settings: createSettingsView(ctx) };
 state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';
 
 /** A view's own background refresh waits while something in it is being typed in or dragged. */

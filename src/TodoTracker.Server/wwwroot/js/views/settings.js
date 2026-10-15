@@ -14,7 +14,7 @@ const SHORTCUTS = [
   ['N', 'Add a task'],
   ['/', 'Filter'],
   ['Ctrl K', 'Find anything, run a command'],
-  ['Alt 1 … 6', 'Today, Board, Tasks, Done, Reports, Settings'],
+  ['Alt 1 … 7', 'Today, Board, Tasks, Done, Reports, Plan, Settings'],
   ['Alt ↑ ↓', 'Move a task up or down'],
   ['Alt ← →', 'Move a card between columns (Board)'],
   ['Tab / Shift Tab', 'Nest and un-nest (Tasks)'],

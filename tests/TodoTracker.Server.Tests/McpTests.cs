@@ -106,6 +106,18 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_plan_a_block_of_time_for_a_task()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Deep work" });
+
+        var planned = await Call("plan_task", new() { ["taskId"] = task.GetProperty("id").GetString(), ["start"] = "2026-01-05T13:00:00Z", ["minutes"] = 60 });
+        var off = await Call("plan_task", new() { ["taskId"] = task.GetProperty("id").GetString() });
+
+        Assert.Equal((new DateTimeOffset(2026, 1, 5, 13, 0, 0, TimeSpan.Zero), 60), (planned.GetProperty("plannedAt").GetDateTimeOffset(), planned.GetProperty("plannedMinutes").GetInt32()));
+        Assert.True(!off.TryGetProperty("plannedAt", out var cleared) || cleared.ValueKind == System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
     public async Task Agent_can_move_cards_time_work_and_read_the_time_report()
     {
         var task = await Call("create_task", new() { ["title"] = "Write report" });

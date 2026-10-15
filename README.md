@@ -92,7 +92,7 @@ done, a reminder goes off, a break starts… Extensions can listen to `GET /api/
 
 ### The full app
 
-The web app (and the app window on Windows) has five views; switch with the side bar, `Alt+1`…`Alt+5`, or `Ctrl+K`:
+The web app (and the app window on Windows) has six views; switch with the side bar, `Alt+1`…`Alt+6`, or `Ctrl+K`:
 
 - **Today**: what to do now (the same list as the sidebar).
 - **Board**: Inbox → Next → Doing → Done. Drag cards along, or focus one and press `Alt+←/→` (`Alt+↑/↓` within a
@@ -104,6 +104,9 @@ The web app (and the app window on Windows) has five views; switch with the side
 - **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per
   day, a donut by group, where the time went, when you work (weekday × hour), active days, and a timeline of each
   task's work, deadline and finish.
+- **Plan**: your day or week as a time grid. Drag a task from *Not planned* onto a time to plan a block of work on it,
+  drag the block to move it or its bottom edge to change how long; while a block is on, that task is the one to do
+  now. Each group keeps its own view (day or week, work hours or the whole day). An extra: switch it off in Settings.
 
 Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
 closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add

@@ -353,7 +353,7 @@ test('Copy for Loop: a group as a checklist to paste into a Loop page', async ({
 test('Settings: light or dark for every window, and connected apps switch on at once', async ({ page, request }) => {
   const errors = watchErrors(page);
   await open(page, request);
-  await page.keyboard.press('Alt+6');
+  await page.keyboard.press('Alt+7');
   await expect(page).toHaveURL(/#\/settings$/);
   const settings = page.locator('#view-settings');
 
@@ -743,5 +743,32 @@ test('Hooks: Settings shows where hooks live, a sample to start from, and can tr
   await hooks.getByRole('combobox', { name: 'Event to try' }).selectOption('reminderDue');
   await hooks.getByRole('button', { name: 'Try it' }).click();
   await expect(page.locator('#toast')).toContainText('No hook runs for that event');
+  expect(errors).toEqual([]);
+});
+
+test('Plan: drag a task onto a time, see the block, open it, and take it off the plan from its details', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const task = await add(request, 'Write the quarterly report');
+  await open(page, request);
+  await page.evaluate(() => { location.hash = '#/plan'; });
+  const plan = page.locator('#view-plan');
+  await plan.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Day' }).click();
+  await expect(plan.locator('.plan-day')).toHaveCount(1);
+  // Tomorrow: a block still to come (one already over goes back to "Not planned").
+  await plan.getByRole('button', { name: 'Next day' }).click();
+  await expect(plan.locator('.plan-day.today')).toHaveCount(0);
+
+  const item = plan.locator('.plan-task', { hasText: 'Write the quarterly report' });
+  await item.dragTo(plan.locator('.plan-day'), { targetPosition: { x: 40, y: 120 } });
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).plannedAt ?? null).not.toBeNull();
+  const block = plan.locator('.plan-block', { hasText: 'Write the quarterly report' });
+  await expect(block).toBeVisible();
+  await expect(plan.locator('.plan-task', { hasText: 'Write the quarterly report' })).toHaveCount(0);
+
+  await block.click();
+  const drawer = page.locator('#drawer');
+  await expect(drawer.getByLabel('Planned start')).not.toHaveValue('');
+  await drawer.getByRole('button', { name: 'Off the plan' }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).plannedAt ?? null).toBeNull();
   expect(errors).toEqual([]);
 });

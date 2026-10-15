@@ -160,6 +160,7 @@ make big things small, log progress, defer instead of piling up, never delete). 
 | `schedule_next_action`, `add_reminder` | Defer and remind |
 | `complete_task`, `reopen_task`, `update_task`, `move_task` | Finish, undo, change, reorganize |
 | `put_first` | Put tasks at the top of Do now (when the user says what matters most) |
+| `plan_task` | Plan a block of time to work on a task (it becomes the thing to do now while the block is on) |
 | `list_labels`, `vault_info`, `get_report` | Labels, where the files are (and their format), the timeline |
 | `task_history`, `restore_task_version` | Every change is a version; put a task back |
 | `move_card`, `archive_task`, `unarchive_task` | Board columns (inbox, next, doing); put finished tasks away |
