@@ -57,6 +57,8 @@ public static class TodoTrackerHost
         Plugins.PluginHost.AddServices(services, options);
         services.AddSingleton<ReminderLoop>();
         services.AddHostedService(sp => sp.GetRequiredService<ReminderLoop>());
+        services.AddSingleton<Hooks.HookService>();
+        services.AddHostedService(sp => sp.GetRequiredService<Hooks.HookService>());
         services.AddProblemDetails();
         services.ConfigureHttpJsonOptions(json =>
         {
@@ -129,6 +131,7 @@ public static class TodoTrackerHost
         app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
 
         ApiEndpoints.Map(app);
+        Hooks.HookEndpoints.Map(app);
         OpenApiSetup.Map(app);
         Plugins.PluginHost.Map(app);
         app.MapMcp("/mcp");

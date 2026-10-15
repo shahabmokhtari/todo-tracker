@@ -879,13 +879,18 @@ function drawerDraft() {
  * Opens a task in the panel. `full` overrides the size for this task only (a #/task/ link opens it full size without
  * changing the size other tasks open at); re-opening the same task (after a change) keeps its size.
  */
+let drawerTicket = 0;
+
 async function openDrawer(id, { full = null } = {}) {
+  // The latest call wins: a re-open of the task shown before (after an action) can't replace one opened since.
+  const ticket = ++drawerTicket;
   const showFull = full ?? (state.drawerId === id && !$('#drawer').hidden ? state.drawerShownFull : state.drawerFull);
   // Anything still being typed is saved first. Re-opening the same task keeps the note being written (same note);
   // another task finishes it so the next keystrokes can't overwrite it.
   const same = state.drawerId === id && !$('#drawer').hidden;
   const draft = same ? drawerDraft() : null;
   const saved = await flushDrawer(same ? `drawer:${id}` : null);
+  if (ticket !== drawerTicket) return;
   if (!saved && !same && !$('#drawer').hidden) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
   // A plugin panel (e.g. Ask AI) gives way to the task: it stops its live updates.
   state.panelClosed?.();
@@ -895,11 +900,12 @@ async function openDrawer(id, { full = null } = {}) {
   try {
     item = await api(`/api/items/${id}`);
   } catch (err) {
+    if (ticket !== drawerTicket) return;
     closeDrawer();
     return toast(err.message, 'error');
   }
   await dragDone();
-  if (state.drawerId !== id) return;
+  if (state.drawerId !== id || ticket !== drawerTicket) return;
   const drawer = $('#drawer');
   const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
   const section = (title, ...children) => h('section', { class: 'drawer-section' }, h('h3', null, title), ...children);

@@ -243,6 +243,13 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   Checking it in Obsidian (`status: done`) moves it on the same way, each time. Cards, board, tree and phones show 🔁.
   Same rules in C#, Swift and Kotlin (`Recurrence`; shared fixture `tests/fixtures/repeat.json`), in the user's time
   zone (calendar days, so clock changes keep the time of day).
+* **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only, never written by the
+  app, its API or AI tools) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
+  to a URL when something happens: `taskCompleted`, `reminderDue`, `noteAdded`, `focusEnded`… with filters by group,
+  tag, label and who did it. Events come from the activity log (app, agents, Obsidian, sync), each once, also across
+  restarts; hooks run one at a time in the background with a timeout. Settings › Hooks shows the path, a sample, the
+  hooks and their last runs, and tries an event. `GET /api/events` streams every event (server-sent events) to extensions
+  and scripts; server plugins subscribe to `HookService.Published`.
 * **A task's look** (details panel): the button by the title picks an **icon** (a grid of common emojis, or type/paste any, or *No icon*); the **Color** row picks *Auto* (its first label's color), a palette color, or any color. Cards, board cards and tree rows show the icon before the title and the color as a stripe and a light tint; the sidebar shows both too.
 * **Board:** drag the background (a column header, the space between cards) to move around it like a canvas, sideways
   and up and down; cards, buttons and fields keep their own behavior. Columns snap into place only on touch screens

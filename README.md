@@ -87,6 +87,9 @@ the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other t
 `every month on the last Friday`, `every 3 days when done`. Done moves it to its next time (deadline and all) instead
 of finishing it; it still counts as done today.
 
+**Your own automations.** Put a `hooks.json` in the app's data folder to run a script or call a webhook when a task is
+done, a reminder goes off, a break starts… Extensions can listen to `GET /api/events`. See [docs/hooks.md](docs/hooks.md).
+
 ### The full app
 
 The web app (and the app window on Windows) has five views; switch with the side bar, `Alt+1`…`Alt+5`, or `Ctrl+K`:

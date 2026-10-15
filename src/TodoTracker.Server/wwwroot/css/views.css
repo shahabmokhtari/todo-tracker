@@ -531,3 +531,11 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .label-row { display: flex; align-items: center; gap: 10px; }
 .label-row input[type="color"] { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; flex: none; }
 .label-row input[type="text"] { flex: 1; min-width: 0; }
+
+/* Settings > Hooks */
+.hook-sample, .hook-runs pre { max-height: 220px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, rgba(127, 127, 127, .08)); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+.hook-list { margin: 0 0 10px; padding-left: 18px; display: grid; gap: 4px; }
+.hook-problem { color: var(--danger, #dc2626); }
+.hook-runs { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.hook-runs th, .hook-runs td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border, rgba(127, 127, 127, .2)); vertical-align: top; }
+.hook-runs tr.failed td:last-child { color: var(--danger, #dc2626); }

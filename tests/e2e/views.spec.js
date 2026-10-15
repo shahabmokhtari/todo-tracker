@@ -732,3 +732,16 @@ test('Repeat: a task set to repeat from its details moves on when done, counts a
   await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).nextActionAt ?? null).toBeNull();
   expect(errors).toEqual([]);
 });
+
+test('Hooks: Settings shows where hooks live, a sample to start from, and can try an event', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await open(page, request);
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  const hooks = page.locator('#settings-hooks');
+  await expect(hooks).toContainText('hooks.json');
+  await expect(hooks.locator('.hook-sample')).toContainText('"taskCompleted"');
+  await hooks.getByRole('combobox', { name: 'Event to try' }).selectOption('reminderDue');
+  await hooks.getByRole('button', { name: 'Try it' }).click();
+  await expect(page.locator('#toast')).toContainText('No hook runs for that event');
+  expect(errors).toEqual([]);
+});
