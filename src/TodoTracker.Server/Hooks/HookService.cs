@@ -17,8 +17,11 @@ namespace TodoTracker.Server.Hooks;
 /// <summary>One run of a hook: what it ran for, whether it worked, and (the start of) what it printed.</summary>
 public sealed record HookRun(DateTimeOffset At, string Event, string EventId, string Hook, bool Ok, int? ExitCode, string? Output, long Milliseconds);
 
-/// <summary>What Settings › Hooks shows.</summary>
-public sealed record HookStatus(string Path, bool Exists, string? Problem, IReadOnlyList<HookInfo> Hooks, IReadOnlyList<HookRun> Runs, IReadOnlyDictionary<string, string> Events, string Sample, bool CanApprove = false);
+/// <summary>
+/// What Settings › Hooks shows; <see cref="CanApprove"/>: the owner's session; <see cref="AppAsks"/>: a desktop app
+/// asks about hooks waiting for approval itself (so the page doesn't too).
+/// </summary>
+public sealed record HookStatus(string Path, bool Exists, string? Problem, IReadOnlyList<HookInfo> Hooks, IReadOnlyList<HookRun> Runs, IReadOnlyDictionary<string, string> Events, string Sample, bool CanApprove = false, bool AppAsks = false);
 
 /// <summary>A hook as Settings shows it: what it is (<see cref="Hook"/>, to edit), and whether it runs.</summary>
 public sealed record HookInfo(string Id, string Event, string Type, string Label, string State, string? Problem, HookSpec Hook, string Version);
@@ -56,6 +59,7 @@ public sealed partial class HookService : BackgroundService
     private readonly SemaphoreSlim _running = new(1, 1);
     private Dictionary<string, DateTimeOffset>? _seen;
     private readonly HookStore _hooks;
+    private readonly HashSet<string> _asked = new(StringComparer.Ordinal);
 
     public HookService(IBoardStore store, ServerEvents events, HookStore hooks, TodoTrackerServerOptions options, TimeProvider time, ILogger<HookService> logger)
     {
@@ -70,6 +74,7 @@ public sealed partial class HookService : BackgroundService
         _time = time ?? TimeProvider.System;
         _logger = logger;
         _store.Changed += OnChanged;
+        _hooks.Changed += OnChanged;
         _events.Pomodoro += OnPomodoro;
     }
 
@@ -85,6 +90,7 @@ public sealed partial class HookService : BackgroundService
     public override void Dispose()
     {
         _store.Changed -= OnChanged;
+        _hooks.Changed -= OnChanged;
         _events.Pomodoro -= OnPomodoro;
         _scanning.Dispose();
         _running.Dispose();
@@ -306,13 +312,40 @@ public sealed partial class HookService : BackgroundService
 
     // ---- Running hooks --------------------------------------------------------------------------
 
+    /// <summary>
+    /// Hooks an AI agent added or changed that wait for approval and haven't been asked about yet (each version once):
+    /// raises <see cref="ServerEvents.HookApprovalNeeded"/> for them, so the app can ask (Allow / Don't allow).
+    /// </summary>
+    public IReadOnlyList<HookEntry> AskForApprovals()
+    {
+        // Nobody to ask (no app showing notifications, or not yet): ask later, when someone listens.
+        if (!_events.AsksForHookApproval)
+        {
+            return [];
+        }
+
+        var fresh = new List<HookEntry>();
+        var pending = _hooks.List().Where(e => e.Hook.NeedsApproval == true).ToList();
+        lock (_asked)
+        {
+            fresh.AddRange(pending.Where(e => _asked.Add($"{e.Id}\u001f{e.Version}")));
+        }
+
+        foreach (var entry in fresh)
+        {
+            _events.RaiseHookApprovalNeeded(entry);
+        }
+
+        return fresh;
+    }
+
     public HookStatus Status()
     {
         var (_, problem) = _hooks.Read();
         var hooks = _hooks.List().Select(e => new HookInfo(e.Id, e.Event, e.Hook.Type, e.Hook.Label, e.State, e.Problem ?? NoScript(e.Hook), e.Hook, e.Version)).ToList();
         lock (_runs)
         {
-            return new HookStatus(HooksPath, _hooks.Exists, problem, hooks, _runs.AsEnumerable().Reverse().ToList(), EventNames.All, HookFile.Sample);
+            return new HookStatus(HooksPath, _hooks.Exists, problem, hooks, _runs.AsEnumerable().Reverse().ToList(), EventNames.All, HookFile.Sample, AppAsks: _events.AsksForHookApproval);
         }
     }
 
@@ -546,6 +579,7 @@ public sealed partial class HookService : BackgroundService
             try
             {
                 await ScanAsync(stoppingToken).ConfigureAwait(false);
+                AskForApprovals();
                 using var wait = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                 wait.CancelAfter(_options.TickInterval);
                 try

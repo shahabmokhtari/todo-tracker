@@ -253,9 +253,13 @@ public partial class App : Application
         var events = services.GetRequiredService<ServerEvents>();
         if (toasts)
         {
-            _toasts = new ToastService(_viewModel, window);
+            _toasts = new ToastService(_viewModel, window, services.GetRequiredService<TodoTracker.Server.Hooks.HookStore>(), appHost is null ? null : appHost.Open);
             events.Reminder += (_, n) => window.Dispatcher.BeginInvoke(() => ToastService.ShowReminder(n));
             events.Pomodoro += (_, p) => window.Dispatcher.BeginInvoke(() => ToastService.ShowFocus(p));
+
+            // An AI agent added or changed a hook: Allow or Don't allow, right from the notification.
+            events.HookApprovalNeeded += (_, h) => window.Dispatcher.BeginInvoke(() => ToastService.ShowHookApproval(h));
+            services.GetRequiredService<TodoTracker.Server.Hooks.HookService>().AskForApprovals();
         }
 
         var startHidden = interactive && placement.Hidden;

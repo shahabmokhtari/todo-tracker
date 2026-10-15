@@ -1,6 +1,8 @@
 // The full-window views: Board, Tasks (outline), Done, Reports, the full-size task, the timer, the command palette,
 // and the break screen. Runs after dashboard.spec.js (it adds a group, which that file's tab check doesn't expect).
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const token = 'e2e-token-0123456789abcdefghijklmnop';
 const auth = { Authorization: `Bearer ${token}` };
@@ -775,6 +777,31 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await expect(renamed).toContainText('needs approval');
   await renamed.getByRole('button', { name: 'Remove Agent hook renamed' }).click();
   await expect(hooks.locator('.hook-row', { hasText: 'Agent hook' })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('Hooks: the app asks you about a hook an agent added, and once allowed it just runs', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  // Only the owner's session (the app's own, as the Mac app and the tray open it with the owner key) is asked.
+  for (const x of (await (await request.get('/api/hooks', { headers: auth })).json()).hooks) {
+    await request.delete(`/api/hooks/${x.id}`, { headers: auth });
+  }
+  const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
+  const ownerKey = fs.readFileSync(path.join(process.env.TT_E2E_DATA, 'owner-key'), 'utf8').trim();
+  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-TodoTracker-Owner-Key': ownerKey }, data: { return: '/' } })).json();
+  await page.goto(launch.url);
+
+  const ask = page.getByRole('dialog', { name: 'A hook asks to run' });
+  await expect(ask).toContainText('claude wants to run a hook');
+  await expect(ask.locator('.hook-sample')).toContainText(process.platform === 'win32' ? 'PowerShell: exit 0' : 'bash: exit 0');
+  await ask.getByRole('button', { name: 'Allow', exact: true }).click();
+  await expect(page.locator('#toast')).toContainText('Allowed: it runs from now on');
+  await expect(ask).toHaveCount(0);
+
+  const after = (await (await request.get('/api/hooks', { headers: auth })).json()).hooks.find((x) => x.id === added.id);
+  expect(after.state).toBe('on');
+  expect((await (await request.post('/api/hooks/test', { headers: auth, data: { event: 'taskCompleted' } })).json()).length).toBe(1);
+  await request.delete(`/api/hooks/${added.id}`, { headers: auth });
   expect(errors).toEqual([]);
 });
 test('Plan: drag a task onto a time, see the block, open it, and take it off the plan from its details', async ({ page, request }) => {

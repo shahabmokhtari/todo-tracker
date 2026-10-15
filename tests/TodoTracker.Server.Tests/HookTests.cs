@@ -225,6 +225,37 @@ public sealed class HookTests : IAsyncLifetime
     private static object Exit0 => new { type = "command", powershell = "exit 0", bash = "exit 0", name = "quiet" };
 
     [Fact]
+    public async Task The_app_is_asked_once_about_each_version_of_a_hook_an_agent_adds_or_changes()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        using var app = AppClient();
+        var asked = new List<HookEntry>();
+        var events = _server.App.Services.GetRequiredService<ServerEvents>();
+
+        // Until the app listens (it shows the question), nobody is asked, and nothing counts as asked.
+        var early = (await agent.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["id"]!.GetValue<string>();
+        Assert.Empty(Hooks.AskForApprovals());
+        await app.DeleteAsync($"/api/hooks/{early}");
+        events.HookApprovalNeeded += (_, e) => asked.Add(e);
+
+        // Yours never ask; an agent's does, once.
+        await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 });
+        var id = (await agent.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["id"]!.GetValue<string>();
+        Hooks.AskForApprovals();
+        Hooks.AskForApprovals();
+        Assert.Equal([(id, "claude")], asked.Select(e => (e.Id, e.Hook.AddedBy)));
+
+        // Allowed: it runs and nothing more is asked. The agent changing it asks again (what runs changed).
+        await app.PostJson($"/api/hooks/{id}/approve", new { version = asked[0].Version });
+        Hooks.AskForApprovals();
+        Assert.Single(asked);
+        await agent.PutAsJsonAsync($"/api/hooks/{id}", new { @event = "noteAdded", hook = new { type = "command", powershell = "exit 1", bash = "exit 1" } });
+        Assert.Single(Hooks.AskForApprovals());
+        Assert.Equal(2, asked.Count);
+        Assert.NotEqual(asked[0].Version, asked[1].Version);
+    }
+
+    [Fact]
     public async Task Hooks_an_agent_adds_or_changes_wait_until_you_approve_them_in_the_app()
     {
         using var agent = _server.Client(actor: "agent:claude");

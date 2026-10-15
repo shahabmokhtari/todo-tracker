@@ -3,6 +3,7 @@
 
 import { createConnectorsPanel } from '../plugins/connectors.js';
 import { THEMES, chooseTheme } from '../themes.js';
+import { describeHook } from '../hook-prompt.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
 
@@ -128,20 +129,7 @@ export function createSettingsView(ctx) {
       const pending = x.state === 'needs approval';
       const toggle = h('input', { type: 'checkbox', checked: x.hook.enabled !== false, 'aria-label': `${x.label}: on`, title: 'On or off',
         onchange: () => call(`/api/hooks/${encodeURIComponent(x.id)}/enabled`, { method: 'POST', body: { enabled: toggle.checked } }) });
-      // Everything it would do: a name alone could say anything.
-      const m = x.hook.match ?? {};
-      const pairs = (o, sep) => Object.entries(o ?? {}).map(([k, v]) => `${k}${sep}${v}`).join(', ');
-      const only = [['groups', m.groups], ['tags', m.tags], ['labels', m.labels], ['done by', m.actors]].filter(([, v]) => v?.length).map(([k, v]) => `${k} ${v.join(', ')}`).join('; ');
-      const what = [
-        x.hook.powershell && `PowerShell: ${x.hook.powershell}`,
-        x.hook.bash && `bash: ${x.hook.bash}`,
-        x.hook.url && `Web address: ${x.hook.url}`,
-        x.hook.headers && `Headers: ${pairs(x.hook.headers, ': ')}`,
-        x.hook.env && `Variables: ${pairs(x.hook.env, '=')}`,
-        x.hook.cwd && `Folder: ${x.hook.cwd}`,
-        x.hook.timeoutSec && `Time limit: ${x.hook.timeoutSec} s`,
-        only && `Only for: ${only}`,
-      ].filter(Boolean).join('\n');
+      const what = describeHook(x.hook);
       return h('li', { class: `hook-row${pending ? ' pending' : ''}`, dataset: { id: x.id } },
         h('div', { class: 'hook-head' },
           toggle,
@@ -280,7 +268,9 @@ export function createSettingsView(ctx) {
       const [settings, list, labelList, hookStatus] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null)]);
       render(settings, list, labelList, hookStatus);
       await connectors.load();
-      if (location.hash.includes('plugins')) root.querySelector('#settings-plugins')?.scrollIntoView();
+      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here): that section.
+      const part = location.hash.match(/^#\/settings\/(plugins|hooks)/)?.[1];
+      if (part) root.querySelector(`#settings-${part}`)?.scrollIntoView();
     } catch (err) {
       ctx.toast(err.message, 'error');
     }

@@ -63,6 +63,9 @@ public sealed class HookStore
 
     public string FilePath { get; }
 
+    /// <summary>A hook was added, changed or removed here (changes by other processes show on the next read).</summary>
+    public event EventHandler? Changed;
+
     public bool Exists => File.Exists(FilePath);
 
     /// <summary>hooks.json as it is now (every hook with an id), or why it can't be read; (null, null) when there's none.</summary>
@@ -236,6 +239,7 @@ public sealed class HookStore
                 Write(file);
                 _cache = ((DateTime.MinValue, -1), null, null);
                 var (saved, _) = ReadLocked();
+                Changed?.Invoke(this, EventArgs.Empty);
                 return id is null ? new HookEntry(string.Empty, string.Empty, new HookSpec(), string.Empty, null, string.Empty) : Entries(saved).First(e => e.Id == id);
             }
             finally

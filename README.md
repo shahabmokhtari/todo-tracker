@@ -89,7 +89,7 @@ the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other t
 of finishing it; it still counts as done today.
 
 **Your own automations.** Hooks run a script or call a webhook when a task is done, a reminder goes off, a break
-starts… Add them in Settings › Hooks, with `tt hooks add`, or ask your AI agent (its hooks wait for your approval).
+starts… Add them in Settings › Hooks, with `tt hooks add`, or ask your AI agent (the app asks you to allow its hooks: Allow once and they just run).
 Extensions can listen to `GET /api/events`. See [docs/hooks.md](docs/hooks.md).
 
 ### The full app
