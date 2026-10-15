@@ -95,11 +95,36 @@ class RecurrenceTest {
     }
 
     @Test
+    fun aRepeatingChecklistMovesOnWhenItsLastStepIsDoneAndUndoPutsBackWhatItHad() {
+        val now = Instant.parse("2026-01-05T10:00:00Z")
+        val board = TaskBoard().apply { zone = ZoneId.of("UTC") }
+        val review = board.addTask(NewTask("Weekly review", deadline = Instant.parse("2026-01-02T17:00:00Z")), now = now)
+        review.repeat = Recurrence.parse("every week")
+        review.nextActionAt = Instant.parse("2026-01-02T08:30:00Z")
+        val steps = board.addSteps(review.id, listOf("Inbox zero", "Plan the week"), null, now = now)
+
+        board.complete(steps[0].id, now = now)
+        board.complete(steps[1].id, now = now)
+        assertFalse(review.isDone)
+        assertEquals(Instant.parse("2026-01-09T17:00:00Z"), review.deadline)
+        assertEquals("every week on Friday", review.repeat.toString())
+        assertTrue(steps.none { it.isDone })
+
+        board.reopen(review.id, now = now.plusSeconds(60))
+        assertEquals(Instant.parse("2026-01-02T17:00:00Z"), review.deadline)
+        assertEquals(Instant.parse("2026-01-02T08:30:00Z"), review.nextActionAt)
+    }
+
+    @Test
     fun theRuleSurvivesTheBoardFile() {
         val board = TaskBoard()
         val item = board.addTask(NewTask("Rent"), now = Instant.parse("2026-01-05T10:00:00Z"))
         item.repeat = Recurrence.parse("every month on the last day")
 
         assertEquals("every month on the last day", BoardCodec.decode(BoardCodec.encode(board)).get(item.id).repeat.toString())
+
+        item.deadline = Instant.parse("2026-01-31T17:00:00Z")
+        board.complete(item.id, now = Instant.parse("2026-01-31T10:00:00Z"))
+        assertEquals(RepeatUndo(Instant.parse("2026-01-31T17:00:00Z"), null), BoardCodec.decode(BoardCodec.encode(board)).get(item.id).repeatUndo)
     }
 }

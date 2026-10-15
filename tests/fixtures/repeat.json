@@ -77,7 +77,7 @@
     {
       "name": "Early: done before Friday, next is the Friday after",
       "rule": "every week", "zone": "America/New_York", "now": "2026-01-05T15:00:00Z", "due": "2026-01-09T22:00:00Z",
-      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-16T05:00:00Z", "rule": "every week" }
+      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-16T05:00:00Z", "rule": "every week on Friday" }
     },
     {
       "name": "When done: counted from today",
@@ -92,12 +92,27 @@
     {
       "name": "Waits two days before its deadline: still two days before, at the same time",
       "rule": "every week", "zone": "America/New_York", "now": "2026-01-09T16:00:00Z", "due": "2026-01-09T22:00:00Z", "scheduled": "2026-01-07T14:00:00Z",
-      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-14T14:00:00Z", "rule": "every week" }
+      "expect": { "done": false, "due": "2026-01-16T22:00:00Z", "scheduled": "2026-01-14T14:00:00Z", "rule": "every week on Friday" }
     },
     {
       "name": "No dates yet: from today",
       "rule": "every week on Monday", "zone": "America/New_York", "now": "2026-01-07T15:00:00Z",
       "expect": { "done": false, "scheduled": "2026-01-12T05:00:00Z", "rule": "every week on Monday" }
+    },
+    {
+      "name": "Month end: due on the 31st, February's last day, and the rule keeps the 31st from now on",
+      "rule": "every month", "zone": "America/New_York", "now": "2026-01-31T15:00:00Z", "due": "2026-01-31T22:00:00Z",
+      "expect": { "done": false, "due": "2026-02-28T22:00:00Z", "scheduled": "2026-02-28T05:00:00Z", "rule": "every month on the 31st" }
+    },
+    {
+      "name": "Weekly from a Friday: the rule says Friday (a snooze won't move it)",
+      "rule": "every 2 weeks", "zone": "UTC", "now": "2026-01-09T10:00:00Z", "due": "2026-01-09T17:00:00Z",
+      "expect": { "done": false, "due": "2026-01-23T17:00:00Z", "scheduled": "2026-01-23T00:00:00Z", "rule": "every 2 weeks on Friday" }
+    },
+    {
+      "name": "Yearly from a leap day: February 29 stays the day",
+      "rule": "every year", "zone": "UTC", "now": "2024-02-29T10:00:00Z", "due": "2024-02-29T17:00:00Z",
+      "expect": { "done": false, "due": "2025-02-28T17:00:00Z", "scheduled": "2025-02-28T00:00:00Z", "rule": "every year on February 29" }
     },
     {
       "name": "Counted: one time fewer left",

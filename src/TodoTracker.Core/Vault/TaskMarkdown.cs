@@ -85,9 +85,9 @@ public static partial class TaskMarkdown
     private const string Time = "time";
 
     /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
-    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color", "repeat"];
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color", "repeat", "repeatUndo"];
 
-    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "repeat", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "repeat", "repeat-undo", "tags", "labels", "reminders"];
 
     /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
     internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
@@ -277,6 +277,7 @@ public static partial class TaskMarkdown
         root.Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, fm.Scalar("icon"));
         root.Color = TaskBoard.Lenient(TaskBoard.CleanColor, fm.Scalar("color"));
         root.Repeat = TaskBoard.ReadRepeat(fm.Scalar("repeat"));
+        root.RepeatUndo = ParseRepeatUndo(fm.Scalar("repeat-undo"));
         root.TagList.AddRange(TaskBoard.ReadTags(fm.List("tags")));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
@@ -625,6 +626,7 @@ public static partial class TaskMarkdown
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, Str(meta, "icon")),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, Str(meta, "color")),
             Repeat = TaskBoard.ReadRepeat(Str(meta, "repeat")),
+            RepeatUndo = meta?["repeatUndo"] is JsonObject undo ? new RepeatUndo(VaultText.ParseInstant(Str(undo, "due")), VaultText.ParseInstant(Str(undo, "next"))) : null,
         };
         if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
         {
@@ -1047,6 +1049,7 @@ public static partial class TaskMarkdown
         ["sequential"] = root.Sequential ? "true" : "false",
         ["step-delay"] = root.StepDelay is { } s ? ((long)s.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
         ["repeat"] = root.Repeat?.ToString() ?? string.Empty,
+        ["repeat-undo"] = RepeatUndoText(root.RepeatUndo) ?? string.Empty,
         ["tags"] = string.Join('\u001f', root.Tags),
         ["labels"] = string.Join('\u001f', root.Labels),
         ["reminders"] = string.Join('\u001e', root.Reminders.Select(r => $"{r.Id}|{VaultText.Utc(r.DueAt)}|{r.Message}|{r.Kind}|{r.NotifiedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{r.DismissedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}")),
@@ -1126,6 +1129,9 @@ public static partial class TaskMarkdown
                 return root.StepDelay is { } s ? $"step-delay: {VaultText.Duration(s)}\n" : null;
             case "repeat":
                 return root.Repeat is { } repeat ? $"repeat: {repeat}\n" : null;
+            case "repeat-undo":
+                // Kept by the app: the deadline and wait before the task last moved on ("not done after all" puts them back).
+                return RepeatUndoText(root.RepeatUndo) is { } undo ? $"repeat-undo: {undo}\n" : null;
             case "tags":
                 return List("tags", root.Tags);
             case "labels":
@@ -1363,6 +1369,11 @@ public static partial class TaskMarkdown
         if (item.Repeat is { } repeat)
         {
             meta["repeat"] = repeat.ToString();
+        }
+
+        if (item.RepeatUndo is { } undo)
+        {
+            meta["repeatUndo"] = new JsonObject { ["due"] = undo.Deadline is { } ud ? VaultText.Utc(ud) : null, ["next"] = undo.NextActionAt is { } un ? VaultText.Utc(un) : null };
         }
 
         if (item.Labels.Count > 0)
@@ -1631,6 +1642,24 @@ public static partial class TaskMarkdown
 
     private static string? Str(JsonObject? meta, string key) =>
         meta?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    /// <summary><c>due 2026-01-02T17:00:00Z, scheduled -</c> (a dash: none).</summary>
+    private static string? RepeatUndoText(RepeatUndo? undo) =>
+        undo is null ? null : $"due {(undo.Deadline is { } d ? VaultText.Utc(d) : "-")}, scheduled {(undo.NextActionAt is { } n ? VaultText.Utc(n) : "-")}";
+
+    private static RepeatUndo? ParseRepeatUndo(string? text)
+    {
+        if (text is null || RepeatUndoPattern().Match(text) is not { Success: true } m)
+        {
+            return null;
+        }
+
+        static DateTimeOffset? Read(string value) => value == "-" ? null : VaultText.ParseInstant(value);
+        return new RepeatUndo(Read(m.Groups["due"].Value), Read(m.Groups["next"].Value));
+    }
+
+    [GeneratedRegex(@"^\s*due\s+(?<due>\S+)\s*,\s*scheduled\s+(?<next>\S+)\s*$")]
+    private static partial Regex RepeatUndoPattern();
 
     private static long? Long(JsonObject? meta, string key) =>
         meta?[key] is JsonValue v && v.TryGetValue<long>(out var n) ? n : null;

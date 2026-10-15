@@ -84,11 +84,36 @@ final class RecurrenceTests: XCTestCase {
         XCTAssertTrue(Agenda.doneToday(board, now: now.addingTimeInterval(180), timeZone: utc).isEmpty)
     }
 
+    func testARepeatingChecklistMovesOnWhenItsLastStepIsDoneAndUndoPutsBackWhatItHad() throws {
+        let now = date("2026-01-05T10:00:00Z")!
+        let board = TaskBoard()
+        board.timeZone = TimeZone(identifier: "UTC")!
+        let review = try board.addTask(NewTask("Weekly review", deadline: date("2026-01-02T17:00:00Z")), now: now)
+        review.repeatRule = try Recurrence.parse("every week")
+        review.nextActionAt = date("2026-01-02T08:30:00Z")
+        let steps = try board.addSteps(parentId: review.id, titles: ["Inbox zero", "Plan the week"], stepDelay: nil, now: now)
+
+        try board.complete(steps[0].id, now: now)
+        try board.complete(steps[1].id, now: now)
+        XCTAssertFalse(review.isDone)
+        XCTAssertEqual(review.deadline, date("2026-01-09T17:00:00Z"))
+        XCTAssertEqual(review.repeatRule?.description, "every week on Friday")
+        XCTAssertTrue(steps.allSatisfy { !$0.isDone })
+
+        try board.reopen(review.id, now: now.addingTimeInterval(60))
+        XCTAssertEqual(review.deadline, date("2026-01-02T17:00:00Z"))
+        XCTAssertEqual(review.nextActionAt, date("2026-01-02T08:30:00Z"))
+    }
+
     func testTheRuleSurvivesTheBoardFile() throws {
         let board = TaskBoard()
         let item = try board.addTask(NewTask("Rent"), now: date("2026-01-05T10:00:00Z")!)
         item.repeatRule = try Recurrence.parse("every month on the last day")
 
         XCTAssertEqual(try BoardCodec.decode(BoardCodec.encode(board)).find(item.id)?.repeatRule?.description, "every month on the last day")
+
+        item.deadline = date("2026-01-31T17:00:00Z")
+        try board.complete(item.id, now: date("2026-01-31T10:00:00Z")!)
+        XCTAssertEqual(try BoardCodec.decode(BoardCodec.encode(board)).find(item.id)?.repeatUndo, RepeatUndo(deadline: date("2026-01-31T17:00:00Z"), nextActionAt: nil))
     }
 }

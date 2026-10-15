@@ -236,8 +236,11 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   on (same time), it waits until then (as many days before the deadline, at the same time, as it waited before; else from
   the start of that day), its subtasks open again, and this time's reminders, timer and *Doing* end. Missed days are
   skipped (the next time is after today); done early, the next time is the one after the current. A rule that has ended
-  (*until*, the last of *for N times*) completes it for good. *Reopen* right after puts it back (due a time earlier, in
-  Do now). Checking it in Obsidian (`status: done`) moves it on the same way. Cards, board, tree and phones show 🔁.
+  (*until*, the last of *for N times*) completes it for good. Its day is fixed at its first time (*every month* due on
+  the 31st becomes *every month on the 31st*: after February's 28th it's back on the 31st, and a snooze doesn't move it).
+  *Reopen* right after puts back the deadline and wait it had (kept as `repeat-undo:`). Finishing the last step of a
+  repeating in-order task moves the task on (its steps open again); a step of an in-order task doesn't repeat on its own.
+  Checking it in Obsidian (`status: done`) moves it on the same way, each time. Cards, board, tree and phones show 🔁.
   Same rules in C#, Swift and Kotlin (`Recurrence`; shared fixture `tests/fixtures/repeat.json`), in the user's time
   zone (calendar days, so clock changes keep the time of day).
 * **A task's look** (details panel): the button by the title picks an **icon** (a grid of common emojis, or type/paste any, or *No icon*); the **Color** row picks *Auto* (its first label's color), a palette color, or any color. Cards, board cards and tree rows show the icon before the title and the color as a stripe and a light tint; the sidebar shows both too.

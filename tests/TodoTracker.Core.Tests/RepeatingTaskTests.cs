@@ -84,6 +84,49 @@ public sealed class RepeatingTaskTests
     }
 
     [Fact]
+    public void Not_done_after_all_puts_back_the_deadline_and_wait_it_had()
+    {
+        // Late (due Friday, done Monday), waiting until 8:30 that day.
+        var item = _board.AddTask(new NewTask("Timesheet") { Repeat = "every day", Deadline = Morning.AddDays(-3).AddHours(7) }, Actor.User, Morning.AddDays(-5));
+        _board.ScheduleNextAction(item.Id, Morning.AddDays(-3).AddHours(-1.5), Actor.User, Morning.AddDays(-5));
+        _board.Complete(item.Id, Actor.User, Morning);
+        Assert.Equal(Morning.AddDays(1).AddHours(7), item.Deadline);
+
+        _board.Reopen(item.Id, Actor.User, Morning.AddMinutes(1));
+
+        Assert.Equal(Morning.AddDays(-3).AddHours(7), item.Deadline);
+        Assert.Equal(Morning.AddDays(-3).AddHours(-1.5), item.NextActionAt);
+        Assert.Null(item.RepeatUndo);
+    }
+
+    [Fact]
+    public void A_repeating_checklist_moves_on_when_its_last_step_is_done()
+    {
+        var review = _board.AddTask(new NewTask("Weekly review") { Repeat = "every week", Deadline = Morning.AddHours(7) }, Actor.User, Morning);
+        var steps = _board.AddSteps(review.Id, ["Inbox zero", "Plan the week"], null, Actor.User, Morning);
+
+        _board.Complete(steps[0].Id, Actor.User, Morning);
+        _board.Complete(steps[1].Id, Actor.User, Morning.AddMinutes(5));
+
+        Assert.False(review.IsDone);
+        Assert.Equal(Morning.AddDays(7).AddHours(7), review.Deadline);
+        Assert.All(steps, s => Assert.False(s.IsDone));
+    }
+
+    [Fact]
+    public void A_repeating_step_of_an_in_order_task_is_done_for_good_so_the_next_step_can_start()
+    {
+        var rollout = _board.AddTask(new NewTask("Rollout"), Actor.User, Morning);
+        var steps = _board.AddSteps(rollout.Id, ["Ring 0", "Ring 1"], null, Actor.User, Morning);
+        _board.Update(steps[0].Id, new TaskChanges { Repeat = "every day" }, Actor.User, Morning);
+
+        _board.Complete(steps[0].Id, Actor.User, Morning);
+        _board.Complete(steps[1].Id, Actor.User, Morning);
+
+        Assert.True(rollout.IsDone);
+    }
+
+    [Fact]
     public void Completing_its_parent_finishes_a_repeating_subtask_with_it()
     {
         var project = _board.AddTask(new NewTask("Project"), Actor.User, Morning);

@@ -299,6 +299,14 @@ public sealed class VaultStoreTests : IDisposable
         // Read again (another process, or the next start): it stays moved on, not completed a second time.
         store.MarkDirty();
         Assert.Equal(1, await store.ReadAsync(b => b.Activity.Count(a => a.ItemId == water.Id && a.Kind == ActivityKind.Completed)));
+        Assert.Contains("repeat-undo: due 2026-01-05T17:00:00", text, StringComparison.Ordinal);
+
+        // Checked again the next day: it moves on again.
+        _time.Advance(TimeSpan.FromDays(1));
+        await File.WriteAllTextAsync(file, (await File.ReadAllTextAsync(file)).Replace("status: open", "status: done", StringComparison.Ordinal));
+        _time.Advance(TimeSpan.FromMinutes(5));
+        store.MarkDirty();
+        Assert.Equal((false, T0.AddDays(2).AddHours(8)), await store.ReadAsync(b => (b.Get(water.Id).IsDone, b.Get(water.Id).Deadline)));
     }
 
     [Fact]

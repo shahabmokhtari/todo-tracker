@@ -36,6 +36,18 @@ data class Recurrence(
 
     fun countedUp(): Recurrence = if (count != null) copy(count = minOf(count + 1, MAX_COUNT)) else this
 
+    /**
+     * The rule with the day it falls on written out, taken from [first] (its first time): "every month" due Jan 31 is
+     * "every month on the 31st"; "every week" started on a Friday is "every week on Friday". "When done" rules are left.
+     */
+    fun pinnedTo(first: LocalDate): Recurrence = when {
+        whenDone -> this
+        unit == RepeatUnit.WEEK && weekdays.isEmpty() -> copy(weekdays = listOf(first.dayOfWeek))
+        unit == RepeatUnit.MONTH && monthDay == null && nth == null -> copy(monthDay = first.dayOfMonth)
+        unit == RepeatUnit.YEAR && month == null -> copy(month = first.monthValue, monthDay = monthDay ?: first.dayOfMonth)
+        else -> this
+    }
+
     /** The first day after [after] it falls on, counting from [anchor]; null when the rule has ended ([until]). */
     fun next(anchor: LocalDate, after: LocalDate): LocalDate? {
         var day = after.plusDays(1)

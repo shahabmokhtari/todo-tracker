@@ -90,6 +90,8 @@ class WorkItem(
     var color: String? = null
     /** How it repeats: completing it moves it on to its next time instead of finishing it. */
     var repeat: Recurrence? = null
+    /** Its deadline and wait before it last moved on, so "not done after all" puts them back. */
+    var repeatUndo: RepeatUndo? = null
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
 
@@ -140,6 +142,9 @@ class WorkItem(
     fun timeSpent(now: Instant, includeSubtasks: Boolean = true): Duration =
         (if (includeSubtasks) selfAndDescendants else listOf(this)).flatMap { it.timeEntries }.fold(Duration.ZERO) { sum, e -> sum.plus(e.duration(now)) }
 }
+
+/** A repeating task's deadline and wait before it moved on (see [WorkItem.repeatUndo]). */
+data class RepeatUndo(val deadline: Instant?, val nextActionAt: Instant?)
 
 data class NewTask(
     val title: String,

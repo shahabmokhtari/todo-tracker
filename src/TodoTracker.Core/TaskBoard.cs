@@ -724,6 +724,13 @@ public sealed partial class TaskBoard
         var next = parent.ChildList.Find(c => !c.IsDone);
         if (next is null)
         {
+            // Every step done: a repeating task moves on to its next time (its steps open again).
+            if (TryRollForward(parent, actor, now))
+            {
+                ReleaseWaiters(now, finished: parent.Id);
+                return;
+            }
+
             parent.CompletedAt = now;
             Log(now, parent.Id, ActivityKind.Completed, $"Completed \"{parent.Title}\" (all steps done)", Actor.System);
             AdvanceSequence(parent, actor, now);

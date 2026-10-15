@@ -225,6 +225,13 @@ public class TaskMarkdownTests
 
         Assert.Equal("every weekday", TaskMarkdown.Parse("---\nrepeat: Every weekday\n---\n# Stand-up\n", "Stand-up", Utc).Root.Repeat?.ToString());
         Assert.Null(TaskMarkdown.Parse("---\nrepeat: whenever\n---\n# Stand-up\n", "Stand-up", Utc).Root.Repeat);
+
+        // What "not done after all" puts back survives too.
+        board.Complete(root.Id, Actor.User, Now);
+        board.Complete(step.Id, Actor.User, Now);
+        var moved = TaskMarkdown.Parse(TaskMarkdown.Render(root, Utc), "Chores", Utc).Root;
+        Assert.Equal(root.RepeatUndo, moved.RepeatUndo);
+        Assert.Equal(step.RepeatUndo, moved.Children.Single(c => c.Id == step.Id).RepeatUndo);
     }
 
     [Fact]

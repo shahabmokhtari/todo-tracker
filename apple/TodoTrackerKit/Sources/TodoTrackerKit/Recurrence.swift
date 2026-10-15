@@ -112,6 +112,22 @@ public struct Recurrence: Equatable, CustomStringConvertible {
         return copy
     }
 
+    /// The rule with the day it falls on written out, taken from `first` (its first time): "every month" due Jan 31 is
+    /// "every month on the 31st"; "every week" started on a Friday is "every week on Friday". "When done" rules are left.
+    public func pinned(to first: LocalDay) -> Recurrence {
+        if whenDone { return self }
+        var copy = self
+        switch unit {
+        case .week where weekdays.isEmpty: copy.weekdays = [first.weekday]
+        case .month where monthDay == nil && nth == nil: copy.monthDay = first.day
+        case .year where month == nil:
+            copy.month = first.month
+            copy.monthDay = monthDay ?? first.day
+        default: break
+        }
+        return copy
+    }
+
     /// The first day after `after` it falls on, counting from `anchor`; nil when the rule has ended (`until`).
     public func next(anchor: LocalDay, after: LocalDay) -> LocalDay? {
         for offset in 1...limit {

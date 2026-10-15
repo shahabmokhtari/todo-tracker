@@ -87,6 +87,9 @@ public sealed class WorkItem
     /// <summary>How it repeats: completing it moves it on to its next time instead of finishing it. Null: it doesn't.</summary>
     public Recurrence? Repeat { get; internal set; }
 
+    /// <summary>Its deadline and wait before it last moved on to its next time, so "not done after all" puts them back.</summary>
+    public RepeatUndo? RepeatUndo { get; internal set; }
+
     /// <summary>Put away (a finished top-level task): kept, searchable with <c>is:archived</c>, out of every list.</summary>
     public DateTimeOffset? ArchivedAt { get; internal set; }
 
@@ -125,6 +128,9 @@ public sealed class WorkItem
 
     public WorkItem Root => Ancestors().LastOrDefault() ?? this;
 }
+
+/// <summary>A repeating task's deadline and wait before it moved on (see <see cref="WorkItem.RepeatUndo"/>).</summary>
+public sealed record RepeatUndo(DateTimeOffset? Deadline, DateTimeOffset? NextActionAt);
 
 public sealed record NewTask(string Title)
 {

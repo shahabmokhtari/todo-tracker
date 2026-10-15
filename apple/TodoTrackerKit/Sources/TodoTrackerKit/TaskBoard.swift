@@ -238,12 +238,16 @@ public final class TaskBoard {
     /// before, else from the start of that day), its subtasks open again and this time's reminders and timer end.
     /// False when it doesn't repeat (any more): then it's simply done.
     private func rollForward(_ item: WorkItem, actor: Actor, now: Date) -> Bool {
-        guard let rule = item.repeatRule, rule.count != 1 else { return false }
+        // A step of an in-order task doesn't repeat on its own (it would hold up the steps after it for good).
+        guard let repeatRule = item.repeatRule, repeatRule.count != 1, item.parent?.sequential != true else { return false }
         let today = localDay(now)
         let scheduled = item.deadline ?? item.nextActionAt
-        let anchor = rule.whenDone || scheduled == nil ? today : localDay(scheduled!)
+        let anchor = repeatRule.whenDone || scheduled == nil ? today : localDay(scheduled!)
+        // Its day is fixed from its first time on (month ends, leap days and snoozes don't move it).
+        let rule = repeatRule.pinned(to: anchor)
         guard let next = rule.next(anchor: anchor, after: max(anchor, today)) else { return false }
 
+        item.repeatUndo = RepeatUndo(deadline: item.deadline, nextActionAt: item.nextActionAt)
         let waitedUntil = item.nextActionAt
         let reminded = waitedUntil.map { w in item.reminders.contains { $0.kind == .nextAction && $0.dueAt == w } } ?? false
         var lead = 0
@@ -273,12 +277,18 @@ public final class TaskBoard {
     /// "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now.
     private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date) {
         guard let rule = item.repeatRule else { return }
-        if let due = item.deadline {
-            let day = localDay(due)
-            if let before = rule.previous(anchor: day, before: day) { item.deadline = at(before, localTime(due)) }
+        for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil && r.dueAt > now { r.dismissedAt = now }
+        if let undo = item.repeatUndo {
+            item.deadline = undo.deadline
+            item.nextActionAt = undo.nextActionAt
+        } else {
+            if let due = item.deadline {
+                let day = localDay(due)
+                if let before = rule.previous(anchor: day, before: day) { item.deadline = at(before, localTime(due)) }
+            }
+            item.nextActionAt = nil
         }
-        bringBack(item, now: now)
-        item.nextActionAt = nil
+        item.repeatUndo = nil
         item.repeatRule = rule.countedUp()
         log(now, item.id, "reopened", "Reopened \"\(item.title)\" (not done after all)", actor)
     }
@@ -479,6 +489,11 @@ public final class TaskBoard {
     private func advanceSequence(after completed: WorkItem, actor: Actor, now: Date) {
         guard let parent = completed.parent, parent.sequential else { return }
         guard let next = parent.children.first(where: { !$0.isDone }) else {
+            // Every step done: a repeating task moves on to its next time (its steps open again).
+            if rollForward(parent, actor: actor, now: now) {
+                releaseWaiters(now: now, finished: parent.id)
+                return
+            }
             parent.completedAt = now
             log(now, parent.id, "completed", "Completed \"\(parent.title)\" (all steps done)", .system)
             advanceSequence(after: parent, actor: actor, now: now)

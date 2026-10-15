@@ -84,6 +84,28 @@ public sealed class Recurrence
     public Recurrence CountedUp() => Count is { } n ? With(count: Math.Min(n + 1, MaxCount)) : this;
 
     /// <summary>
+    /// The rule with the day it falls on written out, taken from <paramref name="first"/> (its first time): "every month"
+    /// due Jan 31 is "every month on the 31st" (so after February's 28th it's back on the 31st, and a snooze doesn't move
+    /// it); "every week" started on a Friday is "every week on Friday"; "every year" is "every year on March 5". Rules
+    /// counted from when they're done follow the completion, and are left as they are.
+    /// </summary>
+    public Recurrence PinnedTo(DateOnly first)
+    {
+        if (WhenDone)
+        {
+            return this;
+        }
+
+        return Unit switch
+        {
+            RepeatUnit.Week when Weekdays.Count == 0 => With(weekdays: [first.DayOfWeek]),
+            RepeatUnit.Month when MonthDay is null && Nth is null => With(monthDay: first.Day),
+            RepeatUnit.Year when Month is null => With(month: first.Month, monthDay: MonthDay ?? first.Day),
+            _ => this,
+        };
+    }
+
+    /// <summary>
     /// The first day after <paramref name="after"/> it falls on, counting from <paramref name="anchor"/> (its first
     /// day: every 2 weeks means the weeks of the anchor, the 2nd one after, …). Null when the rule has ended (after
     /// <see cref="Until"/>).
@@ -209,18 +231,18 @@ public sealed class Recurrence
         _ => "th",
     });
 
-    private Recurrence With(int? count) => new()
+    private Recurrence With(int? count = null, IReadOnlyList<DayOfWeek>? weekdays = null, int? monthDay = null, int? month = null) => new()
     {
         Unit = Unit,
         Interval = Interval,
-        Weekdays = Weekdays,
-        MonthDay = MonthDay,
+        Weekdays = weekdays ?? Weekdays,
+        MonthDay = monthDay ?? MonthDay,
         Nth = Nth,
         NthDay = NthDay,
-        Month = Month,
+        Month = month ?? Month,
         WhenDone = WhenDone,
         Until = Until,
-        Count = count,
+        Count = count ?? Count,
     };
 
     // ---- Reading -------------------------------------------------------------------------

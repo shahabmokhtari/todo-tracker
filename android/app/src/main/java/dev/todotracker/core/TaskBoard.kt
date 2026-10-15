@@ -393,6 +393,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (!parent.sequential) return
         val next = parent.children.firstOrNull { !it.isDone }
         if (next == null) {
+            // Every step done: a repeating task moves on to its next time (its steps open again).
+            if (tryRollForward(parent, actor, now)) {
+                releaseWaiters(now, finished = parent.id)
+                return
+            }
             parent.completedAt = now
             log(now, parent.id, "completed", "Completed \"${parent.title}\" (all steps done)", Actor.SYSTEM)
             advanceSequence(parent, actor, now)
@@ -432,13 +437,17 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
      * False when it doesn't repeat (any more): then it's simply done.
      */
     private fun tryRollForward(item: WorkItem, actor: Actor, now: Instant): Boolean {
-        val rule = item.repeat ?: return false
-        if (rule.count == 1) return false
+        val repeat = item.repeat ?: return false
+        // A step of an in-order task doesn't repeat on its own (it would hold up the steps after it for good).
+        if (repeat.count == 1 || item.parent?.sequential == true) return false
         val today = now.atZone(zone).toLocalDate()
         val scheduled = item.deadline ?: item.nextActionAt
-        val anchor = if (rule.whenDone || scheduled == null) today else scheduled.atZone(zone).toLocalDate()
+        val anchor = if (repeat.whenDone || scheduled == null) today else scheduled.atZone(zone).toLocalDate()
+        // Its day is fixed from its first time on (month ends, leap days and snoozes don't move it).
+        val rule = repeat.pinnedTo(anchor)
         val next = rule.next(anchor, if (anchor.isAfter(today)) anchor else today) ?: return false
 
+        item.repeatUndo = RepeatUndo(item.deadline, item.nextActionAt)
         val waitedUntil = item.nextActionAt
         val reminded = waitedUntil != null && item.reminders.any { it.kind == ReminderKind.NEXT_ACTION && it.dueAt == waitedUntil }
         val due = item.deadline
@@ -477,13 +486,20 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now. */
     private fun undoRollForward(item: WorkItem, actor: Actor, now: Instant) {
         val rule = item.repeat ?: return
-        val due = item.deadline
-        if (due != null) {
-            val day = due.atZone(zone).toLocalDate()
-            rule.previous(day, day)?.let { item.deadline = ZonedDateTime.of(it, due.atZone(zone).toLocalTime(), zone).toInstant() }
+        for (r in item.reminders) if (r.kind == ReminderKind.NEXT_ACTION && r.dismissedAt == null && r.dueAt.isAfter(now)) r.dismissedAt = now
+        val undo = item.repeatUndo
+        if (undo != null) {
+            item.deadline = undo.deadline
+            item.nextActionAt = undo.nextActionAt
+        } else {
+            val due = item.deadline
+            if (due != null) {
+                val day = due.atZone(zone).toLocalDate()
+                rule.previous(day, day)?.let { item.deadline = ZonedDateTime.of(it, due.atZone(zone).toLocalTime(), zone).toInstant() }
+            }
+            item.nextActionAt = null
         }
-        bringBack(item, now)
-        item.nextActionAt = null
+        item.repeatUndo = null
         item.repeat = rule.countedUp()
         log(now, item.id, "reopened", "Reopened \"${item.title}\" (not done after all)", actor)
     }

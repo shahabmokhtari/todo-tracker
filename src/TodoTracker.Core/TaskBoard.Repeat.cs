@@ -16,22 +16,27 @@ public sealed partial class TaskBoard
     /// that day (same time of day), it waits until then (the same number of days before the deadline, and at the same
     /// time, as it waited before; otherwise from the start of that day), its subtasks open again and what's left of this
     /// time (its reminders, its timer, Doing on the board) ends. Returns false when it doesn't repeat (any more): then
-    /// it's simply done.
+    /// it's simply done. A step of an in-order task doesn't repeat on its own (its task can): it would hold up the steps
+    /// after it for good.
     /// </summary>
     internal bool TryRollForward(WorkItem item, Actor actor, DateTimeOffset now)
     {
-        if (item.Repeat is not { } rule || rule.Count == 1)
+        if (item.Repeat is not { } repeat || repeat.Count == 1 || item.Parent is { Sequential: true })
         {
             return false;
         }
 
         var today = LocalDate(now);
-        var anchor = rule.WhenDone || (item.Deadline ?? item.NextActionAt) is not { } scheduled ? today : LocalDate(scheduled);
+        var anchor = repeat.WhenDone || (item.Deadline ?? item.NextActionAt) is not { } scheduled ? today : LocalDate(scheduled);
+
+        // Its day is fixed from its first time on (month ends, leap days and snoozes don't move it).
+        var rule = repeat.PinnedTo(anchor);
         if (rule.Next(anchor, anchor > today ? anchor : today) is not { } next)
         {
             return false;
         }
 
+        item.RepeatUndo = new RepeatUndo(item.Deadline, item.NextActionAt);
         var waitedUntil = item.NextActionAt;
         var reminded = waitedUntil is { } w && item.ReminderList.Exists(r => r.Kind == ReminderKind.NextAction && r.DueAt == w);
         var lead = item.Deadline is { } due && waitedUntil is { } waited ? Math.Max(0, LocalDate(due).DayNumber - LocalDate(waited).DayNumber) : 0;
@@ -66,25 +71,47 @@ public sealed partial class TaskBoard
         }
 
         item.Repeat = rule.CountedDown();
-        Log(now, item.Id, ActivityKind.Completed, $"Completed \"{item.Title}\" (repeats: next {next.ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture)})", actor);
+        Log(now, item.Id, ActivityKind.Completed, $"Completed \"{item.Title}\" {RolledMarker}{next.ToString("ddd d MMM", System.Globalization.CultureInfo.InvariantCulture)})", actor);
         return true;
     }
+
+    /// <summary>What every app writes in the "completed" entry of a repeating task that moved on (the task stays open).</summary>
+    internal const string RolledMarker = "(repeats: next ";
+
+    internal static bool IsRolled(ActivityEntry entry) => entry.Kind == ActivityKind.Completed && entry.Summary.Contains(RolledMarker, StringComparison.Ordinal);
 
     /// <summary>Whether this repeating task's last change was moving on to its next time (so "not done after all" can undo it).</summary>
     internal bool WasRolledForward(WorkItem item) =>
         item is { Repeat: not null, IsDone: false }
         && ActivityList.FindLast(a => a.ItemId == item.Id && a.Kind is ActivityKind.Completed or ActivityKind.Reopened) is { Kind: ActivityKind.Completed };
 
-    /// <summary>"Not done after all" on a repeating task that moved on: back to the time before (due a time earlier), in Do now.</summary>
+    /// <summary>
+    /// "Not done after all" on a repeating task that moved on: its deadline and wait as they were before (without that
+    /// record, e.g. written by an older app: due a time earlier and back in Do now).
+    /// </summary>
     private void UndoRollForward(WorkItem item, Actor actor, DateTimeOffset now)
     {
-        if (item.Deadline is { } due && item.Repeat!.Previous(LocalDate(due), LocalDate(due)) is { } before)
+        foreach (var reminder in item.ReminderList.Where(r => r.Kind == ReminderKind.NextAction && r.DismissedAt is null && r.DueAt > now))
         {
-            item.Deadline = LocalAt(before, LocalTime(due));
+            reminder.DismissedAt = now;
         }
 
-        BringBack(item, now);
-        item.NextActionAt = null;
+        if (item.RepeatUndo is { } undo)
+        {
+            item.Deadline = undo.Deadline;
+            item.NextActionAt = undo.NextActionAt;
+        }
+        else
+        {
+            if (item.Deadline is { } due && item.Repeat!.Previous(LocalDate(due), LocalDate(due)) is { } before)
+            {
+                item.Deadline = LocalAt(before, LocalTime(due));
+            }
+
+            item.NextActionAt = null;
+        }
+
+        item.RepeatUndo = null;
         item.Repeat = item.Repeat!.CountedUp();
         Log(now, item.Id, ActivityKind.Reopened, $"Reopened \"{item.Title}\" (not done after all)", actor);
     }
