@@ -11,6 +11,9 @@ public interface IDesktopShell
 
     void CopyToClipboard(string text);
 
+    /// <summary>Copies a link named <paramref name="title"/>; shells without rich clipboard copy the address.</summary>
+    void CopyLink(string url, string title) => CopyToClipboard(url);
+
     void RunOnUi(Action action);
 
     string? Prompt(string title, string message, string? initialValue = null);

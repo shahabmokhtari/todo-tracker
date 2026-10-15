@@ -127,7 +127,8 @@ tt add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ speciall
 tt add Renew passport --due 7d --tag admin  the same without quick words
 tt add 'Book flights' --under trip  a subtask; <task> is an id prefix or words from the title
 tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
-tt show passport                    a task with subtasks, notes and its markdown file
+tt show passport                    a task with subtasks, notes, its markdown file and its link
+tt open passport                    open it in the app (todotracker://task/<id>)
 tt note passport 'Booked appointment for Tuesday'   (or tt note passport - to read it from stdin)
 tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, 2026-02-01, 2026-02-01T14:30
 tt snooze "move in" after keys      wait until another task is done

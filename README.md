@@ -122,6 +122,14 @@ To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add r
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
 waits 24 hours and then comes back with a reminder.
 
+**Links to a task.** The link button in a task's header (or **Copy link** on a sidebar card) copies
+`todotracker://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
+named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
+starts if it wasn't running), on macOS and iPhone the task's details open, on Android a card with Done and Add note,
+and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
+it with every task (`link`). The app registers the link for you when it starts (Windows: per user, no admin rights;
+Linux: `install.sh`).
+
 ### Where your tasks live
 
 Tasks are markdown files in **Documents/Todo Tracker**: one folder per group (tab), one file per task, with subtasks

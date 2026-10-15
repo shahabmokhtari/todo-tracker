@@ -101,6 +101,11 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
             output.WriteLine("  file: " + Path.GetFullPath(Path.Combine(root, file)));
         }
 
+        if (i.Link is { } link)
+        {
+            output.WriteLine("  link: " + link);
+        }
+
         if (!string.IsNullOrWhiteSpace(i.Details))
         {
             output.WriteLine();

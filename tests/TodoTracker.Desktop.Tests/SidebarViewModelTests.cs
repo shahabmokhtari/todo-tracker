@@ -725,8 +725,22 @@ public sealed class SidebarViewModelTests : IDisposable
             ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
+        _vm.CopyLinkCommand.Execute(_vm.Focus);
 
-        Assert.Equal(["{\"mcpServers\":{}}", "secret-token"], _shell.Clipboard);
+        Assert.Equal(["{\"mcpServers\":{}}", "secret-token", $"todotracker://task/{item.Id}"], _shell.Clipboard);
+    }
+
+    [Fact]
+    public void A_copied_link_pastes_as_a_named_link_in_rich_editors()
+    {
+        var html = HtmlClipboard.Format(HtmlClipboard.Anchor("todotracker://task/1", "Ship <it> & café"));
+        int Offset(string name) => int.Parse(html.Split(name + ":")[1][..10], System.Globalization.CultureInfo.InvariantCulture);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(html);
+        string Slice(int from, int to) => System.Text.Encoding.UTF8.GetString(bytes, from, to - from);
+
+        Assert.Equal("<a href=\"todotracker://task/1\">Ship &lt;it&gt; &amp; café</a>", Slice(Offset("StartFragment"), Offset("EndFragment")));
+        Assert.StartsWith("<html>", Slice(Offset("StartHTML"), Offset("EndHTML")));
+        Assert.Equal(bytes.Length, Offset("EndHTML"));
     }
 
     [Fact]

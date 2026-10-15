@@ -17,6 +17,9 @@ public enum AppLink
 
     /// <summary>Never (data:, javascript:, file: and the like).</summary>
     Blocked,
+
+    /// <summary>A todotracker://task/&lt;id&gt; link: the task, in this window.</summary>
+    TaskLink,
 }
 
 /// <summary>What showing a path of the app in its window takes.</summary>
@@ -43,6 +46,11 @@ public static class AppNavigation
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
         {
             return AppLink.Blocked;
+        }
+
+        if (TodoTracker.Core.TaskLinks.AppPath(url) is not null)
+        {
+            return AppLink.TaskLink;
         }
 
         if (uri.Scheme is "http" or "https" && Uri.Compare(uri, origin, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0)

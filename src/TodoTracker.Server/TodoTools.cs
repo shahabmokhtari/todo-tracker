@@ -37,7 +37,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     public Task<List<SearchHitDto>> SearchTasks(string query) =>
         Guard(() => store.ReadAsync(b => ApiEndpoints.Search(b, query, time.GetUtcNow(), links)));
 
-    [McpServerTool(Name = "get_task", ReadOnly = true), Description("One task with its subtasks, reminders, notes, tags, labels, attachments, and its markdown file.")]
+    [McpServerTool(Name = "get_task", ReadOnly = true), Description("One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (todotracker://task/<id>: give it to the user, clicking it opens the task in the app).")]
     public Task<ItemDto> GetTask(string taskId) =>
         Guard(() => store.ReadAsync(b => Wire.Item(b.Get(ParseId(taskId)), time.GetUtcNow(), b, links)));
 

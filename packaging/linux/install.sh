@@ -20,7 +20,10 @@ chmod +x "$app/todo-tracker" "$app/tt" 2>/dev/null || true
 ln -sf "$app/todo-tracker" "$bin/todo-tracker"
 ln -sf "$app/tt" "$bin/tt"
 cp "$here/todo-tracker.png" "$icons/todo-tracker.png"
-sed "s|^Exec=.*|Exec=$app/todo-tracker|" "$here/todo-tracker.desktop" > "$apps/todo-tracker.desktop"
+sed "s|^Exec=.*|Exec=$app/todo-tracker %u|" "$here/todo-tracker.desktop" > "$apps/todo-tracker.desktop"
+# todotracker://task/<id> links (Copy link in the app) open the task here.
+xdg-mime default todo-tracker.desktop x-scheme-handler/todotracker 2>/dev/null || true
+update-desktop-database "$apps" 2>/dev/null || true
 
 if [ "${1:-}" = "--autostart" ]; then
   autostart="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"

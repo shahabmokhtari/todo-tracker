@@ -16,6 +16,15 @@ internal sealed class WpfShell : IDesktopShell
 
     public void CopyToClipboard(string text) => Clipboard.SetText(text);
 
+    public void CopyLink(string url, string title)
+    {
+        // Rich (a link named after the task, for chat, mail and notes) with the bare address as the plain text.
+        var data = new DataObject();
+        data.SetText(url);
+        data.SetData(DataFormats.Html, HtmlClipboard.Format(HtmlClipboard.Anchor(url, title)));
+        Clipboard.SetDataObject(data, copy: true);
+    }
+
     public void RunOnUi(Action action)
     {
         var dispatcher = Application.Current.Dispatcher;
@@ -117,6 +126,51 @@ internal sealed partial class GlobalHotKey : IDisposable
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool UnregisterHotKey(IntPtr hWnd, int id);
+}
+
+/// <summary>
+/// Per-user handler for todotracker:// links (HKCU\Software\Classes, no admin rights): Windows starts this app with the
+/// link, and a running one is handed it (SingleInstance). Rewritten at every start, so it follows the app if it moves.
+/// </summary>
+internal static partial class DeepLinkRegistration
+{
+    private const uint AnyProcess = unchecked((uint)-1);
+
+    /// <summary>
+    /// This launch got the click (and with it the right to come to the front): hand that right on, so the running app
+    /// the link goes to can bring its window forward instead of flashing in the taskbar.
+    /// </summary>
+    public static void LetRunningAppComeForward() => AllowSetForegroundWindow(AnyProcess);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AllowSetForegroundWindow(uint processId);
+
+    public static void Register()
+    {
+        if (Environment.ProcessPath is not { } exe)
+        {
+            return;
+        }
+
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{TodoTracker.Core.TaskLinks.Scheme}");
+            key.SetValue(string.Empty, "URL:Todo Tracker task link");
+            key.SetValue("URL Protocol", string.Empty);
+            using (var icon = key.CreateSubKey("DefaultIcon"))
+            {
+                icon.SetValue(string.Empty, $"\"{exe}\",0");
+            }
+
+            using var command = key.CreateSubKey(@"shell\open\command");
+            command.SetValue(string.Empty, $"\"{exe}\" \"%1\"");
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
+        {
+            // Links are a nicety; the app runs without them.
+        }
+    }
 }
 
 /// <summary>Per-user "start with Windows" via HKCU\...\Run (no admin rights needed).</summary>

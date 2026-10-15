@@ -343,6 +343,9 @@ internal sealed partial class AppWindow : Window
             case AppLink.OutsideIfAsked when userInitiated:
                 Process.Start(new ProcessStartInfo(new Uri(url).AbsoluteUri) { UseShellExecute = true });
                 break;
+            case AppLink.TaskLink when userInitiated && TodoTracker.Core.TaskLinks.AppPath(url) is { } path:
+                _host.Open(path);
+                break;
             default:
                 break; // data:, javascript:, file:, or another app the person didn't ask for
         }

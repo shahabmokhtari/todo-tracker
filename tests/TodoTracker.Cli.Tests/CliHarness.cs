@@ -34,6 +34,9 @@ public sealed class CliHarness : IDisposable
 
     public string Git { get; init; } = "git";
 
+    /// <summary>Links <c>tt open</c> asked the system to open.</summary>
+    public List<string> OpenedLinks { get; } = [];
+
     public Task<CliResult> Run(params string[] args) => RunWithInput(string.Empty, args);
 
     public async Task<CliResult> RunWithInput(string input, params string[] args)
@@ -55,6 +58,7 @@ public sealed class CliHarness : IDisposable
             LockDirectory = StateDirectory,
             Git = Git,
             Agent = null,
+            OpenLink = OpenedLinks.Add,
         };
         var code = await CliApp.RunAsync(args, context);
         return new CliResult(code, output.ToString(), error.ToString());

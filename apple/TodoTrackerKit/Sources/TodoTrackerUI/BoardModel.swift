@@ -25,6 +25,8 @@ public final class BoardModel: ObservableObject {
     /// Note drafts and open note boxes live here (not in row views) so they survive a card moving between lists.
     @Published public var noteDrafts: [UUID: String] = [:]
     @Published public var openNotes: Set<UUID> = []
+    /// A task a deep link asked to open (todotracker://task/<id>): the dashboard shows it, then clears this.
+    @Published public var openTaskId: UUID?
     /// True when the saved board could not be read; nothing is written so the user's data is never overwritten.
     @Published public private(set) var isReadOnly = false
 
@@ -285,6 +287,11 @@ public final class BoardModel: ObservableObject {
             if let at = capture.nextActionAt { try board.scheduleNextAction(item.id, at: at, notify: true, now: $0) }
             quickText = ""
         }
+    }
+
+    /// A clicked todotracker:// link: the task it names opens (anything else is ignored).
+    public func open(link: URL) {
+        if case .task(let id) = TaskLinks.target(link.absoluteString) { openTaskId = id }
     }
 
     public func complete(_ id: UUID) { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }

@@ -3,9 +3,11 @@ Type=Application
 Name=Todo Tracker
 GenericName=Tasks
 Comment=What to do now: an ADHD-friendly task list in your tray
-Exec=todo-tracker
+Exec=todo-tracker %u
 Icon=todo-tracker
 Terminal=false
 Categories=Office;ProjectManagement;Utility;
 Keywords=todo;tasks;focus;pomodoro;
 StartupNotify=false
+# todotracker://task/<id> links open the task.
+MimeType=x-scheme-handler/todotracker;

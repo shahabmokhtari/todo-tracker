@@ -131,6 +131,12 @@ test('details autosave, tags and labels filter, notes save as you type, files at
 
   // Someone else renames the task meanwhile; typing details here must not put the old title back.
   const id = await drawer.getAttribute('data-item-id');
+
+  // Copy link: a todotracker:// link that opens this task in the app.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await drawer.getByRole('button', { name: 'Copy link' }).click();
+  await expect(page.locator('#toast')).toContainText('Link copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`todotracker://task/${id}`);
   await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Launch plan (renamed elsewhere)' } });
   await drawer.getByPlaceholder(/^Details/).fill('Audience: partners');
   await expect(drawer.locator('#save-state')).toHaveText('Saved');
