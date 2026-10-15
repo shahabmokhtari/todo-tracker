@@ -53,6 +53,7 @@ public static class TodoTrackerHost
         services.AddSingleton(_ => InstanceLock.Acquire(options.DataDirectory));
         services.AddSingleton<LaunchCodes>();
         services.AddSingleton<AppSessions>();
+        services.AddSingleton(OwnerKey.LoadOrCreate(options));
         services.AddSingleton<ServerEvents>();
         services.AddSingleton<IReminderNotifier, EventNotifier>();
         Plugins.PluginHost.AddServices(services, options);

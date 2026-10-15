@@ -170,10 +170,12 @@ final class LocalServer {
 
     /// The server's own token (`api-token` in its data folder, readable only by this user), as the browser uses.
     private static func client() -> ServerClient? {
-        let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker/api-token")
-        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+        let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker")
+        guard let text = try? String(contentsOf: folder.appendingPathComponent("api-token"), encoding: .utf8) else { return nil }
         let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return token.isEmpty ? nil : ServerClient(baseURL: base, token: token)
+        // Next to it, the owner key: "Open in browser" then opens the owner's session (Settings › Hooks can approve).
+        let ownerKey = (try? String(contentsOf: folder.appendingPathComponent("owner-key"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return token.isEmpty ? nil : ServerClient(baseURL: base, token: token, ownerKey: ownerKey?.isEmpty == false ? ownerKey : nil)
     }
 
     /// `server.log` (this run of the app) and `server.previous.log` (the run before: why it stopped, after a crash).

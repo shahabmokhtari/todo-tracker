@@ -43,12 +43,12 @@ internal static class CliCommands
         new CliCommand("stage", "tt stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (tt done) to move it to Done.", Stage),
         new CliCommand("archive", "tt archive <task> | tt archive --done-before <days>", "Put finished tasks away (tt list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
         new CliCommand("time", "tt time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
-        new CliCommand("hooks", "tt hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
+        new CliCommand("hooks", "tt hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
             "add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…\n" +
             "edit <id> [--event e] and any of the add options (only what you give changes).\n" +
             "<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).\n" +
             "A command gets the event as JSON on stdin. With --as (or TT_AGENT) a hook you add or change waits for approval:\n" +
-            "tt hooks approve <id> (without --as), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
+            "tt hooks approve <id> <version> (without --as; tt hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -569,27 +569,30 @@ internal static class CliCommands
             case "add":
                 var added = store.Add(a.Word(1, "the event (taskCompleted, reminderDue… or *)"), Fill(new TodoTracker.Server.Hooks.HookSpec(), a), author, s.Now);
                 await s.Print(added, (o, h) => o.Line(h.Hook.NeedsApproval == true
-                    ? $"Added hook {h.Id} for {h.Event}. It waits for approval: tt hooks approve {h.Id} (or Settings › Hooks)."
+                    ? $"Added hook {h.Id} for {h.Event}. It waits for approval: tt hooks list shows it (or Settings › Hooks)."
                     : $"Added hook {h.Id} for {h.Event}.")).ConfigureAwait(false);
                 break;
             case "edit":
                 var current = store.Get(Id());
                 var changed = store.Update(current.Id, a.Value("event"), Fill(current.Hook, a), author, s.Now);
-                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval: tt hooks approve {h.Id}." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
+                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval (tt hooks list)." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
                 break;
             case "enable" or "disable":
                 var toggled = store.SetEnabled(Id(), verb == "enable");
                 await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "approve":
-                // Approves exactly what's shown here (a change made meanwhile isn't approved).
+                // Approves the version you looked at (tt hooks list shows it): a change made since then isn't approved.
                 var pending = store.Get(Id());
-                var approved = store.Approve(pending.Id, pending.Version, author);
-                await s.Print(approved, (o, h) =>
+                if (a.Words.Count < 3)
                 {
-                    o.HookDetails(pending);
-                    o.Line($"Hook {h.Id} is {h.State}.");
-                }).ConfigureAwait(false);
+                    var shown = new StringWriter(CultureInfo.InvariantCulture);
+                    new CliOutput(shown, s.Zone).HookDetails(pending);
+                    throw new CliUsageException($"Check what it does, then approve that version:\n{shown}tt hooks approve {pending.Id} {pending.Version[..TodoTracker.Server.Hooks.HookStore.MinVersionPrefix]}");
+                }
+
+                var approved = store.Approve(pending.Id, a.Words[2], author);
+                await s.Print(approved, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "remove" or "delete":
                 var id = Id();

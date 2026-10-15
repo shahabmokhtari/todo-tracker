@@ -64,6 +64,9 @@ public sealed class HookSpec
 
     public DateTimeOffset? AddedAt { get; set; }
 
+    /// <summary>New (random) with every change to what it does: what an approval names, so it can't be guessed.</summary>
+    public string? Revision { get; set; }
+
     /// <summary>Whether it runs: switched on, and approved if an agent added or changed it.</summary>
     [JsonIgnore]
     public bool IsActive => Enabled != false && NeedsApproval != true;

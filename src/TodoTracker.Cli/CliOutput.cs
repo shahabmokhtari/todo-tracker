@@ -203,7 +203,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
             if (h.Hook.NeedsApproval == true)
             {
                 HookDetails(h, indent: "    ");
-                output.WriteLine($"    Approve it: tt hooks approve {h.Id}");
+                output.WriteLine($"    Approve it: tt hooks approve {h.Id} {h.Version[..TodoTracker.Server.Hooks.HookStore.MinVersionPrefix]}");
             }
         }
 

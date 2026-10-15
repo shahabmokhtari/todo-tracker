@@ -155,7 +155,7 @@ export function createSettingsView(ctx) {
               if (confirm(`Remove the hook "${x.label}"?`)) call(`/api/hooks/${encodeURIComponent(x.id)}`, { method: 'DELETE' }, 'Removed');
             } }, icon('trash', { size: 14 })))),
         pending ? h('p', { class: 'small hook-why' }, `Added or changed by ${x.hook.addedBy ?? 'an agent'}. It runs only after you approve it. What it would do:`) : null,
-        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Todo Tracker app (the sidebar, or Open in browser from the tray), or run tt hooks approve ${x.id}.`) : null,
+        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Todo Tracker app (the sidebar, Open in browser from the tray, or the Mac app), or run: tt hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
         pending ? h('pre', { class: 'hook-sample' }, what) : null,
         x.problem ? h('p', { class: 'hook-problem small' }, x.problem) : null);
     };

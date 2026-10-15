@@ -123,11 +123,15 @@ public enum ServerError: Error, LocalizedError, Equatable {
 public final class ServerClient: @unchecked Sendable {
     public let baseURL: URL
     private let token: String
+    /// The owner key from the server's data folder: browser links it asks for open the owner's session (the person at
+    /// this computer, who can approve hooks); without it they're ordinary sessions.
+    private let ownerKey: String?
     private let session: URLSession
 
-    public init(baseURL: URL, token: String, session: URLSession = .shared) {
+    public init(baseURL: URL, token: String, ownerKey: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.token = token
+        self.ownerKey = ownerKey
         self.session = session
     }
 
@@ -186,7 +190,9 @@ public final class ServerClient: @unchecked Sendable {
     }
 
     public func launchURL(returnPath: String = "/") async throws -> URL {
-        let object = try JSONSerialization.jsonObject(with: try await send(ServerAPI.launch(returnPath: returnPath))) as? [String: Any]
+        let (data, status, _) = try await exchange(ServerAPI.launch(returnPath: returnPath), headers: ownerKey.map { ["X-TodoTracker-Owner-Key": $0] } ?? [:])
+        guard (200..<300).contains(status) else { throw ServerError.refused(status: status, message: Self.message(data, status: status)) }
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let text = object?["url"] as? String, let url = URL(string: text) else { throw ServerError.refused(status: 200, message: "No sign-in link came back.") }
         return url
     }

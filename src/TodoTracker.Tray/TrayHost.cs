@@ -104,6 +104,12 @@ internal sealed class TrayHost : IAsyncDisposable
         {
             using var http = new HttpClient { BaseAddress = new Uri(options.BaseUrl), Timeout = TimeSpan.FromSeconds(5) };
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await File.ReadAllTextAsync(tokenFile).ConfigureAwait(false)).Trim());
+
+            // The owner key (next to the token) makes it the owner's session, as when the tray that runs the server opens it.
+            if (OwnerKey.Read(options.DataDirectory) is { } key)
+            {
+                http.DefaultRequestHeaders.Add(OwnerKey.Header, key);
+            }
             using var response = await http.PostAsync(new Uri("/api/launch", UriKind.Relative), new StringContent("{\"return\":\"/\"}", System.Text.Encoding.UTF8, "application/json")).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
             if (doc.RootElement.TryGetProperty("url", out var url) && url.GetString() is { } link)

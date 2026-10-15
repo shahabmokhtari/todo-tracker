@@ -13,6 +13,9 @@ public sealed record HookRemoved(string Removed);
 /// </summary>
 public sealed record HookEntry(string Id, string Event, HookSpec Hook, string State, string? Problem, string Version)
 {
+    /// <summary>What a hidden header or variable value shows (sent back unchanged, it keeps the value it had).</summary>
+    public const string Hidden = "•••";
+
     /// <summary>The same, with the values of headers and environment variables hidden (secrets for whoever set them).</summary>
     public HookEntry Redacted()
     {
@@ -22,8 +25,8 @@ public sealed record HookEntry(string Id, string Event, HookSpec Hook, string St
         }
 
         var copy = JsonSerializer.Deserialize<HookSpec>(JsonSerializer.Serialize(Hook, HookFile.Json), HookFile.Json)!;
-        copy.Headers = copy.Headers?.ToDictionary(p => p.Key, _ => "•••", StringComparer.Ordinal);
-        copy.Env = copy.Env?.ToDictionary(p => p.Key, _ => "•••", StringComparer.Ordinal);
+        copy.Headers = copy.Headers?.ToDictionary(p => p.Key, _ => Hidden, StringComparer.Ordinal);
+        copy.Env = copy.Env?.ToDictionary(p => p.Key, _ => Hidden, StringComparer.Ordinal);
         return this with { Hook = copy };
     }
 }
@@ -85,7 +88,12 @@ public sealed class HookStore
         ArgumentNullException.ThrowIfNull(hook);
         ArgumentNullException.ThrowIfNull(author);
         var name = CleanEvent(eventName);
-        var clean = Clean(hook, author);
+        if (!author.Trusted && (hook.Env is { Count: > 0 } || !string.IsNullOrWhiteSpace(hook.Cwd)))
+        {
+            throw new ArgumentException(NoEnvForAgents);
+        }
+
+        var clean = Clean(hook);
         return Change(file =>
         {
             clean.Id = NewId(file);
@@ -106,11 +114,22 @@ public sealed class HookStore
     {
         ArgumentNullException.ThrowIfNull(hook);
         ArgumentNullException.ThrowIfNull(author);
-        var clean = Clean(hook, author);
         var name = eventName is null ? null : CleanEvent(eventName);
         return Change(file =>
         {
             var (oldEvent, old) = Find(file, id);
+
+            // Hidden values sent back as they were shown keep the values they had.
+            hook.Headers = Restore(hook.Headers, old.Headers);
+            hook.Env = Restore(hook.Env, old.Env);
+
+            // Variables and the folder decide what a command really runs: an agent may keep the ones you set, not change them.
+            if (!author.Trusted && (!SameEntries(hook.Env, old.Env) || (string.IsNullOrWhiteSpace(hook.Cwd) ? null : hook.Cwd.Trim()) != old.Cwd))
+            {
+                throw new ArgumentException(NoEnvForAgents);
+            }
+
+            var clean = Clean(hook);
             clean.Id = id;
             clean.Enabled = old.Enabled;
             Stamp(clean, author, now);
@@ -169,8 +188,9 @@ public sealed class HookStore
 
         return Change(file =>
         {
-            var (_, hook) = Find(file, id);
-            if (version is not null && version != VersionOf(hook))
+            var (eventName, hook) = Find(file, id);
+            var current = VersionOf(eventName, hook);
+            if (version is not null && (version.Length < MinVersionPrefix || !current.StartsWith(version, StringComparison.Ordinal)))
             {
                 throw new InvalidOperationException("This hook changed since you looked at it. Look at it again before approving.");
             }
@@ -233,7 +253,8 @@ public sealed class HookStore
         {
             try
             {
-                return new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
+                // A lock file that stays (one deleted on close could be locked by two processes at once on Linux and macOS).
+                return new FileStream(FilePath + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.None);
             }
             catch (IOException) when (DateTime.UtcNow < until)
             {
@@ -334,18 +355,24 @@ public sealed class HookStore
     }
 
     private static IEnumerable<HookEntry> Entries(HookFile? file) =>
-        (file?.Hooks ?? []).SelectMany(p => p.Value.Select(h => new HookEntry(h.Id!, p.Key, h, h.State, h.Problem() ?? (p.Key == "*" || EventNames.All.ContainsKey(p.Key) ? null : $"\"{p.Key}\" isn't an event."), VersionOf(h))));
+        (file?.Hooks ?? []).SelectMany(p => p.Value.Select(h => new HookEntry(h.Id!, p.Key, h, h.State, h.Problem() ?? (p.Key == "*" || EventNames.All.ContainsKey(p.Key) ? null : $"\"{p.Key}\" isn't an event."), VersionOf(p.Key, h))));
 
-    /// <summary>What a hook does (not its state), hashed.</summary>
-    internal static string VersionOf(HookSpec hook)
+    /// <summary>
+    /// When it runs and what it does (not its state), with its random revision: a full hash, so no change can come
+    /// back with the version someone looked at.
+    /// </summary>
+    internal static string VersionOf(string eventName, HookSpec hook)
     {
         var content = new HookSpec
         {
             Type = hook.Type, Powershell = hook.Powershell, Bash = hook.Bash, Cwd = hook.Cwd, TimeoutSec = hook.TimeoutSec, Env = hook.Env,
-            Url = hook.Url, Headers = hook.Headers, Match = hook.Match, Name = hook.Name,
+            Url = hook.Url, Headers = hook.Headers, Match = hook.Match, Name = hook.Name, Revision = hook.Revision,
         };
-        return Hash(JsonSerializer.Serialize(content, HookFile.Json)) + Hash(hook.AddedAt?.UtcTicks.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)[..4];
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{eventName}\n{JsonSerializer.Serialize(content, HookFile.Json)}")));
     }
+
+    /// <summary>The shortest start of a version <c>tt hooks approve</c> accepts (still far too many to guess).</summary>
+    public const int MinVersionPrefix = 12;
 
     private static (string Event, HookSpec Hook) Find(HookFile file, string id) =>
         file.Hooks.SelectMany(p => p.Value.Select(h => (p.Key, h))).FirstOrDefault(x => x.h.Id == id) is ({ } e, { } h)
@@ -391,6 +418,7 @@ public sealed class HookStore
     {
         hook.AddedBy = author.Name;
         hook.AddedAt = now;
+        hook.Revision = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
         hook.NeedsApproval = author.Trusted ? null : true;
     }
 
@@ -402,16 +430,19 @@ public sealed class HookStore
             : throw new ArgumentException($"\"{name}\" isn't an event. Events: {string.Join(", ", EventNames.All.Keys.Where(k => k != "test"))}, or * for every one.", nameof(eventName));
     }
 
-    /// <summary>Only what a hook is (its state is the store's), checked and trimmed.</summary>
-    private static HookSpec Clean(HookSpec hook, HookAuthor author)
-    {
-        // What a command sees besides its own text (variables like BASH_ENV or PATH, its folder) could run other code
-        // than what's shown for approval: only you set those.
-        if (!author.Trusted && (hook.Env is { Count: > 0 } || !string.IsNullOrWhiteSpace(hook.Cwd)))
-        {
-            throw new ArgumentException("An agent can't set a hook's environment variables or folder. Ask the user to add them in Settings › Hooks or with tt hooks.");
-        }
+    // What a command sees besides its own text (variables like BASH_ENV or PATH, its folder) could run other code than
+    // what's shown for approval: only you set those.
+    private const string NoEnvForAgents = "An agent can't set or change a hook's environment variables or folder. Ask the user to do it in Settings › Hooks or with tt hooks.";
 
+    private static Dictionary<string, string>? Restore(Dictionary<string, string>? given, Dictionary<string, string>? old) =>
+        given?.ToDictionary(p => p.Key, p => p.Value == HookEntry.Hidden && old?.TryGetValue(p.Key, out var kept) == true ? kept! : p.Value, StringComparer.Ordinal);
+
+    private static bool SameEntries(Dictionary<string, string>? a, Dictionary<string, string>? b) =>
+        (a ?? []).Count == (b ?? []).Count && (a ?? []).All(p => b is not null && b.TryGetValue(p.Key, out var v) && v == p.Value);
+
+    /// <summary>Only what a hook is (its state is the store's), checked and trimmed.</summary>
+    private static HookSpec Clean(HookSpec hook)
+    {
         static string? Text(string? value, int max, string what)
         {
             var clean = string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -13,24 +13,28 @@ four ways to change it:
 
 * **Settings › Hooks** in the app: add, change, switch on or off, remove, approve.
 * **`tt hooks`**: `list`, `add <event> --powershell … --bash … | --url …`, `edit <id>`, `enable`/`disable <id>`,
-  `approve <id>`, `remove <id>`, `test [event]`, `path` (`tt help hooks` for the options).
+  `approve <id> <version>`, `remove <id>`, `test [event]`, `path` (`tt help hooks` for the options).
 * **AI agents**: the MCP tools `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook`; or the REST API
   (`POST /api/hooks`, `PUT /api/hooks/{id}`, `POST /api/hooks/{id}/enabled`, `DELETE /api/hooks/{id}`).
 * By hand: edit the file.
 
 **Approval.** A hook runs code on your computer, so what an AI agent (or anything else with the API token, or `tt` run
 with `--as`/`TT_AGENT`) adds or changes is saved with `"needsApproval": true` and doesn't run until you approve it: in
-Settings › Hooks (it shows everything it would do) or with `tt hooks approve <id>` (it prints it). Approving names the
-version you looked at: if it changed since, it isn't approved. Changing a hook that waits for approval keeps it waiting;
+Settings › Hooks (it shows everything it would do) or with `tt hooks approve <id> <version>` (`tt hooks list` shows
+everything it would do and its version). Approving names the version you looked at: if it changed since, it isn't
+approved (each change gets a new random revision, so a version can't be matched by trying). Changing a hook that waits for approval keeps it waiting;
 only approving approves. Switching a hook off or removing it needs no approval.
 
 Who is "you": `tt` run without `--as`, and a window the app opened itself (the sidebar, Settings in the app window,
-or *Open in browser* from the tray). A browser signed in by pasting the API token, or with a link asked for over the
-API, is treated like anything else holding the token: what it adds waits for approval and it can't approve. Hooks you
-add from the app or with `tt` run at once.
+*Open in browser* from the tray or the Mac app). Those links come from the app's own process, or with the owner key
+(`owner-key` next to `api-token` in the data folder, never sent by the server). A browser signed in by pasting the API
+token, or with a link asked for with the token alone, is treated like anything else holding the token: what it adds
+waits for approval and it can't approve (and an ordinary link never replaces an owner's session in that browser).
+Hooks you add from the app or with `tt` run at once.
 
-An agent can't set a hook's environment variables or folder (they could make a harmless-looking command run something
-else), and sees the values of headers and variables hidden.
+An agent can't set or change a hook's environment variables or folder (they could make a harmless-looking command run
+something else), and sees the values of headers and variables hidden (`•••`; sent back unchanged, they keep their
+values).
 
 A change made in the app, by `tt` or by an agent rewrites the file (it never overwrites a file it can't read: fix that
 first), so comments in a hand-edited file don't survive it. Each hook gets an `id`; one written by hand without it gets

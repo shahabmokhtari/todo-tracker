@@ -170,6 +170,47 @@ public sealed class HookTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Apps_on_this_computer_with_the_owner_key_open_the_owners_session_and_a_lesser_link_never_replaces_it()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        var id = (await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 }))["id"]!.GetValue<string>();
+
+        // The Mac app and a second tray read the owner key next to the token and send it.
+        using var mac = _server.Client();
+        mac.DefaultRequestHeaders.Add("X-TodoTracker-Owner-Key", await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "owner-key")));
+        var link = new Uri((await mac.PostJson("/api/launch", new { }))["url"]!.GetValue<string>());
+        using var browser = _server.Client(authenticated: false);
+        var cookie = SessionCookie(await browser.GetAsync(link.PathAndQuery));
+        using var owner = SessionClient(cookie);
+        Assert.True((await owner.GetJson("/api/hooks"))["canApprove"]!.GetValue<bool>());
+
+        // An ordinary link opened in that browser leaves its owner session as it is.
+        var ordinary = new Uri((await agent.PostJson("/api/launch", new { }))["url"]!.GetValue<string>());
+        using var again = new HttpRequestMessage(HttpMethod.Get, ordinary.PathAndQuery);
+        again.Headers.Add("Cookie", $"tt_session={cookie}");
+        Assert.False((await browser.SendAsync(again)).Headers.Contains("Set-Cookie"));
+        Assert.Equal("on", (await owner.PostJson($"/api/hooks/{id}/approve", new { }))["state"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Hidden_values_sent_back_keep_what_they_were_and_agents_cant_change_variables()
+    {
+        using var app = AppClient();
+        using var agent = _server.Client(actor: "agent:claude");
+        var id = (await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = new { type = "command", bash = "exit 0", powershell = "exit 0", env = new Dictionary<string, string> { ["TOKEN"] = "s3cret" } } }))["id"]!.GetValue<string>();
+
+        // An agent renames it, sending back what it was shown: the variable keeps its value (and it now needs approval).
+        var shown = (await agent.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!;
+        Assert.Equal("•••", shown["env"]!["TOKEN"]!.GetValue<string>());
+        var renamed = await (await agent.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", bash = "exit 0", powershell = "exit 0", name = "renamed", env = new Dictionary<string, string> { ["TOKEN"] = "•••" } } })).Json();
+        Assert.Equal("needs approval", renamed["state"]!.GetValue<string>());
+        Assert.Equal("s3cret", (await app.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["env"]!["TOKEN"]!.GetValue<string>());
+
+        var changed = await agent.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", bash = "exit 0", powershell = "exit 0", env = new Dictionary<string, string> { ["TOKEN"] = "other", ["BASH_ENV"] = "/tmp/x" } } });
+        Assert.Equal(HttpStatusCode.BadRequest, changed.StatusCode);
+    }
+
+    [Fact]
     public async Task Header_and_variable_values_are_hidden_from_anything_but_the_owners_session()
     {
         using var app = AppClient();

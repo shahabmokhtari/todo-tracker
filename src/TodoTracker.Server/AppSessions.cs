@@ -101,3 +101,55 @@ public sealed class AppSessions
 
     private static string Hash(string secret) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 }
+
+/// <summary>
+/// A second secret in the data folder (<c>owner-key</c>, readable only by this user) that the server never hands out:
+/// apps on this computer that start or find the server (the Mac app, a second tray) send it to ask for a launch link
+/// that opens the owner's session. Something with only the API token can't.
+/// </summary>
+public sealed class OwnerKey
+{
+    public const string Header = "X-TodoTracker-Owner-Key";
+    public const string FileName = "owner-key";
+
+    private readonly byte[] _bytes;
+
+    private OwnerKey(string value) => _bytes = Encoding.UTF8.GetBytes(value);
+
+    public static OwnerKey LoadOrCreate(TodoTrackerServerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        Directory.CreateDirectory(options.DataDirectory);
+        var path = Path.Combine(options.DataDirectory, FileName);
+        if (File.Exists(path) && File.ReadAllText(path).Trim() is { Length: >= 32 } existing)
+        {
+            return new OwnerKey(existing);
+        }
+
+        var value = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+        File.WriteAllText(path, value);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+
+        return new OwnerKey(value);
+    }
+
+    /// <summary>The key, read from the data folder (for the apps that ask for owner links).</summary>
+    public static string? Read(string dataDirectory)
+    {
+        try
+        {
+            var path = Path.Combine(dataDirectory, FileName);
+            return File.Exists(path) ? File.ReadAllText(path).Trim() : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public bool Matches(string? candidate) =>
+        !string.IsNullOrEmpty(candidate) && CryptographicOperations.FixedTimeEquals(_bytes, Encoding.UTF8.GetBytes(candidate.Trim()));
+}

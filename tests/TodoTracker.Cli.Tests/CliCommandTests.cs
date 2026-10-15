@@ -485,10 +485,17 @@ public sealed class CliCommandTests : IDisposable
 
         // Changed by an agent (--as): it waits for approval, which the agent can't give but you can.
         Assert.Contains("waits for approval", await _tt.Ok("hooks", "edit", id, "--name", "log it", "--as", "claude"), StringComparison.Ordinal);
-        var refused = await _tt.Run("hooks", "approve", id, "--as", "claude");
+        // Approving names the version looked at (tt hooks list shows it with everything the hook does).
+        var listed = await _tt.Ok("hooks");
+        Assert.Contains("bash: cat >> done.jsonl", listed, StringComparison.Ordinal);
+        var unnamed = await _tt.Run("hooks", "approve", id);
+        Assert.NotEqual(0, unnamed.ExitCode);
+        Assert.Contains("Check what it does", unnamed.Error, StringComparison.Ordinal);
+        var version = (await _tt.Run("hooks", "--json")).Json[0]!["version"]!.GetValue<string>()[..12];
+        var refused = await _tt.Run("hooks", "approve", id, version, "--as", "claude");
         Assert.NotEqual(0, refused.ExitCode);
         Assert.Contains("Only you can approve", refused.Error, StringComparison.Ordinal);
-        Assert.Contains("is on", await _tt.Ok("hooks", "approve", id), StringComparison.Ordinal);
+        Assert.Contains("is on", await _tt.Ok("hooks", "approve", id, version), StringComparison.Ordinal);
 
         Assert.Contains("is off", await _tt.Ok("hooks", "disable", id), StringComparison.Ordinal);
         var hook = (await _tt.Run("hooks", "--json")).Json[0]!["hook"]!;
