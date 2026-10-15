@@ -70,7 +70,7 @@ public sealed class HookTests : IAsyncLifetime
                 ["noteAdded"] = new JsonArray(SaveTo("note.json")),
             },
         }.ToJsonString());
-        var item = await _client.PostJson("/api/items", new { title = "Ship the release" });
+        var item = await _client.PostJson("/api/items", new { title = "Café ✓ release" });
         await _client.PostJson($"/api/items/{item.Id()}/complete", new { });
 
         var completed = (await Hooks.ScanAsync()).Single(e => e.Event == "taskCompleted");
@@ -80,7 +80,7 @@ public sealed class HookTests : IAsyncLifetime
         Assert.True(run.Ok, run.Output);
         Assert.Contains("saved taskCompleted", run.Output, StringComparison.Ordinal);
         var received = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "work.json")))!;
-        Assert.Equal(("taskCompleted", "Ship the release", completed.Id), (received["event"]!.GetValue<string>(), received["task"]!["title"]!.GetValue<string>(), received["id"]!.GetValue<string>()));
+        Assert.Equal(("taskCompleted", "Café ✓ release", completed.Id), (received["event"]!.GetValue<string>(), received["task"]!["title"]!.GetValue<string>(), received["id"]!.GetValue<string>()));
         Assert.False(File.Exists(Path.Combine(_server.DataDirectory, "home.json")));
 
         var status = await _client.GetJson("/api/hooks");

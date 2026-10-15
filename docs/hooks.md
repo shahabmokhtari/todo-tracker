@@ -49,7 +49,8 @@ Each key is an event name, or `*` for every event. A hook is one of these:
 | `name` | What Settings shows for it (default: what it runs) |
 
 A command hook gets the event as JSON on standard input, and `TT_EVENT`, `TT_EVENT_ID`, `TT_TASK_ID` and `TT_TASK_TITLE`
-in its environment. Hooks run one at a time, in the background, never holding up the app. What they print (the start
+in its environment (PowerShell hooks read and write UTF-8). Hooks run one at a time, in the background, never holding
+up the app; `timeoutSec` covers anything a hook leaves running that keeps its output open. What they print (the start
 of it) and whether they worked shows in Settings › Hooks (the last 50 runs) and in `hooks.log` next to `hooks.json`.
 **Try it** in Settings sends an example event to the hooks for the event you pick.
 

@@ -47,10 +47,11 @@ internal static class HookEndpoints
             http.Response.Headers.CacheControl = "no-cache";
             http.Response.Headers["X-Accel-Buffering"] = "no";
             // Listening before saying "connected": nothing that happens after that is missed.
-            var stream = hooks.SubscribeAsync(cancel).GetAsyncEnumerator(cancel);
+            using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            var stream = hooks.SubscribeAsync(stop.Token).GetAsyncEnumerator(stop.Token);
+            var next = stream.MoveNextAsync().AsTask();
             try
             {
-                var next = stream.MoveNextAsync().AsTask();
                 await http.Response.WriteAsync(": connected\n\n", cancel).ConfigureAwait(false);
                 await http.Response.Body.FlushAsync(cancel).ConfigureAwait(false);
                 while (!cancel.IsCancellationRequested)
@@ -86,6 +87,17 @@ internal static class HookEndpoints
             }
             finally
             {
+                // The pending read has to end before the stream can be disposed.
+                await stop.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await next.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The client left.
+                }
+
                 await stream.DisposeAsync().ConfigureAwait(false);
             }
         });

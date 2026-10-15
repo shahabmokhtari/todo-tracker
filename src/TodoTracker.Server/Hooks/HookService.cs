@@ -37,7 +37,7 @@ public sealed partial class HookService : BackgroundService
     /// <summary>Entries this old are never news (after a long time closed, nothing floods in).</summary>
     private static readonly TimeSpan Lookback = TimeSpan.FromDays(1);
 
-    /// <summary>Entries can be written a little out of order (several processes, sync): look back this far each time.</summary>
+    /// <summary>A clock a little ahead on another computer: its entries still count.</summary>
     private static readonly TimeSpan Overlap = TimeSpan.FromMinutes(10);
 
     private static readonly HttpClient Http = new();
@@ -54,7 +54,6 @@ public sealed partial class HookService : BackgroundService
     private readonly SemaphoreSlim _scanning = new(1, 1);
     private readonly SemaphoreSlim _running = new(1, 1);
     private Dictionary<string, DateTimeOffset>? _seen;
-    private DateTimeOffset _watermark;
     private (DateTime Stamp, HookFile? File, string? Problem) _config = (DateTime.MinValue, null, null);
 
     public HookService(IBoardStore store, ServerEvents events, TodoTrackerServerOptions options, TimeProvider time, ILogger<HookService> logger)
@@ -111,8 +110,11 @@ public sealed partial class HookService : BackgroundService
         try
         {
             var now = _time.GetUtcNow();
-            var fresh = _seen is null && !LoadState(now);
-            var from = _watermark - Overlap;
+            var fresh = _seen is null && !LoadState();
+
+            // The whole last day, not just after the newest entry seen: sync brings in entries made elsewhere with
+            // the time they happened there (earlier than what happened here meanwhile). What was seen is skipped.
+            var from = now - Lookback;
             var found = await _store.ReadAsync(
                 b => b.Activity.Where(a => a.At > from && a.At <= now + Overlap).Select(a => (Key: Key(a), Entry: a)).Where(x => !_seen!.ContainsKey(x.Key))
                     .Select(x => (x.Key, x.Entry, Event: ToEvent(b, x.Entry, x.Key))).ToList(),
@@ -137,13 +139,9 @@ public sealed partial class HookService : BackgroundService
             foreach (var (key, entry, _) in found)
             {
                 _seen![key] = entry.At;
-                if (entry.At > _watermark)
-                {
-                    _watermark = entry.At;
-                }
             }
 
-            foreach (var old in _seen!.Where(s => s.Value < _watermark - Overlap - Overlap).Select(s => s.Key).ToList())
+            foreach (var old in _seen!.Where(s => s.Value < from).Select(s => s.Key).ToList())
             {
                 _seen!.Remove(old);
             }
@@ -268,10 +266,10 @@ public sealed partial class HookService : BackgroundService
 
     private static string Hash(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..20];
 
-    private sealed record SavedState(DateTimeOffset Watermark, Dictionary<string, DateTimeOffset> Seen);
+    private sealed record SavedState(Dictionary<string, DateTimeOffset> Seen);
 
     /// <summary>Reads what was already seen; false when there's nothing saved (the first look ever).</summary>
-    private bool LoadState(DateTimeOffset now)
+    private bool LoadState()
     {
         SavedState? saved = null;
         try
@@ -287,12 +285,6 @@ public sealed partial class HookService : BackgroundService
         }
 
         _seen = saved?.Seen ?? [];
-        _watermark = saved?.Watermark ?? now;
-        if (_watermark < now - Lookback)
-        {
-            _watermark = now - Lookback;
-        }
-
         return saved is not null;
     }
 
@@ -301,7 +293,7 @@ public sealed partial class HookService : BackgroundService
         try
         {
             Directory.CreateDirectory(_options.DataDirectory);
-            File.WriteAllText(StatePath, JsonSerializer.Serialize(new SavedState(_watermark, _seen ?? []), TaskEvent.Json));
+            File.WriteAllText(StatePath, JsonSerializer.Serialize(new SavedState(_seen ?? []), TaskEvent.Json));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -412,7 +404,9 @@ public sealed partial class HookService : BackgroundService
         if (OperatingSystem.IsWindows())
         {
             info.FileName = PowerShell.Value;
-            foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", hook.Powershell! })
+            // UTF-8 both ways (the console's code page would garble anything but plain English).
+            var script = "[Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); " + hook.Powershell;
+            foreach (var arg in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script })
             {
                 info.ArgumentList.Add(arg);
             }
@@ -436,19 +430,30 @@ public sealed partial class HookService : BackgroundService
         try
         {
             using var process = Process.Start(info) ?? throw new InvalidOperationException("The hook didn't start.");
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var error = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.StandardInput.WriteAsync(e.ToJson().AsMemory(), cancellationToken).ConfigureAwait(false);
-            process.StandardInput.Close();
+
+            // Read until the pipes close (not cancellable: they close when the process tree is gone).
+            var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var error = process.StandardError.ReadToEndAsync(CancellationToken.None);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(hook.Timeout);
             try
             {
+                await process.StandardInput.WriteAsync(e.ToJson().AsMemory(), timeout.Token).ConfigureAwait(false);
+                process.StandardInput.Close();
                 await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+
+                // Something it left running in the background can hold its output open: that's in the time limit too.
+                await Task.WhenAll(output, error).WaitAsync(timeout.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                process.Kill(entireProcessTree: true);
+                // Out of time, or the app is stopping (or whoever asked left): nothing it started keeps running.
+                Stop(process);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+
                 return new HookRun(started, e.Event, e.Id, hook.Label, false, null, $"Stopped after {hook.Timeout.TotalSeconds:0} s (timeoutSec).", watch.ElapsedMilliseconds);
             }
 
@@ -483,6 +488,18 @@ public sealed partial class HookService : BackgroundService
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException && !cancellationToken.IsCancellationRequested)
         {
             return new HookRun(started, e.Event, e.Id, hook.Label, false, null, ex is OperationCanceledException ? $"No answer after {hook.Timeout.TotalSeconds:0} s (timeoutSec)." : ex.Message, watch.ElapsedMilliseconds);
+        }
+    }
+
+    private static void Stop(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            // Already gone.
         }
     }
 
