@@ -5,7 +5,7 @@
 import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
-import { iconBadge, withAccent } from '../looks.js';
+import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
 const EXPANDED_KEY = 'tt.outline.expanded';
 const DONE_KEY = 'tt.outline.showDone';
@@ -196,6 +196,7 @@ export function createOutlineView(ctx) {
     }, node.done ? icon('check', { size: 13 }) : null),
     iconBadge(node.icon),
     title,
+    repeatMark(node.repeat),
     h('span', { class: 'ochips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 2).map((t) => h('span', { class: 'chip tag' }, `#${t}`))),
     h('span', { class: 'ofacts' }, ...facts),
     h('span', { class: 'oactions' },

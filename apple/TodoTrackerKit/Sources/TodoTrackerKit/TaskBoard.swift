@@ -111,6 +111,11 @@ public final class TaskBoard {
         if let blocker = Self.findBlockingStep(item) {
             throw BoardError.conflict("Finish \"\(blocker.title)\" before \"\(item.title)\".")
         }
+        if rollForward(item, actor: actor, now: now) {
+            // What waited for this time of it comes back.
+            releaseWaiters(now: now, finished: item.id)
+            return
+        }
         for d in item.selfAndDescendants where !d.isDone { d.completedAt = now }
         stopTimers(item.selfAndDescendants, now: now)
         log(now, id, "completed", "Completed \"\(item.title)\"", actor)
@@ -158,12 +163,12 @@ public final class TaskBoard {
     }
 
     /// Tasks whose wait ended (what they waited for is done, or was just deleted) come back, with a reminder saying why.
-    private func releaseWaiters(now: Date, deleted: [UUID: String] = [:]) {
+    private func releaseWaiters(now: Date, deleted: [UUID: String] = [:], finished: UUID? = nil) {
         for waiter in allItems {
             guard let afterId = waiter.afterId else { continue }
             let why: String
             if let other = index[afterId] {
-                guard other.isDone else { continue }
+                guard other.isDone || afterId == finished else { continue }
                 why = "\"\(other.title)\" is done"
             } else {
                 // Only one deleted just now: a task merely missing (not synced yet) doesn't end a wait.
@@ -180,7 +185,10 @@ public final class TaskBoard {
 
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        guard let completedAt = item.completedAt else { return }
+        guard let completedAt = item.completedAt else {
+            if wasRolledForward(item) { undoRollForward(item, actor: actor, now: now) }
+            return
+        }
         item.completedAt = nil
         var reopened = [item]
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
@@ -201,6 +209,88 @@ public final class TaskBoard {
         item.afterId = nil
         guard hidden else { return }
         for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil { r.dismissedAt = now }
+    }
+
+    // MARK: Repeating tasks (same rules as TodoTracker.Core.TaskBoard.Repeat.cs)
+
+    /// Where the user lives: a repeating task's next time is a calendar day there.
+    public var timeZone: TimeZone = .current
+
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    private func localDay(_ date: Date) -> LocalDay {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return LocalDay(year: c.year!, month: c.month!, day: c.day!)
+    }
+
+    private func localTime(_ date: Date) -> DateComponents { calendar.dateComponents([.hour, .minute, .second], from: date) }
+
+    private func at(_ day: LocalDay, _ time: DateComponents) -> Date {
+        calendar.date(from: DateComponents(year: day.year, month: day.month, day: day.day, hour: time.hour ?? 0, minute: time.minute ?? 0, second: time.second ?? 0))!
+    }
+
+    /// Done with this time of a repeating task: it moves on to its next time instead of finishing (deadline to that day
+    /// at the same time; it waits until then, the same days before the deadline and at the same time as it waited
+    /// before, else from the start of that day), its subtasks open again and this time's reminders and timer end.
+    /// False when it doesn't repeat (any more): then it's simply done.
+    private func rollForward(_ item: WorkItem, actor: Actor, now: Date) -> Bool {
+        // A step of an in-order task doesn't repeat on its own (it would hold up the steps after it for good).
+        guard let repeatRule = item.repeatRule, repeatRule.count != 1, item.parent?.sequential != true else { return false }
+        let today = localDay(now)
+        let scheduled = item.deadline ?? item.nextActionAt
+        let anchor = repeatRule.whenDone || scheduled == nil ? today : localDay(scheduled!)
+        // Its day is fixed from its first time on (month ends, leap days and snoozes don't move it).
+        let rule = repeatRule.pinned(to: anchor)
+        guard let next = rule.next(anchor: anchor, after: max(anchor, today)) else { return false }
+
+        item.repeatUndo = RepeatUndo(deadline: item.deadline, nextActionAt: item.nextActionAt)
+        let waitedUntil = item.nextActionAt
+        let reminded = waitedUntil.map { w in item.reminders.contains { $0.kind == .nextAction && $0.dueAt == w } } ?? false
+        var lead = 0
+        if let due = item.deadline, let waited = waitedUntil { lead = max(0, localDay(due).epochDay - localDay(waited).epochDay) }
+        if let due = item.deadline { item.deadline = at(next, localTime(due)) }
+        let back = waitedUntil.map { at(next.adding(days: -lead), localTime($0)) } ?? at(next, DateComponents(hour: 0, minute: 0, second: 0))
+        item.nextActionAt = back
+        item.afterId = nil
+        dismissPendingScheduleReminders(item, now: now)
+        for r in item.reminders where r.dismissedAt == nil && r.dueAt < back { r.dismissedAt = now }
+        if reminded && back > now { item.reminders.append(Reminder(dueAt: back, message: Self.defaultReminderMessage(item), kind: .nextAction)) }
+        for d in item.selfAndDescendants.dropFirst() { d.completedAt = nil }
+        stopTimers(item.selfAndDescendants, now: now)
+        item.repeatRule = rule.countedDown()
+        let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        log(now, item.id, "completed", "Completed \"\(item.title)\" (repeats: next \(names[next.weekday - 1]) \(next.day) \(months[next.month - 1]))", actor)
+        return true
+    }
+
+    /// Whether this repeating task's last change was moving on to its next time (so "not done after all" can undo it).
+    public func wasRolledForward(_ item: WorkItem) -> Bool {
+        guard item.repeatRule != nil, !item.isDone else { return false }
+        return activity.last(where: { $0.itemId == item.id && ($0.kind == "completed" || $0.kind == "reopened") })?.kind == "completed"
+    }
+
+    /// "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now.
+    private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date) {
+        guard let rule = item.repeatRule else { return }
+        for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil && r.dueAt > now { r.dismissedAt = now }
+        if let undo = item.repeatUndo {
+            item.deadline = undo.deadline
+            item.nextActionAt = undo.nextActionAt
+        } else {
+            if let due = item.deadline {
+                let day = localDay(due)
+                if let before = rule.previous(anchor: day, before: day) { item.deadline = at(before, localTime(due)) }
+            }
+            item.nextActionAt = nil
+        }
+        item.repeatUndo = nil
+        item.repeatRule = rule.countedUp()
+        log(now, item.id, "reopened", "Reopened \"\(item.title)\" (not done after all)", actor)
     }
 
     /// Defers the item until `at`; with `notify`, a reminder fires at that time.
@@ -399,6 +489,11 @@ public final class TaskBoard {
     private func advanceSequence(after completed: WorkItem, actor: Actor, now: Date) {
         guard let parent = completed.parent, parent.sequential else { return }
         guard let next = parent.children.first(where: { !$0.isDone }) else {
+            // Every step done: a repeating task moves on to its next time (its steps open again).
+            if rollForward(parent, actor: actor, now: now) {
+                releaseWaiters(now: now, finished: parent.id)
+                return
+            }
             parent.completedAt = now
             log(now, parent.id, "completed", "Completed \"\(parent.title)\" (all steps done)", .system)
             advanceSequence(after: parent, actor: actor, now: now)

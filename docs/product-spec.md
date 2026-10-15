@@ -77,7 +77,7 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
 | **Board** | `groups[]`, `labels[]`, `items[]` (roots), `activity[]`, `pomodoro` |
 | **Group (tab)** | `id`, `name` (= its folder; unique, case-insensitive), `color` (`#rrggbb`) |
 | **Label** | `name` (≤40), `color`. Curated and colored; using a new one defines it with the next palette color. Settings › Labels changes a label's color or name, or removes it from every task. |
-| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `tags[]` (free-form, nested with `/`, ≤20), `labels[]`, `icon` (an emoji or a few characters, ≤16), `color` (`#rrggbb`), `attachments[]`, `reminders[]`, `notes[]`, `children[]` (any depth). Tasks can move anywhere in the hierarchy. A task shows its **accent**: its own color, else its first label's (`TaskBoard.AccentOf`); the icon goes before the title everywhere (web, sidebar, Mac/iOS, Android; the phones keep both when they save). In the markdown: frontmatter `icon:` / `color:` (quoted), subtasks in their hidden data; invalid values written by hand are left out. A top-level task can have a rich HTML version. |
+| **Task** | `id`, `title` (≤300), `details`, `priority` (low/normal/high/critical), `createdAt`, `completedAt`, `deadline`, `nextActionAt` (defer gate), `sequential`, `stepDelayMinutes`, `groupId` (roots only), `tags[]` (free-form, nested with `/`, ≤20), `labels[]`, `icon` (an emoji or a few characters, ≤16), `color` (`#rrggbb`), `repeat` (a rule, below), `attachments[]`, `reminders[]`, `notes[]`, `children[]` (any depth). Tasks can move anywhere in the hierarchy. A task shows its **accent**: its own color, else its first label's (`TaskBoard.AccentOf`); the icon goes before the title everywhere (web, sidebar, Mac/iOS, Android; the phones keep both when they save). In the markdown: frontmatter `icon:` / `color:` (quoted), subtasks in their hidden data; invalid values written by hand are left out. A top-level task can have a rich HTML version. |
 | **Attachment** | `id`, `fileName`, `path` (vault-relative), `size`, `addedAt`, `addedBy` |
 | **Reminder** | `id`, `dueAt`, `message`, `kind` (`manual` or `nextAction`), `notifiedAt`, `dismissedAt` |
 | **Note** | `id`, `at`, `text`, `author {kind: user/agent/browser/teams/system/vault, name}`, `sourceUrl` (http/https only), `sourceTitle`. Notes save while being typed (edits within 10 minutes of writing are part of writing it). |
@@ -197,7 +197,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   cheer that grows with the count ("First one done. Nice start!" … "12 done today. What a day!"). A subtask shows its
   parent. A parent finished together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done
   on their own count. Archived tasks are left out. Each row can be reopened (a slip of the finger is undone in place).
-  Same rule in every core (`Agenda.DoneToday`/`doneToday`), tested in C#, Swift and Kotlin.
+  Same rule in every core (`Agenda.DoneToday`/`doneToday`), tested in C#, Swift and Kotlin. A repeating task done today
+  counts too (it has moved on to its next time); *Reopen* on it means *not done after all*.
 * Card actions: ✓ done, 🔕 dismiss, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
   time…*, *After another task*), ✎ inline note,
   ▶ focus, and ⋯ (add subtask, edit in browser, open report).
@@ -227,6 +228,21 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   its parents expanded and the task focused and highlighted. In lists, a subtask's path opens its parent.
 * **Quick add picks a group:** the picker by *Add* follows the tab shown (the first group under All); choosing another
   sends the new task there without changing the tab ("Added to Personal").
+* **Repeating tasks** (details panel *Repeat*, REST/MCP `repeat`, frontmatter `repeat:`): a rule in words, the way the
+  Obsidian Tasks plugin writes 🔁 rules: *every day*, *every 3 days*, *every weekday*, *every 2 weeks on Monday, Thursday*,
+  *every month on the 15th* / *the last day* / *the last Friday* / *the 2nd Tuesday*, *every year on March 5*, optionally
+  *when done* (counted from when it's done), *until 2026-12-31*, *for 5 times*. It's one task that **moves on** when it's
+  done (no copies piling up): the completion is logged (Done today, reports), its deadline moves to the next day it falls
+  on (same time), it waits until then (as many days before the deadline, at the same time, as it waited before; else from
+  the start of that day), its subtasks open again, and this time's reminders, timer and *Doing* end. Missed days are
+  skipped (the next time is after today); done early, the next time is the one after the current. A rule that has ended
+  (*until*, the last of *for N times*) completes it for good. Its day is fixed at its first time (*every month* due on
+  the 31st becomes *every month on the 31st*: after February's 28th it's back on the 31st, and a snooze doesn't move it).
+  *Reopen* right after puts back the deadline and wait it had (kept as `repeat-undo:`). Finishing the last step of a
+  repeating in-order task moves the task on (its steps open again); a step of an in-order task doesn't repeat on its own.
+  Checking it in Obsidian (`status: done`) moves it on the same way, each time. Cards, board, tree and phones show 🔁.
+  Same rules in C#, Swift and Kotlin (`Recurrence`; shared fixture `tests/fixtures/repeat.json`), in the user's time
+  zone (calendar days, so clock changes keep the time of day).
 * **A task's look** (details panel): the button by the title picks an **icon** (a grid of common emojis, or type/paste any, or *No icon*); the **Color** row picks *Auto* (its first label's color), a palette color, or any color. Cards, board cards and tree rows show the icon before the title and the color as a stripe and a light tint; the sidebar shows both too.
 * **Board:** drag the background (a column header, the space between cards) to move around it like a canvas, sideways
   and up and down; cards, buttons and fields keep their own behavior. Columns snap into place only on touch screens
@@ -297,7 +313,7 @@ the docs explain the options and risks. The server sends the same short instruct
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |
 | `schedule_next_action`, `add_reminder` | Defer and remind |
-| `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon and color) |
+| `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon, color and repeat rule; completing a repeating task moves it on, reopening undoes that) |
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
 | `move_task`, `list_labels` | Reorganize the hierarchy; curated labels |
 | `attach_text`, `get_rich_html`, `set_rich_html` | Text attachments and the rich HTML version |

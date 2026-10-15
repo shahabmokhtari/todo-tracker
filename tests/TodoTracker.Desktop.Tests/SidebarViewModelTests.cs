@@ -489,6 +489,20 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task A_repeating_task_says_so_and_done_moves_it_on_and_counts_today()
+    {
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Water plants") { Repeat = "every day" }, Actor.User, T0));
+        await _vm.RefreshAsync();
+        Assert.Contains(_vm.Focus!.Chips, c => c.Text == "🔁 every day");
+
+        await _vm.CompleteCommand.ExecuteAsync(_vm.Focus);
+
+        Assert.False(await _store.ReadAsync(b => b.Get(task.Id).IsDone));
+        Assert.Equal("Water plants", Assert.Single(_vm.Waiting).Title);
+        Assert.Equal("Water plants", Assert.Single(_vm.DoneToday).Title);
+    }
+
+    [Fact]
     public async Task Complete_moves_rollout_to_next_gated_step()
     {
         var x = await Seed("Feature A");

@@ -5,7 +5,7 @@ import { COLUMNS, WIP_LIMIT, columnsOf, wip, dropRequests, keyboardMove, cardFac
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl } from './common.js';
 import { enablePan } from '../pan.js';
-import { iconBadge, withAccent } from '../looks.js';
+import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
 export function createBoardView(ctx) {
   const { h, icon } = ctx;
@@ -101,7 +101,7 @@ export function createBoardView(ctx) {
       ondragend: () => { dragging = null; el.classList.remove('dragging'); clearMarks(); },
     },
     h('div', { class: 'card-top' },
-      h('span', { class: 'card-title' }, iconBadge(node.icon), node.title),
+      h('span', { class: 'card-title' }, iconBadge(node.icon), node.title, repeatMark(node.repeat)),
       h('div', { class: 'card-actions' },
         node.done ? null : h('button', {
           class: `icon-btn small${node.timing ? ' on' : ''}`, type: 'button', title: node.timing ? 'Stop the timer' : 'Start the timer',

@@ -104,6 +104,8 @@ public static class BoardSerializer
         ArchivedAt = item.ArchivedAt,
         Icon = item.Icon,
         Color = item.Color,
+        Repeat = item.Repeat?.ToString(),
+        RepeatUndo = item.RepeatUndo is { } undo ? new RepeatUndoDocument { Deadline = undo.Deadline, NextActionAt = undo.NextActionAt } : null,
         Time = item.TimeEntries.Count == 0 ? null : item.TimeEntries.Select(e => new TimeEntryDocument { Id = e.Id, Start = e.Start, End = e.End, Source = e.Source, Device = e.Device }).ToList(),
         Children = item.Children.Count == 0 ? null : item.Children.Select(ToDocument).ToList(),
     };
@@ -172,6 +174,8 @@ public static class BoardSerializer
             ArchivedAt = parent is null ? doc.ArchivedAt : null,
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, doc.Icon),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, doc.Color),
+            Repeat = TaskBoard.ReadRepeat(doc.Repeat),
+            RepeatUndo = doc.RepeatUndo is { } undo ? new RepeatUndo(undo.Deadline, undo.NextActionAt) : null,
         };
         foreach (var e in doc.Time ?? [])
         {
@@ -288,6 +292,10 @@ public static class BoardSerializer
         public string? Icon { get; set; }
 
         public string? Color { get; set; }
+
+        public string? Repeat { get; set; }
+
+        public RepeatUndoDocument? RepeatUndo { get; set; }
 
         public List<TimeEntryDocument>? Time { get; set; }
 
@@ -407,4 +415,11 @@ public static class BoardSerializer
         public int FocusesBeforeLongBreak { get; set; } = 4;
     }
 #pragma warning restore CA1812
+
+    private sealed class RepeatUndoDocument
+    {
+        public DateTimeOffset? Deadline { get; set; }
+
+        public DateTimeOffset? NextActionAt { get; set; }
+    }
 }

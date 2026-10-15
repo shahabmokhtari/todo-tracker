@@ -117,6 +117,8 @@ struct BoardDocument: Codable {
         item.archivedAt = parent == nil ? doc.archivedAt : nil
         item.icon = doc.icon
         item.color = doc.color
+        item.repeatRule = Recurrence.parseOrNil(doc.`repeat`)
+        item.repeatUndo = doc.repeatUndo
         item.deadline = doc.deadline
         item.nextActionAt = doc.nextActionAt
         item.afterId = doc.after
@@ -150,6 +152,8 @@ struct ItemDocument: Codable {
     var archivedAt: Date?
     var icon: String?
     var color: String?
+    var `repeat`: String?
+    var repeatUndo: RepeatUndo?
     var deadline: Date?
     var nextActionAt: Date?
     var after: UUID?
@@ -171,6 +175,8 @@ struct ItemDocument: Codable {
         archivedAt = item.archivedAt
         icon = item.icon
         color = item.color
+        `repeat` = item.repeatRule?.description
+        repeatUndo = item.repeatUndo
         deadline = item.deadline
         nextActionAt = item.nextActionAt
         after = item.afterId

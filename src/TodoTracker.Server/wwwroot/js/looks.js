@@ -20,6 +20,46 @@ export function iconBadge(value) {
   return value ? h('span', { class: 'task-icon', 'aria-hidden': 'true' }, value) : null;
 }
 
+/** A small 🔁 after a title when the task repeats (its rule on hover). */
+export function repeatMark(rule) {
+  return rule ? h('span', { class: 'repeat-mark', title: `Repeats ${rule}`, 'aria-label': `repeats ${rule}`, role: 'img' }, '🔁') : null;
+}
+
+/** Rules offered while typing one (any other one can be typed). */
+export const REPEAT_CHOICES = [
+  'every day', 'every weekday', 'every week', 'every 2 weeks', 'every month', 'every year',
+  'every week on Monday', 'every month on the 1st', 'every month on the last day', 'every month on the last Friday',
+  'every 3 days when done',
+];
+
+/**
+ * The repeat box of a task's details: a rule in words ("every weekday", "every 2 weeks on Monday, Thursday"), saved
+ * when you leave the box or press Enter; empty stops it repeating. `onSave` gets the text and returns a promise that
+ * rejects when the rule isn't understood (the box shows why and keeps what was typed).
+ */
+export function repeatField(current, onSave) {
+  const list = h('datalist', { id: `repeat-choices-${Math.random().toString(36).slice(2)}` }, ...REPEAT_CHOICES.map((r) => h('option', { value: r })));
+  const input = h('input', { value: current ?? '', placeholder: 'Doesn’t repeat (e.g. every weekday)', maxlength: 120, 'aria-label': 'Repeat', autocomplete: 'off' });
+  input.setAttribute('list', list.id);
+  let saved = current ?? '';
+  const save = async () => {
+    const text = input.value.trim();
+    if (text === saved) return;
+    input.setCustomValidity('');
+    try {
+      await onSave(text);
+      saved = text;
+    } catch (e) {
+      input.setCustomValidity(e?.message ?? 'Not understood');
+      input.reportValidity();
+    }
+  };
+  input.addEventListener('input', () => input.setCustomValidity(''));
+  input.addEventListener('change', save);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  return h('span', { class: 'repeat-field' }, input, list);
+}
+
 /** Tints an element with a task's color (its own or its first label's); set from script (the CSP blocks style attributes). */
 export function withAccent(el, accent) {
   if (accent) {

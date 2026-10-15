@@ -71,14 +71,27 @@ public enum Agenda {
         // in-order task counts though it finishes the task at the same moment.
         let own = Set(board.activity.filter { $0.kind == "completed" && $0.at >= start }.map { "\($0.itemId)|\($0.at.timeIntervalSince1970)" })
         return board.allItems.enumerated()
-            .filter { _, item in
-                guard let at = item.completedAt, at >= start, at <= now, !item.isArchived else { return false }
-                if let groupId, item.groupId != groupId { return false }
-                return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)")
+            .compactMap { offset, item -> (offset: Int, item: WorkItem, at: Date)? in
+                if item.isArchived { return nil }
+                if let groupId, item.groupId != groupId { return nil }
+                if let at = item.completedAt {
+                    guard at >= start, at <= now else { return nil }
+                    return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)") ? (offset: offset, item: item, at: at) : nil
+                }
+                // A repeating task done today has moved on to its next time (open again): its "completed" entry tells.
+                guard let at = Agenda.doneAt(board, item), at >= start, at <= now else { return nil }
+                return (offset: offset, item: item, at: at)
             }
             // Newest first; at the same moment (a task and its last step) in the order of the tree.
-            .sorted { a, b in a.element.completedAt == b.element.completedAt ? a.offset < b.offset : (a.element.completedAt ?? now) > (b.element.completedAt ?? now) }
-            .map(\.element)
+            .sorted { a, b in a.at == b.at ? a.offset < b.offset : a.at > b.at }
+            .map(\.item)
+    }
+
+    /// When it was done: when it was finished, or for a repeating task that moved on, when its last time was done.
+    public static func doneAt(_ board: TaskBoard, _ item: WorkItem) -> Date? {
+        if let at = item.completedAt { return at }
+        guard board.wasRolledForward(item) else { return nil }
+        return board.activity.last(where: { $0.itemId == item.id && $0.kind == "completed" })?.at
     }
 
     /// A line to feel good about what got done today (null until something is done); the other apps say the same.

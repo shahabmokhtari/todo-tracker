@@ -53,9 +53,26 @@ public sealed partial class TaskBoard
         RootList.AddRange(sorted);
     }
 
-    /// <summary>A box was checked outside the app: finish the subtree and advance a sequence like the app would.</summary>
-    internal void CompleteExternally(WorkItem item, Actor actor, DateTimeOffset now)
+    /// <summary>
+    /// A box was checked outside the app: finish the subtree and advance a sequence like the app would; a repeating
+    /// task moves on to its next time instead (then what waited for it comes back here, except in
+    /// <paramref name="skipRoots"/>). Returns whether it moved on.
+    /// </summary>
+    internal bool CompleteExternally(WorkItem item, Actor actor, DateTimeOffset now, IReadOnlySet<Guid>? skipRoots = null)
     {
+        if (item.Repeat is not null)
+        {
+            var checkedAt = item.CompletedAt;
+            item.CompletedAt = null;
+            if (TryRollForward(item, actor, now))
+            {
+                ReleaseWaiters(now, skipRoots: skipRoots, finished: item.Id);
+                return true;
+            }
+
+            item.CompletedAt = checkedAt;
+        }
+
         var at = item.CompletedAt ?? now;
         foreach (var descendant in item.SelfAndDescendants().Where(d => !d.IsDone))
         {
@@ -66,6 +83,7 @@ public sealed partial class TaskBoard
         AdvanceSequence(item, actor, now);
 
         // What waits for it comes back after the reload (VaultBoardStore), which skips files that can't be saved now.
+        return false;
     }
 
     internal void LogExternal(Guid itemId, ActivityKind kind, string summary, Actor actor, DateTimeOffset now) => Log(now, itemId, kind, summary, actor);

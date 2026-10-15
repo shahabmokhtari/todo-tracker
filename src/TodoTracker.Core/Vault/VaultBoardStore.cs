@@ -569,6 +569,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         var board = TaskBoard.CreateEmpty();
+        board.TimeZone = _options.TimeZone;
         var groupFolders = new Dictionary<Guid, string>();
         foreach (var (id, folder, color) in groups)
         {
@@ -676,9 +677,11 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         var logged = _board.Activity.Select(a => a.ItemId).ToHashSet();
 
         // Whether a task's last completion entry (from any process: the activity log is shared) already says this.
+        // A repeating task that moved on was "completed" but stays open: that entry explains it being open, not done.
         var lastToggle = _board.Activity.Where(a => a.Kind is ActivityKind.Completed or ActivityKind.Reopened)
-            .GroupBy(a => a.ItemId).ToDictionary(g => g.Key, g => g.Last().Kind);
-        bool Recorded(WorkItem item) => lastToggle.GetValueOrDefault(item.Id) == (item.IsDone ? ActivityKind.Completed : ActivityKind.Reopened);
+            .GroupBy(a => a.ItemId).ToDictionary(g => g.Key, g => (g.Last().Kind, Rolled: TaskBoard.IsRolled(g.Last())));
+        bool Recorded(WorkItem item) => lastToggle.TryGetValue(item.Id, out var last)
+            && (item.IsDone ? last.Kind == ActivityKind.Completed && !last.Rolled : last.Kind == ActivityKind.Reopened || last.Rolled);
 
         var acked = new Dictionary<Guid, bool>();
         var seen = new Dictionary<string, ((DateTime Time, long Size) Stamp, DateTimeOffset Seen)>(StringComparer.OrdinalIgnoreCase);
@@ -722,9 +725,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     continue;
                 }
 
+                var rolled = false;
                 if (item.IsDone)
                 {
-                    _board.CompleteExternally(item, actor, now);
+                    rolled = _board.CompleteExternally(item, actor, now, _caches.Blocked);
                 }
                 else
                 {
@@ -733,7 +737,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     _board.LogExternal(item.Id, ActivityKind.Reopened, $"Reopened \"{item.Title}\"", actor, now);
                 }
 
-                lastToggle[item.Id] = item.IsDone ? ActivityKind.Completed : ActivityKind.Reopened;
+                lastToggle[item.Id] = (item.IsDone || rolled ? ActivityKind.Completed : ActivityKind.Reopened, rolled);
                 changed = true;
             }
 

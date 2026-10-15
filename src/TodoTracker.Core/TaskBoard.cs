@@ -55,6 +55,7 @@ public sealed partial class TaskBoard
         ValidateStepDelay(spec.StepDelay);
         var tags = NormalizeTags(spec.Tags);
         var labels = ValidateLabelNames(spec.Labels);
+        var repeat = ParseRepeat(spec.Repeat);
         var parent = spec.ParentId is { } parentId ? Get(parentId) : null;
         var groupId = parent is null ? (spec.GroupId is { } g ? GetGroup(g).Id : DefaultGroupId) : parent.GroupId;
 
@@ -75,6 +76,7 @@ public sealed partial class TaskBoard
             Stage = spec.Stage ?? Stage.Inbox,
             Icon = CleanIcon(spec.Icon),
             Color = CleanColor(spec.Color),
+            Repeat = repeat,
         };
         item.TagList.AddRange(tags);
         item.LabelList.AddRange(labels.Select(l => EnsureLabel(l).Name));
@@ -107,6 +109,7 @@ public sealed partial class TaskBoard
         ValidateStepDelay(changes.StepDelay);
         var icon = changes.Icon is null ? null : CleanIcon(changes.Icon);
         var color = changes.Color is null ? null : CleanColor(changes.Color);
+        var repeat = changes.Repeat is null ? null : ParseRepeat(changes.Repeat);
 
         item.Title = title;
         if (changes.Details is not null)
@@ -120,6 +123,7 @@ public sealed partial class TaskBoard
         item.StepDelay = changes.ClearStepDelay ? null : changes.StepDelay ?? item.StepDelay;
         item.Icon = changes.ClearIcon ? null : icon ?? item.Icon;
         item.Color = changes.ClearColor ? null : color ?? item.Color;
+        item.Repeat = changes.ClearRepeat ? null : repeat ?? item.Repeat;
         Log(now, id, ActivityKind.Updated, $"Updated \"{item.Title}\"", actor);
     }
 
@@ -250,6 +254,13 @@ public sealed partial class TaskBoard
             throw new InvalidOperationException($"Finish \"{blocker.Title}\" before \"{item.Title}\".");
         }
 
+        if (TryRollForward(item, actor, now))
+        {
+            // What waited for this time of it comes back.
+            ReleaseWaiters(now, finished: item.Id);
+            return;
+        }
+
         foreach (var descendant in item.SelfAndDescendants().Where(d => !d.IsDone))
         {
             descendant.CompletedAt = now;
@@ -340,9 +351,9 @@ public sealed partial class TaskBoard
     /// file can't be read right now, or hasn't synced yet) doesn't end a wait. Waiters under <paramref name="skipRoots"/>
     /// (files that can't be saved right now) are left for later. Returns whether any came back.
     /// </summary>
-    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null, IReadOnlySet<Guid>? skipRoots = null)
+    internal bool ReleaseWaiters(DateTimeOffset now, IReadOnlyDictionary<Guid, string>? deleted = null, IReadOnlySet<Guid>? skipRoots = null, Guid? finished = null)
     {
-        bool Ended(Guid after) => _index.TryGetValue(after, out var other) ? other.IsDone : deleted?.ContainsKey(after) == true;
+        bool Ended(Guid after) => after == finished || (_index.TryGetValue(after, out var other) ? other.IsDone : deleted?.ContainsKey(after) == true);
         var released = false;
         foreach (var waiter in AllItems().Where(i => i.AfterId is { } after && Ended(after) && skipRoots?.Contains(i.Root.Id) != true).ToList())
         {
@@ -365,6 +376,11 @@ public sealed partial class TaskBoard
         var item = Get(id);
         if (!item.IsDone)
         {
+            if (WasRolledForward(item))
+            {
+                UndoRollForward(item, actor, now);
+            }
+
             return;
         }
 
@@ -708,6 +724,13 @@ public sealed partial class TaskBoard
         var next = parent.ChildList.Find(c => !c.IsDone);
         if (next is null)
         {
+            // Every step done: a repeating task moves on to its next time (its steps open again).
+            if (TryRollForward(parent, actor, now))
+            {
+                ReleaseWaiters(now, finished: parent.Id);
+                return;
+            }
+
             parent.CompletedAt = now;
             Log(now, parent.Id, ActivityKind.Completed, $"Completed \"{parent.Title}\" (all steps done)", Actor.System);
             AdvanceSequence(parent, actor, now);

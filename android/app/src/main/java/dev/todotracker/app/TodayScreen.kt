@@ -384,4 +384,5 @@ private fun CheerLine(text: String) {
 }
 
 /** A task's title with its icon (an emoji, set in the other apps) in front. */
-private fun titleWithIcon(item: WorkItem): String = item.icon?.takeIf { it.isNotBlank() }?.let { "$it ${item.title}" } ?: item.title
+private fun titleWithIcon(item: WorkItem): String =
+    (item.icon?.takeIf { it.isNotBlank() }?.let { "$it ${item.title}" } ?: item.title) + if (item.repeat != null) " 🔁" else ""

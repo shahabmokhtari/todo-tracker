@@ -118,6 +118,7 @@ export function metaChips(card, { waiting = false, now = new Date() } = {}) {
       ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }
       : { text: `due ${relativeTime(card.deadline, now)}`, tone: 'warn' });
   }
+  if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
   if (card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
   return chips;
 }

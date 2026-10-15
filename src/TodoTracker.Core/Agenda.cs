@@ -87,12 +87,29 @@ public static class Agenda
             .Where(a => a.Kind == ActivityKind.Completed && a.At >= start)
             .Select(a => (a.ItemId, a.At))
             .ToHashSet();
+
+        // A repeating task done today has moved on to its next time (open again): its "completed" entry tells.
+        var moved = board.AllItems()
+            .Where(i => i is { IsDone: false, IsArchived: false } && board.WasRolledForward(i) && (groupId is null || i.GroupId == groupId))
+            .Select(i => (Item: i, At: DoneAt(board, i)!.Value))
+            .Where(x => x.At >= start && x.At <= now);
         return board.AllItems()
             .Where(i => i.CompletedAt is { } at && at >= start && at <= now && !i.IsArchived
                 && (groupId is null || i.GroupId == groupId)
                 && (i.Parent?.CompletedAt != at || ownCompletions.Contains((i.Id, at))))
-            .OrderByDescending(i => i.CompletedAt)
+            .Select(i => (Item: i, At: i.CompletedAt!.Value))
+            .Concat(moved)
+            .OrderByDescending(x => x.At)
+            .Select(x => x.Item)
             .ToList();
+    }
+
+    /// <summary>When it was done: when it was finished, or for a repeating task that moved on, when its last time was done.</summary>
+    public static DateTimeOffset? DoneAt(TaskBoard board, WorkItem item)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(item);
+        return item.CompletedAt ?? (board.WasRolledForward(item) ? board.Activity.Last(a => a.ItemId == item.Id && a.Kind == ActivityKind.Completed).At : null);
     }
 
     public static DashboardSnapshot Build(TaskBoard board, DateTimeOffset now, int recentNoteCount = 5, Guid? groupId = null, TaskQuery? filter = null)

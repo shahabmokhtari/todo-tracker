@@ -6,7 +6,7 @@ import { step, drop, beforeOf, changed } from './order.js';
 import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone, imageFiles, pastedName, MAX_PASTE_BYTES } from './media.js';
 import { createShell } from './shell.js';
 import { createLater } from './later.js';
-import { pickIcon, colorPicker, iconBadge, withAccent } from './looks.js';
+import { pickIcon, colorPicker, iconBadge, withAccent, repeatField, repeatMark } from './looks.js';
 import { createBoardView } from './views/board.js';
 import { createOutlineView } from './views/outline.js';
 import { createDoneView } from './views/done.js';
@@ -378,7 +378,7 @@ function renderFocus(d) {
     h('div', { class: 'focus-top' },
       h('span', { class: 'eyebrow' }, icon(f.needsAttention ? 'clock' : 'target', { size: 14 }), f.needsAttention ? 'Reminder' : 'Do this now'),
       h('span', { class: 'prio-pill' }, meta.label)),
-    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, iconBadge(f.icon), f.title),
+    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, iconBadge(f.icon), f.title, repeatMark(f.repeat)),
     sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
     f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
     f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
@@ -1061,6 +1061,11 @@ async function openDrawer(id, { full = null } = {}) {
     tagPreview,
     h('p', { class: 'hint' }, 'Labels are colored categories you pick from a list (Urgent, Waiting…). Tags are free words you type, for anything else. Both filter: click one, or use the tag button by the search box.'),
     h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
+    field('Repeat', repeatField(item.repeat, async (text) => {
+      await patch(`/api/items/${id}`, { repeat: text });
+      await act(Promise.resolve(), text ? 'Repeats' : 'Doesn’t repeat any more');
+    })),
+    item.repeat ? h('p', { class: 'hint' }, 'Done moves it to its next time (its deadline and when it comes back move along).') : null,
     field('Details', details),
     detailImages,
     item.parentId || item.completedAt ? null : h('div', { class: 'row' },
@@ -1366,6 +1371,8 @@ function moveDialog(item) {
   });
 
   function draw() {
+    // A redraw (the tasks arriving, a search) keeps the keyboard where it was.
+    const focusedId = list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
     const q = search.value.trim().toLowerCase();
     const rows = [option('', h('strong', null, 'On its own'), 0, '(a top-level task)')];
     const walk = (nodes, depth) => nodes.forEach((n) => {
@@ -1378,6 +1385,7 @@ function moveDialog(item) {
     list.replaceChildren(...rows);
     // Nothing chosen among what's shown: the first option takes the Tab stop.
     if (!list.querySelector('[tabindex="0"]')) rows[0].tabIndex = 0;
+    if (focusedId !== null) (rows.find((r) => r.dataset.id === focusedId) ?? list.querySelector('[tabindex="0"]'))?.focus();
   }
 
   const move = () => {

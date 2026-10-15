@@ -83,6 +83,10 @@ it (`next week`, `fri 14:30`, `3d`, `weekend`, `2026-03-01 14:00`; it shows when
 date. Or **After another task…**: it waits until that task is done, then comes back with a reminder. Every app offers
 the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other task>`, and the AI tools too).
 
+**Again and again?** Type a rule in a task's **Repeat** box: `every weekday`, `every 2 weeks on Monday, Thursday`,
+`every month on the last Friday`, `every 3 days when done`. Done moves it to its next time (deadline and all) instead
+of finishing it; it still counts as done today.
+
 ### The full app
 
 The web app (and the app window on Windows) has five views; switch with the side bar, `Alt+1`…`Alt+5`, or `Ctrl+K`:
