@@ -106,21 +106,64 @@ export function createSettingsView(ctx) {
       list.length ? h('div', { class: 'label-rows' }, ...list.map(row)) : h('p', { class: 'muted small' }, 'No labels yet. Add one from a task’s details.'));
   }
 
-  function render(settings, list, labelList) {
+  /** Hooks: what runs when something happens (hooks.json on this computer; the app never writes it), recent runs, a try. */
+  function hooks(status) {
+    const when = (at) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const events = Object.keys(status.events);
+    const pick = h('select', { 'aria-label': 'Event to try' }, ...events.map((e) => h('option', { value: e, selected: e === 'taskCompleted' }, e)));
+    const tryIt = h('button', { class: 'btn', type: 'button', onclick: async () => {
+      tryIt.disabled = true;
+      try {
+        const runs = await ctx.api('/api/hooks/test', { method: 'POST', body: { event: pick.value } });
+        ctx.toast(runs.length ? `${runs.filter((r) => r.ok).length} of ${runs.length} hook${runs.length > 1 ? 's' : ''} worked` : 'No hook runs for that event', runs.every((r) => r.ok) ? undefined : 'error');
+        load();
+      } catch (err) {
+        ctx.toast(err.message, 'error');
+      } finally {
+        tryIt.disabled = false;
+      }
+    } }, icon('play', { size: 14 }), 'Try it');
+    const sample = h('pre', { class: 'hook-sample' }, status.sample);
+    const copy = h('button', { class: 'btn small ghost', type: 'button', onclick: async () => {
+      try { await navigator.clipboard.writeText(status.sample); ctx.toast('Copied'); } catch { ctx.toast('Couldn’t copy: select the text instead', 'error'); }
+    } }, icon('note', { size: 14 }), 'Copy');
+    return section('hooks', 'Hooks',
+      'Run your own script, or call a web address, when something happens: a task done, a reminder, a break. Hooks live in a file on this computer only; the app (and the AI tools) never change it.',
+      h('p', { class: 'small' }, h('span', { class: 'muted' }, 'File: '), h('code', null, status.path)),
+      status.problem ? h('p', { class: 'hook-problem', role: 'alert' }, status.problem) : null,
+      status.exists
+        ? (status.hooks.length
+          ? h('ul', { class: 'hook-list' }, ...status.hooks.map((x) => h('li', null, h('code', null, x.event), ' ', h('span', { class: 'muted small' }, x.type), ' ', x.label,
+            x.problem ? h('span', { class: 'hook-problem small' }, ` – ${x.problem}`) : null)))
+          : h('p', { class: 'muted small' }, 'The file has no hooks yet.'))
+        : h('div', null, h('p', { class: 'muted small' }, 'No hooks yet. Save this as that file to start (change what it runs first):'), sample, copy),
+      h('div', { class: 'row' }, pick, tryIt),
+      status.runs.length
+        ? h('table', { class: 'hook-runs' },
+          h('thead', null, h('tr', null, ...['When', 'Event', 'Hook', 'Result'].map((t) => h('th', null, t)))),
+          h('tbody', null, ...status.runs.map((r) => h('tr', { class: r.ok ? '' : 'failed' },
+            h('td', null, when(r.at)), h('td', null, h('code', null, r.event)), h('td', null, r.hook),
+            h('td', null, r.ok ? 'OK' : (r.exitCode != null ? `Failed (${r.exitCode})` : 'Failed'), r.output ? h('details', null, h('summary', null, 'Output'), h('pre', null, r.output)) : null)))))
+        : null,
+      h('p', { class: 'muted small' }, 'Extensions and scripts can also listen: GET /api/events (server-sent events, with the API token). See docs/hooks.md.'));
+  }
+
+  function render(settings, list, labelList, hookStatus) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
     root.replaceChildren(h('div', { class: 'settings' },
       appearance(settings.theme ?? 'system'),
       labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
+      hookStatus ? hooks(hookStatus) : null,
       plugins(list),
       section('keys', 'Keyboard', null, h('dl', { class: 'shortcuts' }, ...SHORTCUTS.flatMap(([keys, what]) => [h('dt', null, h('kbd', null, keys)), h('dd', null, what)])))));
   }
 
   async function load() {
     try {
-      const [settings, list, labelList] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels')]);
-      render(settings, list, labelList);
+      const [settings, list, labelList, hookStatus] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null)]);
+      render(settings, list, labelList, hookStatus);
       await connectors.load();
       if (location.hash.includes('plugins')) root.querySelector('#settings-plugins')?.scrollIntoView();
     } catch (err) {
