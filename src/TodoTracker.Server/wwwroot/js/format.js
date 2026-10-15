@@ -106,6 +106,15 @@ export function greeting(date = new Date()) {
 }
 
 /** Card facts as short chips with a tone (path, step, info, warn, danger, muted) for consistent styling. */
+/** A planned block, short: "10:00–10:30" today, "Tue 10:00–11:30" another day (local time). */
+export function plannedText(start, minutes = 30, now = new Date()) {
+  const from = new Date(start);
+  const to = new Date(from.getTime() + (minutes ?? 30) * 60000);
+  const t = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const sameDay = from.toDateString() === new Date(now).toDateString();
+  return `${sameDay ? '' : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][from.getDay()]} `}${t(from)}–${t(to)}`;
+}
+
 export function metaChips(card, { waiting = false, now = new Date() } = {}) {
   const chips = [];
   if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
@@ -118,6 +127,7 @@ export function metaChips(card, { waiting = false, now = new Date() } = {}) {
       ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }
       : { text: `due ${relativeTime(card.deadline, now)}`, tone: 'warn' });
   }
+  if (card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
   if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
   if (card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
   return chips;

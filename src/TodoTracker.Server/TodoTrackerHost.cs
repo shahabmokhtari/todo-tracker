@@ -132,6 +132,7 @@ public static class TodoTrackerHost
 
         ApiEndpoints.Map(app);
         Hooks.HookEndpoints.Map(app);
+        PlanEndpoints.Map(app);
         OpenApiSetup.Map(app);
         Plugins.PluginHost.Map(app);
         app.MapMcp("/mcp");

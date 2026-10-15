@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -192,4 +192,9 @@ test('an icon is an emoji or a few characters; a color is #rrggbb', () => {
   assert.equal(hexColor(''), '');
   assert.equal(hexColor('blue'), null);
   assert.equal(hexColor('#12345'), null);
+});
+test('plannedText says the block short: today just the times, another day with its weekday', () => {
+  const now = new Date(2026, 0, 5, 9, 0);
+  assert.equal(plannedText(new Date(2026, 0, 5, 10, 0).toISOString(), 90, now), '10:00–11:30');
+  assert.equal(plannedText(new Date(2026, 0, 6, 8, 15).toISOString(), null, now), 'Tue 08:15–08:45');
 });

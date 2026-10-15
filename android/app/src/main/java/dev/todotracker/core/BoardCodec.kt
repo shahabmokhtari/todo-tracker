@@ -34,7 +34,7 @@ object BoardCodec {
 
     private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder")
     private val itemKeys = setOf(
-        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "deadline", "nextActionAt", "after", "sequential",
+        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "plannedAt", "plannedMinutes", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
     )
 
@@ -119,6 +119,8 @@ object BoardCodec {
         i.icon?.let { put("icon", it) }
         i.color?.let { put("color", it) }
         i.repeat?.let { put("repeat", it.toString()) }
+        i.plannedAt?.let { put("plannedAt", formatDate(it)) }
+        i.plannedMinutes?.let { put("plannedMinutes", it) }
         i.repeatUndo?.let { undo ->
             put("repeatUndo", buildJsonObject {
                 undo.deadline?.let { put("deadline", formatDate(it)) }
@@ -174,6 +176,8 @@ object BoardCodec {
         item.icon = o.string("icon")
         item.color = o.string("color")
         item.repeat = Recurrence.parseOrNull(o.string("repeat"))
+        item.plannedAt = o.date("plannedAt")
+        item.plannedMinutes = o["plannedMinutes"]?.jsonPrimitive?.intOrNull
         item.repeatUndo = (o["repeatUndo"] as? JsonObject)?.let { RepeatUndo(it.date("deadline"), it.date("nextActionAt")) }
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")

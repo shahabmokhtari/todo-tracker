@@ -291,6 +291,32 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_plan_shows_blocks_deadlines_and_what_is_not_planned_and_keeps_its_settings_per_group()
+    {
+        var report = await _client.PostJson("/api/items", new { title = "Write the report", deadline = ServerFixture.T0.AddDays(1) });
+        await _client.PostJson("/api/items", new { title = "Answer mail" });
+
+        var planned = await _client.PostJson($"/api/items/{report.Id()}/plan", new { start = ServerFixture.T0.AddHours(2), minutes = 90 });
+        Assert.Equal(90, planned["plannedMinutes"]!.GetValue<int>());
+
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=7");
+        Assert.Equal("Write the report", plan["blocks"]![0]!["title"]!.GetValue<string>());
+        Assert.Equal(90, plan["blocks"]![0]!["minutes"]!.GetValue<int>());
+        Assert.Equal("Write the report", plan["deadlines"]![0]!["title"]!.GetValue<string>());
+        Assert.Equal(["Answer mail"], plan["unplanned"]!.AsArray().Select(t => t!["title"]!.GetValue<string>()));
+        Assert.Equal("week", plan["settings"]!["view"]!.GetValue<string>());
+
+        var saved = await (await _client.PutAsJsonAsync("/api/plan/settings", new { view = "day", hours = "full", workStart = 480, workEnd = 960, workDays = new[] { 1, 2, 3, 4 } })).Json();
+        Assert.Equal("day", saved["view"]!.GetValue<string>());
+        Assert.Equal("day", (await _client.GetJson("/api/plan"))["settings"]!["view"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/plan/settings", new { view = "month" })).StatusCode);
+
+        var off = await _client.PostJson($"/api/items/{report.Id()}/plan", new { });
+        Assert.Null(off["plannedAt"]);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/items/{report.Id()}/plan", new { start = ServerFixture.T0, minutes = 1 })).StatusCode);
+    }
+
+    [Fact]
     public async Task A_repeating_task_moves_on_when_done_and_its_rule_can_change()
     {
         var bad = await _client.PostAsJsonAsync("/api/items", new { title = "Plants", repeat = "now and then" });

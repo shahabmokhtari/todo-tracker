@@ -137,6 +137,15 @@ public final class TaskGroup: Identifiable {
     public internal(set) var repeatRule: Recurrence?
     /// Its deadline and wait before it last moved on, so "not done after all" puts them back.
     public internal(set) var repeatUndo: RepeatUndo?
+    /// When it's planned to be worked on (a block in the Plan view), and for how long (nil: 30 minutes).
+    public internal(set) var plannedAt: Date?
+    public internal(set) var plannedMinutes: Int?
+
+    /// Whether its planned block is on at `now`.
+    public func isPlanned(at now: Date) -> Bool {
+        guard let start = plannedAt else { return false }
+        return start <= now && now < start.addingTimeInterval(Double(plannedMinutes ?? 30) * 60)
+    }
 
     init(id: UUID = UUID(), name: String, color: String?) {
         self.id = id
@@ -162,6 +171,15 @@ public final class WorkItem: Identifiable {
     public internal(set) var repeatRule: Recurrence?
     /// Its deadline and wait before it last moved on, so "not done after all" puts them back.
     public internal(set) var repeatUndo: RepeatUndo?
+    /// When it's planned to be worked on (a block in the Plan view), and for how long (nil: 30 minutes).
+    public internal(set) var plannedAt: Date?
+    public internal(set) var plannedMinutes: Int?
+
+    /// Whether its planned block is on at `now`.
+    public func isPlanned(at now: Date) -> Bool {
+        guard let start = plannedAt else { return false }
+        return start <= now && now < start.addingTimeInterval(Double(plannedMinutes ?? 30) * 60)
+    }
     public var isArchived: Bool { root.archivedAt != nil }
     public internal(set) var deadline: Date?
     public internal(set) var nextActionAt: Date?

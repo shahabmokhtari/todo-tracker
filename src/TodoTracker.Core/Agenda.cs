@@ -129,11 +129,17 @@ public static class Agenda
         // Group tabs keep their totals; the filter narrows only what is listed.
         bool InScope(WorkItem item) => (groupId is null || item.GroupId == groupId) && (filter is null || filter.IsEmpty || filter.Matches(item, board));
 
-        // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
-        // (priority, overdue, deadline, age). New tasks never jump above what someone arranged.
+        // New tasks never jump above what someone arranged.
         var rank = board.NowOrder.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
-        var scoped = nowAll.Where(e => InScope(e.Item)).ToList();
-        var nowList = Arrange(scoped.Where(e => e.NeedsAttention), rank).Concat(Arrange(scoped.Where(e => !e.NeedsAttention), rank)).ToList();
+        var nowList = Order(nowAll.Where(e => InScope(e.Item)).ToList());
+
+        // A due reminder comes first; then what's planned for now (its block in the Plan view is on); then the person's
+        // own order, and tasks they never placed by the automatic rules.
+        List<AgendaEntry> Order(List<AgendaEntry> entries)
+        {
+            var planned = entries.Where(e => !e.NeedsAttention && e.Item.IsPlannedAt(now)).OrderBy(e => e.Item.PlannedAt).ToList();
+            return Arrange(entries.Where(e => e.NeedsAttention), rank).Concat(planned).Concat(Arrange(entries.Where(e => !e.NeedsAttention && !planned.Contains(e)), rank)).ToList();
+        }
 
         // Back at a time first (soonest first); then those waiting for another task.
         var waitingList = waitingAll.Where(e => InScope(e.Item))

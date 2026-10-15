@@ -85,9 +85,9 @@ public static partial class TaskMarkdown
     private const string Time = "time";
 
     /// <summary>The hidden data of a subtask line this version writes (anything else is kept as found).</summary>
-    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color", "repeat", "repeatUndo"];
+    private static readonly HashSet<string> SubtaskMetaKeys = ["id", "created", "done", "due", "next", "after", "seq", "delay", "labels", "tags", "reminders", "icon", "color", "repeat", "repeatUndo", "plan", "planMin"];
 
-    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "repeat", "repeat-undo", "tags", "labels", "reminders"];
+    private static readonly string[] CanonicalKeys = ["status", "board", "priority", "icon", "color", "created", "completed", "archived", "due", "scheduled", "after", "sequential", "step-delay", "repeat", "repeat-undo", "planned", "planned-length", "tags", "labels", "reminders"];
 
     /// <summary>A frontmatter property the app writes (besides the id); everything else belongs to the person.</summary>
     internal static bool IsOwnedProperty(string key) => CanonicalKeys.Contains(key, StringComparer.OrdinalIgnoreCase);
@@ -278,6 +278,8 @@ public static partial class TaskMarkdown
         root.Color = TaskBoard.Lenient(TaskBoard.CleanColor, fm.Scalar("color"));
         root.Repeat = TaskBoard.ReadRepeat(fm.Scalar("repeat"));
         root.RepeatUndo = ParseRepeatUndo(fm.Scalar("repeat-undo"));
+        root.PlannedAt = VaultText.ParseTime(fm.Scalar("planned"), tz, "09:00");
+        root.PlannedMinutes = VaultText.ParseDuration(fm.Scalar("planned-length")) is { } length ? TaskBoard.ReadPlanMinutes((long)length.TotalMinutes) : null;
         root.TagList.AddRange(TaskBoard.ReadTags(fm.List("tags")));
         root.LabelList.AddRange(fm.List("labels"));
         var reminderIndex = 0;
@@ -626,6 +628,8 @@ public static partial class TaskMarkdown
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, Str(meta, "icon")),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, Str(meta, "color")),
             Repeat = TaskBoard.ReadRepeat(Str(meta, "repeat")),
+            PlannedAt = VaultText.ParseInstant(Str(meta, "plan")),
+            PlannedMinutes = TaskBoard.ReadPlanMinutes(Long(meta, "planMin")),
             RepeatUndo = meta?["repeatUndo"] is JsonObject undo ? new RepeatUndo(VaultText.ParseInstant(Str(undo, "due")), VaultText.ParseInstant(Str(undo, "next"))) : null,
         };
         if (meta?.Where(p => !SubtaskMetaKeys.Contains(p.Key)).ToList() is { Count: > 0 } unknown)
@@ -1050,6 +1054,8 @@ public static partial class TaskMarkdown
         ["step-delay"] = root.StepDelay is { } s ? ((long)s.TotalMinutes).ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty,
         ["repeat"] = root.Repeat?.ToString() ?? string.Empty,
         ["repeat-undo"] = RepeatUndoText(root.RepeatUndo) ?? string.Empty,
+        ["planned"] = root.PlannedAt is { } p ? VaultText.Utc(p) : string.Empty,
+        ["planned-length"] = root.PlannedMinutes?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
         ["tags"] = string.Join('\u001f', root.Tags),
         ["labels"] = string.Join('\u001f', root.Labels),
         ["reminders"] = string.Join('\u001e', root.Reminders.Select(r => $"{r.Id}|{VaultText.Utc(r.DueAt)}|{r.Message}|{r.Kind}|{r.NotifiedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}|{r.DismissedAt?.ToString("O", System.Globalization.CultureInfo.InvariantCulture)}")),
@@ -1132,6 +1138,11 @@ public static partial class TaskMarkdown
             case "repeat-undo":
                 // Kept by the app: the deadline and wait before the task last moved on ("not done after all" puts them back).
                 return RepeatUndoText(root.RepeatUndo) is { } undo ? $"repeat-undo: {undo}\n" : null;
+            case "planned":
+                // When it's planned to be worked on (the Plan view); local time.
+                return root.PlannedAt is { } planned ? $"planned: {VaultText.LocalDateTime(planned, tz)}\n" : null;
+            case "planned-length":
+                return root.PlannedAt is not null && root.PlannedMinutes is { } length ? $"planned-length: {VaultText.Duration(TimeSpan.FromMinutes(length))}\n" : null;
             case "tags":
                 return List("tags", root.Tags);
             case "labels":
@@ -1369,6 +1380,15 @@ public static partial class TaskMarkdown
         if (item.Repeat is { } repeat)
         {
             meta["repeat"] = repeat.ToString();
+        }
+
+        if (item.PlannedAt is { } plan)
+        {
+            meta["plan"] = VaultText.Utc(plan);
+            if (item.PlannedMinutes is { } planMin)
+            {
+                meta["planMin"] = planMin;
+            }
         }
 
         if (item.RepeatUndo is { } undo)

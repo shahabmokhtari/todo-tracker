@@ -111,6 +111,27 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
+    [McpServerTool(Name = "plan_task"), Description("Plan a block of time to work on a task (it shows in the Plan view, and becomes the thing to do now while the block is on); without a start, takes it off the plan.")]
+    public Task<ItemDto> PlanTask(
+        McpServer server,
+        string taskId,
+        [Description("ISO-8601 start of the block; omit to take it off the plan.")] DateTimeOffset? start = null,
+        [Description("How long, in minutes (5 to 720; default: what it had, else 30).")] int? minutes = null) =>
+        Mutate(server, (b, now, actor) =>
+        {
+            var id = ParseId(taskId);
+            if (start is { } at)
+            {
+                b.Plan(id, at, minutes, actor, now);
+            }
+            else
+            {
+                b.Unplan(id, actor, now);
+            }
+
+            return b.Get(id);
+        });
+
     [McpServerTool(Name = "wait_for_task"), Description("Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed.")]
     public Task<ItemDto> WaitForTask(McpServer server, string taskId, [Description("The task it waits for.")] string afterTaskId) =>
         Mutate(server, (b, now, actor) =>

@@ -456,6 +456,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         } else {
             0L
         }
+        // A planned block moves along too (as many days from the deadline, at the same time).
+        item.plannedAt?.let { planned ->
+            val day = planned.atZone(zone)
+            item.plannedAt = ZonedDateTime.of(next.plusDays(day.toLocalDate().toEpochDay() - anchor.toEpochDay()), day.toLocalTime(), zone).toInstant()
+        }
         if (due != null) item.deadline = ZonedDateTime.of(next, due.atZone(zone).toLocalTime(), zone).toInstant()
         val back = if (waitedUntil != null) {
             ZonedDateTime.of(next.minusDays(lead), waitedUntil.atZone(zone).toLocalTime(), zone).toInstant()

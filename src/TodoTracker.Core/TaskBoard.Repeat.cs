@@ -40,6 +40,12 @@ public sealed partial class TaskBoard
         var waitedUntil = item.NextActionAt;
         var reminded = waitedUntil is { } w && item.ReminderList.Exists(r => r.Kind == ReminderKind.NextAction && r.DueAt == w);
         var lead = item.Deadline is { } due && waitedUntil is { } waited ? Math.Max(0, LocalDate(due).DayNumber - LocalDate(waited).DayNumber) : 0;
+        // A planned block moves along too (as many days from the deadline, at the same time).
+        if (item.PlannedAt is { } planned)
+        {
+            item.PlannedAt = LocalAt(next.AddDays(LocalDate(planned).DayNumber - anchor.DayNumber), LocalTime(planned));
+        }
+
         if (item.Deadline is { } deadline)
         {
             item.Deadline = LocalAt(next, LocalTime(deadline));

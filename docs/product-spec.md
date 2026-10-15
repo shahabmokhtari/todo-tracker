@@ -243,6 +243,15 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   Checking it in Obsidian (`status: done`) moves it on the same way, each time. Cards, board, tree and phones show 🔁.
   Same rules in C#, Swift and Kotlin (`Recurrence`; shared fixture `tests/fixtures/repeat.json`), in the user's time
   zone (calendar days, so clock changes keep the time of day).
+* **Plan** (an extra, on by default; web `#/plan`, `Alt+6`): a day or week time grid per group. Drag a task from *Not
+  planned* (Do now's tasks without a block still to come) onto a time (15-minute steps) to plan a block of work on it;
+  drag a block to move it, its bottom edge to change its length (5 min to 12 h), click it to open the task. Deadlines show
+  on their day, a line shows now, done blocks are ticked. Each group keeps its view (day or week, work hours or the whole
+  day, work hours and days, week starting Monday or Sunday). While a block is on, its task is *Do this now* (after a due
+  reminder, ahead of the arranged order; shared scenario `planned.json` in C#, Swift and Kotlin). The task panel's
+  *Plan* field sets it by keyboard; cards show `🗓 10:00–10:30`; a repeating task's block moves with it. Stored as
+  `plannedAt`/`plannedMinutes` (JSON), `planned:`/`planned-length:` (frontmatter); REST `POST /api/items/{id}/plan`,
+  `GET /api/plan`; MCP `plan_task`.
 * **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only, never written by the
   app, its API or AI tools) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
   to a URL when something happens: `taskCompleted`, `reminderDue`, `noteAdded`, `focusEnded`… with filters by group,

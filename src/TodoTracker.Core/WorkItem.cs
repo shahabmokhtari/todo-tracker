@@ -87,6 +87,18 @@ public sealed class WorkItem
     /// <summary>How it repeats: completing it moves it on to its next time instead of finishing it. Null: it doesn't.</summary>
     public Recurrence? Repeat { get; internal set; }
 
+    /// <summary>When it's planned to be worked on (a block in the Plan view); null: not planned.</summary>
+    public DateTimeOffset? PlannedAt { get; internal set; }
+
+    /// <summary>How long the planned block is, in minutes (null: <see cref="TaskBoard.DefaultPlanMinutes"/>).</summary>
+    public int? PlannedMinutes { get; internal set; }
+
+    /// <summary>The planned block's length.</summary>
+    public TimeSpan PlannedLength => TimeSpan.FromMinutes(PlannedMinutes ?? TaskBoard.DefaultPlanMinutes);
+
+    /// <summary>Whether its planned block is on at <paramref name="now"/>.</summary>
+    public bool IsPlannedAt(DateTimeOffset now) => PlannedAt is { } at && at <= now && now < at + PlannedLength;
+
     /// <summary>Its deadline and wait before it last moved on to its next time, so "not done after all" puts them back.</summary>
     public RepeatUndo? RepeatUndo { get; internal set; }
 

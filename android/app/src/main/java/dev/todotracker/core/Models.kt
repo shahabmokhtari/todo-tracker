@@ -92,6 +92,15 @@ class WorkItem(
     var repeat: Recurrence? = null
     /** Its deadline and wait before it last moved on, so "not done after all" puts them back. */
     var repeatUndo: RepeatUndo? = null
+    /** When it's planned to be worked on (a block in the Plan view), and for how long (null: 30 minutes). */
+    var plannedAt: Instant? = null
+    var plannedMinutes: Int? = null
+
+    /** Whether its planned block is on at [now]. */
+    fun isPlannedAt(now: Instant): Boolean {
+        val at = plannedAt ?: return false
+        return !at.isAfter(now) && now.isBefore(at.plusSeconds(60L * (plannedMinutes ?: 30)))
+    }
     var deadline: Instant? = null
     var nextActionAt: Instant? = null
 

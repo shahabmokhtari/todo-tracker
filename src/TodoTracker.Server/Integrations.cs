@@ -4,7 +4,7 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server;
 
-public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null);
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);
 
@@ -96,6 +96,23 @@ public sealed class SettingsStore
             Save();
             return _current;
         }
+    }
+
+    /// <summary>The Plan view's settings for a group (<c>all</c>: every group together); unset: the defaults.</summary>
+    public PlanSettings PlanFor(string key) => Current.Plan?.GetValueOrDefault(key) ?? new PlanSettings();
+
+    public PlanSettings SetPlan(string key, PlanSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var clean = settings.Validated();
+        lock (_lock)
+        {
+            var all = new Dictionary<string, PlanSettings>(_current.Plan ?? new Dictionary<string, PlanSettings>(), StringComparer.Ordinal) { [key] = clean };
+            _current = _current with { Plan = all };
+            Save();
+        }
+
+        return clean;
     }
 
     private void Save()

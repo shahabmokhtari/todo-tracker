@@ -252,6 +252,10 @@ public final class TaskBoard {
         let reminded = waitedUntil.map { w in item.reminders.contains { $0.kind == .nextAction && $0.dueAt == w } } ?? false
         var lead = 0
         if let due = item.deadline, let waited = waitedUntil { lead = max(0, localDay(due).epochDay - localDay(waited).epochDay) }
+        // A planned block moves along too (as many days from the deadline, at the same time).
+        if let planned = item.plannedAt {
+            item.plannedAt = at(next.adding(days: localDay(planned).epochDay - anchor.epochDay), localTime(planned))
+        }
         if let due = item.deadline { item.deadline = at(next, localTime(due)) }
         let back = waitedUntil.map { at(next.adding(days: -lead), localTime($0)) } ?? at(next, DateComponents(hour: 0, minute: 0, second: 0))
         item.nextActionAt = back

@@ -44,7 +44,9 @@ public sealed record CardDto(
     string? Icon = null,
     string? Color = null,
     string? Accent = null,
-    string? Repeat = null);
+    string? Repeat = null,
+    DateTimeOffset? PlannedAt = null,
+    int? PlannedMinutes = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -100,7 +102,9 @@ public sealed record ItemDto(
     string? Icon = null,
     string? Color = null,
     string? Accent = null,
-    string? Repeat = null);
+    string? Repeat = null,
+    DateTimeOffset? PlannedAt = null,
+    int? PlannedMinutes = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -139,7 +143,9 @@ public sealed record TreeNodeDto(
     string? Icon = null,
     string? Color = null,
     string? Accent = null,
-    string? Repeat = null);
+    string? Repeat = null,
+    DateTimeOffset? PlannedAt = null,
+    int? PlannedMinutes = null);
 
 /// <summary>A search result: enough to show and act on a task without loading its whole tree.</summary>
 public sealed record SearchHitDto(
@@ -303,7 +309,9 @@ public static class Wire
             item.Icon,
             item.Color,
             board.AccentOf(item),
-            item.Repeat?.ToString());
+            item.Repeat?.ToString(),
+            item.PlannedAt,
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
     }
 
     /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>
@@ -353,7 +361,9 @@ public static class Wire
             item.Icon,
             item.Color,
             board.AccentOf(item),
-            item.Repeat?.ToString());
+            item.Repeat?.ToString(),
+            item.PlannedAt,
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -393,7 +403,9 @@ public static class Wire
         item.Icon,
         item.Color,
         board.AccentOf(item),
-            item.Repeat?.ToString());
+            item.Repeat?.ToString(),
+            item.PlannedAt,
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>

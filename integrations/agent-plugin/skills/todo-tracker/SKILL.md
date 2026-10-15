@@ -23,6 +23,7 @@ Use the `todo-tracker` MCP tools. If they aren't available, use the `tt` command
 | Log progress ("did X, next Y") | `add_note` | `tt note <task> <text>` |
 | Not now: defer and remind later | `schedule_next_action` (`inMinutes`, `at`, or `when`: "next week", "fri 14:00") | `tt snooze <task> 2h` / `tt snooze <task> next week` |
 | Not until another task is done | `wait_for_task` | `tt snooze <task> after <other task>` |
+| Work on it at a set time (a block on the plan) | `plan_task` | (the Plan view) |
 | Finish or undo | `complete_task`, `reopen_task` | `tt done <task>`, `tt reopen <task>` |
 | Rename, re-prioritize, tag, label | `update_task` | `tt edit`, `tt tag`, `tt label` |
 | Reorganize | `move_task` | `tt move <task> --under <task>` |
