@@ -253,6 +253,54 @@ public sealed class HookTests : IAsyncLifetime
         Assert.Single(Hooks.AskForApprovals());
         Assert.Equal(2, asked.Count);
         Assert.NotEqual(asked[0].Version, asked[1].Version);
+
+        // Notifications switched off: nothing is asked (or marked asked), and the app's page asks instead.
+        events.CanAskAboutHooks = () => false;
+        var later = (await agent.PostJson("/api/hooks", new { @event = "taskCreated", hook = Exit0 }))["id"]!.GetValue<string>();
+        Assert.Empty(Hooks.AskForApprovals());
+        Assert.False((await app.GetJson("/api/hooks"))["appAsks"]!.GetValue<bool>());
+        events.CanAskAboutHooks = null;
+        Assert.Equal(later, Assert.Single(Hooks.AskForApprovals()).Id);
+    }
+
+    [Fact]
+    public async Task Dont_allow_removes_only_the_version_shown_while_it_still_waits()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        using var app = AppClient();
+        var shown = await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 });
+        var id = shown["id"]!.GetValue<string>();
+        var version = shown["version"]!.GetValue<string>();
+
+        // Changed since it was shown, or allowed meanwhile (another window, tt): kept.
+        await agent.PutAsJsonAsync($"/api/hooks/{id}", new { @event = "taskCompleted", hook = new { type = "command", powershell = "exit 1", bash = "exit 1" } });
+        Assert.Equal(HttpStatusCode.Conflict, (await app.PostAsJsonAsync($"/api/hooks/{id}/reject", new { version })).StatusCode);
+        var current = (await app.GetJson("/api/hooks"))["hooks"]![0]!["version"]!.GetValue<string>();
+        await app.PostJson($"/api/hooks/{id}/approve", new { version = current });
+        Assert.Equal(HttpStatusCode.Conflict, (await app.PostAsJsonAsync($"/api/hooks/{id}/reject", new { version = current })).StatusCode);
+        Assert.Single((await app.GetJson("/api/hooks"))["hooks"]!.AsArray());
+
+        var other = await agent.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 });
+        Assert.Equal(HttpStatusCode.NoContent, (await app.PostAsJsonAsync($"/api/hooks/{other["id"]!.GetValue<string>()}/reject", new { version = other["version"]!.GetValue<string>() })).StatusCode);
+        Assert.Single((await app.GetJson("/api/hooks"))["hooks"]!.AsArray());
+    }
+
+    [Theory]
+    [InlineData("exit 0", null, true)]
+    [InlineData("curl -d @- https://example.com/push", null, true)]
+    [InlineData("echo ok\nRemove-Item -Recurse C:\\", null, false)]
+    [InlineData("echo ok", "C:\\temp", false)]
+    public void A_notification_can_allow_a_hook_only_when_it_shows_all_of_it(string script, string? cwd, bool complete)
+    {
+        var entry = new HookEntry("a", "taskCompleted", new HookSpec { Powershell = script, Bash = script, Cwd = cwd }, "needs approval", null, "v");
+        var (text, all) = entry.Summary();
+
+        Assert.Equal(complete, all);
+        Assert.StartsWith("run ", text, StringComparison.Ordinal);
+
+        // Harmless at the start, the rest past what fits: never allowed from the notification.
+        var padded = script.Split('\n')[0] + new string(' ', 100) + "; evil";
+        Assert.False((entry with { Hook = new HookSpec { Powershell = padded, Bash = padded } }).Summary().Complete);
     }
 
     [Fact]

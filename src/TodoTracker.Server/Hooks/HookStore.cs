@@ -29,6 +29,21 @@ public sealed record HookEntry(string Id, string Event, HookSpec Hook, string St
         copy.Env = copy.Env?.ToDictionary(p => p.Key, _ => Hidden, StringComparer.Ordinal);
         return this with { Hook = copy };
     }
+
+    /// <summary>
+    /// What it does, in one short line for a notification, and whether that line is all of it: a short plain command
+    /// or address with nothing else set. Only then can it be allowed from the notification; otherwise look at it whole.
+    /// </summary>
+    public (string Text, bool Complete) Summary(int maxLength = 80)
+    {
+        var target = Hook.Type == "http" ? Hook.Url : Hook.Script;
+        var plain = target is not null && target.Length <= maxLength && target.All(c => c is >= ' ' and <= '~');
+        var filtered = Hook.Match is { } m && (m.Groups?.Count > 0 || m.Tags?.Count > 0 || m.Labels?.Count > 0 || m.Actors?.Count > 0);
+        var complete = plain && Hook.Headers is not { Count: > 0 } && Hook.Env is not { Count: > 0 } && string.IsNullOrWhiteSpace(Hook.Cwd) && !filtered;
+        var shown = target is null ? null : plain ? target : string.Concat(target.Split('\n')[0].AsSpan(0, Math.Min(maxLength, target.Split('\n')[0].Length)), "…");
+        var text = Hook.Type == "http" ? $"post the event to {shown}" : shown is null ? "run a command (none for this computer)" : $"run {shown}";
+        return (text, complete);
+    }
 }
 
 /// <summary>
@@ -214,6 +229,33 @@ public sealed class HookStore
 
         return null;
     });
+
+    /// <summary>
+    /// "Don't allow": removes the hook only while it still waits for approval in the <paramref name="version"/> that
+    /// was shown (allowed meanwhile, or changed since: it stays, and false says so).
+    /// </summary>
+    public bool Reject(string id, string version)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(version);
+        var removed = false;
+        Change(file =>
+        {
+            var (eventName, hook) = Find(file, id);
+            if (hook.NeedsApproval == true && version.Length >= MinVersionPrefix && VersionOf(eventName, hook).StartsWith(version, StringComparison.Ordinal))
+            {
+                file.Hooks[eventName].Remove(hook);
+                if (file.Hooks[eventName].Count == 0)
+                {
+                    file.Hooks.Remove(eventName);
+                }
+
+                removed = true;
+            }
+
+            return null;
+        });
+        return removed;
+    }
 
     // ---- inside ---------------------------------------------------------------------------------
 

@@ -20,7 +20,10 @@ public sealed class ServerEvents
 
     internal void RaiseHookApprovalNeeded(Hooks.HookEntry entry) => HookApprovalNeeded?.Invoke(this, entry);
 
-    internal bool AsksForHookApproval => HookApprovalNeeded is not null;
+    internal bool AsksForHookApproval => HookApprovalNeeded is not null && (CanAskAboutHooks?.Invoke() ?? true);
+
+    /// <summary>Whether the app listening can ask right now (notifications switched off: no; the app's page asks instead).</summary>
+    public Func<bool>? CanAskAboutHooks { get; set; }
 }
 
 internal sealed class EventNotifier(ServerEvents events) : IReminderNotifier

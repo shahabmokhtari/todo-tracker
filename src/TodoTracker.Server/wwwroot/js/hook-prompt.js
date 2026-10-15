@@ -29,13 +29,19 @@ export function nextToAsk(status, asked) {
 
 const asked = new Set();
 let busy = false;
+let done = false;
 
 /** Looks for a hook to ask about and asks (one at a time). `ctx`: { api, h, icon, toast }. */
 export async function askAboutHooks(ctx) {
-  if (busy || document.querySelector('dialog.hook-ask')) return;
+  if (done || busy || document.querySelector('dialog.hook-ask')) return;
   busy = true;
   try {
     const status = await ctx.api('/api/hooks');
+    // Not the owner's session (it can't approve), or the desktop app asks: this page never needs to look again.
+    if (!status.canApprove || status.appAsks) {
+      done = true;
+      return;
+    }
     const next = nextToAsk(status, asked);
     if (!next) return;
     asked.add(`${next.id}\u001f${next.version}`);
@@ -53,9 +59,9 @@ function show(ctx, x, eventText) {
   const decide = async (allow) => {
     const id = encodeURIComponent(x.id);
     try {
-      // Allowing names the version shown: one changed since isn't allowed (it asks again).
+      // Allowing or refusing names the version shown: one allowed or changed meanwhile is neither (it says so).
       if (allow) await ctx.api(`/api/hooks/${id}/approve`, { method: 'POST', body: { version: x.version } });
-      else await ctx.api(`/api/hooks/${id}`, { method: 'DELETE' });
+      else await ctx.api(`/api/hooks/${id}/reject`, { method: 'POST', body: { version: x.version } });
       ctx.toast(allow ? 'Allowed: it runs from now on' : 'Not allowed: it was removed');
     } catch (err) {
       ctx.toast(err.message, 'error');

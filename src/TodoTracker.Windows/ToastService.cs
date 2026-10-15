@@ -12,7 +12,6 @@ namespace TodoTracker.Windows;
 /// </summary>
 internal sealed class ToastService : IDisposable
 {
-    private const int ShownScript = 160;
     private const string HookOpen = "hookOpen";
     private const string HookAllow = "hookAllow";
     private const string HookDeny = "hookDeny";
@@ -32,22 +31,25 @@ internal sealed class ToastService : IDisposable
     }
 
     /// <summary>
-    /// "Claude wants to add a hook: on taskCompleted, run …": what it would do (shortened; all of it in Settings › Hooks,
-    /// where clicking the toast leads). Allowing names this version: a hook changed since isn't allowed.
+    /// "Claude wants to run a hook: on taskCompleted, run …". Allow is offered only when the notification shows all of
+    /// it (a short plain command, nothing else set: <see cref="HookEntry.Summary"/>); otherwise Review opens it whole
+    /// in Settings › Hooks. Allowing or refusing names this version: a hook changed since is neither.
     /// </summary>
     public static void ShowHookApproval(HookEntry entry)
     {
         var hook = entry.Hook;
-        var what = hook.Type == "http" ? $"post the event to {hook.Url}" : hook.Script is { } script ? $"run {Shorten(script)}" : "run a command (none for Windows)";
-        var more = hook.Headers is { Count: > 0 } || hook.Env is { Count: > 0 } || hook.Cwd is not null || hook.Match is not null || (hook.Script?.Length ?? 0) > ShownScript;
-        new ToastContentBuilder()
+        var (what, complete) = entry.Summary();
+        var builder = new ToastContentBuilder()
             .AddArgument("action", HookOpen)
             .AddArgument("hook", entry.Id)
             .AddArgument("version", entry.Version)
             .AddText($"🔌 {hook.AddedBy ?? "An AI agent"} wants to run a hook")
             .AddText($"On {entry.Event}: {what}")
-            .AddAttributionText(more ? "There's more to it: click to see all of it" : "Allow it and it runs from now on")
-            .AddButton(new ToastButton().SetContent("Allow").AddArgument("action", HookAllow))
+            .AddAttributionText(complete ? "Allow it and it runs from now on" : "There's more to it: review all of it first");
+        builder = complete
+            ? builder.AddButton(new ToastButton().SetContent("Allow").AddArgument("action", HookAllow))
+            : builder.AddButton(new ToastButton().SetContent("Review…").AddArgument("action", HookOpen));
+        builder
             .AddButton(new ToastButton().SetContent("Don't allow").AddArgument("action", HookDeny))
             .Show(t =>
             {
@@ -56,10 +58,17 @@ internal sealed class ToastService : IDisposable
             });
     }
 
-    private static string Shorten(string script)
+    /// <summary>Whether notifications can show at all (switched off for the app or by policy: the app's page asks instead).</summary>
+    public static bool CanShow()
     {
-        var line = string.Join(" ⏎ ", script.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
-        return line.Length <= ShownScript ? line : string.Concat(line.AsSpan(0, ShownScript), "…");
+        try
+        {
+            return ToastNotificationManagerCompat.CreateToastNotifier().Setting == global::Windows.UI.Notifications.NotificationSetting.Enabled;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     public static void ShowReminder(ReminderNotification n)
@@ -116,19 +125,16 @@ internal sealed class ToastService : IDisposable
                     _viewModel.StatusMessage = "Hook allowed: it runs from now on.";
                     break;
                 case HookDeny:
-                    if (_hooks.Get(id).Hook.NeedsApproval == true)
-                    {
-                        _hooks.Remove(id);
-                        _viewModel.StatusMessage = "Hook not allowed: it was removed.";
-                    }
-
+                    _viewModel.StatusMessage = _hooks.Reject(id, version ?? string.Empty)
+                        ? "Hook not allowed: it was removed."
+                        : "That hook was allowed or changed meanwhile: it was kept (see Settings › Hooks).";
                     break;
                 default:
                     _openApp?.Invoke("/#/settings/hooks");
                     break;
             }
         }
-        catch (KeyNotFoundException)
+        catch (Exception ex) when (ex is KeyNotFoundException or ArgumentException)
         {
             _viewModel.StatusMessage = "That hook is gone.";
         }

@@ -56,6 +56,10 @@ internal static class HookEndpoints
 
         api.MapPost("/hooks/{id}/approve", (string id, HookApproveRequest? request, HttpContext http, HookStore store) => Shown(http, store.Approve(id, request?.Version, AuthorOf(http))));
 
+        // "Don't allow" in the app: removed only if it still waits in the version that was shown.
+        api.MapPost("/hooks/{id}/reject", (string id, HookApproveRequest request, HookStore store) =>
+            store.Reject(id, request.Version ?? throw new ArgumentException("Say which version you looked at (version).")) ? Results.NoContent() : Results.Problem("This hook was allowed or changed meanwhile: it was kept. See Settings › Hooks.", statusCode: StatusCodes.Status409Conflict));
+
         api.MapDelete("/hooks/{id}", (string id, HookStore store) =>
         {
             store.Remove(id);

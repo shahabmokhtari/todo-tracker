@@ -73,7 +73,7 @@ internal static partial class OpenApiSetup
         "DELETE api/items/{id}", "PATCH api/groups/{id}", "DELETE api/groups/{id}", "GET api/export",
         "GET api/obsidian/vaults", "PUT api/settings/vault", "GET api/settings", "PUT api/settings", "PUT api/settings/theme",
         "POST api/labels", "PATCH api/labels/{**name}", "DELETE api/labels/{**name}",
-        "GET api/history", "POST api/history/commit", "GET api/hooks", "POST api/hooks/test", "POST api/hooks", "PUT api/hooks/{id}", "POST api/hooks/{id}/enabled", "POST api/hooks/{id}/approve", "DELETE api/hooks/{id}", "GET api/plan/settings", "PUT api/plan/settings",
+        "GET api/history", "POST api/history/commit", "GET api/hooks", "POST api/hooks/test", "POST api/hooks", "PUT api/hooks/{id}", "POST api/hooks/{id}/enabled", "POST api/hooks/{id}/approve", "POST api/hooks/{id}/reject", "DELETE api/hooks/{id}", "GET api/plan/settings", "PUT api/plan/settings",
         "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",
         "POST api/archive", "PUT api/items/{id}/time/{entryId}", "DELETE api/items/{id}/time/{entryId}",
     };

@@ -257,7 +257,9 @@ public partial class App : Application
             events.Reminder += (_, n) => window.Dispatcher.BeginInvoke(() => ToastService.ShowReminder(n));
             events.Pomodoro += (_, p) => window.Dispatcher.BeginInvoke(() => ToastService.ShowFocus(p));
 
-            // An AI agent added or changed a hook: Allow or Don't allow, right from the notification.
+            // An AI agent added or changed a hook: Allow or Don't allow, right from the notification (when notifications
+            // are off, the app's own page asks instead).
+            events.CanAskAboutHooks = ToastService.CanShow;
             events.HookApprovalNeeded += (_, h) => window.Dispatcher.BeginInvoke(() => ToastService.ShowHookApproval(h));
             services.GetRequiredService<TodoTracker.Server.Hooks.HookService>().AskForApprovals();
         }
