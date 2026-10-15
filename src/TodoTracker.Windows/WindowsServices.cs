@@ -132,8 +132,20 @@ internal sealed partial class GlobalHotKey : IDisposable
 /// Per-user handler for todotracker:// links (HKCU\Software\Classes, no admin rights): Windows starts this app with the
 /// link, and a running one is handed it (SingleInstance). Rewritten at every start, so it follows the app if it moves.
 /// </summary>
-internal static class DeepLinkRegistration
+internal static partial class DeepLinkRegistration
 {
+    private const uint AnyProcess = unchecked((uint)-1);
+
+    /// <summary>
+    /// This launch got the click (and with it the right to come to the front): hand that right on, so the running app
+    /// the link goes to can bring its window forward instead of flashing in the taskbar.
+    /// </summary>
+    public static void LetRunningAppComeForward() => AllowSetForegroundWindow(AnyProcess);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool AllowSetForegroundWindow(uint processId);
+
     public static void Register()
     {
         if (Environment.ProcessPath is not { } exe)

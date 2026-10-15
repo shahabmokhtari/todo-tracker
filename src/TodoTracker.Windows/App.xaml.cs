@@ -39,6 +39,11 @@ public partial class App : Application
 
         // One sidebar at a time (tests included): a second launch brings the running one to the front instead, or hands
         // it the deep link it was started with (todotracker://task/<id>).
+        if (args.Link is not null)
+        {
+            DeepLinkRegistration.LetRunningAppComeForward();
+        }
+
         _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(30) : TimeSpan.Zero, message: args.Link);
         if (_instance is null)
         {
