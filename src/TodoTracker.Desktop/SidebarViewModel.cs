@@ -364,8 +364,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>The Do now order as shown: the focus card, then the rest.</summary>
     private List<CardViewModel> VisibleNow() => (Focus is null ? Now : Now.Prepend(Focus)).DistinctBy(c => c.Id).ToList();
 
-    /// <summary>Cards whose reminder is due always come first, so a card moves only within its block.</summary>
-    private List<Guid> BlockOf(CardViewModel card) => VisibleNow().Where(c => c.NeedsAttention == card.NeedsAttention).Select(c => c.Id).ToList();
+    /// <summary>
+    /// The cards a card moves among: all of Do now. A card whose reminder is due can be put anywhere too (it comes back
+    /// to the top only when a reminder goes off after that).
+    /// </summary>
+    private List<Guid> BlockOf(CardViewModel card) => VisibleNow().Select(c => c.Id).ToList();
 
     /// <summary>Whether <paramref name="card"/> can move up (-1) or down (+1).</summary>
     public bool CanMove(CardViewModel card, int delta)
@@ -395,7 +398,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
         block.Remove(card.Id);
         block.Insert(block.IndexOf(target.Id) + (after ? 1 : 0), card.Id);
-        return Arrange(card, block);
+        return Arrange(block);
     }
 
     private Task Step(CardViewModel? card, int delta)
@@ -409,20 +412,14 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         var from = block.IndexOf(card.Id);
         block.RemoveAt(from);
         block.Insert(from + delta, card.Id);
-        return Arrange(card, block);
-    }
-
-    private Task Arrange(CardViewModel moved, List<Guid> block)
-    {
-        var other = VisibleNow().Where(c => c.NeedsAttention != moved.NeedsAttention).Select(c => c.Id);
-        return Arrange(moved.NeedsAttention ? [.. block, .. other] : [.. other, .. block]);
+        return Arrange(block);
     }
 
     private Task Arrange(List<Guid> ids) => Run(async () =>
     {
         await _store.UpdateAsync(b =>
         {
-            b.ArrangeNow(ids);
+            b.ArrangeNow(ids, _time.GetUtcNow());
             return true;
         }).ConfigureAwait(true);
         return null;

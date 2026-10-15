@@ -25,7 +25,7 @@ public class ManualOrderTests
         var low = _board.Items[0];
         Assert.Equal(["High", "Low"], Now());
 
-        _board.ArrangeNow([low.Id, high.Id]);
+        _board.ArrangeNow([low.Id, high.Id], T0);
 
         Assert.Equal(["Low", "High"], Now());
         Assert.Equal("Low", Agenda.Build(_board, T0).Focus!.Item.Title);
@@ -37,7 +37,7 @@ public class ManualOrderTests
         var a = Add("A");
         var b = Add("B", Priority.High);
         var c = Add("C", Priority.Low);
-        _board.ArrangeNow([a.Id, b.Id, c.Id]);
+        _board.ArrangeNow([a.Id, b.Id, c.Id], T0);
 
         Add("Normal later");
         Add("Urgent", Priority.Critical);
@@ -71,10 +71,23 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([a.Id, b.Id]);
+        _board.ArrangeNow([a.Id, b.Id], T0.AddMinutes(-5));
         _board.AddReminder(b.Id, T0.AddMinutes(-1), "now!", Actor.User, T0.AddMinutes(-2));
 
         Assert.Equal(["B", "A"], Now());
+    }
+
+    [Fact]
+    public void A_task_whose_reminder_was_due_when_arranging_stays_where_it_was_put()
+    {
+        var a = Add("A");
+        var b = Add("B");
+        _board.AddReminder(b.Id, T0.AddMinutes(-1), "now!", Actor.User, T0.AddMinutes(-2));
+        Assert.Equal(["B", "A"], Now());
+
+        _board.ArrangeNow([a.Id, b.Id], T0);
+
+        Assert.Equal(["A", "B"], Now());
     }
 
     [Fact]
@@ -86,9 +99,9 @@ public class ManualOrderTests
         var p1 = Add("P1", group: personal);
         var w2 = Add("W2", group: work);
         var p2 = Add("P2", group: personal);
-        _board.ArrangeNow([w1.Id, p1.Id, w2.Id, p2.Id]);
+        _board.ArrangeNow([w1.Id, p1.Id, w2.Id, p2.Id], T0);
 
-        _board.ArrangeNow([p2.Id, p1.Id]);
+        _board.ArrangeNow([p2.Id, p1.Id], T0);
 
         Assert.Equal(["W1", "P2", "W2", "P1"], Now());
         Assert.Equal(["P2", "P1"], Now(personal));
@@ -111,11 +124,11 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([b.Id, a.Id]);
+        _board.ArrangeNow([b.Id, a.Id], T0);
         _board.Complete(b.Id, Actor.User, T0);
         _board.Delete(a.Id, Actor.User, T0);
 
-        _board.ArrangeNow([]);
+        _board.ArrangeNow([], T0);
 
         Assert.Empty(_board.NowOrder);
     }
@@ -125,8 +138,8 @@ public class ManualOrderTests
     {
         var a = Add("A");
 
-        Assert.Throws<ArgumentException>(() => _board.ArrangeNow([a.Id, a.Id]));
-        Assert.Throws<TaskNotFoundException>(() => _board.ArrangeNow([Guid.NewGuid()]));
+        Assert.Throws<ArgumentException>(() => _board.ArrangeNow([a.Id, a.Id], T0));
+        Assert.Throws<TaskNotFoundException>(() => _board.ArrangeNow([Guid.NewGuid()], T0));
     }
 
     [Fact]
@@ -181,7 +194,7 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([b.Id, a.Id]);
+        _board.ArrangeNow([b.Id, a.Id], T0);
 
         var loaded = BoardSerializer.Deserialize(BoardSerializer.Serialize(_board));
 

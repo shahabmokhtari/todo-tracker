@@ -1391,7 +1391,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         return true;
     }
 
-    private sealed record StateDocument(PomodoroSettings? Settings, PomodoroPhase Phase, DateTimeOffset? EndsAt, int? PausedRemainingSeconds, Guid? ItemId, int CompletedFocusCount, List<Guid>? NowOrder = null, DateTimeOffset? BreakEndedAt = null);
+    private sealed record StateDocument(PomodoroSettings? Settings, PomodoroPhase Phase, DateTimeOffset? EndsAt, int? PausedRemainingSeconds, Guid? ItemId, int CompletedFocusCount, List<Guid>? NowOrder = null, DateTimeOffset? BreakEndedAt = null, DateTimeOffset? NowArrangedAt = null);
 
     private void LoadState(TaskBoard board)
     {
@@ -1405,6 +1405,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 board.Pomodoro.Restore(s.Phase, s.EndsAt, s.PausedRemainingSeconds is { } secs ? TimeSpan.FromSeconds(secs) : null, s.ItemId is { } id && board.Find(id) is not null ? id : null, s.CompletedFocusCount, s.BreakEndedAt);
                 board.NowOrderList.Clear();
                 board.NowOrderList.AddRange((s.NowOrder ?? []).Where(i => board.Find(i) is not null).Distinct());
+                board.NowArrangedAt = s.NowArrangedAt;
             }
         }
         catch (JsonException)
@@ -1416,7 +1417,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private string StateText()
     {
         var p = _board.Pomodoro;
-        var doc = new StateDocument(p.Settings, p.Phase, p.EndsAt, p.PausedRemaining is { } r ? (int)Math.Round(r.TotalSeconds) : null, p.ItemId, p.CompletedFocusCount, _board.NowOrder.Count == 0 ? null : [.. _board.NowOrder], p.BreakEndedAt);
+        var doc = new StateDocument(p.Settings, p.Phase, p.EndsAt, p.PausedRemaining is { } r ? (int)Math.Round(r.TotalSeconds) : null, p.ItemId, p.CompletedFocusCount, _board.NowOrder.Count == 0 ? null : [.. _board.NowOrder], p.BreakEndedAt, _board.NowArrangedAt);
         return JsonSerializer.Serialize(doc, Json) + "\n";
     }
 

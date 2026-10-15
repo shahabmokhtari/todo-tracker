@@ -9,10 +9,17 @@ public sealed partial class TaskBoard
     public IReadOnlyList<Guid> NowOrder => NowOrderList;
 
     /// <summary>
-    /// Records the order of the tasks someone sees in Do now (e.g. after dragging one). Only the places those tasks
-    /// already had are reused, so arranging one group's tab doesn't move the other groups' tasks.
+    /// When Do now was last arranged. A reminder that went off before then was there to see: the task stays where it was
+    /// put. One going off after it brings its task to the top again.
     /// </summary>
-    public void ArrangeNow(IReadOnlyList<Guid> ids)
+    public DateTimeOffset? NowArrangedAt { get; internal set; }
+
+    /// <summary>
+    /// Records the order of the tasks someone sees in Do now (e.g. after dragging one), tasks with a due reminder
+    /// included. Only the places those tasks already had are reused, so arranging one group's tab doesn't move the
+    /// other groups' tasks.
+    /// </summary>
+    public void ArrangeNow(IReadOnlyList<Guid> ids, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(ids);
         if (ids.Distinct().Count() != ids.Count)
@@ -48,11 +55,12 @@ public sealed partial class TaskBoard
 
         NowOrderList.Clear();
         NowOrderList.AddRange(result.Where(id => Find(id) is { IsDone: false }));
+        NowArrangedAt = now;
     }
 
     /// <summary>
-    /// Puts <paramref name="ids"/> at the top of Do now, in that order (below any task whose reminder is due, which
-    /// always comes first); the first becomes the focus.
+    /// Puts <paramref name="ids"/> at the top of Do now, in that order (only a reminder going off later comes above
+    /// them); the first becomes the focus.
     /// </summary>
     public void PutFirst(IReadOnlyList<Guid> ids, DateTimeOffset now)
     {
@@ -63,7 +71,7 @@ public sealed partial class TaskBoard
         }
 
         var current = Agenda.Build(this, now, recentNoteCount: 0).Now.Select(e => e.Item.Id).Where(id => !ids.Contains(id));
-        ArrangeNow([.. ids, .. current]);
+        ArrangeNow([.. ids, .. current], now);
     }
 
     /// <summary>Moves a task among its siblings, before <paramref name="before"/> (or to the end). Its parent stays.</summary>

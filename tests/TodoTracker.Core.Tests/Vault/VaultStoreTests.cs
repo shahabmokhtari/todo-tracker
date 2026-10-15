@@ -895,13 +895,14 @@ public sealed class VaultStoreTests : IDisposable
 
         await a.UpdateAsync(x =>
         {
-            x.ArrangeNow([second.Id, first.Id]);
+            x.ArrangeNow([second.Id, first.Id], T0);
             return true;
         });
 
         Assert.Equal([second.Id, first.Id], await b.ReadAsync(x => x.NowOrder.ToList()));
         a.Dispose();
         Assert.Equal("Second", await Open().ReadAsync(x => Agenda.Build(x, T0).Focus!.Item.Title));
+        Assert.Equal(T0, await Open().ReadAsync(x => x.NowArrangedAt));
     }
 
     // ---- Files and folders --------------------------------------------------------------

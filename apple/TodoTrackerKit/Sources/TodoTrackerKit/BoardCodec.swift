@@ -70,6 +70,7 @@ struct BoardDocument: Codable {
     var activity: [ActivityDocument]?
     var pomodoro: PomodoroDocument?
     var nowOrder: [UUID]?
+    var nowArrangedAt: Date?
 
     init(_ board: TaskBoard) {
         schemaVersion = TaskBoard.currentSchemaVersion
@@ -77,6 +78,7 @@ struct BoardDocument: Codable {
         items = board.items.map(ItemDocument.init)
         activity = board.activity.map { ActivityDocument(at: $0.at, itemId: $0.itemId, kind: $0.kind, summary: $0.summary, actor: $0.actor) }
         nowOrder = board.nowOrder.isEmpty ? nil : board.nowOrder
+        nowArrangedAt = board.nowArrangedAt
         let p = board.pomodoro
         pomodoro = PomodoroDocument(
             settings: p.settings,
@@ -100,6 +102,7 @@ struct BoardDocument: Codable {
         }
         var seen = Set<UUID>()
         board.nowOrder = (nowOrder ?? []).filter { board.find($0) != nil && seen.insert($0).inserted }
+        board.nowArrangedAt = nowArrangedAt
         if let p = pomodoro {
             var timer = PomodoroTimer(settings: p.settings ?? PomodoroSettings())
             timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0, breakEndedAt: p.breakEndedAt)

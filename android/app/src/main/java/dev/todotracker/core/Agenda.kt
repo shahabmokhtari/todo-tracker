@@ -109,10 +109,16 @@ object Agenda {
         val rank = HashMap<UUID, Int>()
         board.nowOrder.forEachIndexed { i, id -> rank.putIfAbsent(id, i) }
         val scoped = nowAll.filter { inScope(it.second.item) }
-        // After a due reminder: what's planned for now (its block in the Plan view is on), ahead of the arranged order.
+        // A reminder that just went off comes first: its task was never placed, or the reminder went off after Do now
+        // was last arranged (one seen then stays where the task was put). Then what's planned for now (its block in
+        // the Plan view is on), ahead of the arranged order.
+        val arranged = board.nowArrangedAt
+        fun fresh(e: AgendaEntry) = e.needsAttention &&
+            (e.item.id !in rank || arranged == null || e.item.reminders.any { it.isDue(now) && it.dueAt.isAfter(arranged) })
+        val first = scoped.filter { fresh(it.second) }
         val planned = scoped.filter { !it.second.needsAttention && it.second.item.isPlannedAt(now) }.sortedBy { it.second.item.plannedAt }
-        val nowList = arrange(scoped.filter { it.second.needsAttention }, rank) + planned.map { it.second } +
-            arrange(scoped.filter { !it.second.needsAttention && it !in planned }, rank)
+        val nowList = arrange(first, rank) + planned.map { it.second } +
+            arrange(scoped.filter { it !in first && it !in planned }, rank)
 
         val waitingList = waitingAll.filter { inScope(it.second.item) }.sortedWith { a, b ->
             val x = a.second

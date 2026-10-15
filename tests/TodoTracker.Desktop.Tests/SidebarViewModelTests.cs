@@ -203,20 +203,23 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
-    public async Task Moves_stay_below_tasks_whose_reminder_is_due()
+    public async Task A_task_with_a_due_reminder_can_be_moved_and_stays_where_it_is_put()
     {
+        // This test used to check that moves stayed below tasks whose reminder is due ("Moves_stay_below_…"). This change
+        // drops that rule on purpose (people couldn't move a reminder's task down): once Do now is arranged, a reminder
+        // already due there stays where it's put; only one going off later brings its task back to the top.
         var urgent = await Seed("Reminder due");
         await Seed("Plain");
         await _store.UpdateAsync(b => b.AddReminder(urgent.Id, T0.AddMinutes(-1), "now", Actor.User, T0.AddMinutes(-2)));
         await _vm.RefreshAsync();
+        Assert.Equal("Reminder due", _vm.Focus!.Title);
         var plain = _vm.Now.Single(c => c.Title == "Plain");
 
-        await _vm.MoveUpCommand.ExecuteAsync(plain);
+        Assert.True(_vm.CanMove(plain, -1));
         await _vm.MoveCardAsync(plain, _vm.Focus!, after: false);
 
-        Assert.Equal("Reminder due", _vm.Focus!.Title);
-        Assert.False(_vm.CanMove(plain, -1));
-        Assert.False(_vm.CanMove(_vm.Focus!, 1));
+        Assert.Equal("Plain", _vm.Focus!.Title);
+        Assert.Equal("Reminder due", Assert.Single(_vm.Now).Title);
     }
 
     [Fact]
