@@ -20,7 +20,8 @@ public sealed record HookRun(DateTimeOffset At, string Event, string EventId, st
 /// <summary>What Settings › Hooks shows.</summary>
 public sealed record HookStatus(string Path, bool Exists, string? Problem, IReadOnlyList<HookInfo> Hooks, IReadOnlyList<HookRun> Runs, IReadOnlyDictionary<string, string> Events, string Sample);
 
-public sealed record HookInfo(string Event, string Type, string Label, string? Problem);
+/// <summary>A hook as Settings shows it: what it is (<see cref="Hook"/>, to edit), and whether it runs.</summary>
+public sealed record HookInfo(string Id, string Event, string Type, string Label, string State, string? Problem, HookSpec Hook);
 
 /// <summary>
 /// Turns what happens (the activity log: in the app, by agents, in the files, by sync, and the focus timer) into
@@ -54,14 +55,16 @@ public sealed partial class HookService : BackgroundService
     private readonly SemaphoreSlim _scanning = new(1, 1);
     private readonly SemaphoreSlim _running = new(1, 1);
     private Dictionary<string, DateTimeOffset>? _seen;
-    private (DateTime Stamp, HookFile? File, string? Problem) _config = (DateTime.MinValue, null, null);
+    private readonly HookStore _hooks;
 
-    public HookService(IBoardStore store, ServerEvents events, TodoTrackerServerOptions options, TimeProvider time, ILogger<HookService> logger)
+    public HookService(IBoardStore store, ServerEvents events, HookStore hooks, TodoTrackerServerOptions options, TimeProvider time, ILogger<HookService> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(hooks);
         _store = store;
+        _hooks = hooks;
         _events = events;
         _options = options;
         _time = time ?? TimeProvider.System;
@@ -73,7 +76,7 @@ public sealed partial class HookService : BackgroundService
     /// <summary>Every event, as it's found (for server plugins). Handlers run on a background thread and must be quick.</summary>
     public event EventHandler<TaskEvent>? Published;
 
-    public string HooksPath => Path.Combine(_options.DataDirectory, "hooks.json");
+    public string HooksPath => _hooks.FilePath;
 
     private string StatePath => Path.Combine(_options.DataDirectory, "hooks-state.json");
 
@@ -303,49 +306,15 @@ public sealed partial class HookService : BackgroundService
 
     // ---- Running hooks --------------------------------------------------------------------------
 
-    /// <summary>hooks.json as it is now (read again when it changes).</summary>
-    private (HookFile? File, string? Problem) Config()
-    {
-        try
-        {
-            if (!File.Exists(HooksPath))
-            {
-                return (null, null);
-            }
-
-            var stamp = File.GetLastWriteTimeUtc(HooksPath);
-            if (stamp != _config.Stamp)
-            {
-                try
-                {
-                    var file = JsonSerializer.Deserialize<HookFile>(File.ReadAllText(HooksPath), HookFile.Json);
-                    _config = (stamp, file, file is null ? "hooks.json is empty." : null);
-                }
-                catch (JsonException ex)
-                {
-                    _config = (stamp, null, $"hooks.json can't be read: {ex.Message}");
-                }
-            }
-
-            return (_config.File, _config.Problem);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return (null, $"hooks.json can't be read: {ex.Message}");
-        }
-    }
-
     public HookStatus Status()
     {
-        var (file, problem) = Config();
-        var hooks = (file?.Hooks ?? []).SelectMany(p => p.Value.Select(h => new HookInfo(p.Key, h.Type, h.Label, h.Problem() ?? UnknownEvent(p.Key) ?? NoScript(h)))).ToList();
+        var (_, problem) = _hooks.Read();
+        var hooks = _hooks.List().Select(e => new HookInfo(e.Id, e.Event, e.Hook.Type, e.Hook.Label, e.State, e.Problem ?? NoScript(e.Hook), e.Hook)).ToList();
         lock (_runs)
         {
-            return new HookStatus(HooksPath, File.Exists(HooksPath), problem, hooks, _runs.AsEnumerable().Reverse().ToList(), EventNames.All, HookFile.Sample);
+            return new HookStatus(HooksPath, _hooks.Exists, problem, hooks, _runs.AsEnumerable().Reverse().ToList(), EventNames.All, HookFile.Sample);
         }
     }
-
-    private static string? UnknownEvent(string name) => name == "*" || EventNames.All.ContainsKey(name) ? null : $"\"{name}\" isn't an event.";
 
     private static string? NoScript(HookSpec hook) =>
         hook.Type == "command" && hook.Script is null ? $"Nothing to run on this computer (it needs \"{(OperatingSystem.IsWindows() ? "powershell" : "bash")}\")." : null;
@@ -354,13 +323,14 @@ public sealed partial class HookService : BackgroundService
     public async Task<IReadOnlyList<HookRun>> RunAsync(TaskEvent e, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(e);
-        var (file, _) = Config();
+        var (file, _) = _hooks.Read();
         if (file is null)
         {
             return [];
         }
 
-        var hooks = file.Hooks.Where(p => p.Key == "*" || p.Key == e.Event).SelectMany(p => p.Value).Where(h => h.Problem() is null && h.Matches(e)).ToList();
+        // Switched off, or added or changed by an agent and not approved yet: doesn't run.
+        var hooks = file.Hooks.Where(p => p.Key == "*" || p.Key == e.Event).SelectMany(p => p.Value).Where(h => h.IsActive && h.Problem() is null && h.Matches(e)).ToList();
         var runs = new List<HookRun>();
         await _running.WaitAsync(cancellationToken).ConfigureAwait(false);
         try

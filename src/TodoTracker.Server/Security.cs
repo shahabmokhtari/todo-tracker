@@ -58,11 +58,18 @@ internal static class Security
     public const string ClientHeader = "X-TodoTracker-Client";
     public const string ActorHeader = "X-TodoTracker-Actor";
     private const string ActorKey = "tt.actor";
+    private const string SessionKey = "tt.session";
 
     private static readonly string[] LoopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
 
     public static Actor ActorOf(HttpContext context) =>
         context.Items.TryGetValue(ActorKey, out var actor) && actor is Actor a ? a : Actor.User;
+
+    /// <summary>
+    /// The request comes from the signed-in app (its session cookie), so from the person at this computer; not from
+    /// something holding the API token (an AI agent, a script, another app).
+    /// </summary>
+    public static bool IsAppSession(HttpContext context) => context.Items.TryGetValue(SessionKey, out var session) && session is true;
 
     public static async Task Guard(HttpContext context, RequestDelegate next, TodoTrackerServerOptions options, ApiToken token)
     {
@@ -131,6 +138,7 @@ internal static class Security
             }
 
             context.Items[ActorKey] = Actor.User;
+            context.Items[SessionKey] = true;
         }
         else
         {

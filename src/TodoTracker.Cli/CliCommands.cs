@@ -43,6 +43,12 @@ internal static class CliCommands
         new CliCommand("stage", "tt stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (tt done) to move it to Done.", Stage),
         new CliCommand("archive", "tt archive <task> | tt archive --done-before <days>", "Put finished tasks away (tt list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
         new CliCommand("time", "tt time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
+        new CliCommand("hooks", "tt hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
+            "add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…\n" +
+            "edit <id> [--event e] and any of the add options (only what you give changes).\n" +
+            "<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).\n" +
+            "A command gets the event as JSON on stdin. With --as (or TT_AGENT) a hook you add or change waits for approval:\n" +
+            "tt hooks approve <id> (without --as), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -541,5 +547,96 @@ internal static class CliCommands
             default:
                 throw new CliUsageException("tt vault takes guide, obsidian, or use <folder>.");
         }
+    }
+
+    private static async Task Hooks(CliSession s, CliArgs a)
+    {
+        a.Allow("powershell", "bash", "url", "name", "timeout", "group", "tag", "label", "actor", "event");
+        var store = new TodoTracker.Server.Hooks.HookStore(s.Options.DataDirectory);
+
+        // tt run by an agent (--as / TT_AGENT): what it adds or changes waits for the person's approval, like in the app.
+        var author = s.Actor.Kind == ActorKind.Agent ? new TodoTracker.Server.Hooks.HookAuthor(s.Actor.Name ?? "agent", Trusted: false) : TodoTracker.Server.Hooks.HookAuthor.You;
+        var verb = a.Words.Count > 0 ? a.Words[0].ToLowerInvariant() : "list";
+        string Id() => a.Word(1, "which hook (its id, as tt hooks lists it)");
+        switch (verb)
+        {
+            case "list":
+                await s.Print(store.List(), (o, list) => o.Hooks(list, store.FilePath, store.Read().Problem)).ConfigureAwait(false);
+                break;
+            case "path":
+                await s.Print(store.FilePath, (o, p) => o.Line(p)).ConfigureAwait(false);
+                break;
+            case "add":
+                var added = store.Add(a.Word(1, "the event (taskCompleted, reminderDue… or *)"), Fill(new TodoTracker.Server.Hooks.HookSpec(), a), author, s.Now);
+                await s.Print(added, (o, h) => o.Line(h.Hook.NeedsApproval == true
+                    ? $"Added hook {h.Id} for {h.Event}. It waits for approval: tt hooks approve {h.Id} (or Settings › Hooks)."
+                    : $"Added hook {h.Id} for {h.Event}.")).ConfigureAwait(false);
+                break;
+            case "edit":
+                var current = store.Get(Id());
+                var changed = store.Update(current.Id, a.Value("event"), Fill(current.Hook, a), author, s.Now);
+                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It waits for approval: tt hooks approve {h.Id}." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
+                break;
+            case "enable" or "disable":
+                var toggled = store.SetEnabled(Id(), verb == "enable");
+                await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
+                break;
+            case "approve":
+                var approved = store.Approve(Id(), author);
+                await s.Print(approved, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
+                break;
+            case "remove" or "delete":
+                var id = Id();
+                store.Remove(id);
+                await s.Print(new { removed = id }, (o, _) => o.Line($"Removed hook {id}.")).ConfigureAwait(false);
+                break;
+            case "test":
+                var runs = await TestHooks(s, store, a.Words.Count > 1 ? a.Words[1] : "test").ConfigureAwait(false);
+                await s.Print(runs, (o, r) => o.HookRuns(r)).ConfigureAwait(false);
+                break;
+            default:
+                throw new CliUsageException("tt hooks takes list, add, edit, enable, disable, approve, remove, test or path.");
+        }
+    }
+
+    /// <summary>A hook with what was given on the command line (the rest as it was).</summary>
+    private static TodoTracker.Server.Hooks.HookSpec Fill(TodoTracker.Server.Hooks.HookSpec hook, CliArgs a)
+    {
+        var url = a.Value("url");
+        var match = hook.Match ?? new TodoTracker.Server.Hooks.HookMatch();
+        return new TodoTracker.Server.Hooks.HookSpec
+        {
+            Type = url is not null ? "http" : a.Value("powershell") is not null || a.Value("bash") is not null ? "command" : hook.Type,
+            Powershell = a.Value("powershell") ?? hook.Powershell,
+            Bash = a.Value("bash") ?? hook.Bash,
+            Url = url ?? hook.Url,
+            Headers = hook.Headers,
+            Cwd = hook.Cwd,
+            Env = hook.Env,
+            Name = a.Value("name") ?? hook.Name,
+            TimeoutSec = a.Value("timeout") is { } t ? (int.TryParse(t, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) ? seconds : throw new CliUsageException("--timeout is a number of seconds.")) : hook.TimeoutSec,
+            Match = new TodoTracker.Server.Hooks.HookMatch
+            {
+                Groups = a.Values("group").Count > 0 ? [.. a.Values("group")] : match.Groups,
+                Tags = a.Values("tag").Count > 0 ? [.. a.Values("tag")] : match.Tags,
+                Labels = a.Values("label").Count > 0 ? [.. a.Values("label")] : match.Labels,
+                Actors = a.Values("actor").Count > 0 ? [.. a.Values("actor")] : match.Actors,
+            },
+        };
+    }
+
+    /// <summary>Runs the hooks for <paramref name="eventName"/> now on this computer, with an example task.</summary>
+    private static async Task<IReadOnlyList<TodoTracker.Server.Hooks.HookRun>> TestHooks(CliSession s, TodoTracker.Server.Hooks.HookStore store, string eventName)
+    {
+        if (!TodoTracker.Server.Hooks.EventNames.All.ContainsKey(eventName))
+        {
+            throw new CliUsageException($"\"{eventName}\" isn't an event.");
+        }
+
+        var group = await s.Read(b => b.Groups[0].Name).ConfigureAwait(false);
+        var task = new TodoTracker.Server.Hooks.EventTask(Guid.Empty, "Example task", ["Example task"], group, [], [], "normal", null, eventName == "taskCompleted", null, null);
+        var e = new TodoTracker.Server.Hooks.TaskEvent(TodoTracker.Server.Hooks.TaskEvent.CurrentVersion, $"test-{Guid.NewGuid():N}"[..17], eventName, s.Now, new TodoTracker.Server.Hooks.EventActor("user", null), "A test from tt hooks test", task);
+        using var service = new TodoTracker.Server.Hooks.HookService(s.Store, new ServerEvents(), store, s.Options, TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<TodoTracker.Server.Hooks.HookService>.Instance);
+        return await service.RunAsync(e).ConfigureAwait(false);
     }
 }

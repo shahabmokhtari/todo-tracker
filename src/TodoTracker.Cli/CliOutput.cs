@@ -181,6 +181,46 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
         }
     }
 
+    public void Hooks(IReadOnlyList<TodoTracker.Server.Hooks.HookEntry> hooks, string path, string? problem)
+    {
+        if (problem is not null)
+        {
+            output.WriteLine(problem);
+        }
+
+        if (hooks.Count == 0)
+        {
+            output.WriteLine($"No hooks yet ({path}). Add one: tt hooks add taskCompleted --bash 'cat >> ~/done.jsonl' --powershell '$input | Add-Content $HOME\\done.jsonl'");
+            return;
+        }
+
+        foreach (var h in hooks)
+        {
+            var state = h.Problem ?? h.State;
+            output.WriteLine($"{h.Id}  {h.Event,-16} {state,-15} {h.Hook.Label}{(h.Hook.NeedsApproval == true ? $"  (added by {h.Hook.AddedBy})" : string.Empty)}");
+        }
+
+        output.WriteLine();
+        output.WriteLine($"File: {path}");
+    }
+
+    public void HookRuns(IReadOnlyList<TodoTracker.Server.Hooks.HookRun> runs)
+    {
+        if (runs.Count == 0)
+        {
+            output.WriteLine("No hook runs for that event (none set up, or they're off or waiting for approval).");
+        }
+
+        foreach (var r in runs)
+        {
+            output.WriteLine($"{(r.Ok ? "OK    " : "FAILED")} {r.Hook}{(r.ExitCode is { } code && !r.Ok ? $" (exit {code})" : string.Empty)}");
+            if (r.Output is { } text)
+            {
+                output.WriteLine("  " + text.Replace("\n", "\n  ", StringComparison.Ordinal));
+            }
+        }
+    }
+
     public void Labels(IReadOnlyList<LabelDto> labels)
     {
         if (labels.Count == 0)

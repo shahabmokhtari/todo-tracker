@@ -47,6 +47,31 @@ public sealed class HookFile
 
 public sealed class HookSpec
 {
+    /// <summary>Its handle for editing (written by the app; one written by hand without it gets one from its content).</summary>
+    public string? Id { get; set; }
+
+    /// <summary><c>false</c>: switched off (kept, doesn't run).</summary>
+    public bool? Enabled { get; set; }
+
+    /// <summary>
+    /// Added or changed by an AI agent (or another app with the API token): it doesn't run until you approve it in
+    /// Settings › Hooks or with <c>tt hooks approve</c>.
+    /// </summary>
+    public bool? NeedsApproval { get; set; }
+
+    /// <summary>Who added or last changed it (an agent's name, or <c>you</c>).</summary>
+    public string? AddedBy { get; set; }
+
+    public DateTimeOffset? AddedAt { get; set; }
+
+    /// <summary>Whether it runs: switched on, and approved if an agent added or changed it.</summary>
+    [JsonIgnore]
+    public bool IsActive => Enabled != false && NeedsApproval != true;
+
+    /// <summary><c>on</c>, <c>off</c>, or <c>needs approval</c>.</summary>
+    [JsonIgnore]
+    public string State => NeedsApproval == true ? "needs approval" : Enabled == false ? "off" : "on";
+
     /// <summary><c>command</c> (runs a program) or <c>http</c> (posts the event).</summary>
     public string Type { get; set; } = "command";
 
@@ -75,11 +100,14 @@ public sealed class HookSpec
     public const int DefaultTimeoutSec = 30;
     public const int MaxTimeoutSec = 600;
 
+    [JsonIgnore]
     public TimeSpan Timeout => TimeSpan.FromSeconds(Math.Clamp(TimeoutSec ?? DefaultTimeoutSec, 1, MaxTimeoutSec));
 
     /// <summary>The script for this computer, or null when there's none for it.</summary>
+    [JsonIgnore]
     public string? Script => OperatingSystem.IsWindows() ? Powershell : Bash;
 
+    [JsonIgnore]
     public string Label => Name ?? (Type == "http" ? Url : Script) ?? Type;
 
     /// <summary>Why this hook can't run, or null when it can.</summary>

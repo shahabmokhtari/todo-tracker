@@ -161,6 +161,7 @@ make big things small, log progress, defer instead of piling up, never delete). 
 | `complete_task`, `reopen_task`, `update_task`, `move_task` | Finish, undo, change, reorganize |
 | `put_first` | Put tasks at the top of Do now (when the user says what matters most) |
 | `plan_task` | Plan a block of time to work on a task (it becomes the thing to do now while the block is on) |
+| `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks: run a command or call a web address when something happens. A hook an agent adds or changes waits until the user approves it (Settings › Hooks, or `tt hooks approve`) |
 | `list_labels`, `vault_info`, `get_report` | Labels, where the files are (and their format), the timeline |
 | `task_history`, `restore_task_version` | Every change is a version; put a task back |
 | `move_card`, `archive_task`, `unarchive_task` | Board columns (inbox, next, doing); put finished tasks away |

@@ -13,7 +13,7 @@ namespace TodoTracker.Server;
 /// destroy data. Tasks also live as markdown files (see <c>vault_info</c>), so agents with file tools can work there.
 /// </summary>
 [McpServerToolType]
-public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history, TodoTrackerServerOptions options)
+public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history, TodoTrackerServerOptions options, Hooks.HookStore hooks)
 {
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
@@ -400,6 +400,45 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         var match = board.Groups.FirstOrDefault(g => string.Equals(g.Name, group.Trim(), StringComparison.OrdinalIgnoreCase) || g.Id.ToString() == group.Trim());
         return match?.Id ?? throw new ArgumentException($"Unknown group \"{group}\". Groups: {string.Join(", ", board.Groups.Select(g => g.Name))}.", nameof(group));
     }
+
+    // ---- Hooks: what runs when something happens. An agent's hook waits for the person's approval. ----------------
+
+    [McpServerTool(Name = "list_hooks", ReadOnly = true), Description("The hooks set up on this computer: what runs (a command or a web address) when something happens in Todo Tracker, and whether each is on, off or waiting for approval.")]
+    public Task<IReadOnlyList<Hooks.HookEntry>> ListHooks() => Guard(() => Task.FromResult(hooks.List()));
+
+    [McpServerTool(Name = "add_hook"), Description("Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user approves it in Todo Tracker (Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.")]
+    public Task<Hooks.HookEntry> AddHook(
+        McpServer server,
+        [Description("When it runs: an event name, or * for every event.")] string @event,
+        [Description("What to run on Windows (PowerShell). Read the event with [Console]::In.ReadToEnd() | ConvertFrom-Json.")] string? powershell = null,
+        [Description("What to run on Linux and macOS (bash). The event is on stdin, e.g. jq -r .task.title.")] string? bash = null,
+        [Description("Instead of a command: post the event as JSON to this http(s) URL.")] string? url = null,
+        [Description("A short name for it.")] string? name = null,
+        [Description("Stop it after this many seconds (default 30, at most 600).")] int? timeoutSec = null,
+        [Description("Only for tasks in these groups.")] string[]? groups = null,
+        [Description("Only for tasks with one of these tags.")] string[]? tags = null,
+        [Description("Only for tasks with one of these labels.")] string[]? labels = null,
+        [Description("Only when done by these: user, agent, vault, system, connector, or an agent's name.")] string[]? actors = null) =>
+        Guard(() => Task.FromResult(hooks.Add(@event, new Hooks.HookSpec
+        {
+            Type = url is null ? "command" : "http",
+            Powershell = powershell,
+            Bash = bash,
+            Url = url,
+            Name = name,
+            TimeoutSec = timeoutSec,
+            Match = new Hooks.HookMatch { Groups = groups?.ToList(), Tags = tags?.ToList(), Labels = labels?.ToList(), Actors = actors?.ToList() },
+        }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow())));
+
+    [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.")]
+    public Task<Hooks.HookEntry> SetHookEnabled(string hookId, bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled)));
+
+    [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook (by its id from list_hooks).")]
+    public Task<Hooks.HookRemoved> RemoveHook(string hookId) => Guard(() =>
+    {
+        hooks.Remove(hookId);
+        return Task.FromResult(new Hooks.HookRemoved(hookId));
+    });
 
     /// <summary>Turns domain validation errors into MCP tool errors with a readable message for the agent.</summary>
     private static async Task<T> Guard<T>(Func<Task<T>> action)

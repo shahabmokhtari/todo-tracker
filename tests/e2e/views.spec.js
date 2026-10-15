@@ -733,19 +733,42 @@ test('Repeat: a task set to repeat from its details moves on when done, counts a
   expect(errors).toEqual([]);
 });
 
-test('Hooks: Settings shows where hooks live, a sample to start from, and can try an event', async ({ page, request }) => {
+test('Hooks: add one in Settings (it runs at once), approve one an AI agent added, try them, remove one', async ({ page, request }) => {
   const errors = watchErrors(page);
+  page.on('dialog', (d) => d.accept());
   await open(page, request);
   await page.evaluate(() => { location.hash = '#/settings'; });
   const hooks = page.locator('#settings-hooks');
   await expect(hooks).toContainText('hooks.json');
-  await expect(hooks.locator('.hook-sample')).toContainText('"taskCompleted"');
-  await hooks.getByRole('combobox', { name: 'Event to try' }).selectOption('reminderDue');
+
+  // Yours: added in the app, on at once.
+  await hooks.getByRole('button', { name: 'Add a hook' }).click();
+  await hooks.getByRole('combobox', { name: 'When' }).selectOption('taskCompleted');
+  await hooks.getByRole('textbox', { name: 'PowerShell (Windows)' }).fill('exit 0');
+  await hooks.getByRole('textbox', { name: 'bash (Linux, macOS)' }).fill('exit 0');
+  await hooks.getByRole('textbox', { name: 'Name' }).fill('Log what got done');
+  await hooks.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('#toast')).toContainText('Hook added');
+  await expect(hooks.locator('.hook-row', { hasText: 'Log what got done' })).toContainText('on');
+
+  // An agent's: waits for approval, shows what it would run.
+  await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Agent hook' } } });
+  await page.evaluate(() => { location.hash = '#/today'; });
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  const pending = hooks.locator('.hook-row', { hasText: 'Agent hook' });
+  await expect(pending).toContainText('needs approval');
+  await expect(pending).toContainText('Added or changed by claude');
+  await pending.getByRole('button', { name: 'Approve' }).click();
+  await expect(pending).toContainText('on');
+
+  await hooks.getByRole('combobox', { name: 'Event to try' }).selectOption('taskCompleted');
   await hooks.getByRole('button', { name: 'Try it' }).click();
-  await expect(page.locator('#toast')).toContainText('No hook runs for that event');
+  await expect(page.locator('#toast')).toContainText('2 of 2 hooks worked');
+
+  await pending.getByRole('button', { name: 'Remove Agent hook' }).click();
+  await expect(hooks.locator('.hook-row', { hasText: 'Agent hook' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
-
 test('Plan: drag a task onto a time, see the block, open it, and take it off the plan from its details', async ({ page, request }) => {
   const errors = watchErrors(page);
   const task = await add(request, 'Write the quarterly report');

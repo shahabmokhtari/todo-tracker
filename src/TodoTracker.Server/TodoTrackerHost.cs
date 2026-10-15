@@ -86,6 +86,7 @@ public static class TodoTrackerHost
         services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
         services.AddSingleton<VaultLinks>();
         services.AddSingleton<HistoryService>();
+        services.AddSingleton(new Hooks.HookStore(options.DataDirectory));
     }
 
     /// <summary>Opens the vault the app uses (see <see cref="TodoTrackerServerOptions.ResolveVaultPath"/>).</summary>

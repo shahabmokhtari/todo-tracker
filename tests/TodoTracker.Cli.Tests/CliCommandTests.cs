@@ -474,4 +474,26 @@ public sealed class CliCommandTests : IDisposable
         Assert.Equal(28, report["days"]!.AsArray().Count);
         Assert.Contains("tracked", await _tt.Ok("time", "--days", "7"), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Hooks_can_be_added_changed_switched_off_approved_and_removed()
+    {
+        var added = (await _tt.Run("hooks", "add", "taskCompleted", "--bash", "cat >> done.jsonl", "--powershell", "$input | Add-Content done.jsonl", "-g", "Work", "--json")).Json;
+        var id = added["id"]!.GetValue<string>();
+        Assert.Equal("on", added["state"]!.GetValue<string>());
+        Assert.Contains(id, await _tt.Ok("hooks"), StringComparison.Ordinal);
+
+        // Changed by an agent (--as): it waits for approval, which the agent can't give but you can.
+        Assert.Contains("waits for approval", await _tt.Ok("hooks", "edit", id, "--name", "log it", "--as", "claude"), StringComparison.Ordinal);
+        var refused = await _tt.Run("hooks", "approve", id, "--as", "claude");
+        Assert.NotEqual(0, refused.ExitCode);
+        Assert.Contains("Only you can approve", refused.Error, StringComparison.Ordinal);
+        Assert.Contains("is on", await _tt.Ok("hooks", "approve", id), StringComparison.Ordinal);
+
+        Assert.Contains("is off", await _tt.Ok("hooks", "disable", id), StringComparison.Ordinal);
+        var hook = (await _tt.Run("hooks", "--json")).Json[0]!["hook"]!;
+        Assert.Equal(("log it", "Work"), (hook["name"]!.GetValue<string>(), hook["match"]!["groups"]![0]!.GetValue<string>()));
+        Assert.Contains("Removed", await _tt.Ok("hooks", "remove", id), StringComparison.Ordinal);
+        Assert.Contains("No hooks yet", await _tt.Ok("hooks"), StringComparison.Ordinal);
+    }
 }
