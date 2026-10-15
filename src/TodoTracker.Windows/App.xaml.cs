@@ -28,6 +28,7 @@ public partial class App : Application
     private AppWindowHost? _appHost;
     private BreakOverlay? _breaks;
     private TrayIcon? _tray;
+    private string? _pendingLink;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -36,8 +37,9 @@ public partial class App : Application
         TaskScheduler.UnobservedTaskException += (_, unobserved) => unobserved.SetObserved();
         var args = StartupArgs.Parse(e.Args);
 
-        // One sidebar at a time (tests included): a second launch brings the running one to the front instead.
-        _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(30) : TimeSpan.Zero);
+        // One sidebar at a time (tests included): a second launch brings the running one to the front instead, or hands
+        // it the deep link it was started with (todotracker://task/<id>).
+        _instance = SingleInstance.TryAcquire(wait: args.Restart ? TimeSpan.FromSeconds(30) : TimeSpan.Zero, message: args.Link);
         if (_instance is null)
         {
             if (args.Restart)
@@ -51,6 +53,8 @@ public partial class App : Application
         }
 
         _instance.OnShowRequested(() => Dispatcher.BeginInvoke(() => _window?.BringToFront()));
+        _instance.OnMessage(link => Dispatcher.BeginInvoke(() => OpenLink(link)));
+        _pendingLink = args.Link;
         try
         {
             if (args.SmokeTest)
@@ -85,6 +89,24 @@ public partial class App : Application
             MessageBox.Show($"Todo Tracker could not start:\n\n{ex.Message}", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
+    }
+
+    /// <summary>A deep link (todotracker://task/&lt;id&gt;): the app window on that task. Anything else is ignored.</summary>
+    private void OpenLink(string link)
+    {
+        if (TaskLinks.AppPath(link) is not { } path)
+        {
+            return;
+        }
+
+        if (_appHost is null)
+        {
+            // Still starting: opened once the app is up.
+            _pendingLink = link;
+            return;
+        }
+
+        _appHost.Open(path);
     }
 
     /// <summary>Last-chance handler: the always-on sidebar logs and keeps running instead of vanishing.</summary>
@@ -279,6 +301,17 @@ public partial class App : Application
         // Never leave the screen edge reserved if the process dies or exits without closing the window.
         AppDomain.CurrentDomain.UnhandledException += (_, _) => window.ReleaseScreenEdge();
         AppDomain.CurrentDomain.ProcessExit += (_, _) => window.ReleaseScreenEdge();
+        if (interactive && args.DataDirectory is null && args.Port is null)
+        {
+            // The user's own app (not a test run on another folder or port) answers todotracker:// links.
+            DeepLinkRegistration.Register();
+        }
+
+        if (_pendingLink is { } link)
+        {
+            _pendingLink = null;
+            OpenLink(link);
+        }
         if (args.Screenshot is { } shot && !args.SmokeTest)
         {
             // Developer/docs aid: render the sidebar to a PNG shortly after startup (works without an interactive desktop).
@@ -498,10 +531,17 @@ public partial class App : Application
     }
 }
 
-internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null, bool Restart = false)
+internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null, bool Restart = false, string? Link = null)
 {
     public static StartupArgs Parse(string[] args)
     {
+        // Started for a link: only the link counts. Windows pastes the raw link into the command line, so a link
+        // with a quote in it could otherwise add options of its own (--data, --screenshot…).
+        if (args.FirstOrDefault(a => a.StartsWith(TaskLinks.Scheme + ":", StringComparison.OrdinalIgnoreCase)) is { } link)
+        {
+            return new StartupArgs(false, null, null, null, false, Link: link);
+        }
+
         var result = new StartupArgs(false, null, null, null, false);
         for (var i = 0; i < args.Length; i++)
         {

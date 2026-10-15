@@ -15,6 +15,8 @@ public sealed class AppNavigationTests
     [InlineData("https://example.com/a", AppLink.Outside)]
     [InlineData("mailto:me@example.com", AppLink.OutsideIfAsked)]
     [InlineData("obsidian://open?vault=x", AppLink.OutsideIfAsked)]
+    [InlineData("todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", AppLink.TaskLink)]
+    [InlineData("todotracker://settings/x", AppLink.Blocked)]
     [InlineData("data:text/html,<h1>hi</h1>", AppLink.Blocked)]
     [InlineData("javascript:alert(1)", AppLink.Blocked)]
     [InlineData("file:///C:/Windows/win.ini", AppLink.Blocked)]

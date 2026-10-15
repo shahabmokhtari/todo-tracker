@@ -682,6 +682,19 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Copies a todotracker:// link that opens the task in the app (for a note, a chat, a calendar invite).</summary>
+    [RelayCommand]
+    private void CopyLink(CardViewModel? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        _shell.CopyLink(TaskLinks.ForTask(card.Id), card.Title);
+        StatusMessage = "Link copied. Clicking it opens this task in the app.";
+    }
+
     /// <summary>Opens "Connect an AI app" (Claude, Copilot, VS Code, ChatGPT…) in the browser.</summary>
     [RelayCommand]
     private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));

@@ -201,6 +201,17 @@ export function obsidianLink({ url, installed, userAgent = '', touchPoints = 0 }
   return installed ? { href: url, label: 'Open in Obsidian', get: false } : { href: OBSIDIAN.download, label: 'Get Obsidian', get: true };
 }
 
+/**
+ * A link that opens the installed app on a task (TaskLinks in the core): plain text, plus HTML named after the task so
+ * pasting into chat, mail, or a note shows its title.
+ */
+export function taskLink(id, title = '') {
+  const url = `todotracker://task/${encodeURIComponent(id)}`;
+  const name = (title || '').trim() || 'Task';
+  const escaped = name.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  return { url, text: url, html: `<a href="${url}">${escaped}</a>` };
+}
+
 /** Search query for a clicked tag or label chip (same syntax as the server's TaskQuery). */
 export function queryFor({ tag, label }) {
   if (tag) return /\s/.test(tag) ? `#"${tag}"` : `#${tag}`;

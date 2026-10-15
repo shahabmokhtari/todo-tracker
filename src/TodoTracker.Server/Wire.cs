@@ -104,7 +104,8 @@ public sealed record ItemDto(
     string? Accent = null,
     string? Repeat = null,
     DateTimeOffset? PlannedAt = null,
-    int? PlannedMinutes = null);
+    int? PlannedMinutes = null,
+    string? Link = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -405,7 +406,8 @@ public static class Wire
         board.AccentOf(item),
             item.Repeat?.ToString(),
             item.PlannedAt,
-            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes,
+            TaskLinks.ForTask(item.Id));
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>

@@ -33,6 +33,9 @@ public sealed class CliContext
     /// <summary>Who changes are attributed to when <c>--as</c> isn't given (<c>TT_AGENT</c>).</summary>
     public string? Agent { get; init; } = Environment.GetEnvironmentVariable("TT_AGENT");
 
+    /// <summary>Opens a todotracker:// link with the app that handles it (tests record it instead).</summary>
+    public Action<string> OpenLink { get; init; } = link => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(link) { UseShellExecute = true })?.Dispose();
+
     public static CliContext ForConsole() => new()
     {
         Out = Console.Out,

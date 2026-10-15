@@ -51,6 +51,12 @@ struct TodoTrackerApp: App {
         DashboardView(model: model)
             .followsAppTheme(theme)
             .onAppear { BoardModel.requestNotificationPermission() }
+            // todotracker://task/<id> (Info.plist registers the scheme): the task opens here.
+            .onOpenURL { model.open(link: $0) }
+            #if os(macOS)
+            // Links go to the open window instead of opening another one.
+            .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
+            #endif
     }
 }
 

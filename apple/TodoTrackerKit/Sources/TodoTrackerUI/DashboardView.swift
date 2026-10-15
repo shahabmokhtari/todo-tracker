@@ -142,6 +142,18 @@ public struct DashboardView: View {
         .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id })) { wrapped in
             TaskDetailView(model: model, itemId: wrapped.id)
         }
+        // A todotracker://task/<id> link: that task's details (also when the link started the app).
+        .onAppear {
+            if let id = model.openTaskId {
+                detailId = id
+                model.openTaskId = nil
+            }
+        }
+        .onChange(of: model.openTaskId) { _, id in
+            guard let id else { return }
+            detailId = id
+            model.openTaskId = nil
+        }
         #if os(iOS)
         // The Mac covers every screen with its own windows (see the app); here the break covers the app.
         .fullScreenCover(isPresented: Binding(get: { model.breakPrompt != nil }, set: { if !$0 { model.takeBreak() } })) {
