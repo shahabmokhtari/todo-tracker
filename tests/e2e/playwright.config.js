@@ -4,7 +4,8 @@ import path from 'node:path';
 
 const port = Number(process.env.E2E_PORT || 5399);
 const token = 'e2e-token-0123456789abcdefghijklmnop';
-const dataDir = path.join(os.tmpdir(), `tt-e2e-${Date.now()}`);
+// Set once (workers inherit it): specs read the owner key from here.
+const dataDir = (process.env.TT_E2E_DATA ??= path.join(os.tmpdir(), `tt-e2e-${Date.now()}`));
 const configuration = process.env.E2E_CONFIGURATION || 'Debug';
 // Ask AI talks to a scripted agent, never to a real Copilot/Claude that happens to be installed.
 const fakeAgent = path.resolve(`../FakeAcpAgent/bin/${configuration}/net10.0/FakeAcpAgent.dll`);

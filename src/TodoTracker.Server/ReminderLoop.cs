@@ -11,9 +11,19 @@ public sealed class ServerEvents
 
     public event EventHandler<PomodoroEvent>? Pomodoro;
 
+    /// <summary>A hook an AI agent added or changed waits for approval (raised once per version of it): ask the person.</summary>
+    public event EventHandler<Hooks.HookEntry>? HookApprovalNeeded;
+
     internal void RaiseReminder(ReminderNotification notification) => Reminder?.Invoke(this, notification);
 
     internal void RaisePomodoro(PomodoroEvent evt) => Pomodoro?.Invoke(this, evt);
+
+    internal void RaiseHookApprovalNeeded(Hooks.HookEntry entry) => HookApprovalNeeded?.Invoke(this, entry);
+
+    internal bool AsksForHookApproval => HookApprovalNeeded is not null && (CanAskAboutHooks?.Invoke() ?? true);
+
+    /// <summary>Whether the app listening can ask right now (notifications switched off: no; the app's page asks instead).</summary>
+    public Func<bool>? CanAskAboutHooks { get; set; }
 }
 
 internal sealed class EventNotifier(ServerEvents events) : IReminderNotifier

@@ -25,6 +25,14 @@ everything it would do and its version). Approving names the version you looked 
 approved (each change gets a new random revision, so a version can't be matched by trying). Changing a hook that waits for approval keeps it waiting;
 only approving approves. Switching a hook off or removing it needs no approval.
 
+**You're asked.** You don't have to go looking: on Windows a notification says *"Claude wants to run a hook"* with what
+it would run. When that line is all of it (a short, plain command or address with nothing else set), it has **Allow**;
+otherwise **Review…** opens all of it in Settings › Hooks first. Both have **Don't allow**. Without the Windows app, or
+with its notifications switched off, the app's own window or browser tab (the owner's session) asks in a dialog that
+shows everything. Each version is asked about once: **Allow** approves exactly what you saw, and from then on the hook
+just runs, with nothing more to check; **Don't allow** removes it (only if it still waits, in the version you saw);
+*Later* leaves it waiting in Settings › Hooks. If an agent changes it afterwards, you're asked again.
+
 Who is "you": `tt` run without `--as`, and a window the app opened itself (the sidebar, Settings in the app window,
 *Open in browser* from the tray or the Mac app). Those links come from the app's own process, or with the owner key
 (`owner-key` next to `api-token` in the data folder, never sent by the server). A browser signed in by pasting the API

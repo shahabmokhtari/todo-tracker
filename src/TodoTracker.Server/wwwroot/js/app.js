@@ -14,6 +14,7 @@ import { createReportsView } from './views/reports.js';
 import { createPlanView } from './views/plan.js';
 import { createSettingsView } from './views/settings.js';
 import { followTheme as follow } from './themes.js';
+import { askAboutHooks } from './hook-prompt.js';
 import { duration, toLocalInput as localInput } from './timefmt.js';
 
 /** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
@@ -1814,15 +1815,19 @@ function refreshViewQuietly() {
 }
 
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
+/** A hook an AI agent added or changed waits for approval: ask here (when no desktop app asks itself). */
+const askHooks = () => askAboutHooks({ api, h, icon, toast });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') askHooks(); });
 /** The shared theme, changed elsewhere (the sidebar's menu, another window). */
 const followTheme = () => follow(() => api('/api/settings').then((s) => s.theme)).catch(() => {});
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') followTheme(); });
 // Coming back to this window (from the sidebar, where the theme may have just changed).
 window.addEventListener('focus', followTheme);
-setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); followTheme(); } }, 15000);
+setInterval(() => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); followTheme(); askHooks(); } }, 15000);
 refresh().then(() => {
   // The theme every window shares (js/theme.js already applied the one remembered here).
   followTheme();
+  askHooks();
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
   loadPlugins();
   const params = new URLSearchParams(location.search);
