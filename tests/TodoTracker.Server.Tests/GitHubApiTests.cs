@@ -88,9 +88,11 @@ public sealed class GitHubApiTests
         github.AddRepo("me/todo-personal", "My own notes");
         var groups = await server.Store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList());
 
-        var view = await (await client.PutAsJsonAsync($"{Base}/every-group", new { on = true })).Json();
+        Assert.True((await (await client.PutAsJsonAsync($"{Base}/every-group", new { on = true })).Json())["everyGroup"]!.GetValue<bool>());
 
-        Assert.True(view["everyGroup"]!.GetValue<bool>());
+        // The repositories are made in the background (one at a time, so this waits for that run).
+        await server.App.Services.GetRequiredService<GitHubIssues>().SyncAllAsync(CancellationToken.None);
+        var view = await client.GetJson(Base);
         Assert.Equal(groups.Count - 1, cli.Created.Count); // every group but Work (below)
         Assert.Contains(cli.Created, c => c.Name == "todo-personal-2");
         Assert.All(view["groups"]!.AsArray(), g => Assert.StartsWith("me/todo-", g!["repo"]!.GetValue<string>(), StringComparison.Ordinal));
@@ -118,6 +120,29 @@ public sealed class GitHubApiTests
             Assert.Equal(HttpStatusCode.NotFound, (await off.Client().PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).StatusCode);
             Assert.Empty(offCli.Created);
         }
+    }
+
+    [Fact]
+    public async Task A_public_repository_is_refused_and_a_stopped_group_stays_stopped()
+    {
+        var (server, github, cli) = await StartAsync();
+        await using var _ = server;
+        var client = server.Client();
+        var group = await server.Store.UpdateAsync(b => b.AddGroup("Errands", null, Actor.User, ServerFixture.T0).Id);
+        github.AddRepo("me/open-notes")["private"] = false;
+
+        var refused = await client.PostAsJsonAsync($"{Base}/groups/{group}/connect", new { repo = "me/open-notes" });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Contains("is public", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        // Stopped while every group has its repository: it isn't given one again.
+        await (await client.PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).Json();
+        await client.DeleteAsync($"{Base}/groups/{group}");
+        await client.PutAsJsonAsync($"{Base}/every-group", new { on = true });
+        var github2 = server.App.Services.GetRequiredService<GitHubIssues>();
+        await github2.SyncAllAsync(CancellationToken.None);
+        Assert.Null((await client.GetJson(Base))["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Errands")!["repo"]);
+        Assert.Single(cli.Created, c => c.Name == "todo-errands");
     }
 
     [Theory]

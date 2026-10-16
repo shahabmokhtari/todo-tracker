@@ -27,9 +27,12 @@ public sealed partial class GitHubCli : IGitHubCli
     private static readonly TimeSpan Short = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan Long = TimeSpan.FromSeconds(90);
 
-    private readonly Lazy<string?> _path = new(() => Find(Environment.GetEnvironmentVariable("PATH"), File.Exists));
+    private string? _found;
 
-    public bool Installed => _path.Value is not null;
+    /// <summary>Where gh is (looked for again until it's found: it may be installed while the app runs).</summary>
+    private string? GhPath => _found ??= Find(Environment.GetEnvironmentVariable("PATH"), File.Exists);
+
+    public bool Installed => GhPath is not null;
 
     /// <summary>The token, asking <c>gh</c> if the environment has none (blocks: call it off the UI thread).</summary>
     public static string? Token()
@@ -58,7 +61,7 @@ public sealed partial class GitHubCli : IGitHubCli
 
     public async Task<string> CreateRepoAsync(string name, string description, CancellationToken cancellationToken)
     {
-        var path = _path.Value ?? throw new InvalidOperationException(InstallHint);
+        var path = GhPath ?? throw new InvalidOperationException(InstallHint);
         var (code, output, error) = await Task.Run(
             () => Run(path, ["repo", "create", name, "--private", "--description", description, "--disable-wiki"], Long),
             cancellationToken).ConfigureAwait(false);

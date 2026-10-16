@@ -76,6 +76,9 @@ public sealed record ConnectorSettings
     public string? LastResult { get; init; }
 
     public IReadOnlyList<string> Problems { get; init; } = [];
+
+    /// <summary>GitHub: the person stopped this group (with "every group" on, it doesn't get a repository again).</summary>
+    public bool Stopped { get; init; }
 }
 
 /// <summary>

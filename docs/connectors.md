@@ -109,6 +109,12 @@ Change any of these on GitHub (add `snooze:…` to snooze it, close the issue to
 next sync; change the task here and the issue follows. A task deleted here closes its issue as *not planned*. Subtasks,
 notes, time and attachments stay here. Pull requests in the repository are left alone.
 
+Labels that aren't Todo Tracker's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
+don't make sense here (`color:red`) are left alone too, and never hold up the rest of the task. Two labels for one
+thing (two `snooze:` labels): the later time wins. A task moved to another group closes its issue (as not planned)
+and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
+keep growing. Repositories must be private: a public one is refused.
+
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,
 `Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away.

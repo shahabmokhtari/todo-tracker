@@ -6,7 +6,8 @@ using System.Text.Json.Nodes;
 namespace TodoTracker.Core.Tests.Connectors;
 
 /// <summary>GitHub in memory: the signed-in user, repositories (topics, description) and their issues (only what the
-/// connector uses).</summary>
+/// connector uses). Labels are the repository's, without case, like GitHub's: an issue given "color:#ff8800" gets an
+/// existing "color:#FF8800".</summary>
 public sealed class FakeGitHub : HttpMessageHandler
 {
     private readonly Dictionary<string, int> _next = new(StringComparer.OrdinalIgnoreCase);
@@ -31,6 +32,22 @@ public sealed class FakeGitHub : HttpMessageHandler
 
     public List<string> Requests { get; } = [];
 
+    /// <summary>Each repository's labels (as first written).</summary>
+    public Dictionary<string, List<string>> LabelsByRepo { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The repository's own spelling of a label (made when it's new).</summary>
+    public string Label(string repo, string name)
+    {
+        var labels = LabelsByRepo[repo];
+        var existing = labels.FirstOrDefault(l => string.Equals(l, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            labels.Add(name);
+        }
+
+        return existing ?? name;
+    }
+
     public JsonObject AddRepo(string fullName, string? description = null, params string[] topics)
     {
         var repo = new JsonObject
@@ -38,10 +55,12 @@ public sealed class FakeGitHub : HttpMessageHandler
             ["full_name"] = fullName,
             ["description"] = description,
             ["has_issues"] = true,
+            ["private"] = true,
             ["topics"] = new JsonArray([.. topics.Select(t => (JsonNode)t)]),
         };
         Repos[fullName] = repo;
         IssuesByRepo.TryAdd(fullName, []);
+        LabelsByRepo.TryAdd(fullName, []);
         return repo;
     }
 
@@ -56,7 +75,7 @@ public sealed class FakeGitHub : HttpMessageHandler
             ["title"] = title,
             ["body"] = body,
             ["state"] = closed ? "closed" : "open",
-            ["labels"] = new JsonArray([.. labels.Select(l => (JsonNode)new JsonObject { ["name"] = l })]),
+            ["labels"] = new JsonArray([.. labels.Select(l => (JsonNode)new JsonObject { ["name"] = Label(repo, l) })]),
         };
         IssuesByRepo[repo][number] = issue;
         return issue;
@@ -93,6 +112,20 @@ public sealed class FakeGitHub : HttpMessageHandler
             return Json(HttpStatusCode.OK, new JsonObject { ["names"] = repo["topics"]!.DeepClone() });
         }
 
+        if (parts[3] == "labels")
+        {
+            if (request.Method == HttpMethod.Delete)
+            {
+                return LabelsByRepo[fullName].RemoveAll(l => string.Equals(l, parts[4], StringComparison.OrdinalIgnoreCase)) > 0
+                    ? new HttpResponseMessage(HttpStatusCode.NoContent)
+                    : Json(HttpStatusCode.NotFound, new JsonObject { ["message"] = "Not Found" });
+            }
+
+            var query = System.Web.HttpUtility.ParseQueryString(path.Contains('?', StringComparison.Ordinal) ? path[path.IndexOf('?', StringComparison.Ordinal)..] : string.Empty);
+            var page = int.Parse(query["page"] ?? "1", CultureInfo.InvariantCulture);
+            return Json(HttpStatusCode.OK, new JsonArray([.. LabelsByRepo[fullName].Skip((page - 1) * 100).Take(100).Select(l => (JsonNode)new JsonObject { ["name"] = l })]));
+        }
+
         if (parts[3] != "issues")
         {
             return Json(HttpStatusCode.NotFound, new JsonObject { ["message"] = "Not Found" });
@@ -123,7 +156,7 @@ public sealed class FakeGitHub : HttpMessageHandler
         {
             foreach (var (key, value) in body!)
             {
-                issue[key] = key == "labels" ? new JsonArray([.. value!.AsArray().Select(l => (JsonNode)new JsonObject { ["name"] = l!.GetValue<string>() })]) : value?.DeepClone();
+                issue[key] = key == "labels" ? new JsonArray([.. value!.AsArray().Select(l => (JsonNode)new JsonObject { ["name"] = Label(fullName, l!.GetValue<string>()) })]) : value?.DeepClone();
             }
         }
 

@@ -91,7 +91,10 @@ public sealed record SyncedFields(string Title, bool Done, DateOnly? Due, Priori
         && (!fields.HasFlag(ConnectorFields.Priority) || a.Priority == b.Priority)
         && (!fields.HasFlag(ConnectorFields.Tags) || NormalTags(a.Tags).SequenceEqual(NormalTags(b.Tags)))
         && (!fields.HasFlag(ConnectorFields.Notes) || NormalNotes(a.Notes) == NormalNotes(b.Notes))
-        && (!fields.HasFlag(ConnectorFields.Extras) || ExtraKeys.All.All(k => a.Extra(k) == b.Extra(k)));
+        && (!fields.HasFlag(ConnectorFields.Extras) || ExtraKeys.All.All(k => SameExtra(a.Extra(k), b.Extra(k))));
+
+    /// <summary>Extras compare without case: GitHub labels don't have it (an existing "color:#FF8800" is reused for "#ff8800").</summary>
+    internal static bool SameExtra(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
     private static IEnumerable<string> NormalTags(IReadOnlyList<string> tags) =>
         tags.Select(t => t.Trim().ToLowerInvariant()).Where(t => t.Length > 0).Distinct().Order(StringComparer.Ordinal);
@@ -103,8 +106,9 @@ public sealed record SyncedFields(string Title, bool Done, DateOnly? Due, Priori
 /// task of the connector's group, or one finished lately).</summary>
 public sealed record LocalItem(Guid Id, SyncedFields Fields, bool Discoverable, bool Archived);
 
-/// <summary>An item in the outside list; <paramref name="Marker"/> is the task id it carries (set by us).</summary>
-public sealed record RemoteItem(string Id, SyncedFields Fields, Guid? Marker);
+/// <summary>An item in the outside list; <paramref name="Marker"/> is the task id it carries (set by us).
+/// <paramref name="Dropped"/>: put away without being done (a GitHub issue closed as "not planned").</summary>
+public sealed record RemoteItem(string Id, SyncedFields Fields, Guid? Marker, bool Dropped = false);
 
 /// <summary>A task and its outside item, with the fields as they were when they last agreed.</summary>
 public sealed record ConnectorLink(Guid LocalId, string RemoteId, SyncedFields? Snapshot, LinkState State = LinkState.Active);
@@ -261,7 +265,7 @@ public static class ConnectorPlan
                     ops.Add(new CreateLocal(importId, there.Id, there.Fields));
                     links.Add(new ConnectorLink(importId, there.Id, there.Fields));
                 }
-                else if (input.AdoptMarked && marker != Guid.Empty && !string.IsNullOrWhiteSpace(there.Fields.Title) && linkedLocal.Add(marker))
+                else if (input.AdoptMarked && !there.Dropped && marker != Guid.Empty && !string.IsNullOrWhiteSpace(there.Fields.Title) && linkedLocal.Add(marker))
                 {
                     // Made on another computer (finished ones too: the outside list is the record).
                     ops.Add(new CreateLocal(marker, there.Id, there.Fields));
@@ -368,7 +372,8 @@ public static class ConnectorPlan
         };
     }
 
-    /// <summary>Extras merge key by key (a snooze changed here and a reminder added there both stay).</summary>
+    /// <summary>Extras merge key by key (a snooze changed here and a reminder added there both stay); reminders and labels
+    /// merge item by item (one added on each side: both stay; one gone off here and one added there: the right ones).</summary>
     private static IReadOnlyDictionary<string, string>? MergeExtras(SyncedFields here, SyncedFields there, SyncedFields? snapshot, ConnectorFields fields, Func<SyncedFields, SyncedFields> n)
     {
         if (!fields.HasFlag(ConnectorFields.Extras))
@@ -386,9 +391,11 @@ public static class ConnectorPlan
         var merged = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var key in ExtraKeys.All)
         {
-            var remoteChanged = theirs.Extra(key) != before.Extra(key);
-            var localChanged = here.Extra(key) != snapshot.Extra(key);
-            var value = remoteChanged && !localChanged ? there.Extra(key) : here.Extra(key);
+            var remoteChanged = !SyncedFields.SameExtra(theirs.Extra(key), before.Extra(key));
+            var localChanged = !SyncedFields.SameExtra(here.Extra(key), snapshot.Extra(key));
+            var value = key is ExtraKeys.Remind or ExtraKeys.Labels && remoteChanged && localChanged
+                ? MergeSet(here.Extra(key), there.Extra(key), snapshot.Extra(key), key == ExtraKeys.Remind ? ',' : '\n')
+                : remoteChanged && !localChanged ? there.Extra(key) : here.Extra(key);
             if (value.Length > 0)
             {
                 merged[key] = value;
@@ -396,5 +403,18 @@ public static class ConnectorPlan
         }
 
         return merged;
+    }
+
+    /// <summary>Three-way merge of a set (the snapshot, plus what each side added, minus what each side removed).</summary>
+    private static string MergeSet(string here, string there, string before, char separator)
+    {
+        HashSet<string> Set(string text) => text.Split(separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var (mine, theirs, old) = (Set(here), Set(there), Set(before));
+        var result = new HashSet<string>(old, StringComparer.OrdinalIgnoreCase);
+        result.UnionWith(mine.Except(old, StringComparer.OrdinalIgnoreCase));
+        result.UnionWith(theirs.Except(old, StringComparer.OrdinalIgnoreCase));
+        result.ExceptWith(old.Except(mine, StringComparer.OrdinalIgnoreCase));
+        result.ExceptWith(old.Except(theirs, StringComparer.OrdinalIgnoreCase));
+        return string.Join(separator, result.Order(StringComparer.OrdinalIgnoreCase));
     }
 }

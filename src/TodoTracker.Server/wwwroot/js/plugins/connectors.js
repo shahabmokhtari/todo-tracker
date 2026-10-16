@@ -182,7 +182,11 @@ export function createConnectorsPanel(host) {
     const ready = !g.missing;
     const every = h('input', {
       type: 'checkbox', checked: g.everyGroup, disabled: !ready || g.mainPlace, 'aria-label': 'Every group gets its own repository',
-      onchange: () => run(host.put(`${githubBase}/every-group`, { on: every.checked }), every.checked ? 'Every group has its repository' : null),
+      onchange: async () => {
+        await run(host.put(`${githubBase}/every-group`, { on: every.checked }), every.checked ? 'Making the repositories (a moment each)…' : null);
+        // They're made in the background: look again in a bit.
+        if (every.checked) [5000, 15000, 40000].forEach((ms) => setTimeout(load, ms));
+      },
     });
     const row = (x) => {
       const id = encodeURIComponent(x.groupId);

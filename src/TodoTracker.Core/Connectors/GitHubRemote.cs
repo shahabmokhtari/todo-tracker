@@ -20,6 +20,12 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     /// <summary>GitHub's longest label name.</summary>
     public const int MaxLabel = 50;
 
+    /// <summary>GitHub's longest issue title.</summary>
+    public const int MaxTitle = 256;
+
+    /// <summary>The longest details a task here has (a longer body comes in shortened).</summary>
+    public const int MaxNotes = 10_000;
+
     private const int PageSize = 100;
 
     public const string Due = "due:";
@@ -50,8 +56,10 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     public SyncedFields Normalize(SyncedFields fields)
     {
         ArgumentNullException.ThrowIfNull(fields);
-        return Read(fields.Title, fields.Done, Body(fields.Notes, null), LabelsOf(fields), out _);
+        return Read(TitleOf(fields.Title), fields.Done, Body(fields.Notes, null), LabelsOf(fields), out _);
     }
+
+    private static string TitleOf(string title) => title.Length <= MaxTitle ? title : title[..MaxTitle];
 
     public async Task<IReadOnlyList<RemoteItem>> ListAsync(CancellationToken cancellationToken)
     {
@@ -77,7 +85,7 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         ArgumentNullException.ThrowIfNull(fields);
         var created = await SendAsync(HttpMethod.Post, $"repos/{Repo}/issues", new JsonObject
         {
-            ["title"] = fields.Title,
+            ["title"] = TitleOf(fields.Title),
             ["body"] = Body(fields.Notes, localId),
             ["labels"] = new JsonArray([.. LabelsOf(fields).Select(l => (JsonNode)l)]),
         }, cancellationToken).ConfigureAwait(false) as JsonObject ?? throw new InvalidOperationException("GitHub didn't say which issue it made.");
@@ -94,16 +102,17 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     {
         ArgumentNullException.ThrowIfNull(fields);
         var change = new JsonObject();
-        if (previous is null || previous.Title != fields.Title)
+        if (previous is null || previous.Title != TitleOf(fields.Title))
         {
-            change["title"] = fields.Title;
+            change["title"] = TitleOf(fields.Title);
         }
 
+        // Read back first: the body keeps its id comment, and labels this app doesn't own stay on the issue.
+        JsonObject? current = null;
+        async Task<JsonObject?> Current() => current ??= await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken).ConfigureAwait(false) as JsonObject;
         if (previous is null || !SyncedFields.Same(previous, fields, ConnectorFields.Notes))
         {
-            // The body keeps its id comment (read it back: it may be someone else's issue we only just linked).
-            var current = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken).ConfigureAwait(false) as JsonObject;
-            change["body"] = Body(fields.Notes, MarkerOf(current?["body"]?.GetValue<string>()));
+            change["body"] = Body(fields.Notes, MarkerOf((await Current().ConfigureAwait(false))?["body"]?.GetValue<string>()));
         }
 
         if (previous is null || previous.Done != fields.Done)
@@ -118,7 +127,8 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         var labelFields = ConnectorFields.Due | ConnectorFields.Priority | ConnectorFields.Tags | ConnectorFields.Extras;
         if (previous is null || !SyncedFields.Same(Normalize(previous), Normalize(fields), labelFields))
         {
-            change["labels"] = new JsonArray([.. LabelsOf(fields).Select(l => (JsonNode)l)]);
+            var foreign = LabelNames(await Current().ConfigureAwait(false)).Where(l => Kind(l) == LabelKind.Foreign);
+            change["labels"] = new JsonArray([.. foreign.Concat(LabelsOf(fields)).Distinct(StringComparer.OrdinalIgnoreCase).Select(l => (JsonNode)l)]);
         }
 
         if (change.Count > 0)
@@ -129,6 +139,42 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
 
     public Task ArchiveAsync(string id, CancellationToken cancellationToken) =>
         SendAsync(HttpMethod.Patch, $"repos/{Repo}/issues/{Number(id)}", new JsonObject { ["state"] = "closed", ["state_reason"] = "not_planned" }, cancellationToken);
+
+    /// <summary>
+    /// Deletes the repository's time labels no issue has any more (<c>snooze:</c>, <c>remind:</c>, <c>plan:</c>,
+    /// <c>due:</c>): each moment makes a label, and the label list would only grow.
+    /// </summary>
+    public async Task PruneLabelsAsync(CancellationToken cancellationToken)
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var page = 1; ; page++)
+        {
+            var batch = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues?state=all&per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            used.UnionWith(batch.OfType<JsonObject>().SelectMany(LabelNames));
+            if (batch.Count < PageSize)
+            {
+                break;
+            }
+        }
+
+        string[] timed = [Due, ExtraPrefixes[ExtraKeys.Snooze], ExtraPrefixes[ExtraKeys.Remind], ExtraPrefixes[ExtraKeys.Plan]];
+        for (var page = 1; ; page++)
+        {
+            var labels = await SendAsync(HttpMethod.Get, $"repos/{Repo}/labels?per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            foreach (var name in labels.OfType<JsonObject>().Select(l => l["name"]?.GetValue<string>()).OfType<string>())
+            {
+                if (!used.Contains(name) && timed.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                {
+                    await SendAsync(HttpMethod.Delete, $"repos/{Repo}/labels/{Uri.EscapeDataString(name)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false);
+                }
+            }
+
+            if (labels.Count < PageSize)
+            {
+                return;
+            }
+        }
+    }
 
     public async Task MarkAsync(string id, Guid localId, CancellationToken cancellationToken)
     {
@@ -154,7 +200,8 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
             labels.Add(PriorityPrefix + fields.Priority.ToString().ToLowerInvariant());
         }
 
-        labels.AddRange(fields.Tags.Select(t => t.Trim()).Where(t => t.Length > 0 && !IsReserved(t)));
+        // Only a tag that reads back as a tag goes out as one ("due:x" would read as a due date).
+        labels.AddRange(fields.Tags.Select(t => t.Trim()).Where(t => t.Length > 0 && Parse(t) is (null, _)));
         foreach (var (key, prefix) in ExtraPrefixes)
         {
             var value = fields.Extra(key);
@@ -176,59 +223,130 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         return [.. labels.Where(l => l.Length <= MaxLabel).Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
-    /// <summary>The task an issue is (<paramref name="marker"/>: the task id in its body, if any).</summary>
+    /// <summary>What a label is to this app.</summary>
+    private enum LabelKind
+    {
+        /// <summary>A tag here.</summary>
+        Tag,
+
+        /// <summary>One of ours (due date, priority, an extra) with a value this app takes.</summary>
+        Ours,
+
+        /// <summary>Not for this app (a label a tag can't be, "priority:p1", "stage:review"): left on the issue as it is.</summary>
+        Foreign,
+    }
+
+    private static LabelKind Kind(string label) => Parse(label) is { } parsed ? (parsed.Key is null ? LabelKind.Tag : LabelKind.Ours) : LabelKind.Foreign;
+
+    /// <summary>A label read: (null, tag), (key, value) for one of ours (<see cref="Due"/> and "priority" too), or null
+    /// when it's not for this app. Values come back the way this app writes them (lowercase colors, rules as it says them).</summary>
+    private static (string? Key, string Value)? Parse(string label)
+    {
+        if (label.StartsWith(Due, StringComparison.OrdinalIgnoreCase))
+        {
+            return DateOnly.TryParseExact(label[Due.Length..].Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
+                ? (Due, day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)) : null;
+        }
+
+        if (label.StartsWith(PriorityPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return Enum.TryParse<Priority>(label[PriorityPrefix.Length..].Trim(), ignoreCase: true, out var p) && Enum.IsDefined(p) && !int.TryParse(label[PriorityPrefix.Length..], out _)
+                ? (PriorityPrefix, p.ToString()) : null;
+        }
+
+        foreach (var (key, prefix) in ExtraPrefixes)
+        {
+            if (!label.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = label[prefix.Length..].Trim();
+            string? clean = key switch
+            {
+                ExtraKeys.Snooze or ExtraKeys.Remind => ConnectorRunner.ParseMoment(value) is { } at ? ConnectorRunner.Moment(at) : null,
+                ExtraKeys.Plan => value.Split('/') is [var start, var minutes] && ConnectorRunner.ParseMoment(start) is { } from
+                    && int.TryParse(minutes, NumberStyles.None, CultureInfo.InvariantCulture, out var m) && m is >= TaskBoard.MinPlanMinutes and <= TaskBoard.MaxPlanMinutes
+                    ? $"{ConnectorRunner.Moment(from)}/{m}" : null,
+                ExtraKeys.Stage => value.ToLowerInvariant() is "inbox" or "next" or "doing" ? value.ToLowerInvariant() : null,
+                ExtraKeys.Labels => ValidLabel(value) ? value : null,
+                ExtraKeys.Icon => TaskBoard.Lenient(TaskBoard.CleanIcon, value),
+                ExtraKeys.Color => TaskBoard.Lenient(TaskBoard.CleanColor, value),
+                ExtraKeys.Repeat => Recurrence.TryParse(value, out var rule, out _) ? rule.ToString() : null,
+                _ => null,
+            };
+            return clean is null ? null : (key, clean);
+        }
+
+        var tag = TaskBoard.CleanTag(label);
+        return TaskBoard.IsValidTag(tag) ? (null, tag) : null;
+    }
+
+    private static bool ValidLabel(string name)
+    {
+        try
+        {
+            return TaskBoard.ValidateLabelNames([name]).Count == 1;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The task an issue is (<paramref name="marker"/>: the task id in its body, if any). Labels that aren't for
+    /// this app are left out (and stay on the issue). Of two labels for one value, the later time (snooze, plan) or the
+    /// last one wins.</summary>
     public static SyncedFields Read(string title, bool closed, string? body, IEnumerable<string> labels, out Guid? marker)
     {
         ArgumentNullException.ThrowIfNull(labels);
         (var notes, marker) = Split(body);
+        if (notes is { Length: > MaxNotes })
+        {
+            notes = notes[..MaxNotes];
+        }
+
         DateOnly? due = null;
         var priority = Priority.Normal;
         var tags = new List<string>();
         var extras = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var label in labels)
         {
-            if (label.StartsWith(Due, StringComparison.OrdinalIgnoreCase)
-                && DateOnly.TryParseExact(label[Due.Length..], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+            switch (Parse(label))
             {
-                due = day;
-            }
-            else if (label.StartsWith(PriorityPrefix, StringComparison.OrdinalIgnoreCase)
-                && Enum.TryParse<Priority>(label[PriorityPrefix.Length..], ignoreCase: true, out var p) && Enum.IsDefined(p))
-            {
-                priority = p;
-            }
-            else if (ExtraPrefixes.FirstOrDefault(e => label.StartsWith(e.Value, StringComparison.OrdinalIgnoreCase)) is { Key: { } key, Value: { } prefix })
-            {
-                if (!extras.TryGetValue(key, out var list))
-                {
-                    extras[key] = list = [];
-                }
+                case (null, var tag):
+                    tags.Add(tag);
+                    break;
+                case (Due, var day):
+                    due = DateOnly.ParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    break;
+                case (PriorityPrefix, var p):
+                    priority = Enum.Parse<Priority>(p);
+                    break;
+                case ({ } key, var value):
+                    if (!extras.TryGetValue(key, out var list))
+                    {
+                        extras[key] = list = [];
+                    }
 
-                list.Add(label[prefix.Length..].Trim());
-            }
-            else
-            {
-                tags.Add(label);
+                    list.Add(value);
+                    break;
             }
         }
 
         string Join(string key, List<string> values) => key switch
         {
-            ExtraKeys.Remind => string.Join(',', values.Select(v => ConnectorRunner.ParseMoment(v) is { } at ? ConnectorRunner.Moment(at) : null).OfType<string>().Distinct().Order(StringComparer.Ordinal)),
-            ExtraKeys.Labels => string.Join('\n', values.Where(v => v.Length > 0).Order(StringComparer.OrdinalIgnoreCase)),
-            _ => values[0],
+            ExtraKeys.Remind => string.Join(',', values.Distinct().Order(StringComparer.Ordinal)),
+            ExtraKeys.Labels => string.Join('\n', values.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase)),
+            ExtraKeys.Snooze or ExtraKeys.Plan => values.Max(StringComparer.Ordinal)!,
+            _ => values[^1],
         };
 
         return new SyncedFields(title, closed, due, priority, tags, notes)
         {
-            Extras = extras.Select(e => (e.Key, Value: Join(e.Key, e.Value))).Where(e => e.Value.Length > 0).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal),
+            Extras = extras.ToDictionary(e => e.Key, e => Join(e.Key, e.Value), StringComparer.Ordinal),
         };
     }
-
-    /// <summary>A plain label that would read as one of ours isn't a tag (a tag "due:x" can't round-trip).</summary>
-    private static bool IsReserved(string tag) =>
-        tag.StartsWith(Due, StringComparison.OrdinalIgnoreCase) || tag.StartsWith(PriorityPrefix, StringComparison.OrdinalIgnoreCase)
-        || ExtraPrefixes.Values.Any(p => tag.StartsWith(p, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>The body: the details, then the task id (hidden when the issue is shown).</summary>
     public static string Body(string? notes, Guid? marker)
@@ -248,11 +366,14 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
 
     private static Guid? MarkerOf(string? body) => Split(body).Marker;
 
+    private static IEnumerable<string> LabelNames(JsonObject? issue) =>
+        (issue?["labels"] as JsonArray ?? []).Select(l => l is JsonObject o ? o["name"]?.GetValue<string>() : l?.GetValue<string>()).OfType<string>();
+
     private static RemoteItem ItemOf(JsonObject issue)
     {
-        var labels = (issue["labels"] as JsonArray ?? []).Select(l => l is JsonObject o ? o["name"]?.GetValue<string>() : l?.GetValue<string>()).OfType<string>();
-        var fields = Read(issue["title"]?.GetValue<string>() ?? string.Empty, issue["state"]?.GetValue<string>() == "closed", issue["body"]?.GetValue<string>(), labels, out var marker);
-        return new RemoteItem(issue["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture), fields, marker);
+        var closed = issue["state"]?.GetValue<string>() == "closed";
+        var fields = Read(issue["title"]?.GetValue<string>() ?? string.Empty, closed, issue["body"]?.GetValue<string>(), LabelNames(issue), out var marker);
+        return new RemoteItem(issue["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture), fields, marker, Dropped: closed && issue["state_reason"]?.GetValue<string>() == "not_planned");
     }
 
     private static string Number(string id) =>

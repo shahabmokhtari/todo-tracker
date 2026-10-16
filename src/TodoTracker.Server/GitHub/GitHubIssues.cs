@@ -124,7 +124,8 @@ public sealed class GitHubIssues(
         Main.Update(s => s with { Enabled = on });
         if (on)
         {
-            await SyncAllAsync(lifetime.ApplicationStopping).ConfigureAwait(false);
+            // Making the repositories takes a while (gh, then a first sync each): in the background; each group shows how it went.
+            _ = Task.Run(() => SyncAllAsync(lifetime.ApplicationStopping), CancellationToken.None);
         }
 
         return await ViewAsync(cancellationToken).ConfigureAwait(false);
@@ -136,7 +137,9 @@ public sealed class GitHubIssues(
         Running();
         await OneAtATimeAsync(() =>
         {
-            FilesOf(groupId).Clear();
+            var files = FilesOf(groupId);
+            files.Clear();
+            files.Update(s => s with { Stopped = true }); // stays stopped, "every group" or not
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
         return await GroupViewAsync(groupId, cancellationToken).ConfigureAwait(false);
@@ -172,7 +175,7 @@ public sealed class GitHubIssues(
             foreach (var group in groups)
             {
                 var files = FilesOf(group);
-                if (files.Settings.Target is null && EveryGroup)
+                if (files.Settings is { Target: null, Stopped: false } && EveryGroup)
                 {
                     try
                     {
@@ -229,7 +232,7 @@ public sealed class GitHubIssues(
                 files.SaveLinks([]); // another repository: its links start over (issues carry task ids: nothing is copied)
             }
 
-            return s with { Target = target, TargetName = name, GroupId = groupId, Direction = direction, Enabled = true };
+            return s with { Target = target, TargetName = name, GroupId = groupId, Direction = direction, Enabled = true, Stopped = false };
         });
     }
 
@@ -254,7 +257,7 @@ public sealed class GitHubIssues(
             }
 
             if (existing["topics"] is JsonArray topics && topics.Any(t => t?.GetValue<string>() == Topic)
-                && existing["description"]?.GetValue<string>() == Description(group))
+                && existing["description"]?.GetValue<string>() == Description(group) && existing["private"]?.GetValue<bool>() == true)
             {
                 return $"{owner}/{name}"; // made for this group before (on this computer or another)
             }
@@ -270,6 +273,11 @@ public sealed class GitHubIssues(
         if (found["has_issues"]?.GetValue<bool>() == false)
         {
             throw new InvalidOperationException($"{repo} has issues switched off (its Settings on GitHub).");
+        }
+
+        if (found["private"]?.GetValue<bool>() != true)
+        {
+            throw new InvalidOperationException($"{repo} is public: your tasks there would be seen by everyone. Pick a private repository.");
         }
 
         return found["full_name"]?.GetValue<string>() ?? repo;
@@ -313,8 +321,8 @@ public sealed class GitHubIssues(
     private async Task SyncGroupLockedAsync(string token, Guid groupId, CancellationToken cancellationToken)
     {
         var files = FilesOf(groupId);
-        var settings = files.Settings;
-        if (settings.Target is not { } repo)
+        var current = files.Settings;
+        if (current.Target is not { } repo)
         {
             throw new InvalidOperationException("Connect the group to a repository first.");
         }
@@ -323,13 +331,30 @@ public sealed class GitHubIssues(
         {
             var remote = new GitHubRemote(http.CreateClient(HttpClientName), _ => Task.FromResult(token), repo);
             var runner = new ConnectorRunner($"github:{repo}", "GitHub", store, time, options.TimeZone);
-            var run = await runner.RunAsync(remote, new ConnectorTarget(groupId, settings.Direction, AdoptMarked: MainPlace), files.Links, cancellationToken).ConfigureAwait(false);
+            var run = await runner.RunAsync(remote, new ConnectorTarget(groupId, current.Direction, AdoptMarked: MainPlace, GroupOnly: true), files.Links, cancellationToken).ConfigureAwait(false);
             files.SaveLinks(run.Links);
+            if (run.Done.Any(d => d.Op is UpdateRemote or ArchiveRemote))
+            {
+                await PruneAsync(remote, cancellationToken).ConfigureAwait(false);
+            }
             files.Update(s => s with { LastRun = time.GetUtcNow(), LastResult = ConnectorService.Summary(run), Problems = run.Problems });
         }
         catch (Exception ex) when (ConnectorRunner.IsProblem(ex, cancellationToken))
         {
             files.Update(s => s with { LastRun = time.GetUtcNow(), LastResult = "Couldn't sync", Problems = [ex.Message] });
+        }
+    }
+
+    /// <summary>Old time labels go (a failure here is no sync problem: they're tried again next time).</summary>
+    private static async Task PruneAsync(GitHubRemote remote, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await remote.PruneLabelsAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            // next time
         }
     }
 

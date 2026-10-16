@@ -33,9 +33,9 @@ public sealed class GitHubRemoteTests : IDisposable
         _github.Dispose();
     }
 
-    private async Task<ConnectorRun> RunAsync(bool adopt = false)
+    private async Task<ConnectorRun> RunAsync(bool adopt = false, bool groupOnly = false)
     {
-        var run = await _runner.RunAsync(_remote, new ConnectorTarget(_group, ConnectorDirection.Both, adopt), _links, CancellationToken.None);
+        var run = await _runner.RunAsync(_remote, new ConnectorTarget(_group, ConnectorDirection.Both, adopt, groupOnly), _links, CancellationToken.None);
         Assert.Empty(run.Problems);
         _links = run.Links;
         return run;
@@ -123,6 +123,97 @@ public sealed class GitHubRemoteTests : IDisposable
         await RunAsync();
         Assert.Equal(("closed", "not_planned"), (_github.Issues[2]["state"]!.GetValue<string>(), _github.Issues[2]["state_reason"]!.GetValue<string>()));
         Assert.Equal(2, _github.Issues.Count);
+    }
+
+    [Fact]
+    public async Task A_label_that_differs_only_in_case_from_the_task_never_ping_pongs()
+    {
+        // The repository already has "color:#FF8800" and "stage:Doing": GitHub gives those to an issue asking for
+        // "color:#ff8800" and "stage:doing" (labels have no case there).
+        _github.Label(_github.Repo, "color:#FF8800");
+        _github.Label(_github.Repo, "stage:Doing");
+        await _store.UpdateAsync(b => { var t = b.AddTask(new NewTask("Paint") { GroupId = _group, Color = "#ff8800" }, Actor.User, T0); b.SetStage(t.Id, Stage.Doing, Actor.User, T0); return t; });
+
+        await RunAsync();
+        Assert.Contains("color:#FF8800", _github.LabelsOf(1));
+        foreach (var _ in Enumerable.Range(0, 3))
+        {
+            Assert.Empty((await RunAsync()).Plan.Ops);
+        }
+    }
+
+    [Fact]
+    public async Task Labels_this_app_cant_take_are_left_on_the_issue_and_never_hold_up_the_task()
+    {
+        _github.Add("Triage", null, false, "good first issue", "priority:p1", "stage:review", "color:red", "plan:Q3", "bug");
+        await RunAsync();
+        var id = ConnectorPlan.ImportId("github:me/todo-work", "1");
+        var task = await _store.ReadAsync(b => b.Get(id));
+        Assert.Equal(["bug", "good first issue"], task.Tags.Order(StringComparer.Ordinal));
+        Assert.Equal((Priority.Normal, null), (task.Priority, task.Color));
+
+        // Changed here: the issue's own labels stay as they were.
+        await _store.UpdateAsync(b => { b.Update(id, new TaskChanges { Title = "Triage the inbox", Priority = Priority.High }, Actor.User, T0); return 0; });
+        await RunAsync();
+        Assert.Equal("Triage the inbox", _github.Issues[1]["title"]!.GetValue<string>());
+        Assert.Equal(["bug", "color:red", "good first issue", "plan:Q3", "priority:high", "priority:p1", "stage:review"], _github.LabelsOf(1).Order(StringComparer.Ordinal));
+        Assert.Empty((await RunAsync()).Plan.Ops);
+    }
+
+    [Fact]
+    public async Task A_task_moved_to_another_group_leaves_this_groups_repository()
+    {
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Book flights") { GroupId = _group }, Actor.User, T0));
+        await RunAsync(groupOnly: true);
+        var other = await _store.UpdateAsync(b => b.AddGroup("Travel", null, Actor.User, T0).Id);
+
+        await _store.UpdateAsync(b => { b.MoveToGroup(task.Id, other, Actor.User, T0); return 0; });
+        await RunAsync(groupOnly: true);
+
+        Assert.Equal(("closed", "not_planned"), (_github.Issues[1]["state"]!.GetValue<string>(), _github.Issues[1]["state_reason"]!.GetValue<string>()));
+        Assert.False((await _store.ReadAsync(b => b.Get(task.Id))).IsDone);
+    }
+
+    [Fact]
+    public async Task Long_titles_fit_and_old_time_labels_are_tidied_away()
+    {
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask(new string('t', 280)) { GroupId = _group }, Actor.User, T0));
+        await _store.UpdateAsync(b => { b.ScheduleNextAction(task.Id, T0.AddDays(1), Actor.User, T0); return 0; });
+        await RunAsync();
+        Assert.Equal(GitHubRemote.MaxTitle, _github.Issues[1]["title"]!.GetValue<string>().Length);
+        Assert.Empty((await RunAsync()).Plan.Ops);
+
+        await _store.UpdateAsync(b => { b.ScheduleNextAction(task.Id, T0.AddDays(2), Actor.User, T0); return 0; });
+        await RunAsync();
+        await _remote.PruneLabelsAsync(CancellationToken.None);
+
+        Assert.Equal(["snooze:2026-01-07T09:00Z"], _github.LabelsByRepo[_github.Repo]);
+    }
+
+    [Fact]
+    public void An_issue_closed_as_not_planned_is_never_brought_back_on_another_computer()
+    {
+        var input = new ConnectorPlanInput("github:me/x", [], [new RemoteItem("7", new SyncedFields("Deleted elsewhere", true, null, Priority.Normal, [], null), Guid.NewGuid(), Dropped: true)], [], ConnectorDirection.Both, (ConnectorFields)127) { AdoptMarked = true };
+
+        Assert.Empty(ConnectorPlan.Make(input).Ops);
+    }
+
+    [Fact]
+    public void Reminders_and_labels_merge_one_by_one_when_both_sides_changed()
+    {
+        var id = Guid.NewGuid();
+        SyncedFields F(string remind, string labels) => new("Task", false, null, Priority.Normal, [], null) { Extras = new Dictionary<string, string> { [ExtraKeys.Remind] = remind, [ExtraKeys.Labels] = labels } };
+        // Here: reminder A went off and label X was added. There: reminder B and label Y were added.
+        var plan = ConnectorPlan.Make(new ConnectorPlanInput(
+            "github:me/x",
+            [new LocalItem(id, F(string.Empty, "Deep work\nX"), true, false)],
+            [new RemoteItem("1", F("2026-01-06T09:00Z,2026-01-08T09:00Z", "Deep work\nY"), id)],
+            [new ConnectorLink(id, "1", F("2026-01-06T09:00Z", "Deep work"))],
+            ConnectorDirection.Both,
+            (ConnectorFields)127));
+
+        var merged = Assert.Single(plan.Links).Snapshot!;
+        Assert.Equal(("2026-01-08T09:00Z", "Deep work\nX\nY"), (merged.Extra(ExtraKeys.Remind), merged.Extra(ExtraKeys.Labels)));
     }
 
     [Fact]

@@ -31,8 +31,10 @@ public interface IConnectorRemote
 
 /// <summary>Which group a connector keeps in step, and which side new tasks are created on.</summary>
 /// <summary>Which group a connector keeps in step, and which side new tasks are created on. <paramref name="AdoptMarked"/>:
-/// the outside list is where the tasks live (see <see cref="ConnectorPlanInput.AdoptMarked"/>).</summary>
-public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction, bool AdoptMarked = false);
+/// the outside list is where the tasks live (see <see cref="ConnectorPlanInput.AdoptMarked"/>).
+/// <paramref name="GroupOnly"/>: only the group's tasks are in this list (a repository per group): a task moved to
+/// another group leaves it, as if deleted here (its item is archived), and goes to that group's list.</summary>
+public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction, bool AdoptMarked = false, bool GroupOnly = false);
 
 /// <summary>What a run did: the plan, how many changes went through, what went wrong, and the links to keep.</summary>
 public sealed record ConnectorRun(ConnectorPlanResult Plan, IReadOnlyList<ConnectorOpResult> Done, IReadOnlyList<string> Problems, IReadOnlyList<ConnectorLink> Links)
@@ -171,6 +173,12 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     private int CreateHere(TaskBoard board, CreateLocal c, ConnectorFields fields, ConnectorTarget target)
     {
         var now = time.GetUtcNow();
+        if (board.Find(c.Id) is not null)
+        {
+            // Already here (another group, or finished long ago): linked as it is, never a second task with its id.
+            return UpdateHere(board, new UpdateLocal(c.Id, c.Fields), fields);
+        }
+
         var groupId = board.Groups.Any(g => g.Id == target.GroupId) ? target.GroupId : (Guid?)null;
         var f = c.Fields;
         board.AddTask(
@@ -185,14 +193,15 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             },
             _actor,
             now);
-        if (fields.HasFlag(ConnectorFields.Extras))
-        {
-            ApplyExtras(board, board.Find(c.Id)!, f, now);
-        }
-
+        // Finished first: a repeat rule applied after it doesn't move a finished task on to its next time.
         if (f.Done)
         {
             board.Complete(c.Id, _actor, now);
+        }
+
+        if (fields.HasFlag(ConnectorFields.Extras))
+        {
+            ApplyExtras(board, board.Find(c.Id)!, f, now);
         }
 
         return 0;
@@ -222,6 +231,13 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         if (fields.HasFlag(ConnectorFields.Tags) && !SyncedFields.Same(current, f, ConnectorFields.Tags))
         {
             board.SetTags(u.LocalId, f.Tags, _actor, now);
+        }
+
+        // Not done after all: reopened before the rest (a planned block or a column can't be set on a finished task).
+        if (fields.HasFlag(ConnectorFields.Done) && current.Done && !f.Done)
+        {
+            board.Reopen(u.LocalId, _actor, now);
+            current = current with { Done = false };
         }
 
         if (fields.HasFlag(ConnectorFields.Extras) && !SyncedFields.Same(current, f, ConnectorFields.Extras))
@@ -298,26 +314,40 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     private static IEnumerable<Reminder> PendingReminders(WorkItem item) =>
         item.Reminders.Where(r => r.Kind == ReminderKind.Manual && r.NotifiedAt is null && r.DismissedAt is null);
 
-    /// <summary>Makes the task's extras what <paramref name="f"/> says (a value it can't read is left as it is here).</summary>
+    /// <summary>
+    /// Makes the task's extras what <paramref name="f"/> says. A value this app can't take (a color that isn't one, a
+    /// plan on a finished task) is left as it is here: one bad value never holds up the rest of the task.
+    /// </summary>
     private void ApplyExtras(TaskBoard board, WorkItem item, SyncedFields f, DateTimeOffset now)
     {
         var current = ExtrasOf(item, now);
         string Now(string key) => current.TryGetValue(key, out var v) ? v : string.Empty;
-        bool Changed(string key) => Now(key) != f.Extra(key);
+        bool Changed(string key) => !SyncedFields.SameExtra(Now(key), f.Extra(key));
+        void Try(Action change)
+        {
+            try
+            {
+                change();
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException)
+            {
+                // left as it is here
+            }
+        }
 
         if (Changed(ExtraKeys.Snooze) && item.CompletedAt is null)
         {
             if (ParseMoment(f.Extra(ExtraKeys.Snooze)) is { } until)
             {
-                board.ScheduleNextAction(item.Id, until, _actor, now, notify: true);
+                Try(() => board.ScheduleNextAction(item.Id, until, _actor, now, notify: true));
             }
             else if (f.Extra(ExtraKeys.Snooze).Length == 0 && item.NextActionAt is not null)
             {
-                board.ClearNextAction(item.Id, _actor, now);
+                Try(() => board.ClearNextAction(item.Id, _actor, now));
             }
         }
 
-        if (Changed(ExtraKeys.Remind))
+        if (Changed(ExtraKeys.Remind)) Try(() =>
         {
             var wanted = f.Extra(ExtraKeys.Remind).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(ParseMoment).OfType<DateTimeOffset>().Select(Moment).ToHashSet(StringComparer.Ordinal);
@@ -333,16 +363,17 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             {
                 board.AddReminder(item.Id, ParseMoment(at)!.Value, null, _actor, now);
             }
-        }
+        });
 
-        if (Changed(ExtraKeys.Stage) && item.Parent is null && (f.Extra(ExtraKeys.Stage).Length == 0 ? Stage.Inbox : Enum.TryParse<Stage>(f.Extra(ExtraKeys.Stage), ignoreCase: true, out var s) && Enum.IsDefined(s) ? s : (Stage?)null) is { } stage)
+        // A finished task's column doesn't matter (setting one would reopen it).
+        if (Changed(ExtraKeys.Stage) && item.Parent is null && item.CompletedAt is null && (f.Extra(ExtraKeys.Stage).Length == 0 ? Stage.Inbox : Enum.TryParse<Stage>(f.Extra(ExtraKeys.Stage), ignoreCase: true, out var s) && Enum.IsDefined(s) ? s : (Stage?)null) is { } stage)
         {
-            board.SetStage(item.Id, stage, _actor, now);
+            Try(() => board.SetStage(item.Id, stage, _actor, now));
         }
 
         if (Changed(ExtraKeys.Labels))
         {
-            board.SetLabels(item.Id, f.Extra(ExtraKeys.Labels).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), _actor, now);
+            Try(() => board.SetLabels(item.Id, f.Extra(ExtraKeys.Labels).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), _actor, now));
         }
 
         if (Changed(ExtraKeys.Plan))
@@ -350,11 +381,11 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             var parts = f.Extra(ExtraKeys.Plan).Split('/');
             if (ParseMoment(parts[0]) is { } start)
             {
-                board.Plan(item.Id, start, parts.Length > 1 && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes) ? minutes : null, _actor, now);
+                Try(() => board.Plan(item.Id, start, parts.Length > 1 && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes) ? minutes : null, _actor, now));
             }
             else if (f.Extra(ExtraKeys.Plan).Length == 0 && item.PlannedAt is not null)
             {
-                board.Unplan(item.Id, _actor, now);
+                Try(() => board.Unplan(item.Id, _actor, now));
             }
         }
 
@@ -367,19 +398,12 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         };
         if (look.Icon is not null || look.ClearIcon || look.Color is not null || look.ClearColor)
         {
-            board.Update(item.Id, look, _actor, now);
+            Try(() => board.Update(item.Id, look, _actor, now));
         }
 
         if (Changed(ExtraKeys.Repeat))
         {
-            try
-            {
-                board.Update(item.Id, f.Extra(ExtraKeys.Repeat).Length > 0 ? new TaskChanges { Repeat = f.Extra(ExtraKeys.Repeat) } : new TaskChanges { ClearRepeat = true }, _actor, now);
-            }
-            catch (ArgumentException)
-            {
-                // A repeat rule this app can't read (typed there by hand): the one here stays.
-            }
+            Try(() => board.Update(item.Id, f.Extra(ExtraKeys.Repeat).Length > 0 ? new TaskChanges { Repeat = f.Extra(ExtraKeys.Repeat) } : new TaskChanges { ClearRepeat = true }, _actor, now));
         }
     }
 
@@ -393,6 +417,11 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         {
             var discoverable = item.Parent is null && item.GroupId == target.GroupId && !item.IsArchived
                 && (item.CompletedAt is null || now - item.CompletedAt < RecentlyDone);
+            if (target.GroupOnly && item.GroupId != target.GroupId)
+            {
+                continue; // in another group's list now
+            }
+
             if (discoverable || linked.Contains(item.Id))
             {
                 result.Add(new LocalItem(item.Id, FieldsOf(item, now), discoverable, item.IsArchived));
