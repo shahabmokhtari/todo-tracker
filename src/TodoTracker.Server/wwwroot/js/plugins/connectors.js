@@ -1,8 +1,10 @@
-// Connectors: keep a group in step with a Notion database or a Microsoft To Do list, both ways. Each is its own plugin
+// Connectors: keep a group in step with a Notion database, a Microsoft To Do list or a GitHub repository's issues, both
+// ways. Each is its own plugin
 // (off until switched on in Plugins); this one panel sets them up: sign in, pick the list and the group, look at what
 // the first sync will do, then sync (and from then on every few minutes).
 
 const base = '/api/plugins/connectors';
+const githubBase = '/api/plugins/connector-github';
 const docs = 'https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/connectors.md';
 
 /** What a first sync will do, said plainly. */
@@ -20,6 +22,7 @@ export function previewText(p) {
 export function createConnectorsPanel(host) {
   const { h, icon } = host;
   let views = [];
+  let github = null;
   let preview = {};
   const open = true;
   const extras = { notion: { databases: null }, mstodo: { lists: null } };
@@ -29,7 +32,7 @@ export function createConnectorsPanel(host) {
 
   async function load() {
     try {
-      views = await host.api(base);
+      [views, github] = await Promise.all([host.api(base), host.api(githubBase).catch(() => null)]);
       if (open) render();
     } catch (err) {
       host.toast(err.message, 'error');
@@ -164,10 +167,62 @@ export function createConnectorsPanel(host) {
     return body;
   }
 
+  /**
+   * GitHub Issues: each group with its own private repository (made with the GitHub CLI, so nothing to paste), or a
+   * repository you pick. Snoozes, reminders and the rest travel as labels (due:, snooze:, remind:…).
+   */
+  function githubCard(g) {
+    const toggle = h('input', {
+      type: 'checkbox', checked: g.on, 'aria-label': 'Use GitHub Issues',
+      onchange: () => run(host.put('/api/plugins/connector-github', { enabled: toggle.checked }), toggle.checked ? 'GitHub Issues is on' : 'GitHub Issues is off'),
+    });
+    const head = h('label', { class: 'connector-head' }, toggle, h('span', null, h('strong', null, 'GitHub Issues'),
+      h('span', { class: 'muted small' }, 'Each group in its own private repository: tasks are issues, both ways.')));
+    if (!g.on) return h('section', { class: 'connector off' }, head);
+    const ready = !g.missing;
+    const every = h('input', {
+      type: 'checkbox', checked: g.everyGroup, disabled: !ready || g.mainPlace, 'aria-label': 'Every group gets its own repository',
+      onchange: async () => {
+        await run(host.put(`${githubBase}/every-group`, { on: every.checked }), every.checked ? 'Making the repositories (a moment each)…' : null);
+        // They're made in the background: look again in a bit.
+        if (every.checked) [5000, 15000, 40000].forEach((ms) => setTimeout(load, ms));
+      },
+    });
+    const row = (x) => {
+      const id = encodeURIComponent(x.groupId);
+      const repoLink = x.repo ? h('a', { href: `https://github.com/${x.repo}/issues`, target: '_blank', rel: 'noopener' }, x.repo) : h('span', { class: 'muted' }, 'not connected');
+      const other = () => {
+        const repo = prompt(`Keep "${x.group}" in step with which repository? (owner/name)`, x.repo ?? '');
+        if (repo) run(host.post(`${githubBase}/groups/${id}/connect`, { repo }), `${x.group} is in step with ${repo}`);
+      };
+      return h('li', { class: 'github-group' },
+        h('div', { class: 'row' },
+          h('strong', null, x.group), repoLink,
+          x.repo
+            ? h('span', { class: 'buttons' },
+              h('button', { class: 'btn small', type: 'button', disabled: !ready, onclick: () => run(host.post(`${githubBase}/groups/${id}/sync`), 'Synced') }, 'Sync now'),
+              g.mainPlace ? null : h('button', { class: 'btn small ghost', type: 'button', onclick: () => {
+                if (confirm(`Stop keeping "${x.group}" in step with ${x.repo}? Nothing is deleted on either side.`)) run(host.del(`${githubBase}/groups/${id}`), 'Stopped');
+              } }, 'Stop'))
+            : h('span', { class: 'buttons' },
+              h('button', { class: 'btn small primary', type: 'button', disabled: !ready, title: 'Makes a private repository for this group with the GitHub CLI', onclick: () => run(host.post(`${githubBase}/groups/${id}/connect`, {}), `${x.group} has its repository`) }, 'Make its repository'),
+              h('button', { class: 'btn small ghost', type: 'button', disabled: !ready, onclick: other }, 'Use another…'))),
+        x.lastRun ? h('p', { class: 'muted small' }, `Last sync ${new Date(x.lastRun).toLocaleString()}: ${x.lastResult ?? ''}${x.repo ? ` · ${x.linked} linked` : ''}`) : null,
+        x.problems?.length ? h('ul', { class: 'problems' }, ...x.problems.map((p) => h('li', null, icon('alert', { size: 14 }), p))) : null);
+    };
+    return h('section', { class: 'connector' }, head,
+      ready
+        ? h('p', { class: 'muted small' }, `Signed in${g.account ? ` as ${g.account}` : ''} with the GitHub CLI. Snoozes, reminders, the board column, labels, icon and color travel as issue labels (due:, snooze:, remind:, stage:…).`)
+        : h('p', { class: 'hint' }, g.missing),
+      h('label', { class: 'check' }, every, h('span', null, g.mainPlace ? 'Every group has its own repository (GitHub is where your tasks live)' : 'Every group gets its own private repository (new groups too)')),
+      h('ul', { class: 'github-groups' }, ...g.groups.map(row)));
+  }
+
   function render() {
     panel.replaceChildren(
       h('p', { class: 'muted' }, 'Tasks stay in step both ways. Nothing is ever deleted: a task deleted here is archived there, and one gone there stays here. ', h('a', { href: docs, target: '_blank', rel: 'noopener' }, 'How it works')),
-      ...views.map(card));
+      ...views.map(card),
+      github ? githubCard(github) : null);
   }
 
   return {

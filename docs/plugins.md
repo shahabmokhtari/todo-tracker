@@ -17,6 +17,7 @@ applies after a restart; the sidebar offers to restart right away.
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
 | **Notion** | Keep a group in step with a Notion database, both ways ([`connectors.md`](connectors.md)) | No |
 | **Microsoft To Do** | Keep a group in step with a To Do list, both ways ([`connectors.md`](connectors.md)) | No |
+| **GitHub Issues** | Each group in its own private GitHub repository: tasks are issues, both ways; repositories are made with the GitHub CLI ([`connectors.md`](connectors.md#github-issues)) | No |
 | **Copy for Loop** | Copy a group's tasks as a checklist, or one task with its notes and pictures, to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
 

@@ -1,4 +1,4 @@
-# Connectors: Notion, Microsoft To Do, Loop
+# Connectors: Notion, Microsoft To Do, GitHub Issues, Loop
 
 Todo Tracker can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
 Microsoft To Do are **off** until you switch them on in **Plugins** (the puzzle button in the app, or the sidebar's
@@ -8,6 +8,7 @@ Microsoft To Do are **off** until you switch them on in **Plugins** (the puzzle 
 |---|---|---|
 | **Notion** | ✓ | title, done, due date, priority, tags (from the database's columns) |
 | **Microsoft To Do** | ✓ | title, done, due date, importance, note |
+| **GitHub Issues** | ✓ | each group in its own private repository: title, done, details, due date, priority, tags, labels, snooze, reminders, board column, icon, color, plan, repeat |
 | **Loop** | copy and paste | a checklist of a group's tasks (Loop has no API that other apps can write to) |
 
 ## How it stays safe
@@ -71,6 +72,52 @@ A work or school account may need an administrator to approve the app once. The 
 computer, and it only asks for access to your tasks.
 
 To Do has no tags and no *critical* importance: tags stay here, and critical tasks show as important (high) there.
+
+## GitHub Issues
+
+Each group can live in its own **private GitHub repository**, where every task is an issue. You don't create anything
+by hand: Todo Tracker makes the repository with the [GitHub CLI](https://cli.github.com) (`gh repo create`), so the only
+setup is signing in once:
+
+1. Install the GitHub CLI (Windows: `winget install GitHub.cli`; macOS: `brew install gh`; Linux: your package
+   manager, see cli.github.com) and run `gh auth login`.
+2. Switch on **GitHub Issues** in Settings › Connected apps.
+3. Choose **Make its repository** next to a group, or tick **Every group gets its own private repository**. New groups
+   then get theirs at the next sync. **Use another…** connects a group to a repository you already have (`owner/name`).
+
+The repository is named after the group (`todo-work`, `todo-side-projects`), is private, and gets the topic
+`todo-tracker` and the description `Todo Tracker: <group>`. If that name is taken by a repository that isn't the
+group's, a number is added (`todo-personal-2`). Connecting the group again, on this computer or another, finds the
+repository that was made for it.
+
+| Task | Issue |
+|---|---|
+| Title, details | Title, body (the task's id is a hidden comment at the end of the body) |
+| Done | Closed (as completed); open again: not done |
+| Tags | Plain labels |
+| Due date | Label `due:2026-10-20` |
+| Priority | Label `priority:low`, `priority:high` or `priority:critical` (normal: none) |
+| Snoozed until | Label `snooze:2026-10-20T14:30Z` (UTC) |
+| Reminders | One label each: `remind:2026-10-21T09:00Z` (UTC). Remove the label to dismiss the reminder |
+| Board column | Label `stage:next` or `stage:doing` (Inbox: none) |
+| Labels | One label each: `label:Deep work` |
+| Icon, color | Labels `icon:🔥`, `color:#ff8800` |
+| Planned block | Label `plan:2026-10-20T14:30Z/45` (start, minutes) |
+| Repeat | Label `repeat:every weekday` (a rule longer than a label allows, 50 characters, stays here) |
+
+Change any of these on GitHub (add `snooze:…` to snooze it, close the issue to finish it) and the task follows at the
+next sync; change the task here and the issue follows. A task deleted here closes its issue as *not planned*. Subtasks,
+notes, time and attachments stay here. Pull requests in the repository are left alone.
+
+Labels that aren't Todo Tracker's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
+don't make sense here (`color:red`) are left alone too, and never hold up the rest of the task. Two labels for one
+thing (two `snooze:` labels): the later time wins. A task moved to another group closes its issue (as not planned)
+and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
+keep growing. Repositories must be private: a public one is refused.
+
+It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
+app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,
+`Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away.
 
 ## Loop
 

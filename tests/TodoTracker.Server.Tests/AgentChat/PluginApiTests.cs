@@ -69,7 +69,9 @@ public sealed class PluginApiTests : IAsyncLifetime
         // nothing else changed).
         // The planner PR added the Plan view as an extra ("plan", switchable like the others): the list grew by it
         // because this PR registered it; nothing else changed.
-        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "plan", "history", "obsidian", "browser-extension", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "loop", "teams"], ids);
+        // The GitHub Issues PR added connector-github after Microsoft To Do: the list grew by it because that PR registered
+        // it (Plugins.BuiltIn); nothing else changed.
+        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "plan", "history", "obsidian", "browser-extension", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "connector-github", "loop", "teams"], ids);
     }
 
     [Fact]

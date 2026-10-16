@@ -113,6 +113,7 @@ public sealed class PluginHost
         new Sync.GistSyncPlugin(),
         new Connectors.NotionConnectorPlugin(),
         new Connectors.MicrosoftToDoConnectorPlugin(),
+        new GitHub.GitHubConnectorPlugin(),
         new Connectors.LoopPlugin(),
         new TeamsPlugin(),
     ];
