@@ -43,5 +43,6 @@ public sealed class GitHubConnectorPlugin : ITodoPlugin
         group.MapPost("/groups/{id:guid}/connect", (Guid id, GitHubConnectRequest? request, GitHubIssues g, CancellationToken ct) => g.ConnectAsync(id, request ?? new GitHubConnectRequest(null, null), ct));
         group.MapPost("/groups/{id:guid}/sync", (Guid id, GitHubIssues g, CancellationToken ct) => g.SyncAsync(id, ct));
         group.MapDelete("/groups/{id:guid}", (Guid id, GitHubIssues g, CancellationToken ct) => g.DisconnectAsync(id, ct));
+        group.MapPut("/main-place", (GitHubEveryGroupRequest request, GitHubIssues g, CancellationToken ct) => g.SetMainPlaceAsync(request.On, ct));
     }
 }

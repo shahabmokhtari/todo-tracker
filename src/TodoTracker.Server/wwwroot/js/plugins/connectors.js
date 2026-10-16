@@ -210,11 +210,34 @@ export function createConnectorsPanel(host) {
         x.lastRun ? h('p', { class: 'muted small' }, `Last sync ${new Date(x.lastRun).toLocaleString()}: ${x.lastResult ?? ''}${x.repo ? ` · ${x.linked} linked` : ''}`) : null,
         x.problems?.length ? h('ul', { class: 'problems' }, ...x.problems.map((p) => h('li', null, icon('alert', { size: 14 }), p))) : null);
     };
+    // Where the tasks live: the tasks folder, or GitHub only (the app keeps its own copy).
+    const main = h('input', {
+      type: 'checkbox', checked: g.mainPlace, disabled: !ready && !g.mainPlace, 'aria-label': 'Keep my tasks on GitHub, without a tasks folder',
+      onchange: async () => {
+        const on = main.checked;
+        const question = on
+          ? 'Keep your tasks on GitHub instead of a tasks folder?\n\nEvery group gets its own private repository, and the app keeps its copy in its own folder. Your tasks folder is left as it is. Takes effect when Todo Tracker restarts.'
+          : 'Keep your tasks in a tasks folder again?\n\nThe app\'s copy goes into your tasks folder (what\'s there now is kept next to it, renamed). The repositories stay on GitHub. Takes effect when Todo Tracker restarts.';
+        if (!confirm(question)) {
+          main.checked = !on;
+          return;
+        }
+
+        const result = await run(host.put(`${githubBase}/main-place`, { on }));
+        if (result) {
+          host.toast(`${on ? 'Your tasks will live on GitHub' : 'Your tasks will live in the tasks folder again'}: restart Todo Tracker to switch.`);
+        } else {
+          main.checked = !on;
+        }
+      },
+    });
     return h('section', { class: 'connector' }, head,
       ready
         ? h('p', { class: 'muted small' }, `Signed in${g.account ? ` as ${g.account}` : ''} with the GitHub CLI. Snoozes, reminders, the board column, labels, icon and color travel as issue labels (due:, snooze:, remind:, stage:…).`)
         : h('p', { class: 'hint' }, g.missing),
       h('label', { class: 'check' }, every, h('span', null, g.mainPlace ? 'Every group has its own repository (GitHub is where your tasks live)' : 'Every group gets its own private repository (new groups too)')),
+      h('label', { class: 'check' }, main, h('span', null, 'Keep my tasks on GitHub, without a tasks folder',
+        h('span', { class: 'muted small' }, ' (other computers find the repositories and bring the tasks in)'))),
       h('ul', { class: 'github-groups' }, ...g.groups.map(row)));
   }
 

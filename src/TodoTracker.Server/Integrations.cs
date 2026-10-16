@@ -4,7 +4,10 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server;
 
-public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null);
+/// <param name="Storage">Where the tasks live: null, the tasks folder; <see cref="SettingsStore.GitHubStorage"/>, GitHub
+/// (no tasks folder: the app keeps its copy in its own data folder).</param>
+/// <param name="LeavingGitHub">Switched back to the tasks folder: at the next start the app's copy goes there.</param>
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null, string? Storage = null, bool LeavingGitHub = false);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);
 
@@ -95,6 +98,38 @@ public sealed class SettingsStore
             _current = _current with { VaultPath = clean is null ? null : System.IO.Path.GetFullPath(clean) };
             Save();
             return _current;
+        }
+    }
+
+    public const string GitHubStorage = "github";
+
+    /// <summary>The tasks live on GitHub (no tasks folder), from the next start.</summary>
+    public bool TasksOnGitHub => Current.Storage == GitHubStorage;
+
+    /// <summary>Where the tasks live from the next start: the tasks folder (null) or GitHub.</summary>
+    public ServerSettings SetStorage(string? storage)
+    {
+        if (storage is not null && storage != GitHubStorage)
+        {
+            throw new ArgumentException("Tasks live in the tasks folder or on GitHub.", nameof(storage));
+        }
+
+        lock (_lock)
+        {
+            var leaving = _current.Storage == GitHubStorage && storage is null;
+            _current = _current with { Storage = storage, LeavingGitHub = leaving || (_current.LeavingGitHub && storage is null) };
+            Save();
+            return _current;
+        }
+    }
+
+    /// <summary>The app's copy went back into the tasks folder.</summary>
+    public void LeftGitHub()
+    {
+        lock (_lock)
+        {
+            _current = _current with { LeavingGitHub = false };
+            Save();
         }
     }
 

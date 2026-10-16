@@ -495,8 +495,8 @@ internal static class ApiEndpoints
 
         api.MapPut("/settings/vault", (VaultSettingRequest request, SettingsStore settings, TodoTrackerServerOptions options) =>
         {
-            var saved = settings.SetVaultPath(request.Path);
-            return new VaultSettingDto(options.ResolveVaultPath(saved.VaultPath), RestartRequired: true);
+            settings.SetVaultPath(request.Path);
+            return new VaultSettingDto(TodoTrackerHost.VaultPathOf(options, settings), RestartRequired: true);
         });
 
         api.MapGet("/settings", (SettingsStore settings) => settings.ToDto());

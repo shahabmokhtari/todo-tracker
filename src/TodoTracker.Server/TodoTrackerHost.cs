@@ -91,12 +91,95 @@ public static class TodoTrackerHost
         services.AddSingleton(new Hooks.HookStore(options.DataDirectory));
     }
 
-    /// <summary>Opens the vault the app uses (see <see cref="TodoTrackerServerOptions.ResolveVaultPath"/>).</summary>
+    /// <summary>
+    /// The folder the tasks are kept in: the tasks folder (<see cref="TodoTrackerServerOptions.ResolveVaultPath"/>), or,
+    /// with the tasks on GitHub, the app's own copy in its data folder (a folder named for one run still wins).
+    /// </summary>
+    public static string VaultPathOf(TodoTrackerServerOptions options, SettingsStore settings)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.TasksOnGitHub && !options.IsVaultOverridden ? GitHubCopyOf(options) : options.ResolveVaultPath(settings.Current.VaultPath);
+    }
+
+    /// <summary>Where the app keeps its copy of the tasks when they live on GitHub.</summary>
+    public static string GitHubCopyOf(TodoTrackerServerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return Path.Combine(options.DataDirectory, "github-tasks");
+    }
+
+    /// <summary>
+    /// Where the tasks live changed (Settings › Connected apps › GitHub): done at start, so nothing changed in between is
+    /// left behind. To GitHub: the tasks folder is copied into the app's own folder (once; the tasks folder stays as it
+    /// is). Back: the app's copy goes into the tasks folder; what the folder had, and the old copy, are kept renamed.
+    /// </summary>
+    public static void PrepareStorage(TodoTrackerServerOptions options, SettingsStore settings, TimeProvider time)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(time);
+        if (options.IsVaultOverridden)
+        {
+            return;
+        }
+
+        var copy = GitHubCopyOf(options);
+        var folder = options.ResolveVaultPath(settings.Current.VaultPath);
+        var stamp = time.GetUtcNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        if (settings.TasksOnGitHub && !HasFiles(copy))
+        {
+            CopyFolder(folder, copy);
+        }
+        else if (!settings.TasksOnGitHub && settings.Current.LeavingGitHub)
+        {
+            if (HasFiles(copy))
+            {
+                if (HasFiles(folder))
+                {
+                    Directory.Move(folder, $"{folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}.before-github-{stamp}");
+                }
+
+                CopyFolder(copy, folder);
+                Directory.Move(copy, $"{copy}.returned-{stamp}");
+            }
+
+            settings.LeftGitHub();
+        }
+    }
+
+    private static bool HasFiles(string folder) => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any();
+
+    /// <summary>Copies a tasks folder (its version history, in .git, stays behind: it's per computer).</summary>
+    internal static void CopyFolder(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        if (!Directory.Exists(from))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(from, file);
+            if (relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] is ".git")
+            {
+                continue;
+            }
+
+            var target = Path.Combine(to, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+    }
+
+    /// <summary>Opens the vault the app uses (see <see cref="VaultPathOf"/>).</summary>
     public static VaultBoardStore OpenVault(TodoTrackerServerOptions options, SettingsStore settings, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(settings);
-        return VaultBoardStore.Open(new VaultOptions(options.ResolveVaultPath(settings.Current.VaultPath))
+        PrepareStorage(options, settings, time ?? TimeProvider.System);
+        return VaultBoardStore.Open(new VaultOptions(VaultPathOf(options, settings))
         {
             TimeZone = options.TimeZone,
             Time = time ?? TimeProvider.System,

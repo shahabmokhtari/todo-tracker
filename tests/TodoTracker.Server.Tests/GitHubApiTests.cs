@@ -145,6 +145,68 @@ public sealed class GitHubApiTests
         Assert.Single(cli.Created, c => c.Name == "todo-errands");
     }
 
+    [Fact]
+    public async Task Tasks_can_live_on_GitHub_without_a_tasks_folder_and_go_back_with_nothing_lost()
+    {
+        var (server, _, _) = await StartAsync();
+        await using var _ = server;
+        var client = server.Client();
+        await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Water the plants"), Actor.User, ServerFixture.T0));
+        var options = server.App.Services.GetRequiredService<TodoTrackerServerOptions>();
+        var settings = server.App.Services.GetRequiredService<SettingsStore>();
+        var folder = TodoTrackerHost.VaultPathOf(options, settings);
+
+        var on = await (await client.PutAsJsonAsync($"{Base}/main-place", new { on = true })).Json();
+
+        // From the next start the app uses its own copy, made then (so nothing changed meanwhile is left behind); the
+        // tasks folder is left as it was. GitHub is on.
+        var copy = TodoTrackerHost.GitHubCopyOf(options);
+        Assert.Equal((copy, true), (on["path"]!.GetValue<string>(), on["restartRequired"]!.GetValue<bool>()));
+        Assert.Equal(copy, TodoTrackerHost.VaultPathOf(options, settings));
+        TodoTrackerHost.PrepareStorage(options, settings, server.Time);
+        Assert.Contains(Directory.EnumerateFiles(copy, "*.md", SearchOption.AllDirectories), f => f.EndsWith("Water the plants.md", StringComparison.Ordinal));
+        Assert.Contains(Directory.EnumerateFiles(folder, "*.md", SearchOption.AllDirectories), f => f.EndsWith("Water the plants.md", StringComparison.Ordinal));
+        Assert.True((await client.GetJson(Base))["mainPlace"]!.GetValue<bool>());
+
+        // Back to the tasks folder: the copy goes there; what the folder had is kept next to it.
+        File.WriteAllText(Path.Combine(copy, "Made while on GitHub.md"), "# Made while on GitHub\n");
+        await (await client.PutAsJsonAsync($"{Base}/main-place", new { on = false })).Json();
+        Assert.Equal(folder, TodoTrackerHost.VaultPathOf(options, settings));
+        TodoTrackerHost.PrepareStorage(options, settings, server.Time);
+
+        Assert.True(File.Exists(Path.Combine(folder, "Made while on GitHub.md")));
+        Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(folder)!, Path.GetFileName(folder) + ".before-github-*"));
+        Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(copy)!, Path.GetFileName(copy) + ".returned-*"));
+        Assert.False(settings.Current.LeavingGitHub);
+    }
+
+    [Fact]
+    public async Task On_GitHub_other_computers_repositories_become_groups_and_their_issues_come_in_with_their_ids()
+    {
+        var (server, github, cli) = await StartAsync();
+        await using var _ = server;
+        server.App.Services.GetRequiredService<SettingsStore>().SetStorage(SettingsStore.GitHubStorage);
+        var elsewhere = Guid.NewGuid();
+        github.AddRepo("me/todo-errands", "Todo Tracker: Errands", GitHubIssues.Topic);
+        github.AddTo("me/todo-errands", "Buy stamps", $"<!-- todotracker:id={elsewhere:D} -->", false, "snooze:2026-01-09T08:00Z");
+        github.AddRepo("me/notes", "Not ours");
+
+        await server.App.Services.GetRequiredService<GitHubIssues>().SyncAllAsync(CancellationToken.None);
+
+        var groups = await server.Store.ReadAsync(b => b.Groups.ToDictionary(g => g.Name, g => g.Id));
+        Assert.True(groups.ContainsKey("Errands"));
+        Assert.False(groups.ContainsKey("notes"));
+        var stamps = await server.Store.ReadAsync(b => b.Find(elsewhere));
+        Assert.NotNull(stamps);
+        Assert.Equal((groups["Errands"], new DateTimeOffset(2026, 1, 9, 8, 0, 0, TimeSpan.Zero)), (stamps.GroupId, stamps.NextActionAt));
+
+        // Work had a repository made for it elsewhere (its description): joined, not made again. The rest get theirs.
+        var view = await server.Client().GetJson(Base);
+        Assert.Equal("me/todo-work", view["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Work")!["repo"]!.GetValue<string>());
+        Assert.DoesNotContain(cli.Created, c => c.Name is "todo-work" or "todo-errands");
+        Assert.All(view["groups"]!.AsArray(), g => Assert.NotNull(g!["repo"]));
+    }
+
     [Theory]
     [InlineData("Work", "todo-work")]
     [InlineData("Side projects!", "todo-side-projects")]

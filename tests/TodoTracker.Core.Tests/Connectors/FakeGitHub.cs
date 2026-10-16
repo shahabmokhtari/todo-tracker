@@ -53,6 +53,7 @@ public sealed class FakeGitHub : HttpMessageHandler
         var repo = new JsonObject
         {
             ["full_name"] = fullName,
+            ["name"] = fullName.Split('/')[1],
             ["description"] = description,
             ["has_issues"] = true,
             ["private"] = true,
@@ -92,6 +93,13 @@ public sealed class FakeGitHub : HttpMessageHandler
         if (path == "user")
         {
             return Json(HttpStatusCode.OK, new JsonObject { ["login"] = Login });
+        }
+
+        if (path.StartsWith("user/repos", StringComparison.Ordinal))
+        {
+            var query = System.Web.HttpUtility.ParseQueryString(path[path.IndexOf('?', StringComparison.Ordinal)..]);
+            var page = int.Parse(query["page"] ?? "1", CultureInfo.InvariantCulture);
+            return Json(HttpStatusCode.OK, new JsonArray([.. Repos.Values.Skip((page - 1) * 100).Take(100).Select(r => r.DeepClone())]));
         }
 
         var parts = path.Split('?')[0].Split('/');
