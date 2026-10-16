@@ -172,8 +172,11 @@ export function createConnectorsPanel(host) {
    * repository you pick. Snoozes, reminders and the rest travel as labels (due:, snooze:, remind:…).
    */
   function githubCard(g) {
+    // While the tasks live on GitHub it stays on (move them back first).
+    const locked = g.mainPlace || g.mainPlaceAsked;
     const toggle = h('input', {
-      type: 'checkbox', checked: g.on, 'aria-label': 'Use GitHub Issues',
+      type: 'checkbox', checked: g.on, 'aria-label': 'Use GitHub Issues', disabled: locked && g.on,
+      title: locked ? 'Your tasks live on GitHub: untick "Keep my tasks on GitHub" first' : '',
       onchange: () => run(host.put('/api/plugins/connector-github', { enabled: toggle.checked }), toggle.checked ? 'GitHub Issues is on' : 'GitHub Issues is off'),
     });
     const head = h('label', { class: 'connector-head' }, toggle, h('span', null, h('strong', null, 'GitHub Issues'),
@@ -212,7 +215,7 @@ export function createConnectorsPanel(host) {
     };
     // Where the tasks live: the tasks folder, or GitHub only (the app keeps its own copy).
     const main = h('input', {
-      type: 'checkbox', checked: g.mainPlace, disabled: !ready && !g.mainPlace, 'aria-label': 'Keep my tasks on GitHub, without a tasks folder',
+      type: 'checkbox', checked: g.mainPlaceAsked, disabled: !ready && !g.mainPlaceAsked, 'aria-label': 'Keep my tasks on GitHub, without a tasks folder',
       onchange: async () => {
         const on = main.checked;
         const question = on
@@ -238,6 +241,8 @@ export function createConnectorsPanel(host) {
       h('label', { class: 'check' }, every, h('span', null, g.mainPlace ? 'Every group has its own repository (GitHub is where your tasks live)' : 'Every group gets its own private repository (new groups too)')),
       h('label', { class: 'check' }, main, h('span', null, 'Keep my tasks on GitHub, without a tasks folder',
         h('span', { class: 'muted small' }, ' (other computers find the repositories and bring the tasks in)'))),
+      g.mainPlaceAsked !== g.mainPlace ? h('p', { class: 'hint' }, 'Restart Todo Tracker to finish moving your tasks.') : null,
+      g.problems?.length ? h('ul', { class: 'problems' }, ...g.problems.map((p) => h('li', null, icon('alert', { size: 14 }), p))) : null,
       h('ul', { class: 'github-groups' }, ...g.groups.map(row)));
   }
 

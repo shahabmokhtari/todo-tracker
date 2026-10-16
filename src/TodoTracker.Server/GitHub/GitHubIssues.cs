@@ -21,7 +21,10 @@ public sealed record GitHubGroupView(Guid GroupId, string Group, string? Repo, C
 /// The GitHub connector as Settings shows it: whether <c>gh</c> is there and signed in (<see cref="Missing"/> says what
 /// to do), whether every group gets its own repository, and each group.
 /// </summary>
-public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups);
+/// <param name="MainPlace">The tasks live on GitHub now.</param>
+/// <param name="MainPlaceAsked">They're to live on GitHub (different from <paramref name="MainPlace"/>: until the app restarts).</param>
+/// <param name="Problems">What went wrong moving the tasks, or finding repositories.</param>
+public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups, bool MainPlaceAsked = false, IReadOnlyList<string>? Problems = null);
 
 /// <summary>Connect a group: to <paramref name="Repo"/> ("owner/name"), or (none) to a new private repository.</summary>
 public sealed record GitHubConnectRequest(string? Repo, ConnectorDirection? Direction);
@@ -66,7 +69,7 @@ public sealed class GitHubIssues(
     /// GitHub is where the tasks live (no tasks folder): every group has its repository, repositories made for groups
     /// on other computers become groups here, and issues made elsewhere come in with their task's id.
     /// </summary>
-    public bool MainPlace => settings.TasksOnGitHub;
+    public bool MainPlace => settings.UsingGitHub;
 
     public void Dispose() => _busy.Dispose();
 
@@ -77,7 +80,7 @@ public sealed class GitHubIssues(
         if (!On)
         {
             // Off: no gh, no network (Settings only offers to switch it on).
-            return new GitHubView(false, false, null, null, false, MainPlace, []);
+            return new GitHubView(false, false, null, null, false, MainPlace, [], settings.TasksOnGitHub);
         }
 
         var token = await cli.TokenAsync(cancellationToken).ConfigureAwait(false);
@@ -99,7 +102,7 @@ public sealed class GitHubIssues(
         }
 
         var groups = await store.ReadAsync(b => b.Groups.Select(g => (g.Id, g.Name)).ToList(), cancellationToken).ConfigureAwait(false);
-        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))]);
+        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))], settings.TasksOnGitHub, Main.Settings.Problems);
     }
 
     private bool EveryGroup => MainPlace || Main.Settings.Enabled;
@@ -183,6 +186,7 @@ public sealed class GitHubIssues(
             {
                 try
                 {
+                    await ForgetDeletedGroupsAsync(cancellationToken).ConfigureAwait(false);
                     await DiscoverLockedAsync(token, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ConnectorRunner.IsProblem(ex, cancellationToken))
@@ -227,7 +231,12 @@ public sealed class GitHubIssues(
             throw new InvalidOperationException("This run uses a tasks folder named for it (TODOTRACKER_VAULT or --vault): switch where the tasks live without it.");
         }
 
-        if (on != MainPlace)
+        if (TodoTrackerHost.StorageProblem(options, options.ResolveVaultPath(settings.Current.VaultPath)) is { } problem)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
+        if (on != settings.TasksOnGitHub)
         {
             if (on)
             {
@@ -237,9 +246,37 @@ public sealed class GitHubIssues(
             }
 
             settings.SetStorage(on ? SettingsStore.GitHubStorage : null);
+            Main.Update(s => s with { Problems = [] });
         }
 
-        return new GitHubMainPlaceResult(on, TodoTrackerHost.VaultPathOf(options, settings), RestartRequired: true);
+        var path = on ? TodoTrackerHost.GitHubCopyOf(options) : options.ResolveVaultPath(settings.Current.VaultPath);
+        return new GitHubMainPlaceResult(on, path, RestartRequired: on != MainPlace);
+    }
+
+    /// <summary>A group deleted here: its repository is remembered, so it isn't brought back as a group.</summary>
+    private async Task ForgetDeletedGroupsAsync(CancellationToken cancellationToken)
+    {
+        var folder = Path.Combine(options.DataDirectory, "connectors");
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var groups = (await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false)).ToHashSet();
+        foreach (var dir in Directory.GetDirectories(folder, FilesPrefix + "*"))
+        {
+            if (Guid.TryParseExact(Path.GetFileName(dir)[FilesPrefix.Length..], "N", out var id) && !groups.Contains(id))
+            {
+                var files = FilesOf(id);
+                if (files.Settings.Target is { } repo)
+                {
+                    Main.Update(s => s with { Forgotten = [.. s.Forgotten.Append(repo).Distinct(StringComparer.OrdinalIgnoreCase)] });
+                }
+
+                files.Clear();
+                Directory.Delete(dir, recursive: true);
+            }
+        }
     }
 
     /// <summary>
@@ -250,6 +287,7 @@ public sealed class GitHubIssues(
     {
         var mapped = (await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false))
             .Select(id => FilesOf(id).Settings.Target).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        mapped.UnionWith(Main.Settings.Forgotten);
         for (var page = 1; page < 50; page++)
         {
             var repos = await SendAsync(token, HttpMethod.Get, $"user/repos?affiliation=owner&per_page=100&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];

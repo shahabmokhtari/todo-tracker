@@ -22,6 +22,15 @@ public static class TodoTrackerHost
     public static WebApplicationBuilder CreateBuilder(TodoTrackerServerOptions options, string[]? args = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        // The app's own host moves the tasks if Settings asked for it (see PrepareStorage); what got in the way shows in
+        // Settings › Connected apps › GitHub.
+        Directory.CreateDirectory(options.DataDirectory);
+        if (PrepareStorage(options, new SettingsStore(options), TimeProvider.System) is { } storageProblem)
+        {
+            new Plugins.Connectors.ConnectorFiles(options.DataDirectory, "github").Update(s => s with { LastResult = "Couldn't move your tasks", Problems = [storageProblem] });
+        }
+
         var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
         {
             Args = args ?? [],
@@ -92,14 +101,14 @@ public static class TodoTrackerHost
     }
 
     /// <summary>
-    /// The folder the tasks are kept in: the tasks folder (<see cref="TodoTrackerServerOptions.ResolveVaultPath"/>), or,
-    /// with the tasks on GitHub, the app's own copy in its data folder (a folder named for one run still wins).
+    /// The folder the tasks are kept in now: the tasks folder (<see cref="TodoTrackerServerOptions.ResolveVaultPath"/>),
+    /// or, with the tasks on GitHub, the app's own copy in its data folder (a folder named for one run still wins).
     /// </summary>
     public static string VaultPathOf(TodoTrackerServerOptions options, SettingsStore settings)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(settings);
-        return settings.TasksOnGitHub && !options.IsVaultOverridden ? GitHubCopyOf(options) : options.ResolveVaultPath(settings.Current.VaultPath);
+        return settings.UsingGitHub && !options.IsVaultOverridden ? GitHubCopyOf(options) : options.ResolveVaultPath(settings.Current.VaultPath);
     }
 
     /// <summary>Where the app keeps its copy of the tasks when they live on GitHub.</summary>
@@ -110,42 +119,88 @@ public static class TodoTrackerHost
     }
 
     /// <summary>
-    /// Where the tasks live changed (Settings › Connected apps › GitHub): done at start, so nothing changed in between is
-    /// left behind. To GitHub: the tasks folder is copied into the app's own folder (once; the tasks folder stays as it
-    /// is). Back: the app's copy goes into the tasks folder; what the folder had, and the old copy, are kept renamed.
+    /// Moves the tasks where Settings asks them to live (Settings › Connected apps › GitHub), at the app's start: only the
+    /// app's own host does it (never <c>tt</c> or <c>tt mcp</c>, which keep using where they live now), so nothing changed
+    /// before the restart is left behind. Each step can be redone: copies go to a new folder that's then moved into place,
+    /// and the location in use changes only once it's all there. Something in the way (a file open in another app) never
+    /// stops the app: it keeps using where the tasks are and tries again at the next start. Returns what went wrong.
     /// </summary>
-    public static void PrepareStorage(TodoTrackerServerOptions options, SettingsStore settings, TimeProvider time)
+    /// <remarks>To GitHub: the tasks folder is copied into the app's own folder (an older copy there is kept, renamed),
+    /// and the tasks folder is left as it is. Back: the app's copy goes into the tasks folder; what that folder had, and
+    /// the copy, are kept renamed. Nothing is deleted.</remarks>
+    public static string? PrepareStorage(TodoTrackerServerOptions options, SettingsStore settings, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(time);
-        if (options.IsVaultOverridden)
+        if (options.IsVaultOverridden || settings.TasksOnGitHub == settings.UsingGitHub)
         {
-            return;
+            return null;
         }
 
-        var copy = GitHubCopyOf(options);
-        var folder = options.ResolveVaultPath(settings.Current.VaultPath);
-        var stamp = time.GetUtcNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
-        if (settings.TasksOnGitHub && !HasFiles(copy))
+        var copy = Path.GetFullPath(GitHubCopyOf(options));
+        var folder = Path.GetFullPath(options.ResolveVaultPath(settings.Current.VaultPath));
+        if (StorageProblem(options, folder) is { } problem)
         {
-            CopyFolder(folder, copy);
+            return problem;
         }
-        else if (!settings.TasksOnGitHub && settings.Current.LeavingGitHub)
+
+        var stamp = time.GetUtcNow().ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+        try
         {
-            if (HasFiles(copy))
+            if (settings.TasksOnGitHub)
             {
-                if (HasFiles(folder))
+                var fresh = $"{copy}.new-{stamp}";
+                CopyFolder(folder, fresh);
+                if (Directory.Exists(copy))
                 {
-                    Directory.Move(folder, $"{folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)}.before-github-{stamp}");
+                    Directory.Move(copy, $"{copy}.old-{stamp}");
                 }
 
-                CopyFolder(copy, folder);
-                Directory.Move(copy, $"{copy}.returned-{stamp}");
+                Directory.Move(fresh, copy);
+                settings.SetActiveStorage(SettingsStore.GitHubStorage);
+            }
+            else
+            {
+                // Done in steps that can be picked up again: the folder put aside (once), the copy moved in, then the switch.
+                if (HasFiles(folder))
+                {
+                    Directory.Move(folder, $"{folder}.before-github-{stamp}");
+                }
+
+                var fresh = $"{folder}.new-{stamp}";
+                CopyFolder(copy, fresh);
+                Directory.Move(fresh, folder);
+                settings.SetActiveStorage(null);
+                try
+                {
+                    Directory.Move(copy, $"{copy}.returned-{stamp}");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Left where it is: a later switch to GitHub makes a fresh copy anyway.
+                }
             }
 
-            settings.LeftGitHub();
+            return null;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"Couldn't move your tasks yet ({ex.Message}). They're where they were; it's tried again when Todo Tracker starts (close apps that have files in the tasks folder open).";
+        }
+    }
+
+    /// <summary>Why the tasks can't move between <paramref name="folder"/> and the app's copy, or null.</summary>
+    public static string? StorageProblem(TodoTrackerServerOptions options, string folder)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        static string Full(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) + Path.DirectorySeparatorChar;
+        static bool Inside(string a, string b) => Full(a).StartsWith(Full(b), OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+        // Copying one into the other would never end, and a tasks folder holding the data folder would copy its secrets.
+        var copy = GitHubCopyOf(options);
+        return Inside(copy, folder) || Inside(folder, copy) || Inside(options.DataDirectory, folder)
+            ? "The tasks folder holds Todo Tracker's own data folder (or is inside its copy): choose a tasks folder elsewhere first."
+            : null;
     }
 
     private static bool HasFiles(string folder) => Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any();
@@ -159,7 +214,7 @@ public static class TodoTrackerHost
             return;
         }
 
-        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        foreach (var file in Directory.GetFiles(from, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(from, file);
             if (relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0] is ".git")
@@ -178,7 +233,6 @@ public static class TodoTrackerHost
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(settings);
-        PrepareStorage(options, settings, time ?? TimeProvider.System);
         return VaultBoardStore.Open(new VaultOptions(VaultPathOf(options, settings))
         {
             TimeZone = options.TimeZone,

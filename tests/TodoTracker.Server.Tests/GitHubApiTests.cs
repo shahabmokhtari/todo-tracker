@@ -145,39 +145,92 @@ public sealed class GitHubApiTests
         Assert.Single(cli.Created, c => c.Name == "todo-errands");
     }
 
+    /// <summary>The owner's session: opened from a link the app made itself (as the sidebar and the tray do).</summary>
+    private static async Task<HttpClient> AppClientAsync(ServerFixture server)
+    {
+        var link = new Uri(TodoTrackerHost.CreateLaunchUrl(server.App.Services));
+        using var client = server.Client(authenticated: false);
+        using var response = await client.GetAsync(link.PathAndQuery);
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0]["tt_session=".Length..];
+        var session = server.Client(authenticated: false);
+        session.DefaultRequestHeaders.Add("Cookie", $"tt_session={cookie}");
+        session.DefaultRequestHeaders.Add("X-TodoTracker-Client", "web");
+        return session;
+    }
+
     [Fact]
     public async Task Tasks_can_live_on_GitHub_without_a_tasks_folder_and_go_back_with_nothing_lost()
     {
         var (server, _, _) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        using var app = await AppClientAsync(server);
         await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Water the plants"), Actor.User, ServerFixture.T0));
         var options = server.App.Services.GetRequiredService<TodoTrackerServerOptions>();
         var settings = server.App.Services.GetRequiredService<SettingsStore>();
         var folder = TodoTrackerHost.VaultPathOf(options, settings);
 
-        var on = await (await client.PutAsJsonAsync($"{Base}/main-place", new { on = true })).Json();
+        // Only the person at this computer moves the tasks (not an agent with the API token).
+        Assert.Equal(HttpStatusCode.Forbidden, (await server.Client().PutAsJsonAsync($"{Base}/main-place", new { on = true })).StatusCode);
+        var on = await (await app.PutAsJsonAsync($"{Base}/main-place", new { on = true })).Json();
 
-        // From the next start the app uses its own copy, made then (so nothing changed meanwhile is left behind); the
-        // tasks folder is left as it was. GitHub is on.
+        // Asked, not done: tt and tt mcp keep using the tasks folder until the app moves them at its next start.
         var copy = TodoTrackerHost.GitHubCopyOf(options);
         Assert.Equal((copy, true), (on["path"]!.GetValue<string>(), on["restartRequired"]!.GetValue<bool>()));
+        Assert.Equal(folder, TodoTrackerHost.VaultPathOf(options, settings));
+        var view = await app.GetJson(Base);
+        Assert.Equal((false, true), (view["mainPlace"]!.GetValue<bool>(), view["mainPlaceAsked"]!.GetValue<bool>()));
+
+        Assert.Null(TodoTrackerHost.PrepareStorage(options, settings, server.Time));
         Assert.Equal(copy, TodoTrackerHost.VaultPathOf(options, settings));
-        TodoTrackerHost.PrepareStorage(options, settings, server.Time);
         Assert.Contains(Directory.EnumerateFiles(copy, "*.md", SearchOption.AllDirectories), f => f.EndsWith("Water the plants.md", StringComparison.Ordinal));
         Assert.Contains(Directory.EnumerateFiles(folder, "*.md", SearchOption.AllDirectories), f => f.EndsWith("Water the plants.md", StringComparison.Ordinal));
-        Assert.True((await client.GetJson(Base))["mainPlace"]!.GetValue<bool>());
 
-        // Back to the tasks folder: the copy goes there; what the folder had is kept next to it.
+        // Back to the tasks folder: the copy goes there; what the folder had, and the copy, are kept renamed.
         File.WriteAllText(Path.Combine(copy, "Made while on GitHub.md"), "# Made while on GitHub\n");
-        await (await client.PutAsJsonAsync($"{Base}/main-place", new { on = false })).Json();
-        Assert.Equal(folder, TodoTrackerHost.VaultPathOf(options, settings));
-        TodoTrackerHost.PrepareStorage(options, settings, server.Time);
+        await (await app.PutAsJsonAsync($"{Base}/main-place", new { on = false })).Json();
+        Assert.Equal(copy, TodoTrackerHost.VaultPathOf(options, settings));
+        Assert.Null(TodoTrackerHost.PrepareStorage(options, settings, server.Time));
 
+        Assert.Equal(folder, TodoTrackerHost.VaultPathOf(options, settings));
         Assert.True(File.Exists(Path.Combine(folder, "Made while on GitHub.md")));
         Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(folder)!, Path.GetFileName(folder) + ".before-github-*"));
         Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(copy)!, Path.GetFileName(copy) + ".returned-*"));
-        Assert.False(settings.Current.LeavingGitHub);
+    }
+
+    [Fact]
+    public async Task A_move_that_something_gets_in_the_way_of_is_tried_again_and_never_stops_the_app()
+    {
+        var (server, _, _) = await StartAsync();
+        await using var _ = server;
+        var options = server.App.Services.GetRequiredService<TodoTrackerServerOptions>();
+        var settings = server.App.Services.GetRequiredService<SettingsStore>();
+        settings.SetStorage(SettingsStore.GitHubStorage);
+        Assert.Null(TodoTrackerHost.PrepareStorage(options, settings, server.Time));
+        var copy = TodoTrackerHost.GitHubCopyOf(options);
+        settings.SetStorage(null);
+
+        // A file in the way of the copy going back (a file where the new folder goes): it says so, and nothing moved.
+        var folder = options.ResolveVaultPath(settings.Current.VaultPath);
+        File.WriteAllText($"{folder}.new-{server.Time.GetUtcNow():yyyyMMdd-HHmmss}", "in the way");
+        Assert.NotNull(TodoTrackerHost.PrepareStorage(options, settings, server.Time));
+        Assert.Equal(copy, TodoTrackerHost.VaultPathOf(options, settings));
+
+        // Next start, it goes through (the folder already put aside isn't put aside again).
+        server.Time.Advance(TimeSpan.FromMinutes(1));
+        Assert.Null(TodoTrackerHost.PrepareStorage(options, settings, server.Time));
+        Assert.Equal(folder, TodoTrackerHost.VaultPathOf(options, settings));
+        Assert.Single(Directory.GetDirectories(Path.GetDirectoryName(folder)!, Path.GetFileName(folder) + ".before-github-*"));
+    }
+
+    [Fact]
+    public void A_tasks_folder_holding_the_data_folder_is_refused()
+    {
+        var data = Path.Combine(Path.GetTempPath(), "tt-nest", "data");
+        var options = new TodoTrackerServerOptions { DataDirectory = data };
+        Assert.NotNull(TodoTrackerHost.StorageProblem(options, Path.Combine(Path.GetTempPath(), "tt-nest")));
+        Assert.NotNull(TodoTrackerHost.StorageProblem(options, Path.Combine(data, "github-tasks", "inner")));
+        Assert.Null(TodoTrackerHost.StorageProblem(options, Path.Combine(data, "vault")));
+        Assert.Null(TodoTrackerHost.StorageProblem(options, Path.Combine(Path.GetTempPath(), "elsewhere")));
     }
 
     [Fact]
@@ -185,7 +238,9 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        server.App.Services.GetRequiredService<SettingsStore>().SetStorage(SettingsStore.GitHubStorage);
+        var settings = server.App.Services.GetRequiredService<SettingsStore>();
+        settings.SetStorage(SettingsStore.GitHubStorage);
+        settings.SetActiveStorage(SettingsStore.GitHubStorage);
         var elsewhere = Guid.NewGuid();
         github.AddRepo("me/todo-errands", "Todo Tracker: Errands", GitHubIssues.Topic);
         github.AddTo("me/todo-errands", "Buy stamps", $"<!-- todotracker:id={elsewhere:D} -->", false, "snooze:2026-01-09T08:00Z");
@@ -205,6 +260,11 @@ public sealed class GitHubApiTests
         Assert.Equal("me/todo-work", view["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Work")!["repo"]!.GetValue<string>());
         Assert.DoesNotContain(cli.Created, c => c.Name is "todo-work" or "todo-errands");
         Assert.All(view["groups"]!.AsArray(), g => Assert.NotNull(g!["repo"]));
+
+        // A group deleted here stays deleted (its repository isn't taken for one made elsewhere).
+        await server.Store.UpdateAsync(b => { b.DeleteGroup(groups["Errands"], groups["Work"], Actor.User, ServerFixture.T0); return 0; });
+        await server.App.Services.GetRequiredService<GitHubIssues>().SyncAllAsync(CancellationToken.None);
+        Assert.False(await server.Store.ReadAsync(b => b.Groups.Any(g => g.Name == "Errands")));
     }
 
     [Theory]

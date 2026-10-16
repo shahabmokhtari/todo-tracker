@@ -79,6 +79,9 @@ public sealed record ConnectorSettings
 
     /// <summary>GitHub: the person stopped this group (with "every group" on, it doesn't get a repository again).</summary>
     public bool Stopped { get; init; }
+
+    /// <summary>GitHub: repositories of groups deleted here (never brought back as groups).</summary>
+    public IReadOnlyList<string> Forgotten { get; init; } = [];
 }
 
 /// <summary>

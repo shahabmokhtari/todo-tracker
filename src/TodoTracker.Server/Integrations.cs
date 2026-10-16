@@ -6,8 +6,9 @@ namespace TodoTracker.Server;
 
 /// <param name="Storage">Where the tasks live: null, the tasks folder; <see cref="SettingsStore.GitHubStorage"/>, GitHub
 /// (no tasks folder: the app keeps its copy in its own data folder).</param>
-/// <param name="LeavingGitHub">Switched back to the tasks folder: at the next start the app's copy goes there.</param>
-public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null, string? Storage = null, bool LeavingGitHub = false);
+/// <param name="ActiveStorage">Where they live now: <see cref="Storage"/> takes effect when the app next starts (only the
+/// app moves them; <c>tt</c> and <c>tt mcp</c> keep using this one until then).</param>
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null, string? Storage = null, string? ActiveStorage = null);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);
 
@@ -103,8 +104,21 @@ public sealed class SettingsStore
 
     public const string GitHubStorage = "github";
 
-    /// <summary>The tasks live on GitHub (no tasks folder), from the next start.</summary>
+    /// <summary>The tasks are to live on GitHub (no tasks folder): from the next start of the app.</summary>
     public bool TasksOnGitHub => Current.Storage == GitHubStorage;
+
+    /// <summary>The tasks live on GitHub now (the app's copy in its data folder is the one in use).</summary>
+    public bool UsingGitHub => Current.ActiveStorage == GitHubStorage;
+
+    /// <summary>The tasks were moved (by the app, at its start).</summary>
+    public void SetActiveStorage(string? storage)
+    {
+        lock (_lock)
+        {
+            _current = _current with { ActiveStorage = storage };
+            Save();
+        }
+    }
 
     /// <summary>Where the tasks live from the next start: the tasks folder (null) or GitHub.</summary>
     public ServerSettings SetStorage(string? storage)
@@ -116,20 +130,9 @@ public sealed class SettingsStore
 
         lock (_lock)
         {
-            var leaving = _current.Storage == GitHubStorage && storage is null;
-            _current = _current with { Storage = storage, LeavingGitHub = leaving || (_current.LeavingGitHub && storage is null) };
+            _current = _current with { Storage = storage };
             Save();
             return _current;
-        }
-    }
-
-    /// <summary>The app's copy went back into the tasks folder.</summary>
-    public void LeftGitHub()
-    {
-        lock (_lock)
-        {
-            _current = _current with { LeavingGitHub = false };
-            Save();
         }
     }
 

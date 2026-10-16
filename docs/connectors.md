@@ -133,6 +133,12 @@ tasks live:
 Untick it (and restart) to go back: the app's copy goes into your tasks folder, and what that folder had is kept next
 to it (renamed `… .before-github-<date>`). The repositories stay on GitHub.
 
+The tasks move when Todo Tracker starts, never before: until then `tt` and AI apps keep using where they are now
+(restart AI apps that keep `tt mcp` running afterwards). If something is in the way (a file in the tasks folder open in
+another app) the app starts as usual, says so here, and tries again at its next start. Only you can switch it, from the
+app's own window (not an AI app or script with the API token). A group deleted here keeps its repository on GitHub but
+isn't brought back. The tasks folder can't be one that holds Todo Tracker's data folder.
+
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,
 `Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away.
