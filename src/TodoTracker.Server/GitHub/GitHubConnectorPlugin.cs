@@ -43,5 +43,10 @@ public sealed class GitHubConnectorPlugin : ITodoPlugin
         group.MapPost("/groups/{id:guid}/connect", (Guid id, GitHubConnectRequest? request, GitHubIssues g, CancellationToken ct) => g.ConnectAsync(id, request ?? new GitHubConnectRequest(null, null), ct));
         group.MapPost("/groups/{id:guid}/sync", (Guid id, GitHubIssues g, CancellationToken ct) => g.SyncAsync(id, ct));
         group.MapDelete("/groups/{id:guid}", (Guid id, GitHubIssues g, CancellationToken ct) => g.DisconnectAsync(id, ct));
+        // Where the tasks live: only the person at this computer (the app's own session), like approving hooks.
+        group.MapPut("/main-place", async (GitHubEveryGroupRequest request, HttpContext http, GitHubIssues g, CancellationToken ct) =>
+            Security.IsAppSession(http)
+                ? Results.Ok(await g.SetMainPlaceAsync(request.On, ct).ConfigureAwait(false))
+                : Results.Problem("Only you can move where your tasks live: in Settings of the Todo Tracker app.", statusCode: StatusCodes.Status403Forbidden));
     }
 }

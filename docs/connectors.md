@@ -115,6 +115,30 @@ thing (two `snooze:` labels): the later time wins. A task moved to another group
 and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
 keep growing. Repositories must be private: a public one is refused.
 
+### Keep your tasks on GitHub, without a tasks folder
+
+Tick **Keep my tasks on GitHub, without a tasks folder** (and restart Todo Tracker) to make GitHub the place your
+tasks live:
+
+- Every group has its own repository (made for it if it has none), and new groups get theirs.
+- The app keeps its working copy in its own data folder (`github-tasks`), so it works offline and stays instant;
+  the tasks folder you had is copied in at the next start and then left alone.
+- On another computer, switch on GitHub Issues and tick the same box: every repository Todo Tracker made for a group
+  (the `todo-tracker` topic) becomes a group there, and its issues come in as the same tasks (same ids), finished ones
+  too.
+- It syncs every 2 minutes, and half a minute after you change something.
+- What issues can't hold stays in the app's copy on each computer: subtasks, notes, time and attachments. Sync
+  (OneDrive, iCloud Drive or a gist) can still carry those between your computers.
+
+Untick it (and restart) to go back: the app's copy goes into your tasks folder, and what that folder had is kept next
+to it (renamed `… .before-github-<date>`). The repositories stay on GitHub.
+
+The tasks move when Todo Tracker starts, never before: until then `tt` and AI apps keep using where they are now
+(restart AI apps that keep `tt mcp` running afterwards). If something is in the way (a file in the tasks folder open in
+another app) the app starts as usual, says so here, and tries again at its next start. Only you can switch it, from the
+app's own window (not an AI app or script with the API token). A group deleted here keeps its repository on GitHub but
+isn't brought back. The tasks folder can't be one that holds Todo Tracker's data folder.
+
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,
 `Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away.

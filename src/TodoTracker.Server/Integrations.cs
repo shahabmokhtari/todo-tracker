@@ -4,7 +4,11 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server;
 
-public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null);
+/// <param name="Storage">Where the tasks live: null, the tasks folder; <see cref="SettingsStore.GitHubStorage"/>, GitHub
+/// (no tasks folder: the app keeps its copy in its own data folder).</param>
+/// <param name="ActiveStorage">Where they live now: <see cref="Storage"/> takes effect when the app next starts (only the
+/// app moves them; <c>tt</c> and <c>tt mcp</c> keep using this one until then).</param>
+public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null, string? Storage = null, string? ActiveStorage = null);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);
 
@@ -93,6 +97,40 @@ public sealed class SettingsStore
         lock (_lock)
         {
             _current = _current with { VaultPath = clean is null ? null : System.IO.Path.GetFullPath(clean) };
+            Save();
+            return _current;
+        }
+    }
+
+    public const string GitHubStorage = "github";
+
+    /// <summary>The tasks are to live on GitHub (no tasks folder): from the next start of the app.</summary>
+    public bool TasksOnGitHub => Current.Storage == GitHubStorage;
+
+    /// <summary>The tasks live on GitHub now (the app's copy in its data folder is the one in use).</summary>
+    public bool UsingGitHub => Current.ActiveStorage == GitHubStorage;
+
+    /// <summary>The tasks were moved (by the app, at its start).</summary>
+    public void SetActiveStorage(string? storage)
+    {
+        lock (_lock)
+        {
+            _current = _current with { ActiveStorage = storage };
+            Save();
+        }
+    }
+
+    /// <summary>Where the tasks live from the next start: the tasks folder (null) or GitHub.</summary>
+    public ServerSettings SetStorage(string? storage)
+    {
+        if (storage is not null && storage != GitHubStorage)
+        {
+            throw new ArgumentException("Tasks live in the tasks folder or on GitHub.", nameof(storage));
+        }
+
+        lock (_lock)
+        {
+            _current = _current with { Storage = storage };
             Save();
             return _current;
         }

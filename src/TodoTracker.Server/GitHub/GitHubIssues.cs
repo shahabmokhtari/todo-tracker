@@ -21,12 +21,18 @@ public sealed record GitHubGroupView(Guid GroupId, string Group, string? Repo, C
 /// The GitHub connector as Settings shows it: whether <c>gh</c> is there and signed in (<see cref="Missing"/> says what
 /// to do), whether every group gets its own repository, and each group.
 /// </summary>
-public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups);
+/// <param name="MainPlace">The tasks live on GitHub now.</param>
+/// <param name="MainPlaceAsked">They're to live on GitHub (different from <paramref name="MainPlace"/>: until the app restarts).</param>
+/// <param name="Problems">What went wrong moving the tasks, or finding repositories.</param>
+public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups, bool MainPlaceAsked = false, IReadOnlyList<string>? Problems = null);
 
 /// <summary>Connect a group: to <paramref name="Repo"/> ("owner/name"), or (none) to a new private repository.</summary>
 public sealed record GitHubConnectRequest(string? Repo, ConnectorDirection? Direction);
 
 public sealed record GitHubEveryGroupRequest(bool On);
+
+/// <summary>What switching where the tasks live did: the folder the app uses from its next start.</summary>
+public sealed record GitHubMainPlaceResult(bool MainPlace, string Path, bool RestartRequired);
 
 /// <summary>
 /// Each group in step with its own private GitHub repository: tasks are issues (see <see cref="GitHubRemote"/>). A
@@ -41,6 +47,7 @@ public sealed class GitHubIssues(
     TimeProvider time,
     TodoTrackerServerOptions options,
     PluginHost plugins,
+    SettingsStore settings,
     IHostApplicationLifetime lifetime) : IDisposable
 {
     public const string HttpClientName = "github";
@@ -55,10 +62,14 @@ public sealed class GitHubIssues(
     /// <summary>The whole connector's settings (<see cref="ConnectorSettings.Enabled"/>: every group gets a repository).</summary>
     public ConnectorFiles Main { get; } = new(options.DataDirectory, "github");
 
-    public bool On => plugins.IsRunning(GitHubConnectorPlugin.Definition.Id);
+    /// <summary>Switched on (always, while the tasks live on GitHub).</summary>
+    public bool On => MainPlace || plugins.IsRunning(GitHubConnectorPlugin.Definition.Id);
 
-    /// <summary>GitHub is where the tasks live (no tasks folder): every group, and issues made elsewhere come in.</summary>
-    public bool MainPlace { get; set; }
+    /// <summary>
+    /// GitHub is where the tasks live (no tasks folder): every group has its repository, repositories made for groups
+    /// on other computers become groups here, and issues made elsewhere come in with their task's id.
+    /// </summary>
+    public bool MainPlace => settings.UsingGitHub;
 
     public void Dispose() => _busy.Dispose();
 
@@ -69,7 +80,7 @@ public sealed class GitHubIssues(
         if (!On)
         {
             // Off: no gh, no network (Settings only offers to switch it on).
-            return new GitHubView(false, false, null, null, false, MainPlace, []);
+            return new GitHubView(false, false, null, null, false, MainPlace, [], settings.TasksOnGitHub);
         }
 
         var token = await cli.TokenAsync(cancellationToken).ConfigureAwait(false);
@@ -91,7 +102,7 @@ public sealed class GitHubIssues(
         }
 
         var groups = await store.ReadAsync(b => b.Groups.Select(g => (g.Id, g.Name)).ToList(), cancellationToken).ConfigureAwait(false);
-        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))]);
+        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))], settings.TasksOnGitHub, Main.Settings.Problems);
     }
 
     private bool EveryGroup => MainPlace || Main.Settings.Enabled;
@@ -171,6 +182,19 @@ public sealed class GitHubIssues(
                 return;
             }
 
+            if (MainPlace)
+            {
+                try
+                {
+                    await ForgetDeletedGroupsAsync(cancellationToken).ConfigureAwait(false);
+                    await DiscoverLockedAsync(token, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ConnectorRunner.IsProblem(ex, cancellationToken))
+                {
+                    Main.Update(s => s with { LastRun = time.GetUtcNow(), LastResult = "Couldn't look for your repositories", Problems = [ex.Message] });
+                }
+            }
+
             var groups = await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false);
             foreach (var group in groups)
             {
@@ -194,6 +218,116 @@ public sealed class GitHubIssues(
                 }
             }
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Where the tasks live from the next start (the copying happens then, see <see cref="TodoTrackerHost.PrepareStorage"/>):
+    /// GitHub (every group gets its repository) or the tasks folder again. Nothing is deleted either way.
+    /// </summary>
+    public async Task<GitHubMainPlaceResult> SetMainPlaceAsync(bool on, CancellationToken cancellationToken)
+    {
+        if (options.IsVaultOverridden)
+        {
+            throw new InvalidOperationException("This run uses a tasks folder named for it (TODOTRACKER_VAULT or --vault): switch where the tasks live without it.");
+        }
+
+        if (TodoTrackerHost.StorageProblem(options, options.ResolveVaultPath(settings.Current.VaultPath)) is { } problem)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
+        if (on != settings.TasksOnGitHub)
+        {
+            if (on)
+            {
+                await TokenAsync(cancellationToken).ConfigureAwait(false); // signed in first: the tasks must be able to get there
+                plugins.Settings.SetEnabled(GitHubConnectorPlugin.Definition.Id, true);
+                Main.Update(s => s with { Enabled = true });
+            }
+
+            settings.SetStorage(on ? SettingsStore.GitHubStorage : null);
+            Main.Update(s => s with { Problems = [] });
+        }
+
+        var path = on ? TodoTrackerHost.GitHubCopyOf(options) : options.ResolveVaultPath(settings.Current.VaultPath);
+        return new GitHubMainPlaceResult(on, path, RestartRequired: on != MainPlace);
+    }
+
+    /// <summary>A group deleted here: its repository is remembered, so it isn't brought back as a group.</summary>
+    private async Task ForgetDeletedGroupsAsync(CancellationToken cancellationToken)
+    {
+        var folder = Path.Combine(options.DataDirectory, "connectors");
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var groups = (await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false)).ToHashSet();
+        foreach (var dir in Directory.GetDirectories(folder, FilesPrefix + "*"))
+        {
+            if (Guid.TryParseExact(Path.GetFileName(dir)[FilesPrefix.Length..], "N", out var id) && !groups.Contains(id))
+            {
+                var files = FilesOf(id);
+                if (files.Settings.Target is { } repo)
+                {
+                    Main.Update(s => s with { Forgotten = [.. s.Forgotten.Append(repo).Distinct(StringComparer.OrdinalIgnoreCase)] });
+                }
+
+                files.Clear();
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Repositories made for groups (the <see cref="Topic"/> topic) that no group here has: each becomes a group (by
+    /// the name in its description), or joins the group of that name that has no repository yet.
+    /// </summary>
+    private async Task DiscoverLockedAsync(string token, CancellationToken cancellationToken)
+    {
+        var mapped = (await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false))
+            .Select(id => FilesOf(id).Settings.Target).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
+        mapped.UnionWith(Main.Settings.Forgotten);
+        for (var page = 1; page < 50; page++)
+        {
+            var repos = await SendAsync(token, HttpMethod.Get, $"user/repos?affiliation=owner&per_page=100&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            foreach (var repo in repos.OfType<JsonObject>())
+            {
+                var fullName = repo["full_name"]?.GetValue<string>();
+                if (fullName is null || mapped.Contains(fullName) || repo["private"]?.GetValue<bool>() != true
+                    || repo["topics"] is not JsonArray topics || !topics.Any(t => t?.GetValue<string>() == Topic))
+                {
+                    continue;
+                }
+
+                var description = repo["description"]?.GetValue<string>() ?? string.Empty;
+                var name = description.StartsWith(Description(string.Empty), StringComparison.Ordinal) && description.Length > Description(string.Empty).Length
+                    ? description[Description(string.Empty).Length..].Trim()
+                    : repo["name"]?.GetValue<string>() ?? fullName;
+                var found = await store.UpdateAsync(b =>
+                {
+                    // The group of that name joins it, unless it has a repository already or was stopped here.
+                    if (b.Groups.FirstOrDefault(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)) is { } same)
+                    {
+                        return FilesOf(same.Id).Settings is { Target: null, Stopped: false } ? same.Id : (Guid?)null;
+                    }
+
+                    return b.AddGroup(name, null, new Actor(ActorKind.Connector, "GitHub"), time.GetUtcNow()).Id;
+                }, cancellationToken).ConfigureAwait(false);
+                if (found is not { } group)
+                {
+                    continue;
+                }
+
+                FilesOf(group).Update(s => s with { Target = fullName, TargetName = name, GroupId = group, Direction = ConnectorDirection.Both, Enabled = true });
+                mapped.Add(fullName);
+            }
+
+            if (repos.Count < 100)
+            {
+                return;
+            }
+        }
     }
 
     // ---- inside --------------------------------------------------------------------------------
@@ -399,13 +533,42 @@ public sealed class GitHubIssues(
     }
 }
 
-/// <summary>Syncs the GitHub repositories every few minutes (a minute after the app starts).</summary>
-public sealed partial class GitHubLoop(GitHubIssues github, TodoTrackerServerOptions options, ILogger<GitHubLoop> logger) : BackgroundService
+/// <summary>
+/// Syncs the GitHub repositories every 10 minutes (a minute after the app starts). While GitHub is where the tasks live:
+/// every 2 minutes, and half a minute after a change here.
+/// </summary>
+public sealed partial class GitHubLoop(GitHubIssues github, IBoardStore store, TodoTrackerServerOptions options, ILogger<GitHubLoop> logger) : BackgroundService
 {
     public static readonly TimeSpan Every = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan EveryAsMainPlace = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan AfterAChange = TimeSpan.FromSeconds(30);
+
+    private readonly SemaphoreSlim _changed = new(0, 1);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "GitHub sync failed")]
     private static partial void SyncFailed(ILogger logger, Exception exception);
+
+    public override void Dispose()
+    {
+        store.Changed -= OnChanged;
+        _changed.Dispose();
+        base.Dispose();
+    }
+
+    private void OnChanged(object? sender, EventArgs e)
+    {
+        try
+        {
+            if (github.MainPlace && _changed.CurrentCount == 0)
+            {
+                _changed.Release();
+            }
+        }
+        catch (Exception ex) when (ex is SemaphoreFullException or ObjectDisposedException)
+        {
+            // already signalled, or stopping
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -414,6 +577,7 @@ public sealed partial class GitHubLoop(GitHubIssues github, TodoTrackerServerOpt
             return;
         }
 
+        store.Changed += OnChanged;
         try
         {
             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false);
@@ -428,7 +592,16 @@ public sealed partial class GitHubLoop(GitHubIssues github, TodoTrackerServerOpt
                     SyncFailed(logger, ex);
                 }
 
-                await Task.Delay(Every, stoppingToken).ConfigureAwait(false);
+                // Changes the sync itself made don't count as a reason to sync again.
+                while (_changed.CurrentCount > 0)
+                {
+                    await _changed.WaitAsync(stoppingToken).ConfigureAwait(false);
+                }
+
+                if (await _changed.WaitAsync(github.MainPlace ? EveryAsMainPlace : Every, stoppingToken).ConfigureAwait(false))
+                {
+                    await Task.Delay(AfterAChange, stoppingToken).ConfigureAwait(false); // a few changes in a row: one sync
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
