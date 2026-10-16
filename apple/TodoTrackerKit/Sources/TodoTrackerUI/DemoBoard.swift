@@ -9,17 +9,16 @@ import AppKit
 /// Sample board used for previews and the CI snapshot test.
 public enum DemoBoard {
     public static func seed(_ board: TaskBoard, now: Date) throws {
-        let x = try board.addTask(NewTask("Roll out feature X", priority: .high), now: now)
-        let a = try board.addTask(NewTask("Feature A", parentId: x.id), now: now)
-        let b = try board.addTask(NewTask("Feature B", parentId: x.id), now: now)
-        try board.addSteps(parentId: a.id, titles: ["A ring 0", "A ring 1", "A ring 2"], stepDelay: 86_400, now: now)
-        let bSteps = try board.addSteps(parentId: b.id, titles: ["B ring 0", "B ring 1", "B ring 2"], stepDelay: 86_400, now: now)
-        try board.addNote(bSteps[0].id, text: "B ring 0 deployed, metrics green", actor: .agent("copilot"), now: now)
-        try board.complete(bSteps[0].id, now: now)
-        let review = try board.addTask(NewTask("Reply to design review", priority: .critical, deadline: now.addingTimeInterval(3 * 3600)), now: now)
-        try board.addReminder(review.id, dueAt: now, message: "Review closes today", now: now)
-        try board.addNote(review.id, text: "Left 3 comments, waiting on Alex", now: now)
-        try board.addTask(NewTask("Update onboarding doc", priority: .low, deadline: now.addingTimeInterval(-3600)), now: now)
+        // The same made-up story as the README's other screenshots (tests/e2e/screenshots.mjs).
+        let release = try board.addTask(NewTask("Ship v2.4 release", priority: .high), now: now)
+        let steps = try board.addSteps(parentId: release.id, titles: ["Ring 0: internal", "Ring 1: 5% of users", "Ring 2: everyone"], stepDelay: 86_400, now: now)
+        try board.addNote(steps[0].id, text: "Ring 0 healthy: error rate 0.02%, p95 latency flat", actor: .agent("claude"), now: now)
+        try board.complete(steps[0].id, now: now)
+        let review = try board.addTask(NewTask("Reply to the security review", priority: .critical, deadline: now.addingTimeInterval(3 * 3600)), now: now)
+        try board.addReminder(review.id, dueAt: now, message: "Review closes at 5 pm", now: now)
+        try board.addNote(review.id, text: "Two findings left: token lifetime and the CSP header", now: now)
+        try board.addTask(NewTask("Fix flaky checkout test", priority: .low, deadline: now.addingTimeInterval(-3600)), now: now)
+        try board.addTask(NewTask("Review Maya's API design doc"), now: now)
         try board.addTask(NewTask("Prep 1:1 agenda"), now: now)
         try board.startFocus(review.id, now: now.addingTimeInterval(-6 * 60))
     }

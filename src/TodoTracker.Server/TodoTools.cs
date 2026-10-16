@@ -24,7 +24,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), ResolveGroup(b, group), 5, links, query, options.TimeZone)));
 
     [McpServerTool(Name = "list_tasks", ReadOnly = true), Description("Full task tree (optionally for one group), including ids needed by the other tools.")]
-    public Task<List<ItemDto>> ListTasks(string? group = null, bool includeDone = false) =>
+    public Task<List<ItemDto>> ListTasks([Description("Group (tab) name or id, e.g. 'Work'. Omit for every group.")] string? group = null, [Description("Include finished tasks.")] bool includeDone = false) =>
         Guard(() => store.ReadAsync(b =>
         {
             var groupId = ResolveGroup(b, group);
@@ -34,21 +34,21 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     [McpServerTool(Name = "search_tasks", ReadOnly = true), Description(
         "Find tasks and subtasks. Words match title or details; #tag (nested tags too), label:name, group:name, is:open|is:done narrow it. " +
         "Tags and labels are inherited by subtasks. Quote multi-word values: label:\"deep work\". Open tasks only unless the query has is:.")]
-    public Task<List<SearchHitDto>> SearchTasks(string query) =>
+    public Task<List<SearchHitDto>> SearchTasks([Description("Search syntax: words, #tag, label:\"deep work\", group:work, is:open, is:done, is:archived.")] string query) =>
         Guard(() => store.ReadAsync(b => ApiEndpoints.Search(b, query, time.GetUtcNow(), links)));
 
     [McpServerTool(Name = "get_task", ReadOnly = true), Description("One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (todotracker://task/<id>: give it to the user, clicking it opens the task in the app).")]
-    public Task<ItemDto> GetTask(string taskId) =>
+    public Task<ItemDto> GetTask([Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Guard(() => store.ReadAsync(b => Wire.Item(b.Get(ParseId(taskId)), time.GetUtcNow(), b, links)));
 
     [McpServerTool(Name = "create_task"), Description("Create a task (or a subtask when parentId is set). Use add_steps for ordered rollout steps.")]
     public Task<ItemDto> CreateTask(
         McpServer server,
-        string title,
+        [Description("What to do, in the user's words.")] string title,
         [Description("Parent task id to create a subtask.")] string? parentId = null,
         [Description("Group (tab) name or id for top-level tasks. Defaults to the first group.")] string? group = null,
         [Description("low | normal | high | critical")] string? priority = null,
-        string? details = null,
+        [Description("Longer notes about the task (markdown).")] string? details = null,
         [Description("ISO-8601 deadline.")] DateTimeOffset? deadline = null,
         [Description("Defer the task (and remind) this many minutes from now.")] int? deferMinutes = null,
         [Description("Free-form tags without '#', e.g. ['release', 'infra/k8s'].")] string[]? tags = null,
@@ -79,7 +79,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "add_steps"), Description("Add ordered steps under a task. Only the first open step is actionable; finishing one unlocks the next after stepDelayHours.")]
-    public Task<List<ItemDto>> AddSteps(McpServer server, string parentId, string[] steps, double? stepDelayHours = null) =>
+    public Task<List<ItemDto>> AddSteps(McpServer server, [Description("The task the steps go under (a full id).")] string parentId, [Description("The steps, in order, e.g. ['Ring 0', 'Ring 1'].")] string[] steps, [Description("Hours between finishing one step and the next one coming up (e.g. 24 for a rollout); default: at once.")] double? stepDelayHours = null) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
@@ -87,7 +87,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }));
 
     [McpServerTool(Name = "add_note"), Description("Log progress on a task (\"did X, next Y\"). Shows in recent notes and the report timeline.")]
-    public Task<NoteDto> AddNote(McpServer server, string taskId, string text, string? sourceUrl = null, string? sourceTitle = null) =>
+    public Task<NoteDto> AddNote(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("What happened, short and in past tense, with the next step: \"Deployed ring 0, next: check dashboards tomorrow\".")] string text, [Description("A web page the note is about (http/https).")] string? sourceUrl = null, [Description("That page's title.")] string? sourceTitle = null) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var id = ParseId(taskId);
@@ -98,11 +98,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     [McpServerTool(Name = "schedule_next_action"), Description("Defer a task until later (it drops to Waiting) and, by default, remind the user when it is time.")]
     public Task<ItemDto> ScheduleNextAction(
         McpServer server,
-        string taskId,
+        [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId,
         [Description("Minutes from now.")] int? inMinutes = null,
         [Description("Exact ISO-8601 time (alternative to inMinutes).")] DateTimeOffset? at = null,
-        bool notify = true,
-        string? message = null,
+        [Description("Remind the user when it is time (default true).")] bool notify = true,
+        [Description("The reminder's text (default: the task's title).")] string? message = null,
         [Description("Or in words, in the user's time zone: 3d, 2 weeks, fri 14:00, next week, weekend, tonight, 9am, 2026-03-01 14:00.")] string? when = null) =>
         Mutate(server, (b, now, actor) =>
         {
@@ -114,7 +114,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     [McpServerTool(Name = "plan_task"), Description("Plan a block of time to work on a task (it shows in the Plan view, and becomes the thing to do now while the block is on); without a start, takes it off the plan.")]
     public Task<ItemDto> PlanTask(
         McpServer server,
-        string taskId,
+        [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId,
         [Description("ISO-8601 start of the block; omit to take it off the plan.")] DateTimeOffset? start = null,
         [Description("How long, in minutes (5 to 720; default: what it had, else 30).")] int? minutes = null) =>
         Mutate(server, (b, now, actor) =>
@@ -133,7 +133,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "wait_for_task"), Description("Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed.")]
-    public Task<ItemDto> WaitForTask(McpServer server, string taskId, [Description("The task it waits for.")] string afterTaskId) =>
+    public Task<ItemDto> WaitForTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("The task it waits for.")] string afterTaskId) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -142,7 +142,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "add_reminder"), Description("Add a reminder without deferring the task.")]
-    public Task<ItemDto> AddReminder(McpServer server, string taskId, string message, int? inMinutes = null, DateTimeOffset? at = null) =>
+    public Task<ItemDto> AddReminder(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("The reminder's text.")] string message, [Description("Minutes from now.")] int? inMinutes = null, [Description("Exact ISO-8601 time (alternative to inMinutes).")] DateTimeOffset? at = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -151,7 +151,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "complete_task", Idempotent = true), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that).")]
-    public Task<ItemDto> CompleteTask(McpServer server, string taskId) =>
+    public Task<ItemDto> CompleteTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -160,7 +160,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "reopen_task", Idempotent = true), Description("Undo a completion.")]
-    public Task<ItemDto> ReopenTask(McpServer server, string taskId) =>
+    public Task<ItemDto> ReopenTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -171,13 +171,13 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it).")]
     public Task<ItemDto> UpdateTask(
         McpServer server,
-        string taskId,
-        string? title = null,
-        string? details = null,
-        string? priority = null,
-        DateTimeOffset? deadline = null,
-        string[]? tags = null,
-        string[]? labels = null,
+        [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId,
+        [Description("New title.")] string? title = null,
+        [Description("New details (markdown); replaces what it had.")] string? details = null,
+        [Description("low | normal | high | critical")] string? priority = null,
+        [Description("New ISO-8601 deadline.")] DateTimeOffset? deadline = null,
+        [Description("Tags without '#': replace the current ones.")] string[]? tags = null,
+        [Description("Curated labels: replace the current ones (unknown labels are created).")] string[]? labels = null,
         [Description("An emoji shown before the title, e.g. 🚀; empty removes it.")] string? icon = null,
         [Description("A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then).")] string? color = null,
         [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Empty: stops repeating.")] string? repeat = null) =>
@@ -211,7 +211,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "move_task"), Description("Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index sets the position among siblings.")]
-    public Task<ItemDto> MoveTask(McpServer server, string taskId, string? parentId = null, string? group = null, int? index = null, bool toTopLevel = false) =>
+    public Task<ItemDto> MoveTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("Put it under this task (a full id).")] string? parentId = null, [Description("Group (tab) name or id, e.g. 'Work'. Moves a top-level task to that group.")] string? group = null, [Description("Position among its new siblings (0: first).")] int? index = null, [Description("Take it out from under its parent, to the top level.")] bool toTopLevel = false) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -237,7 +237,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "put_first"), Description("Put tasks at the top of Do now, in this order; the first becomes the focus (only a reminder going off later comes above them). Use it when the user says what matters most (\"do X first\").")]
-    public Task<DashboardDto> PutFirst(string[] taskIds) =>
+    public Task<DashboardDto> PutFirst([Description("Task ids, most important first.")] string[] taskIds) =>
         Guard(async () =>
         {
             var ids = taskIds.Select(ParseId).ToList();
@@ -253,7 +253,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     public Task<IReadOnlyList<LabelDto>> ListLabels() => Guard(() => store.ReadAsync(Wire.Labels));
 
     [McpServerTool(Name = "attach_text"), Description("Attach a text file (log excerpt, plan, summary…) to a task. It is saved in the vault and linked from the task.")]
-    public Task<AttachmentDto> AttachText(McpServer server, string taskId, [Description("File name with extension, e.g. 'timeline.md'.")] string fileName, string text) =>
+    public Task<AttachmentDto> AttachText(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("File name with extension, e.g. 'timeline.md'.")] string fileName, [Description("The file's text (up to 1 MB).")] string text) =>
         Guard(async () =>
         {
             var bytes = Encoding.UTF8.GetBytes(text ?? string.Empty);
@@ -270,11 +270,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "get_rich_html", ReadOnly = true), Description("The task's rich HTML version (tables, layouts, colors), if it has one. Only top-level tasks have one.")]
-    public Task<string> GetRichHtml(string taskId) =>
+    public Task<string> GetRichHtml([Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Guard(async () => await links.Vault.ReadRichAsync(ParseId(taskId)).ConfigureAwait(false) ?? "(this task has no rich version)");
 
     [McpServerTool(Name = "set_rich_html"), Description("Save a rich HTML version of a top-level task when markdown isn't enough (tables, dashboards, colors). Scripts never run. Empty html removes it.")]
-    public Task<RichDto> SetRichHtml(McpServer server, string taskId, string html) =>
+    public Task<RichDto> SetRichHtml(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("The HTML (scripts never run); empty removes it.")] string html) =>
         Guard(async () =>
         {
             var clean = string.IsNullOrWhiteSpace(html) ? null : html;
@@ -290,11 +290,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     }
 
     [McpServerTool(Name = "task_history", ReadOnly = true), Description("Saved versions of a task's file, newest first (every change is versioned). Use restore_task_version to go back.")]
-    public Task<IReadOnlyList<VaultVersion>> TaskHistory(string taskId) =>
+    public Task<IReadOnlyList<VaultVersion>> TaskHistory([Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Guard(() => history.Required.TaskHistoryAsync(ParseId(taskId)));
 
     [McpServerTool(Name = "restore_task_version"), Description("Put a task back the way it was in an earlier version (from task_history). The current state stays in the history, so this can be undone.")]
-    public Task<ItemDto> RestoreTaskVersion(McpServer server, string taskId, string versionId) =>
+    public Task<ItemDto> RestoreTaskVersion(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("A version id from task_history.")] string versionId) =>
         Guard(async () =>
         {
             var id = ParseId(taskId);
@@ -303,7 +303,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "get_report", ReadOnly = true), Description("Timeline report (newest first) for one task or the whole board.")]
-    public Task<ReportDto> GetReport(string? taskId = null, int limit = 100) =>
+    public Task<ReportDto> GetReport([Description("Only this task (a full id); omit for the whole board.")] string? taskId = null, [Description("At most this many entries (default 100).")] int limit = 100) =>
         Guard(() => store.ReadAsync(b =>
         {
             var id = taskId is null ? (Guid?)null : ParseId(taskId);
@@ -311,7 +311,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }));
 
     [McpServerTool(Name = "move_card"), Description("Move a top-level task to a board column: inbox (just captured), next (ready), or doing (being worked on). Finish a task with complete_task to move it to done.")]
-    public Task<ItemDto> MoveCard(McpServer server, string taskId, [Description("inbox, next or doing")] string stage) =>
+    public Task<ItemDto> MoveCard(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("inbox, next or doing")] string stage) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -320,7 +320,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "archive_task", Idempotent = true), Description("Put a finished top-level task away: it leaves every list but is kept (search is:archived). Only done tasks can be archived.")]
-    public Task<ItemDto> ArchiveTask(McpServer server, string taskId) =>
+    public Task<ItemDto> ArchiveTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -329,7 +329,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "unarchive_task", Idempotent = true), Description("Bring an archived task back to the done list.")]
-    public Task<ItemDto> UnarchiveTask(McpServer server, string taskId) =>
+    public Task<ItemDto> UnarchiveTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -338,7 +338,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "start_timer"), Description("Start timing work on a task (any other timer stops; one runs at a time). The task's card moves to doing.")]
-    public Task<TimerDto> StartTimer(McpServer server, string taskId) =>
+    public Task<TimerDto> StartTimer(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
@@ -356,7 +356,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }));
 
     [McpServerTool(Name = "log_time"), Description("Record time already spent on a task (e.g. a meeting): when it started and for how many minutes (at most 24 hours).")]
-    public Task<TimeEntryDto> LogTime(McpServer server, string taskId, [Description("When it started (ISO-8601).")] DateTimeOffset start, int minutes) =>
+    public Task<TimeEntryDto> LogTime(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("When it started (ISO-8601).")] DateTimeOffset start, [Description("How long, in minutes (at most 24 hours).")] int minutes) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
@@ -365,7 +365,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }));
 
     [McpServerTool(Name = "get_time_report", ReadOnly = true), Description("Where the time went between two local dates (yyyy-MM-dd, inclusive; default the last 4 weeks): seconds tracked per day, group and task, focus sessions, tasks done, streaks, and a timeline.")]
-    public Task<TimeReport> GetTimeReport(string? from = null, string? to = null, string? group = null) =>
+    public Task<TimeReport> GetTimeReport([Description("First day, yyyy-MM-dd (default: 4 weeks ago).")] string? from = null, [Description("Last day, yyyy-MM-dd, inclusive (default: today).")] string? to = null, [Description("Group (tab) name or id, e.g. 'Work'. Omit for every group.")] string? group = null) =>
         Guard(() => store.ReadAsync(b =>
         {
             var now = time.GetUtcNow();
@@ -431,10 +431,10 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow()).Redacted()));
 
     [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.")]
-    public Task<Hooks.HookEntry> SetHookEnabled(string hookId, bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled).Redacted()));
+    public Task<Hooks.HookEntry> SetHookEnabled([Description("The hook's id, from list_hooks.")] string hookId, [Description("On (true) or off (false).")] bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled).Redacted()));
 
     [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook (by its id from list_hooks).")]
-    public Task<Hooks.HookRemoved> RemoveHook(string hookId) => Guard(() =>
+    public Task<Hooks.HookRemoved> RemoveHook([Description("The hook's id, from list_hooks.")] string hookId) => Guard(() =>
     {
         hooks.Remove(hookId);
         return Task.FromResult(new Hooks.HookRemoved(hookId));

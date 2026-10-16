@@ -583,6 +583,28 @@ test('Board: dragging the background moves around it; dragging a card still move
   expect(errors).toEqual([]);
 });
 
+test('Phone: no view is wider than the screen, and the add button stays in sight', async ({ page, request }) => {
+  // Reported from a phone screenshot: a long title made the page wider than the screen, cutting off Add.
+  await add(request, 'A very long task title that goes on and on so that it would push the page wider than a phone screen');
+  await open(page, request);
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const view of ['#/today', '#/tasks', '#/done', '#/reports', '#/plan', '#/settings']) {
+    await page.evaluate((h) => { location.hash = h; }, view);
+    await page.waitForTimeout(300);
+    const [scroll, width, wide] = await page.evaluate(() => {
+      const w = document.documentElement.clientWidth;
+      const over = [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > w + 1 && getComputedStyle(e).position !== 'fixed')
+        .slice(-3).map((e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${[...e.classList].join('.')}`);
+      return [document.documentElement.scrollWidth, w, over.join(', ')];
+    });
+    expect(scroll, `${view} is wider than the screen (${wide})`).toBeLessThanOrEqual(width);
+  }
+
+  await page.evaluate(() => { location.hash = '#/today'; });
+  const button = await page.locator('#capture button[type=submit]').boundingBox();
+  expect(button.x + button.width).toBeLessThanOrEqual(390);
+});
+
 test('Today: what got done today shows with a cheer, where it belongs, and can be reopened', async ({ page, request }) => {
   const errors = watchErrors(page);
   const parent = await add(request, 'Move house');

@@ -86,7 +86,9 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 
 .layout { max-width: 1240px; width: 100%; padding: var(--space-5) var(--space-4) 96px; }
 .layout:focus { outline: none; }
-.view { display: grid; gap: var(--space-4); align-content: start; }
+/* minmax(0, 1fr): a long title or a row of buttons never makes the page wider than a phone. */
+.layout { grid-template-columns: minmax(0, 1fr); }
+.view { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-content: start; }
 .view-intro { margin: 0; font-size: 13.5px; }
 .view-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
 .empty-state { display: grid; justify-items: center; gap: var(--space-2); padding: 48px 16px; text-align: center; color: var(--text-2); }
