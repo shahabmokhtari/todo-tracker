@@ -476,6 +476,11 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .connector-head { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
 .connector-head input { margin-top: 2px; width: 18px; height: 18px; accent-color: var(--accent); }
 .connector-head > span { display: grid; gap: 2px; }
+.github-groups { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.github-group { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.github-group .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.github-group .buttons { margin-left: auto; display: flex; gap: 6px; }
+.github-group p { margin: 4px 0 0; }
 .connector.off { opacity: .85; }
 .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; align-items: center; }
 .shortcuts dd { margin: 0; color: var(--text-2); }

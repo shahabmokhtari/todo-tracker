@@ -148,8 +148,8 @@ public static class ConnectorEndpoints
         group.MapGet("/mstodo/lists", (ConnectorService c, CancellationToken ct) => c.Kind<MicrosoftToDoConnector>().ListsAsync(ct));
     }
 
-    /// <summary>What Notion or Microsoft said: a refused token is the person's to fix (400); anything else is theirs (502).</summary>
-    private static async ValueTask<object?> OutsideErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    /// <summary>What Notion, Microsoft or GitHub said: a refused token is the person's to fix (400); anything else is theirs (502).</summary>
+    internal static async ValueTask<object?> OutsideErrors(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {
         try
         {

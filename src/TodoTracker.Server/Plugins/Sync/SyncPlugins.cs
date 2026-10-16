@@ -55,7 +55,7 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
         }
 
         return Token() is null
-            ? new SyncAvailability(false, "Sign in to GitHub first: install the GitHub CLI and run gh auth login (or set GH_TOKEN).")
+            ? new SyncAvailability(false, "Sign in to GitHub first: install the GitHub CLI (https://cli.github.com) and run gh auth login (or set GH_TOKEN).")
             : new SyncAvailability(true, "A private gist on your GitHub account");
     }
 
@@ -102,40 +102,8 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
         }
     }
 
-    private static string? DefaultToken()
-    {
-        if (Environment.GetEnvironmentVariable("GH_TOKEN") is { Length: > 0 } gh)
-        {
-            return gh;
-        }
-
-        if (Environment.GetEnvironmentVariable("GITHUB_TOKEN") is { Length: > 0 } github)
-        {
-            return github;
-        }
-
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo("gh", "auth token") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true });
-            if (process is null)
-            {
-                return null;
-            }
-
-            var output = process.StandardOutput.ReadToEndAsync();
-            if (!process.WaitForExit(10_000))
-            {
-                process.Kill();
-                return null;
-            }
-
-            return process.ExitCode == 0 && output.Result.Trim() is { Length: > 0 } token ? token : null;
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return null;
-        }
-    }
+    // The GitHub CLI wherever it's installed (an app started from the Dock or a launcher has a short PATH).
+    private static string? DefaultToken() => GitHub.GitHubCli.Token();
 }
 
 /// <summary>What every sync provider plugin adds: the sync service, its background loop, its endpoints and panel.</summary>

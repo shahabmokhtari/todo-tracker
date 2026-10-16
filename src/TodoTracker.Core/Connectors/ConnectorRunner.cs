@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace TodoTracker.Core.Connectors;
 
 /// <summary>An outside list (a Notion database, a Microsoft To Do list) as the sync sees it.</summary>
@@ -28,7 +30,9 @@ public interface IConnectorRemote
 }
 
 /// <summary>Which group a connector keeps in step, and which side new tasks are created on.</summary>
-public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction);
+/// <summary>Which group a connector keeps in step, and which side new tasks are created on. <paramref name="AdoptMarked"/>:
+/// the outside list is where the tasks live (see <see cref="ConnectorPlanInput.AdoptMarked"/>).</summary>
+public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction, bool AdoptMarked = false);
 
 /// <summary>What a run did: the plan, how many changes went through, what went wrong, and the links to keep.</summary>
 public sealed record ConnectorRun(ConnectorPlanResult Plan, IReadOnlyList<ConnectorOpResult> Done, IReadOnlyList<string> Problems, IReadOnlyList<ConnectorLink> Links)
@@ -74,7 +78,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             }
         }
 
-        var plan = ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize });
+        var plan = ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize, AdoptMarked = target.AdoptMarked });
         return (plan, items.GroupBy(i => i.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal));
     }
 
@@ -181,6 +185,11 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             },
             _actor,
             now);
+        if (fields.HasFlag(ConnectorFields.Extras))
+        {
+            ApplyExtras(board, board.Find(c.Id)!, f, now);
+        }
+
         if (f.Done)
         {
             board.Complete(c.Id, _actor, now);
@@ -193,7 +202,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     {
         var now = time.GetUtcNow();
         var item = board.Find(u.LocalId) ?? throw new KeyNotFoundException("The task is gone.");
-        var current = FieldsOf(item);
+        var current = FieldsOf(item, now);
         var f = u.Fields;
         var dueChanged = fields.HasFlag(ConnectorFields.Due) && current.Due != f.Due;
         var changes = new TaskChanges
@@ -213,6 +222,11 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         if (fields.HasFlag(ConnectorFields.Tags) && !SyncedFields.Same(current, f, ConnectorFields.Tags))
         {
             board.SetTags(u.LocalId, f.Tags, _actor, now);
+        }
+
+        if (fields.HasFlag(ConnectorFields.Extras) && !SyncedFields.Same(current, f, ConnectorFields.Extras))
+        {
+            ApplyExtras(board, item, f, now);
         }
 
         // A step that's waiting for the one before it can't be finished yet: it is next time it can.
@@ -237,13 +251,137 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         return new DateTimeOffset(local, zone.GetUtcOffset(local));
     }
 
-    private SyncedFields FieldsOf(WorkItem item) => new(
+    private SyncedFields FieldsOf(WorkItem item, DateTimeOffset now) => new(
         item.Title,
         item.CompletedAt is not null,
         item.Deadline is { } deadline ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(deadline, zone).DateTime) : null,
         item.Priority,
         [.. item.Tags],
-        item.Details);
+        item.Details)
+    {
+        Extras = ExtrasOf(item, now),
+    };
+
+    /// <summary>The time format extras use (UTC, to the minute).</summary>
+    public static string Moment(DateTimeOffset at) => at.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm'Z'", CultureInfo.InvariantCulture);
+
+    public static DateTimeOffset? ParseMoment(string text) =>
+        DateTimeOffset.TryParseExact(text.Trim(), "yyyy-MM-dd'T'HH:mm'Z'", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var at) ? at : null;
+
+    /// <summary>A task's extras (see <see cref="ExtraKeys"/>): only what's set.</summary>
+    public static Dictionary<string, string> ExtrasOf(WorkItem item, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        var extras = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Set(string key, string? value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                extras[key] = value;
+            }
+        }
+
+        // A snooze that's over isn't one any more.
+        Set(ExtraKeys.Snooze, item.NextActionAt is { } at && at > now && item.CompletedAt is null ? Moment(at) : null);
+        Set(ExtraKeys.Remind, string.Join(',', PendingReminders(item).Select(r => Moment(r.DueAt)).Distinct().Order(StringComparer.Ordinal)));
+        // Inbox is where tasks start: only another column is worth saying.
+        Set(ExtraKeys.Stage, item.Parent is null && item.Stage != Stage.Inbox ? item.Stage.ToString().ToLowerInvariant() : null);
+        Set(ExtraKeys.Labels, string.Join('\n', item.Labels.Order(StringComparer.OrdinalIgnoreCase)));
+        Set(ExtraKeys.Icon, item.Icon);
+        Set(ExtraKeys.Color, item.Color);
+        Set(ExtraKeys.Plan, item.PlannedAt is { } plan ? $"{Moment(plan)}/{(int)item.PlannedLength.TotalMinutes}" : null);
+        Set(ExtraKeys.Repeat, item.Repeat?.ToString());
+        return extras;
+    }
+
+    /// <summary>Reminders set by hand that haven't gone off or been dismissed (a snooze's own reminder goes with the snooze).</summary>
+    private static IEnumerable<Reminder> PendingReminders(WorkItem item) =>
+        item.Reminders.Where(r => r.Kind == ReminderKind.Manual && r.NotifiedAt is null && r.DismissedAt is null);
+
+    /// <summary>Makes the task's extras what <paramref name="f"/> says (a value it can't read is left as it is here).</summary>
+    private void ApplyExtras(TaskBoard board, WorkItem item, SyncedFields f, DateTimeOffset now)
+    {
+        var current = ExtrasOf(item, now);
+        string Now(string key) => current.TryGetValue(key, out var v) ? v : string.Empty;
+        bool Changed(string key) => Now(key) != f.Extra(key);
+
+        if (Changed(ExtraKeys.Snooze) && item.CompletedAt is null)
+        {
+            if (ParseMoment(f.Extra(ExtraKeys.Snooze)) is { } until)
+            {
+                board.ScheduleNextAction(item.Id, until, _actor, now, notify: true);
+            }
+            else if (f.Extra(ExtraKeys.Snooze).Length == 0 && item.NextActionAt is not null)
+            {
+                board.ClearNextAction(item.Id, _actor, now);
+            }
+        }
+
+        if (Changed(ExtraKeys.Remind))
+        {
+            var wanted = f.Extra(ExtraKeys.Remind).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(ParseMoment).OfType<DateTimeOffset>().Select(Moment).ToHashSet(StringComparer.Ordinal);
+            foreach (var reminder in PendingReminders(item).ToList())
+            {
+                if (!wanted.Remove(Moment(reminder.DueAt)))
+                {
+                    board.DismissReminder(item.Id, reminder.Id, _actor, now);
+                }
+            }
+
+            foreach (var at in wanted)
+            {
+                board.AddReminder(item.Id, ParseMoment(at)!.Value, null, _actor, now);
+            }
+        }
+
+        if (Changed(ExtraKeys.Stage) && item.Parent is null && (f.Extra(ExtraKeys.Stage).Length == 0 ? Stage.Inbox : Enum.TryParse<Stage>(f.Extra(ExtraKeys.Stage), ignoreCase: true, out var s) && Enum.IsDefined(s) ? s : (Stage?)null) is { } stage)
+        {
+            board.SetStage(item.Id, stage, _actor, now);
+        }
+
+        if (Changed(ExtraKeys.Labels))
+        {
+            board.SetLabels(item.Id, f.Extra(ExtraKeys.Labels).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), _actor, now);
+        }
+
+        if (Changed(ExtraKeys.Plan))
+        {
+            var parts = f.Extra(ExtraKeys.Plan).Split('/');
+            if (ParseMoment(parts[0]) is { } start)
+            {
+                board.Plan(item.Id, start, parts.Length > 1 && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var minutes) ? minutes : null, _actor, now);
+            }
+            else if (f.Extra(ExtraKeys.Plan).Length == 0 && item.PlannedAt is not null)
+            {
+                board.Unplan(item.Id, _actor, now);
+            }
+        }
+
+        var look = new TaskChanges
+        {
+            Icon = Changed(ExtraKeys.Icon) && f.Extra(ExtraKeys.Icon).Length > 0 ? f.Extra(ExtraKeys.Icon) : null,
+            ClearIcon = Changed(ExtraKeys.Icon) && f.Extra(ExtraKeys.Icon).Length == 0,
+            Color = Changed(ExtraKeys.Color) && f.Extra(ExtraKeys.Color).Length > 0 ? f.Extra(ExtraKeys.Color) : null,
+            ClearColor = Changed(ExtraKeys.Color) && f.Extra(ExtraKeys.Color).Length == 0,
+        };
+        if (look.Icon is not null || look.ClearIcon || look.Color is not null || look.ClearColor)
+        {
+            board.Update(item.Id, look, _actor, now);
+        }
+
+        if (Changed(ExtraKeys.Repeat))
+        {
+            try
+            {
+                board.Update(item.Id, f.Extra(ExtraKeys.Repeat).Length > 0 ? new TaskChanges { Repeat = f.Extra(ExtraKeys.Repeat) } : new TaskChanges { ClearRepeat = true }, _actor, now);
+            }
+            catch (ArgumentException)
+            {
+                // A repeat rule this app can't read (typed there by hand): the one here stays.
+            }
+        }
+    }
 
     private List<LocalItem> LocalItems(TaskBoard board, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, DateTimeOffset now)
     {
@@ -257,7 +395,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
                 && (item.CompletedAt is null || now - item.CompletedAt < RecentlyDone);
             if (discoverable || linked.Contains(item.Id))
             {
-                result.Add(new LocalItem(item.Id, FieldsOf(item), discoverable, item.IsArchived));
+                result.Add(new LocalItem(item.Id, FieldsOf(item, now), discoverable, item.IsArchived));
             }
         }
 

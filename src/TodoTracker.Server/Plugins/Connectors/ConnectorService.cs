@@ -198,7 +198,7 @@ public sealed class ConnectorService(IEnumerable<IConnectorKind> kinds, IBoardSt
     }
 
     /// <summary>What went through, counted from the changes that did (not the ones planned).</summary>
-    private static string Summary(ConnectorRun run)
+    internal static string Summary(ConnectorRun run)
     {
         var done = run.Done.Select(d => d.Op).ToList();
         var parts = new List<string>();
