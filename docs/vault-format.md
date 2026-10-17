@@ -17,8 +17,8 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
   Personal/
   _attachments/7b0c2f9e/plan.pdf    ← files attached in the app
   .todo-tracker/                    ← app data (hidden in Obsidian)
-    config.json                     ← group ids/colors/order, label colors, task order
-    state.json                      ← focus timer, Do now order, energy in a day
+    config.json                     ← group ids/colors/order, label colors, task order, energy in a day (synced)
+    state.json                      ← focus timer, Do now order
     activity.jsonl                  ← audit log (append-only)
     trash/                          ← deleted task files (kept 30 days)
 ```

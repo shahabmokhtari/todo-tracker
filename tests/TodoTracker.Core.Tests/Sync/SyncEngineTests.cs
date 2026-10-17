@@ -84,6 +84,21 @@ public sealed class SyncEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task The_energy_in_a_day_is_the_same_on_every_computer()
+    {
+        var a = Add("a");
+        var b = Add("b");
+        await a.AddTask("Write the design doc");
+        await Settle();
+
+        await a.Store.UpdateAsync(board => board.SetEnergyPerDay(6));
+        await Settle();
+
+        Assert.Equal(6, await b.Store.ReadAsync(board => board.DailyEnergy));
+        Assert.Contains("\"energyPerDay\": 6", File.ReadAllText(Path.Combine(b.Vault, ".todo-tracker", "config.json")), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_place_can_be_read_only_or_write_only()
     {
         // With more than one place to sync through, each can be read (others' changes come in), written (this

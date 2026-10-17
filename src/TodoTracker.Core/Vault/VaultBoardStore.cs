@@ -582,6 +582,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             board.AddLoadedLabel(label.Name, label.Color);
         }
 
+        board.EnergyPerDay = config.EnergyPerDay is >= 1 and <= Energy.MaxPerDay ? config.EnergyPerDay : null;
+
         // Tasks in the remembered order. A copied file's ids are taken: it gets ids derived from its path (stable,
         // without rewriting it); the file that had them before keeps them.
         var order = config.Order.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
@@ -1307,7 +1309,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private sealed record ConfigLabel(string Name, string Color);
 
-    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order);
+    /// <param name="EnergyPerDay">How much energy there is in a day (null: the default); in config.json because it syncs.</param>
+    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -1363,7 +1366,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             2,
             _board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color)).Concat(_dormantGroups).ToList(),
             _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color)).ToList(),
-            _board.Items.Select(i => i.Id).ToList());
+            _board.Items.Select(i => i.Id).ToList(),
+            _board.EnergyPerDay);
         return JsonSerializer.Serialize(doc, Json) + "\n";
     }
 
@@ -1391,7 +1395,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         return true;
     }
 
-    private sealed record StateDocument(PomodoroSettings? Settings, PomodoroPhase Phase, DateTimeOffset? EndsAt, int? PausedRemainingSeconds, Guid? ItemId, int CompletedFocusCount, List<Guid>? NowOrder = null, DateTimeOffset? BreakEndedAt = null, DateTimeOffset? NowArrangedAt = null, int? EnergyPerDay = null);
+    private sealed record StateDocument(PomodoroSettings? Settings, PomodoroPhase Phase, DateTimeOffset? EndsAt, int? PausedRemainingSeconds, Guid? ItemId, int CompletedFocusCount, List<Guid>? NowOrder = null, DateTimeOffset? BreakEndedAt = null, DateTimeOffset? NowArrangedAt = null);
 
     private void LoadState(TaskBoard board)
     {
@@ -1406,7 +1410,6 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 board.NowOrderList.Clear();
                 board.NowOrderList.AddRange((s.NowOrder ?? []).Where(i => board.Find(i) is not null).Distinct());
                 board.NowArrangedAt = s.NowArrangedAt;
-                board.EnergyPerDay = s.EnergyPerDay is >= 1 and <= Energy.MaxPerDay ? s.EnergyPerDay : null;
             }
         }
         catch (JsonException)
@@ -1418,7 +1421,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private string StateText()
     {
         var p = _board.Pomodoro;
-        var doc = new StateDocument(p.Settings, p.Phase, p.EndsAt, p.PausedRemaining is { } r ? (int)Math.Round(r.TotalSeconds) : null, p.ItemId, p.CompletedFocusCount, _board.NowOrder.Count == 0 ? null : [.. _board.NowOrder], p.BreakEndedAt, _board.NowArrangedAt, _board.EnergyPerDay);
+        var doc = new StateDocument(p.Settings, p.Phase, p.EndsAt, p.PausedRemaining is { } r ? (int)Math.Round(r.TotalSeconds) : null, p.ItemId, p.CompletedFocusCount, _board.NowOrder.Count == 0 ? null : [.. _board.NowOrder], p.BreakEndedAt, _board.NowArrangedAt);
         return JsonSerializer.Serialize(doc, Json) + "\n";
     }
 

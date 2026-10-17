@@ -257,7 +257,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   `plannedAt`/`plannedMinutes` (JSON), `planned:`/`planned-length:` (frontmatter); REST `POST /api/items/{id}/plan`,
   `GET /api/plan`; MCP `plan_task`.
 * **Energy** (an extra, on by default): a task takes 1 to 3 ⚡ an hour (`energy`; not said counts as 1), and a day has
-  `energyPerDay` ⚡ (default 10, kept with the board: `state.json` in the vault, `energyPerDay` in the JSON, so every app
+  `energyPerDay` ⚡ (default 10, kept with the board: `config.json` in the vault, which syncs, `energyPerDay` in the JSON, so every app
   and computer uses it). A day's energy is what its planned blocks take: each block's hours on that day × its task's ⚡,
   done ones included, archived ones not, a block over midnight counting on both days (`Energy.PlannedOn`; same rule in
   Swift and Kotlin, shared fixture `tests/fixtures/energy.json`). Cards show `⚡⚡`; Today's summary says
