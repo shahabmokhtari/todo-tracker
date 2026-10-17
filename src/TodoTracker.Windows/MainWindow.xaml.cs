@@ -630,7 +630,8 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Add subtask…", Command = _vm.AddSubtaskCommand, CommandParameter = card });
-        menu.Items.Add(new MenuItem { Header = "Edit details in browser", Command = _vm.EditInBrowserCommand, CommandParameter = card });
+        menu.Items.Add(new MenuItem { Header = "Open in the app", Command = _vm.OpenInAppCommand, CommandParameter = card, ToolTip = "The task full size: details, every note, time, files" });
+        menu.Items.Add(new MenuItem { Header = "Open in the browser", Command = _vm.OpenInBrowserCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Copy link", Command = _vm.CopyLinkCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Open full report", Command = _vm.OpenReportCommand, CommandParameter = card });
         menu.IsOpen = true;

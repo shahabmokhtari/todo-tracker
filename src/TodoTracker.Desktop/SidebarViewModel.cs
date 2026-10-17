@@ -698,22 +698,32 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     private void OpenWorkstreamReport(WorkstreamViewModel? workstream) =>
         _shell.OpenUrl(Launch(workstream is null ? "/report.html" : $"/report.html?id={workstream.Id}"));
 
+    /// <summary>The task full size in the app window (the browser when there's no app window).</summary>
     [RelayCommand]
-    private void EditInBrowser(CardViewModel? card)
+    private void OpenInApp(CardViewModel? card)
     {
         if (card is null)
         {
             return;
         }
 
-        // The app window shows the task full size; the browser opens it in the dashboard's panel.
         if (_options.OpenApp is { } open)
         {
             open($"/#/task/{card.Id}");
         }
         else
         {
-            _shell.OpenUrl(Launch($"/?item={card.Id}"));
+            OpenInBrowser(card);
+        }
+    }
+
+    /// <summary>The task in the browser (signed in for you), full size: everything about it, notes included.</summary>
+    [RelayCommand]
+    private void OpenInBrowser(CardViewModel? card)
+    {
+        if (card is not null)
+        {
+            _shell.OpenUrl(Launch($"/#/task/{card.Id}"));
         }
     }
 
@@ -1013,7 +1023,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             IsWaiting = e.State == ItemState.Waiting && !e.NeedsAttention,
             CanComplete = e.State == ItemState.Actionable,
             IsTiming = item.Id == timing,
-            LastNote = item.Notes.Count > 0 ? item.Notes[^1].Text : null,
+            Notes = item.Notes.OrderByDescending(n => n.At).Select(n => new CardNote(n.Id, n.Text, $"{n.Author.DisplayName} · {RelativeTime.Format(n.At, now)}", n.SourceUrl)).ToList(),
             Chips = ChipsFor(e, now, energy),
             Energy = item.Energy,
             Tags = item.Tags.Select(t => "#" + t).ToList(),
@@ -1082,11 +1092,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             chips.Add(new(new string('⚡', level), "energy"));
         }
 
-        if (item.Notes.Count > 0)
-        {
-            chips.Add(new(item.Notes.Count == 1 ? "1 note" : $"{item.Notes.Count} notes", "muted"));
-        }
-
+        // Notes aren't a chip here: the card's "2 notes" toggle opens them (CardViewModel.Notes).
         return chips;
     }
 

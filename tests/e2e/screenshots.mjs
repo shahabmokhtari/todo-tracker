@@ -93,9 +93,12 @@ async function seed() {
 
   const review = await add({ title: 'Reply to the security review', groupId: work, priority: 'critical', icon: '🛡️', tags: ['security'] });
   await api('POST', `/api/items/${review.id}/reminders`, { inMinutes: 0, message: 'Review closes at 5 pm' });
+  await api('POST', `/api/items/${review.id}/notes`, { text: 'Pulled the report: 5 findings, 3 already fixed in v2.3.' }, agent);
   await api('POST', `/api/items/${review.id}/notes`, { text: 'Two findings left: token lifetime and the CSP header. Draft replies in the doc.' });
 
   const design = await add({ title: "Review Maya's API design doc", groupId: work, labels: ['Deep work'], tags: ['api'] });
+  await api('POST', `/api/items/${design.id}/notes`, { text: 'Section 3 (pagination) needs a second look.' });
+  await api('POST', `/api/items/${design.id}/notes`, { text: 'Maya asked for comments by Thursday.' });
   const flaky = await add({ title: 'Fix flaky checkout test', groupId: work, icon: '🐛', color: '#ef4444', tags: ['bug', 'ci'], labels: ['Quick win'] });
   await api('POST', `/api/items/${flaky.id}/stage`, { stage: 'next' });
   const ci = await add({ title: 'Migrate CI to the new runners', groupId: work, tags: ['ci'], details: 'Linux first, then macOS. Keep the old pool for a week.' });

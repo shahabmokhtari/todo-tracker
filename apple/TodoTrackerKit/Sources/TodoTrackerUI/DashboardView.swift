@@ -446,7 +446,7 @@ struct FocusCard: View {
             if !entry.breadcrumb.isEmpty {
                 Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.secondary)
             }
-            let chips = Presentation.chips(for: entry, now: now)
+            let chips = Presentation.chips(for: entry, now: now, notes: false)
             if !chips.isEmpty {
                 FlowLayout(spacing: 5) { ForEach(chips, id: \.self) { ChipView(chip: $0) } }
             }
@@ -458,11 +458,8 @@ struct FocusCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(hex: "#f59e0b").opacity(0.14)))
             }
-            if let last = entry.item.notes.last {
-                Text(last.text).font(.subheadline.italic()).foregroundStyle(.secondary)
-                    .padding(.leading, 10)
-                    .overlay(alignment: .leading) { Capsule().fill(Theme.accent.opacity(0.25)).frame(width: 3) }
-            }
+            // The task you're on: every note, newest first.
+            CardNotes(item: entry.item, now: now)
             FlowLayout(spacing: 6) {
                 if entry.state == .actionable {
                     Button { model.complete(entry.item.id) } label: {
@@ -483,7 +480,7 @@ struct FocusCard: View {
                     PillButton(title: "Skip", systemImage: "arrow.down") { model.skip(entry.item.id) }
                         .help("Do something else first: moves this one down the list")
                 }
-                MoreMenu(model: model, entry: entry, pill: true)
+                MoreMenu(model: model, entry: entry, pill: true, openDetails: open)
             }
             if model.openNotes.contains(entry.item.id) {
                 NoteField(model: model, id: entry.item.id)
@@ -507,8 +504,22 @@ struct MoreMenu: View {
     let entry: AgendaEntry
     var pill = false
 
+    @Environment(\.openURL) var openURL
+    /// Opens the task's details here (nil: not offered).
+    var openDetails: (() -> Void)?
+
     var body: some View {
         Menu {
+            if let openDetails {
+                Button(action: openDetails) { Label("Open details", systemImage: "arrow.up.left.and.arrow.down.right") }
+            }
+            if model.usesServer {
+                // The full app in the browser, on this task (signed in for you).
+                Button {
+                    let id = entry.item.id.uuidString.lowercased()
+                    Task { if let url = await model.launchURL(returnPath: "/#/task/\(id)") { openURL(url) } }
+                } label: { Label("Open in the browser", systemImage: "safari") }
+            }
             if let reminder = entry.dueReminder {
                 Button { model.dismissReminder(entry.item.id, reminderId: reminder.id) } label: { Label("Dismiss reminder", systemImage: "bell.slash") }
             }
@@ -543,6 +554,30 @@ struct MoreMenu: View {
         .fixedSize()
         .accessibilityLabel("More")
         .help("More")
+    }
+}
+
+/// A card's notes, newest first: the text, then who wrote it and when.
+struct CardNotes: View {
+    let item: WorkItem
+    let now: Date
+
+    var body: some View {
+        let notes = Presentation.notes(item, now: now)
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(notes) { note in
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(note.text).font(.subheadline).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                        Text(note.meta).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 10)
+                    .overlay(alignment: .leading) { Capsule().fill(Theme.accent.opacity(0.25)).frame(width: 3) }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Notes")
+        }
     }
 }
 
@@ -685,6 +720,7 @@ struct TaskRow: View {
     @ObservedObject var model: BoardModel
     let now: Date
     let open: () -> Void
+    @State private var notesOpen = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -697,12 +733,20 @@ struct TaskRow: View {
                 if !entry.breadcrumb.isEmpty {
                     Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.tertiary)
                 }
-                let chips = Presentation.chips(for: entry, now: now)
+                let chips = Presentation.chips(for: entry, now: now, notes: false)
                 if !chips.isEmpty {
                     FlowLayout(spacing: 5) { ForEach(chips, id: \.self) { ChipView(chip: $0) } }
                 }
                 if let reminder = entry.dueReminder {
                     Label(reminder.message, systemImage: "alarm").font(.caption.weight(.semibold)).foregroundStyle(Theme.warnText)
+                }
+                if !entry.item.notes.isEmpty {
+                    Button { notesOpen.toggle() } label: {
+                        Text(Presentation.notesToggle(count: entry.item.notes.count, open: notesOpen)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(notesOpen ? "Hide notes" : "Show notes")
+                    if notesOpen { CardNotes(item: entry.item, now: now) }
                 }
                 HStack(spacing: 14) {
                     if entry.state == .actionable {
@@ -718,7 +762,7 @@ struct TaskRow: View {
                         let timing = model.runningTimer?.item.id == entry.item.id
                         iconButton(timing ? "stop.circle" : "stopwatch", timing ? "Stop the timer" : "Time this task") { model.toggleTimer(entry.item.id) }
                     }
-                    MoreMenu(model: model, entry: entry)
+                    MoreMenu(model: model, entry: entry, openDetails: open)
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)

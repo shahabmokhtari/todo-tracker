@@ -32,6 +32,13 @@ the web task panel.
 rest: **Dismiss reminder** (keeps the task, stops showing the reminder), **Copy link**, and what extras add (Copy for
 Loop; Open in Obsidian in the sidebar). Same on Windows, the web, Mac, iPhone and Android.
 
+**Notes on cards.** The task you're on (the big card) shows every note, newest first, with who wrote it and when. Any
+other card says **2 notes ▾**: click it to read them right there, **Hide notes ▴** to fold them away.
+
+**Open a task.** Click its title (in the sidebar it opens full size in the app window), or **⋯ › Open in the app** /
+**Open in the browser** in the sidebar, **⋯ › Open full size** / **Open in a new tab** on the web, **⋯ › Open details** /
+**Open in the browser** on a Mac, and **⋯ › Open** on Android.
+
 Type a task in the box at the top and press Enter:
 
 ```

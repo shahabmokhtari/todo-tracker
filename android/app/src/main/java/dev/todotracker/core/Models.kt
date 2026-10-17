@@ -23,6 +23,14 @@ enum class ActorKind(val wire: String) {
 }
 
 data class Actor(val kind: ActorKind, val name: String? = null) {
+    /** Who it was, as the apps say it: "You", "Agent: copilot" (same as Swift's displayName). */
+    val displayName: String
+        get() {
+            if (kind == ActorKind.USER) return "You"
+            val kindName = kind.wire.replaceFirstChar { it.uppercase() }
+            return if (!name.isNullOrEmpty()) "$kindName: $name" else kindName
+        }
+
     companion object {
         val USER = Actor(ActorKind.USER)
         val SYSTEM = Actor(ActorKind.SYSTEM)

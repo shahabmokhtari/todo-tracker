@@ -35,6 +35,16 @@
             <TextBlock Text="{Binding}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,2,6,0" ToolTip="Tag" />
         </DataTemplate>
 
+        <!-- A note on a card: its text, then who wrote it and when. -->
+        <DataTemplate x:Key="CardNoteTemplate" DataType="{x:Type d:CardNote}">
+            <Border BorderThickness="3,0,0,0" BorderBrush="{StaticResource AccentSoft}" Padding="9,2" Margin="0,6,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12.5" />
+                    <TextBlock Text="{Binding Meta}" Style="{StaticResource Muted}" FontSize="11" Margin="0,1,0,0" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- A list row: priority dot, text, quiet icon actions that brighten on hover. -->
         <DataTemplate x:Key="CardTemplate" DataType="{x:Type d:CardViewModel}">
             <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="8,8,4,8" CornerRadius="10" Background="Transparent" BorderThickness="0"
@@ -54,7 +64,7 @@
                             Background="{Binding Accent, Converter={StaticResource HexBrush}}"
                             Visibility="{Binding Accent, Converter={StaticResource VisibleWhen}}" />
                     <StackPanel Grid.Column="1" Margin="6,0,0,0">
-                        <TextBlock FontWeight="SemiBold" TextWrapping="Wrap">
+                        <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
                             <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,1,0,0"
@@ -64,6 +74,10 @@
                             <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource LabelChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
                             <ItemsControl ItemsSource="{Binding Tags}" ItemTemplate="{StaticResource TagChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
                         </WrapPanel>
+                        <Button Style="{StaticResource LinkButton}" Content="{Binding NotesToggleText}" Command="{Binding ToggleNotesCommand}" HorizontalAlignment="Left"
+                                Visibility="{Binding HasNotes, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="Notes" ToolTip="Show or hide this task's notes" />
+                        <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource CardNoteTemplate}" Focusable="False"
+                                      Visibility="{Binding IsNotesOpen, Converter={StaticResource VisibleWhen}}" />
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
                             <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource AttentionText}" Margin="0,0,5,0" />
                             <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -141,7 +155,7 @@
                                 <TextBlock x:Name="Eyebrow" Text="DO THIS NOW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}" />
                             </StackPanel>
                         </DockPanel>
-                        <TextBlock FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI">
+                        <TextBlock FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
                             <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" Margin="0,2,0,0" Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
@@ -157,10 +171,9 @@
                                 <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
-                        <Border BorderThickness="3,0,0,0" BorderBrush="{StaticResource AccentSoft}" Padding="9,2" Margin="0,8,0,0"
-                                Visibility="{Binding LastNote, Converter={StaticResource VisibleWhen}}">
-                            <TextBlock Text="{Binding LastNote}" FontStyle="Italic" Style="{StaticResource Muted}" />
-                        </Border>
+                        <!-- The task you're on: every note, newest first. -->
+                        <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource CardNoteTemplate}" Focusable="False" Margin="0,4,0,0"
+                                      Visibility="{Binding HasNotes, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="Notes" />
                         <WrapPanel Margin="0,10,0,0">
                             <Button Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Mark done" ToolTip="Mark this task done"
                                     Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"

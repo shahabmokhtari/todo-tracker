@@ -919,3 +919,34 @@ test('Energy: a task takes ⚡ to ⚡⚡⚡ an hour, the day adds up, and switch
   await request.post(`/api/items/${task.id}/complete`, { headers: auth });
   expect(errors).toEqual([]);
 });
+
+test('Notes on cards: the focus card shows every note, others open theirs with "2 notes", and ⋯ opens the task full size', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const first = await add(request, 'Send the RU report', { priority: 'critical' });
+  const other = await add(request, 'Check reaction reliability');
+  for (const [id, text] of [[first.id, 'Pulled the numbers'], [first.id, 'Include hot partition splitting'], [other.id, 'Dashboards look flat'], [other.id, 'Ask the on-call']]) {
+    await request.post(`/api/items/${id}/notes`, { headers: auth, data: { text } });
+  }
+  await request.post('/api/now/first', { headers: auth, data: { ids: [first.id] } });
+  await open(page, request);
+
+  const focus = page.locator('.focus-card');
+  await expect(focus).toContainText('Send the RU report');
+  await expect(focus.getByRole('list', { name: 'Notes' }).locator('.card-note')).toHaveText([/Include hot partition splitting/, /Pulled the numbers/]);
+
+  const row = page.locator('.item').filter({ hasText: 'Check reaction reliability' });
+  const notes = row.getByRole('list', { name: 'Notes on Check reaction reliability' });
+  await expect(notes).toBeHidden();
+  await row.getByRole('button', { name: '2 notes ▾' }).click();
+  await expect(notes.locator('.card-note')).toHaveText([/Ask the on-call/, /Dashboards look flat/]);
+  await row.getByRole('button', { name: 'Hide notes ▴' }).click();
+  await expect(notes).toBeHidden();
+
+  await row.getByRole('button', { name: 'More', exact: true }).click();
+  await row.getByRole('menuitem', { name: 'Open full size' }).click();
+  await expect(page.locator('#drawer')).toHaveClass(/full/);
+  await expect(page.locator('#drawer .title-input')).toHaveValue('Check reaction reliability');
+  await page.keyboard.press('Escape');
+  for (const t of [first, other]) await request.post(`/api/items/${t.id}/complete`, { headers: auth });
+  expect(errors).toEqual([]);
+});

@@ -130,7 +130,7 @@ export function energyLine(energy) {
     : `⚡ ${n(energy.plannedToday)} of ${energy.perDay} planned today.`;
 }
 
-export function metaChips(card, { waiting = false, now = new Date(), energy = false } = {}) {
+export function metaChips(card, { waiting = false, now = new Date(), energy = false, notes = true } = {}) {
   const chips = [];
   if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
   const step = stepLabel(card);
@@ -145,7 +145,7 @@ export function metaChips(card, { waiting = false, now = new Date(), energy = fa
   if (card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
   if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
   if (energy && card.energy) chips.push({ text: energyMarks(card.energy), tone: 'energy' });
-  if (card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
+  if (notes && card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
   return chips;
 }
 

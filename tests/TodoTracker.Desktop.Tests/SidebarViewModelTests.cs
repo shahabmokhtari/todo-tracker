@@ -304,7 +304,9 @@ public sealed class SidebarViewModelTests : IDisposable
         await _vm.RefreshAsync();
 
         Assert.Equal([new ChipViewModel("Step 1 of 2", "step")], _vm.Focus!.Chips);
-        Assert.Equal([new ChipViewModel("overdue 1h ago", "danger"), new ChipViewModel("1 note", "muted")], _vm.Now.Single().Chips);
+        // Notes aren't a chip in the sidebar: the card's "1 note ▾" toggle shows them.
+        Assert.Equal([new ChipViewModel("overdue 1h ago", "danger")], _vm.Now.Single().Chips);
+        Assert.Equal("1 note ▾", _vm.Now.Single().NotesToggleText);
     }
 
     [Fact]
@@ -621,6 +623,27 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Every_note_of_a_card_can_be_shown_newest_first_and_stays_open_after_a_refresh()
+    {
+        var item = await Seed("Send the RU report");
+        await _store.UpdateAsync(b => b.AddNote(item.Id, "Pulled the numbers", Actor.User, T0));
+        await _store.UpdateAsync(b => b.AddNote(item.Id, "Include hot partition splitting", Actor.Agent("copilot"), T0.AddMinutes(5)));
+        await _vm.RefreshAsync();
+        var card = _vm.Focus!;
+        Assert.Equal(["Include hot partition splitting", "Pulled the numbers"], card.Notes.Select(n => n.Text));
+        Assert.StartsWith("Agent: copilot ·", card.Notes[0].Meta, StringComparison.Ordinal);
+        Assert.Equal("2 notes ▾", card.NotesToggleText);
+
+        card.ToggleNotesCommand.Execute(null);
+        Assert.Equal("Hide notes ▴", card.NotesToggleText);
+        await _store.UpdateAsync(b => b.AddNote(item.Id, "Sent", Actor.User, T0.AddMinutes(9)));
+        await _vm.RefreshAsync();
+        Assert.Same(card, _vm.Focus);
+        Assert.True(_vm.Focus!.IsNotesOpen);
+        Assert.Equal(3, _vm.Focus.Notes.Count);
+    }
+
+    [Fact]
     public async Task Dismiss_reminder_clears_attention()
     {
         var item = await Seed("Feature B");
@@ -678,10 +701,14 @@ public sealed class SidebarViewModelTests : IDisposable
         await vm.RefreshAsync();
 
         vm.OpenDashboardCommand.Execute(null);
-        vm.EditInBrowserCommand.Execute(vm.Focus);
+        vm.OpenInAppCommand.Execute(vm.Focus);
 
         Assert.Equal(["/", $"/#/task/{task.Id}"], opened);
         Assert.Empty(_shell.OpenedUrls);
+
+        // "Open in the browser" goes to the browser even with an app window.
+        vm.OpenInBrowserCommand.Execute(vm.Focus);
+        Assert.Equal([$"launch:/#/task/{task.Id}"], _shell.OpenedUrls);
     }
 
     [Fact]
@@ -737,14 +764,14 @@ public sealed class SidebarViewModelTests : IDisposable
 
         _vm.OpenDashboardCommand.Execute(null);
         _vm.OpenReportCommand.Execute(_vm.Focus);
-        _vm.EditInBrowserCommand.Execute(_vm.Focus);
+        _vm.OpenInAppCommand.Execute(_vm.Focus);
         _vm.CopyMcpConfigCommand.Execute(null);
         _vm.ConnectAiCommand.Execute(null);
         _vm.OpenSyncCommand.Execute(null);
         _vm.SetUpBrowserExtensionCommand.Execute(null);
 
         Assert.Equal(
-            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/?item={item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1"],
+            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/#/task/{item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
         _vm.CopyLinkCommand.Execute(_vm.Focus);

@@ -579,7 +579,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
   background: linear-gradient(90deg, rgba(234, 179, 8, .28) var(--fill, 0%), var(--surface-2) var(--fill, 0%)); }
 .plan-energy.over { color: #b91c1c; background: rgba(239, 68, 68, .16); }
 .energy-mark { margin-left: 4px; font-size: .85em; letter-spacing: -2px; }
-#summary.over-energy { color: #b91c1c; }
+.energy-line.over { color: #b91c1c; }
 .plan-task { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); cursor: grab; border-left: 3px solid var(--task-accent, transparent); }
 .plan-task:focus-visible { outline: 2px solid var(--accent); }
 .plan-task.dragging, .plan-block.dragging { opacity: .5; }
