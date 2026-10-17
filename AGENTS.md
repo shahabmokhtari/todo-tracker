@@ -49,8 +49,8 @@ The solution includes the Windows app, so on Linux and macOS build and test the 
   `tests/system/placement.system-test.ps1` (dock, float, always on top, restarts), `fullscreen.system-test.ps1`
   (full-screen apps and Remote Desktop), and `multimonitor.system-test.ps1` (needs two monitors; skipped in CI, run it
   after changing placement code).
-- **Android by hand:** an emulator (`system-images;android-35;google_apis;x86_64`) runs the app; `adb shell date
-  @<seconds>` (as root) moves its clock to reach a break quickly.
+- **Android by hand:** an emulator (`system-images;android-35;google_apis;x86_64`) runs the app;
+  `adb shell date @<seconds>` (as root) moves its clock to reach a break quickly.
 
 CI (`.github/workflows/ci.yml`) runs seven jobs on every PR: Linux (core, server, CLI, view models, coverage), Linux
 tray, Android, web + e2e, AI connectors (packages `tt` and the Claude Desktop extension), Windows (build, tests,
@@ -61,14 +61,17 @@ publish, smoke and system tests), and macOS/iOS. Keep all of them green.
 Never point a test or a demo at the user's own data folder or tasks folder.
 
 ```bash
-TODOTRACKER_TOKEN=dev-token-0123456789abcdefghijklmnop TODOTRACKER_CLOUD=off \
-  dotnet run --project src/TodoTracker.Web -- --port 5399 --data "$(mktemp -d)"
+DATA=$(mktemp -d)
+TODOTRACKER_TOKEN=dev-token-0123456789abcdefghijklmnop TODOTRACKER_CLOUD=off TODOTRACKER_VAULT="$DATA/vault" \
+  dotnet run --project src/TodoTracker.Web -- --port 5399 --data "$DATA"
 # open the sign-in link it prints; the API takes:  Authorization: Bearer dev-token-…
-dotnet run --project src/TodoTracker.Cli -- now --data /tmp/tt-data --vault /tmp/tt-data/vault --as my-agent
+dotnet run --project src/TodoTracker.Cli -- now --data "$DATA" --vault "$DATA/vault" --as my-agent
 ```
 
 - `--data <dir>` (or `TODOTRACKER_DATA`) is the app's data folder; with it, the tasks folder is `<dir>/vault` unless
-  `--vault`/`TODOTRACKER_VAULT` says otherwise. `TODOTRACKER_CLOUD=off` keeps it from syncing through OneDrive/iCloud.
+  `--vault`/`TODOTRACKER_VAULT` says otherwise. **`TODOTRACKER_VAULT` wins over `--data`**: set it (as above) or make
+  sure it isn't set, or a test run writes into the folder it names. `TODOTRACKER_CLOUD=off` keeps it from syncing
+  through OneDrive/iCloud.
 - Only one Windows sidebar runs at a time: a second start hands over to the running one. To try a build of the sidebar,
   quit the running app first, and start it again when you're done.
 - `TODOTRACKER_AGENT_PATH` (a folder) and `TODOTRACKER_TEST_AGENT` (the e2e fake agent) control what Ask AI finds.

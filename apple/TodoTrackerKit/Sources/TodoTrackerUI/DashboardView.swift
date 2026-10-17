@@ -246,7 +246,7 @@ public struct DashboardView: View {
                             }
                             Spacer()
                             Button("Reopen") { model.reopen(item.id) }
-                                .buttonStyle(.borderless).font(.caption)
+                                .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
                                 .accessibilityLabel("Reopen \(item.title)")
                         }
                         .padding(.vertical, 3)
@@ -746,8 +746,12 @@ struct PomodoroBar: View {
                 Text(label(p)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            Toggle(isOn: $model.fullScreenBreaks) { Image(systemName: "rectangle.inset.filled") }
-                .toggleStyle(.button)
+            Button { model.fullScreenBreaks.toggle() } label: {
+                Image(systemName: "rectangle.inset.filled")
+                    .foregroundStyle(model.fullScreenBreaks ? Theme.accent : Color.secondary)
+            }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(model.fullScreenBreaks ? .isSelected : [])
                 .help("Full-screen breaks: when a focus session ends, a reminder to rest covers the screen (you can skip it)")
                 .accessibilityLabel("Full-screen breaks")
             Group {

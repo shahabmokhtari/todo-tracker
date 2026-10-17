@@ -55,6 +55,8 @@ public struct ThemeMenu: View {
         } label: {
             Image(systemName: "circle.lefthalf.filled")
         }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel("Appearance")

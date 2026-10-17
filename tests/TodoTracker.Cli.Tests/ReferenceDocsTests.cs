@@ -64,7 +64,7 @@ public sealed class ReferenceDocsTests
         Line();
         foreach (var line in McpInfo.Instructions.Split('\n'))
         {
-            Line($"> {line}");
+            Line($"> {Escape(line)}");
         }
 
         Line();
@@ -170,7 +170,7 @@ public sealed class ReferenceDocsTests
                 Line();
                 foreach (var line in details.Split('\n'))
                 {
-                    Line(line.Length == 0 ? string.Empty : line + "  ");
+                    Line(line.Length == 0 ? string.Empty : Escape(line) + "  ");
                 }
             }
         }

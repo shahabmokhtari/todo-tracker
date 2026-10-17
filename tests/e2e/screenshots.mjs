@@ -23,6 +23,10 @@ const base = `http://127.0.0.1:${port}`;
 const webOnly = process.argv.includes('--web-only');
 const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
+// Everything in the throwaway folder: TODOTRACKER_VAULT (or _DATA) set in your shell would otherwise win over --data and
+// put the demo tasks in your own tasks folder. No cloud sync either.
+const isolated = { ...process.env, TODOTRACKER_DATA: data, TODOTRACKER_VAULT: path.join(data, 'vault'), TODOTRACKER_CLOUD: 'off' };
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(method, url, body, actor) {
@@ -45,7 +49,7 @@ function stop(child) {
 
 async function startServer() {
   const server = spawn('dotnet', ['run', '--project', path.join(root, 'src', 'TodoTracker.Web'), '--no-launch-profile', '--', '--port', String(port), '--data', data, '--no-history'], {
-    env: { ...process.env, TODOTRACKER_TOKEN: token, TODOTRACKER_CLOUD: 'off', TODOTRACKER_AGENT_PATH: path.join(data, 'no-agents') },
+    env: { ...isolated, TODOTRACKER_TOKEN: token, TODOTRACKER_AGENT_PATH: path.join(data, 'no-agents') },
     stdio: 'ignore',
   });
   for (let i = 0; i < 240; i++) {
@@ -199,7 +203,7 @@ async function captureSidebar() {
     // The demo data folder: your own tasks are never opened.
     // The AI apps installed here count (Ask AI shows as it would for you); the tasks are only the demo ones.
     const app = spawn(exe, ['--data', data, '--port', String(port + 1), '--no-dock', '--theme', theme, '--screenshot', file], {
-      env: { ...process.env, TODOTRACKER_CLOUD: 'off' },
+      env: isolated,
       stdio: 'ignore',
     });
     for (let i = 0; i < 60 && !fs.existsSync(file); i++) await wait(500);

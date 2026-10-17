@@ -79,7 +79,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "add_steps"), Description("Add ordered steps under a task. Only the first open step is actionable; finishing one unlocks the next after stepDelayHours.")]
-    public Task<List<ItemDto>> AddSteps(McpServer server, [Description("The task the steps go under (a full id).")] string parentId, [Description("The steps, in order, e.g. ['Ring 0', 'Ring 1'].")] string[] steps, [Description("Hours between finishing one step and the next one coming up (e.g. 24 for a rollout); default: at once.")] double? stepDelayHours = null) =>
+    public Task<List<ItemDto>> AddSteps(McpServer server, [Description("The task the steps go under (a full id).")] string parentId, [Description("The steps, in order, e.g. ['Ring 0', 'Ring 1'].")] string[] steps, [Description("Hours between finishing one step and the next one coming up (e.g. 24 for a rollout); default: the delay the task already has (none for a new one).")] double? stepDelayHours = null) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
@@ -210,8 +210,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "move_task"), Description("Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index sets the position among siblings.")]
-    public Task<ItemDto> MoveTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("Put it under this task (a full id).")] string? parentId = null, [Description("Group (tab) name or id, e.g. 'Work'. Moves a top-level task to that group.")] string? group = null, [Description("Position among its new siblings (0: first).")] int? index = null, [Description("Take it out from under its parent, to the top level.")] bool toTopLevel = false) =>
+    [McpServerTool(Name = "move_task"), Description("Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index alone reorders a subtask among its siblings.")]
+    public Task<ItemDto> MoveTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("Put it under this task (a full id).")] string? parentId = null, [Description("Group (tab) name or id, e.g. 'Work': moves it to that group (a subtask becomes a top-level task there).")] string? group = null, [Description("Position among its siblings (0: first). Alone, it reorders a subtask under its parent; with parentId or toTopLevel, among its new siblings.")] int? index = null, [Description("Take it out from under its parent, to the top level.")] bool toTopLevel = false) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -219,6 +219,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             if (parentId is not null)
             {
                 b.Move(id, ParseId(parentId), index, null, actor, now);
+            }
+            else if (!toTopLevel && groupId is null && index is not null && b.Get(id).Parent is { } parent)
+            {
+                // Only a position: reordered where it is (not taken out from under its parent).
+                b.Move(id, parent.Id, index, null, actor, now);
             }
             else if (toTopLevel || b.Get(id).Parent is not null)
             {

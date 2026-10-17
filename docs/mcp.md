@@ -16,7 +16,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 > - Groups are tabs such as Work and Personal. Tags are free-form; labels are a curated colored set (list_labels).
 > - Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).
 > - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.
-> - Every task has a link (todotracker://task/<id>, in get_task): give it to the user; clicking it opens the task in the app.
+> - Every task has a link (todotracker://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
 > - Hooks (add_hook) run commands when things happen; one you add waits until the user allows it: tell them so.
 > - Tasks are markdown files in a folder the user may also open in Obsidian; vault_info explains the format.
 
@@ -38,7 +38,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`complete_task`](#complete_task) | Mark a task done (subtasks too). |
 | [`reopen_task`](#reopen_task) | Undo a completion. |
 | [`update_task`](#update_task) | Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it). |
-| [`move_task`](#move_task) | Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index sets the position among siblings. |
+| [`move_task`](#move_task) | Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index alone reorders a subtask among its siblings. |
 | [`put_first`](#put_first) | Put tasks at the top of Do now, in this order; the first becomes the focus (only a reminder going off later comes above them). |
 | [`list_labels`](#list_labels) | The curated labels (name and color) the user picks from. |
 | [`attach_text`](#attach_text) | Attach a text file (log excerpt, plan, summary…) to a task. |
@@ -119,7 +119,7 @@ Add ordered steps under a task. Only the first open step is actionable; finishin
 | --- | --- | --- | --- |
 | `parentId` | text | required | The task the steps go under (a full id). |
 | `steps` | list of text | required | The steps, in order, e.g. ['Ring 0', 'Ring 1']. |
-| `stepDelayHours` | number | optional | Hours between finishing one step and the next one coming up (e.g. 24 for a rollout); default: at once. |
+| `stepDelayHours` | number | optional | Hours between finishing one step and the next one coming up (e.g. 24 for a rollout); default: the delay the task already has (none for a new one). |
 
 ### `add_note`
 
@@ -210,14 +210,14 @@ Change title, details, priority, deadline, tags, labels, icon, color or how it r
 
 ### `move_task`
 
-Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index sets the position among siblings.
+Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index alone reorders a subtask among its siblings.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
 | `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
 | `parentId` | text | optional | Put it under this task (a full id). |
-| `group` | text | optional | Group (tab) name or id, e.g. 'Work'. Moves a top-level task to that group. |
-| `index` | integer | optional | Position among its new siblings (0: first). |
+| `group` | text | optional | Group (tab) name or id, e.g. 'Work': moves it to that group (a subtask becomes a top-level task there). |
+| `index` | integer | optional | Position among its siblings (0: first). Alone, it reorders a subtask under its parent; with parentId or toTopLevel, among its new siblings. |
 | `toTopLevel` | true/false | optional | Take it out from under its parent, to the top level. |
 
 ### `put_first`

@@ -144,7 +144,7 @@ Defer a task until later, or until another task is done (it moves to Waiting and
 tt snooze <task> <when | after <task>>
 ```
 
-when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>  
+when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after &lt;other task&gt;  
 
 ### tt edit
 
@@ -300,8 +300,8 @@ Run your own scripts or webhooks when something happens (hooks.json).
 tt hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | remove <id> | test [event] | path]
 ```
 
-add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…  
-edit <id> [--event e] and any of the add options (only what you give changes).  
-<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).  
+add &lt;event&gt; (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…  
+edit &lt;id&gt; [--event e] and any of the add options (only what you give changes).  
+&lt;event&gt;: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).  
 A command gets the event as JSON on stdin. With --as (or TT_AGENT) a hook you add or change waits for approval:  
-tt hooks approve <id> <version> (without --as; tt hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.  
+tt hooks approve &lt;id&gt; &lt;version&gt; (without --as; tt hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.  
