@@ -23,6 +23,26 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** When Do now was last arranged: a reminder going off after it brings its task back to the top. */
     var nowArrangedAt: Instant? = null
 
+    /** How much energy there is in a day (null: [Energy.DEFAULT_PER_DAY]); kept with the board, so every app uses it. */
+    var energyPerDay: Int? = null
+        internal set
+
+    val dailyEnergy: Int get() = energyPerDay ?: Energy.DEFAULT_PER_DAY
+
+    /** How much energy a task takes per hour (1 to 3; null: not said). */
+    fun setEnergy(id: UUID, level: Int?, actor: Actor = Actor.USER, now: Instant) {
+        val item = get(id)
+        if (level != null && level !in Energy.LEVELS) throw BoardException("Energy is 1 to 3 (⚡ to ⚡⚡⚡ an hour).")
+        item.energy = level
+        log(now, id, "updated", "Updated \"${item.title}\"", actor)
+    }
+
+    /** How much energy there is in a day (null: back to the default). */
+    fun setEnergyPerDay(perDay: Int?) {
+        if (perDay != null && perDay !in 1..Energy.MAX_PER_DAY) throw BoardException("A day's energy is 1 to ${Energy.MAX_PER_DAY} ⚡.")
+        energyPerDay = perDay
+    }
+
     /** The focus timer (Pomodoro): its phase, when it ends, and the task it times. */
     val pomodoro = PomodoroTimer()
 

@@ -104,6 +104,7 @@ repository that was made for it.
 | Icon, color | Labels `icon:🔥`, `color:#ff8800` |
 | Planned block | Label `plan:2026-10-20T14:30Z/45` (start, minutes) |
 | Repeat | Label `repeat:every weekday` (a rule longer than a label allows, 50 characters, stays here) |
+| Energy per hour | Label `energy:1`, `energy:2` or `energy:3` |
 
 Change any of these on GitHub (add `snooze:…` to snooze it, close the issue to finish it) and the task follows at the
 next sync; change the task here and the issue follows. A task deleted here closes its issue as *not planned*. Subtasks,

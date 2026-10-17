@@ -63,6 +63,7 @@ public static class BoardSerializer
         Items = board.Items.Select(ToDocument).ToList(),
         NowOrder = board.NowOrder.Count == 0 ? null : board.NowOrder.ToList(),
         NowArrangedAt = board.NowArrangedAt,
+        EnergyPerDay = board.EnergyPerDay,
         Activity = board.Activity.Select(a => new ActivityDocument { At = a.At, ItemId = a.ItemId, Kind = a.Kind, Summary = a.Summary, Actor = ToDocument(a.Actor) }).ToList(),
         Pomodoro = new PomodoroDocument
         {
@@ -106,6 +107,7 @@ public static class BoardSerializer
         Icon = item.Icon,
         Color = item.Color,
         Repeat = item.Repeat?.ToString(),
+        Energy = item.Energy,
         PlannedAt = item.PlannedAt,
         PlannedMinutes = item.PlannedMinutes,
         RepeatUndo = item.RepeatUndo is { } undo ? new RepeatUndoDocument { Deadline = undo.Deadline, NextActionAt = undo.NextActionAt, PlannedAt = undo.PlannedAt } : null,
@@ -151,6 +153,7 @@ public static class BoardSerializer
 
         board.NowOrderList.AddRange((doc.NowOrder ?? []).Where(id => board.Find(id) is not null).Distinct());
         board.NowArrangedAt = doc.NowArrangedAt;
+        board.EnergyPerDay = doc.EnergyPerDay is >= 1 and <= Energy.MaxPerDay ? doc.EnergyPerDay : null;
 
         if (doc.Pomodoro is { } p)
         {
@@ -179,6 +182,7 @@ public static class BoardSerializer
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, doc.Icon),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, doc.Color),
             Repeat = TaskBoard.ReadRepeat(doc.Repeat),
+            Energy = Energy.Read(doc.Energy),
             PlannedAt = doc.PlannedAt,
             PlannedMinutes = TaskBoard.ReadPlanMinutes(doc.PlannedMinutes),
             RepeatUndo = doc.RepeatUndo is { } undo ? new RepeatUndo(undo.Deadline, undo.NextActionAt, undo.PlannedAt) : null,
@@ -245,6 +249,8 @@ public static class BoardSerializer
         public List<Guid>? NowOrder { get; set; }
 
         public DateTimeOffset? NowArrangedAt { get; set; }
+
+        public int? EnergyPerDay { get; set; }
     }
 
     private sealed class GroupDocument
@@ -306,6 +312,8 @@ public static class BoardSerializer
         public DateTimeOffset? PlannedAt { get; set; }
 
         public int? PlannedMinutes { get; set; }
+
+        public int? Energy { get; set; }
 
         public RepeatUndoDocument? RepeatUndo { get; set; }
 

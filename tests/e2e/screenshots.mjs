@@ -148,6 +148,13 @@ async function seed() {
   await plan(release.id, 4, 9, 30, 90);
   await plan(design.id, 4, 13, 0, 60);
   await plan(flaky.id, 4, 15, 0, 45);
+  await plan(planning.id, 4, 11, 0, 90);
+
+  // Energy: how draining each task is (an hour), and what there is in a day. Friday's plan is too much on purpose.
+  for (const [task, energy] of [[review, 3], [release, 3], [planning, 2], [design, 2], [ci, 2], [onboarding, 2], [flaky, 1], [triage, 1]]) {
+    await api('PATCH', `/api/items/${task.id}`, { energy });
+  }
+  await api('PUT', '/api/energy', { perDay: 8 });
 
   return { release, review, design };
 }

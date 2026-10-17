@@ -51,6 +51,7 @@
     { "name": "update_task", "description": "Change title, details, priority, deadline, tags or labels" },
     { "name": "move_task", "description": "Reorganize tasks" },
     { "name": "plan_task", "description": "Plan a block of time to work on a task" },
+    { "name": "set_daily_energy", "description": "Set how much energy there is in a day" },
     { "name": "list_hooks", "description": "The hooks: what runs when something happens" },
     { "name": "add_hook", "description": "Run a command or call a web address when something happens (after the user approves it)" },
     { "name": "set_hook_enabled", "description": "Switch a hook on or off" },

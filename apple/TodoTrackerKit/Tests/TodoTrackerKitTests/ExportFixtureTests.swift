@@ -20,6 +20,11 @@ final class ExportFixtureTests: XCTestCase {
         XCTAssertEqual(launch.color, "#0ea5e9")
         let again = try BoardCodec.decode(try BoardCodec.encode(board))
         XCTAssertEqual(again.items.first { $0.title == "Launch the site" }?.icon, "🚀")
+        // Energy (per hour, and in a day) too.
+        XCTAssertEqual(launch.energy, 3)
+        XCTAssertEqual(again.items.first { $0.title == "Launch the site" }?.energy, 3)
+        XCTAssertEqual(board.dailyEnergy, 8)
+        XCTAssertEqual(again.dailyEnergy, 8)
         XCTAssertEqual(launch.children.map(\.title), ["Write the copy", "Pick images"])
         XCTAssertTrue(launch.children[1].isDone)
         XCTAssertEqual(board.groups.first { $0.id == launch.groupId }?.name, "Launch team")

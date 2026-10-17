@@ -307,6 +307,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         Set(ExtraKeys.Color, item.Color);
         Set(ExtraKeys.Plan, item.PlannedAt is { } plan ? $"{Moment(plan)}/{(int)item.PlannedLength.TotalMinutes}" : null);
         Set(ExtraKeys.Repeat, item.Repeat?.ToString());
+        Set(ExtraKeys.Energy, item.Energy?.ToString(CultureInfo.InvariantCulture));
         return extras;
     }
 
@@ -404,6 +405,11 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         if (Changed(ExtraKeys.Repeat))
         {
             Try(() => board.Update(item.Id, f.Extra(ExtraKeys.Repeat).Length > 0 ? new TaskChanges { Repeat = f.Extra(ExtraKeys.Repeat) } : new TaskChanges { ClearRepeat = true }, _actor, now));
+        }
+
+        if (Changed(ExtraKeys.Energy))
+        {
+            Try(() => board.Update(item.Id, int.TryParse(f.Extra(ExtraKeys.Energy), NumberStyles.None, CultureInfo.InvariantCulture, out var level) ? new TaskChanges { Energy = level } : new TaskChanges { ClearEnergy = true }, _actor, now));
         }
     }
 

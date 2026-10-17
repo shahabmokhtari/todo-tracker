@@ -4,7 +4,7 @@ import TodoTrackerKit
 /// Presentation helpers shared by the SwiftUI views. Same wording and tones as the web dashboard (format.js)
 /// and the Windows sidebar, so every platform reads the same.
 public struct Chip: Hashable, Sendable {
-    public enum Tone: String, Sendable { case step, info, warn, danger, muted }
+    public enum Tone: String, Sendable { case step, info, warn, danger, muted, energy }
 
     public let text: String
     public let tone: Tone
@@ -33,9 +33,17 @@ public enum Presentation {
                 ? Chip("overdue \(RelativeTime.format(deadline, now: now))", .danger)
                 : Chip("due \(RelativeTime.format(deadline, now: now))", .warn))
         }
+        if let energy = entry.item.energy { chips.append(Chip(String(repeating: "⚡", count: energy), .energy)) }
         let notes = entry.item.notes.count
         if notes > 0 { chips.append(Chip(notes == 1 ? "1 note" : "\(notes) notes", .muted)) }
         return chips
+    }
+
+    /// Today's energy ("⚡ 4.5 of 10 planned today."), once something is planned today (the same rule in every app).
+    public static func energyLine(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current) -> String? {
+        let planned = Energy.planned(on: now, in: timeZone, board: board)
+        guard planned > 0 else { return nil }
+        return Energy.line(planned: planned, perDay: board.dailyEnergy)
     }
 
     public static func summary(_ dashboard: Dashboard) -> String {

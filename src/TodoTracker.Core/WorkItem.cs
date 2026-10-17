@@ -87,6 +87,9 @@ public sealed class WorkItem
     /// <summary>How it repeats: completing it moves it on to its next time instead of finishing it. Null: it doesn't.</summary>
     public Recurrence? Repeat { get; internal set; }
 
+    /// <summary>How much energy it takes per hour, 1 to 3 (⚡ to ⚡⚡⚡); null: not said (counts as 1, see <see cref="Core.Energy"/>).</summary>
+    public int? Energy { get; internal set; }
+
     /// <summary>When it's planned to be worked on (a block in the Plan view); null: not planned.</summary>
     public DateTimeOffset? PlannedAt { get; internal set; }
 
@@ -176,6 +179,9 @@ public sealed record NewTask(string Title)
 
     /// <summary>A repeat rule (<see cref="Recurrence"/>), e.g. "every weekday".</summary>
     public string? Repeat { get; init; }
+
+    /// <summary>Energy per hour, 1 to 3 (null: not said).</summary>
+    public int? Energy { get; init; }
 }
 
 public sealed record TaskChanges
@@ -207,4 +213,9 @@ public sealed record TaskChanges
     public string? Repeat { get; init; }
 
     public bool ClearRepeat { get; init; }
+
+    /// <summary>Energy per hour, 1 to 3.</summary>
+    public int? Energy { get; init; }
+
+    public bool ClearEnergy { get; init; }
 }

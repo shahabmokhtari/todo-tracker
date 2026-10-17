@@ -34,6 +34,7 @@ with the Linux install, or `dotnet tool install -g TodoTracker.Cli` ([ai-connect
 | [`tt note`](#tt-note) | Log progress ("did X, next Y"); - reads the text from stdin |
 | [`tt snooze`](#tt-snooze) | Defer a task until later, or until another task is done (it moves to Waiting and reminds you) |
 | [`tt edit`](#tt-edit) | Change a task |
+| [`tt energy`](#tt-energy) | Energy today: what you have in a day and what today's plan takes |
 | [`tt tag`](#tt-tag) | Add or remove tags |
 | [`tt label`](#tt-label) | Add or remove labels (quote names with spaces) |
 | [`tt move`](#tt-move) | Put a task under another, at the top level, or in another group |
@@ -67,7 +68,7 @@ filter uses the list syntax, e.g. tt now #release
 Add a task.
 
 ```
-tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when]
+tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3]
 ```
 
 Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.  
@@ -151,8 +152,20 @@ when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-
 Change a task.
 
 ```
-tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none]
+tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none]
 ```
+
+--energy: how much energy it takes per hour, 1 (light) to 3 (draining).  
+
+### tt energy
+
+Energy today: what you have in a day and what today's plan takes.
+
+```
+tt energy [per-day | default]
+```
+
+A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; none counts as 1). tt energy 8 sets 8 a day; tt energy default goes back to 10.  
 
 ### tt tag
 

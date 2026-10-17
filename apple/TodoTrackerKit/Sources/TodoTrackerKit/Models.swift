@@ -174,6 +174,8 @@ public final class WorkItem: Identifiable {
     /// When it's planned to be worked on (a block in the Plan view), and for how long (nil: 30 minutes).
     public internal(set) var plannedAt: Date?
     public internal(set) var plannedMinutes: Int?
+    /// Energy it takes per hour, 1 to 3 (nil: not said; counts as 1). See `Energy`.
+    public internal(set) var energy: Int?
 
     /// Whether its planned block is on at `now`.
     public func isPlanned(at now: Date) -> Bool {

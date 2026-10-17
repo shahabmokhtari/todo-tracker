@@ -256,6 +256,16 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   *Plan* field sets it by keyboard; cards show `🗓 10:00–10:30`; a repeating task's block moves with it. Stored as
   `plannedAt`/`plannedMinutes` (JSON), `planned:`/`planned-length:` (frontmatter); REST `POST /api/items/{id}/plan`,
   `GET /api/plan`; MCP `plan_task`.
+* **Energy** (an extra, on by default): a task takes 1 to 3 ⚡ an hour (`energy`; not said counts as 1), and a day has
+  `energyPerDay` ⚡ (default 10, kept with the board: `config.json` in the vault, which syncs, `energyPerDay` in the JSON, so every app
+  and computer uses it). A day's energy is what its planned blocks take: each block's hours on that day × its task's ⚡,
+  done ones included, archived ones not, a block over midnight counting on both days (`Energy.PlannedOn`; same rule in
+  Swift and Kotlin, shared fixture `tests/fixtures/energy.json`). Cards show `⚡⚡`; Today's summary says
+  "⚡ 4.5 of 10 planned today" (in red, with by how much, past it); each Plan day head has a meter that turns red past it.
+  Set a task's energy in its details (web), ⋯ › Energy (sidebar, Mac/iPhone, Android), `tt edit --energy`, or MCP
+  `update_task`; the day's in Settings › Energy, the sidebar menu, ⋯ on Mac/iPhone/Android, `tt energy 8`, `PUT
+  /api/energy` or MCP `set_daily_energy`. Frontmatter `energy: 2`; GitHub label `energy:2`. Today's line shows once
+  something is planned today (every app).
 * **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only; edited in Settings ›
   Hooks, with `tt hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
   or by hand) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts

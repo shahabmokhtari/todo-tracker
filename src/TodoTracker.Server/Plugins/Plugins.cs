@@ -111,6 +111,7 @@ public sealed class PluginHost
         new ConnectAiPlugin(),
         new FocusTimerPlugin(),
         new PlanPlugin(),
+        new EnergyPlugin(),
         new HistoryPlugin(),
         new ObsidianPlugin(),
         new BrowserExtensionPlugin(),
@@ -232,6 +233,16 @@ public sealed class FocusTimerPlugin : ITodoPlugin
 public sealed class PlanPlugin : ITodoPlugin
 {
     public PluginInfo Info { get; } = new("plan", "Plan", "A day and week planner: drag tasks onto times to plan blocks of work.", Live: true);
+
+    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
+    {
+    }
+}
+
+/// <summary>Energy: how much a task takes per hour (⚡ to ⚡⚡⚡) and how much there is in a day, on cards and the plan.</summary>
+public sealed class EnergyPlugin : ITodoPlugin
+{
+    public PluginInfo Info { get; } = new("energy", "Energy", "Say how much energy each task takes (⚡ to ⚡⚡⚡ an hour) and how much you have in a day; the plan shows when a day is too full.", Live: true);
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {

@@ -80,6 +80,11 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
             facts.Add($"due {When(due)}");
         }
 
+        if (i.Energy is { } energy)
+        {
+            facts.Add($"energy {energy}/h");
+        }
+
         if (i.State == "waiting" && i.NextActionAt is { } wake)
         {
             facts.Add($"wakes {When(wake)}");
@@ -253,6 +258,12 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
                 output.WriteLine("  " + text.Replace("\n", "\n  ", StringComparison.Ordinal));
             }
         }
+    }
+
+    public void Energy(EnergyDto e)
+    {
+        var left = e.PerDay - e.PlannedToday;
+        output.WriteLine($"Energy today: {e.PlannedToday:0.#} of {e.PerDay} planned{(left < 0 ? $" ({-left:0.#} too much)" : string.Empty)}");
     }
 
     public void Labels(IReadOnlyList<LabelDto> labels)

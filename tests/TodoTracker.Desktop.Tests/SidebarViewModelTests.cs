@@ -635,6 +635,28 @@ public sealed class SidebarViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task Energy_shows_on_cards_and_in_the_summary_and_is_set_from_the_menu()
+    {
+        var item = await Seed("Design doc");
+        await _store.UpdateAsync(b => b.Plan(item.Id, T0, 120, Actor.User, T0));
+        await _vm.RefreshAsync();
+        Assert.Equal("⚡ 2 of 10 planned today.", _vm.EnergyText);
+
+        await _vm.SetEnergyCommand.ExecuteAsync(new CardEnergyRequest(_vm.Focus!, 3));
+        await _vm.SetDailyEnergyCommand.ExecuteAsync(4);
+        Assert.Equal(3, _vm.Focus!.Energy);
+        Assert.Contains(_vm.Focus.Chips, c => c.Text == "⚡⚡⚡" && c.Tone == "energy");
+        Assert.Equal("⚡ 6 of 4 planned today: 2 too much.", _vm.EnergyText);
+        Assert.True(_vm.EnergyOver);
+
+        // The Energy extra switched off: no energy anywhere in the sidebar.
+        _vm.ShowEnergy = false;
+        await _vm.RefreshAsync();
+        Assert.Null(_vm.EnergyText);
+        Assert.DoesNotContain(_vm.Focus!.Chips, c => c.Tone == "energy");
+    }
+
+    [Fact]
     public async Task Add_subtask_prompts_for_title()
     {
         await Seed("Feature X");

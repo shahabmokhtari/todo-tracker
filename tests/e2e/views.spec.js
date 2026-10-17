@@ -884,3 +884,38 @@ test('Focus card: "Mark done" says what it does, and the reminder is dismissed f
   await request.post(`/api/items/${task.id}/complete`, { headers: auth });
   expect(errors).toEqual([]);
 });
+
+test('Energy: a task takes ⚡ to ⚡⚡⚡ an hour, the day adds up, and switched off it is gone', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const task = await add(request, 'Write the design doc');
+  const start = new Date(Date.now() + 86400000);
+  start.setHours(10, 0, 0, 0);
+  await request.post(`/api/items/${task.id}/plan`, { headers: auth, data: { start: start.toISOString(), minutes: 120 } });
+  await request.put('/api/energy', { headers: auth, data: { perDay: 4 } });
+  await open(page, request);
+
+  // Its details: ⚡⚡⚡ an hour; the card shows it.
+  await page.locator('.item .title, .focus-title').filter({ hasText: 'Write the design doc' }).first().click();
+  const drawer = page.locator('#drawer');
+  await drawer.getByRole('group', { name: 'Energy per hour' }).getByRole('button', { name: /draining/ }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).energy).toBe(3);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.focus-card, .item').filter({ hasText: 'Write the design doc' }).first()).toContainText('⚡⚡⚡');
+
+  // Tomorrow's plan: 2 h × ⚡⚡⚡ = 6 of 4, too much.
+  await page.evaluate(() => { location.hash = '#/plan'; });
+  const plan = page.locator('#view-plan');
+  await plan.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Day' }).click();
+  await plan.getByRole('button', { name: 'Next day' }).click();
+  await expect(plan.getByRole('meter', { name: 'Energy: 6 of 4' })).toHaveClass(/over/);
+
+  // The Energy extra off: no meter, no ⚡ on cards.
+  await request.put('/api/plugins/energy', { headers: auth, data: { enabled: false } });
+  await page.reload();
+  await expect(page.locator('#view-plan')).toBeVisible();
+  await expect(page.locator('#view-plan .plan-energy')).toHaveCount(0);
+  await request.put('/api/plugins/energy', { headers: auth, data: { enabled: true } });
+  await request.put('/api/energy', { headers: auth, data: {} });
+  await request.post(`/api/items/${task.id}/complete`, { headers: auth });
+  expect(errors).toEqual([]);
+});

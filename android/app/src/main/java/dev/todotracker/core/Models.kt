@@ -96,6 +96,9 @@ class WorkItem(
     var plannedAt: Instant? = null
     var plannedMinutes: Int? = null
 
+    /** Energy it takes per hour, 1 to 3 (null: not said; counts as 1). See [Energy]. */
+    var energy: Int? = null
+
     /** Whether its planned block is on at [now]. */
     fun isPlannedAt(now: Instant): Boolean {
         val at = plannedAt ?: return false

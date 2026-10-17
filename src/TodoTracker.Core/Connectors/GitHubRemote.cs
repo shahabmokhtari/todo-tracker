@@ -42,6 +42,7 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         [ExtraKeys.Color] = "color:",
         [ExtraKeys.Plan] = "plan:",
         [ExtraKeys.Repeat] = "repeat:",
+        [ExtraKeys.Energy] = "energy:",
     };
 
     public ConnectorFields Fields => ConnectorFields.Title | ConnectorFields.Done | ConnectorFields.Due | ConnectorFields.Priority | ConnectorFields.Tags | ConnectorFields.Notes | ConnectorFields.Extras;
@@ -273,6 +274,7 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
                 ExtraKeys.Icon => TaskBoard.Lenient(TaskBoard.CleanIcon, value),
                 ExtraKeys.Color => TaskBoard.Lenient(TaskBoard.CleanColor, value),
                 ExtraKeys.Repeat => Recurrence.TryParse(value, out var rule, out _) ? rule.ToString() : null,
+                ExtraKeys.Energy => value is "1" or "2" or "3" ? value : null,
                 _ => null,
             };
             return clean is null ? null : (key, clean);

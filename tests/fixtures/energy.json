@@ -1,0 +1,25 @@
+{
+  "about": "Energy: what a day's planned blocks take. Each block's hours on that day (in the zone) times its task's energy per hour (1 to 3; a task that doesn't say counts as 1). Done blocks count (the work was done), archived tasks don't, a block crossing midnight counts on both days. Checked by the C# core (EnergyFixtureTests), Swift (EnergyTests) and Kotlin (EnergyTest).",
+  "zone": "Europe/Amsterdam",
+  "board": {
+    "schemaVersion": 1,
+    "energyPerDay": 8,
+    "items": [
+      { "id": "00000000-0000-4000-8000-000000000e01", "title": "Deep work", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "energy": 3, "plannedAt": "2026-01-05T09:00:00.000Z", "plannedMinutes": 90 },
+      { "id": "00000000-0000-4000-8000-000000000e02", "title": "Answer mail", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "plannedAt": "2026-01-05T13:00:00.000Z" },
+      { "id": "00000000-0000-4000-8000-000000000e03", "title": "Late release", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "energy": 2, "plannedAt": "2026-01-05T22:30:00.000Z", "plannedMinutes": 60 },
+      { "id": "00000000-0000-4000-8000-000000000e04", "title": "Done already", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "completedAt": "2026-01-05T08:00:00.000Z", "energy": 2, "plannedAt": "2026-01-05T07:00:00.000Z", "plannedMinutes": 60 },
+      { "id": "00000000-0000-4000-8000-000000000e05", "title": "Put away", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "completedAt": "2026-01-05T08:00:00.000Z", "archivedAt": "2026-01-05T09:00:00.000Z", "energy": 3, "plannedAt": "2026-01-05T10:00:00.000Z", "plannedMinutes": 120 },
+      { "id": "00000000-0000-4000-8000-000000000e06", "title": "Project", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z",
+        "children": [ { "id": "00000000-0000-4000-8000-000000000e07", "title": "Hard step", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "energy": 2, "plannedAt": "2026-01-06T08:00:00.000Z", "plannedMinutes": 45 } ] },
+      { "id": "00000000-0000-4000-8000-000000000e08", "title": "Not planned", "priority": "normal", "createdAt": "2026-01-04T08:00:00.000Z", "energy": 3 }
+    ],
+    "activity": []
+  },
+  "perDay": 8,
+  "days": [
+    { "day": "2026-01-05", "planned": 8.0 },
+    { "day": "2026-01-06", "planned": 2.5 },
+    { "day": "2026-01-07", "planned": 0.0 }
+  ]
+}

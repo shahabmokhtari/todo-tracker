@@ -115,7 +115,22 @@ export function plannedText(start, minutes = 30, now = new Date()) {
   return `${sameDay ? '' : `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][from.getDay()]} `}${t(from)}–${t(to)}`;
 }
 
-export function metaChips(card, { waiting = false, now = new Date() } = {}) {
+/** Energy per hour as lightning: 1 to 3 (none: ''). */
+export function energyMarks(level) {
+  return level >= 1 && level <= 3 ? '⚡'.repeat(level) : '';
+}
+
+/** "⚡ 4.5 of 10 planned today", and when it's past what there is, by how much. */
+export function energyLine(energy) {
+  if (!energy) return '';
+  const n = (x) => String(Math.round(x * 10) / 10);
+  const over = energy.plannedToday - energy.perDay;
+  return over > 0
+    ? `⚡ ${n(energy.plannedToday)} of ${energy.perDay} planned today: ${n(over)} too much.`
+    : `⚡ ${n(energy.plannedToday)} of ${energy.perDay} planned today.`;
+}
+
+export function metaChips(card, { waiting = false, now = new Date(), energy = false } = {}) {
   const chips = [];
   if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
   const step = stepLabel(card);
@@ -129,6 +144,7 @@ export function metaChips(card, { waiting = false, now = new Date() } = {}) {
   }
   if (card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
   if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
+  if (energy && card.energy) chips.push({ text: energyMarks(card.energy), tone: 'energy' });
   if (card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
   return chips;
 }

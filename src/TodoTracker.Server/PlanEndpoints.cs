@@ -47,7 +47,7 @@ public sealed record PlanSettings(
 }
 
 /// <summary>A block on the plan.</summary>
-public sealed record PlanBlockDto(Guid Id, string Title, IReadOnlyList<string> Path, string? Icon, string? Accent, string Priority, DateTimeOffset Start, int Minutes, bool Done, Guid GroupId, string? Repeat);
+public sealed record PlanBlockDto(Guid Id, string Title, IReadOnlyList<string> Path, string? Icon, string? Accent, string Priority, DateTimeOffset Start, int Minutes, bool Done, Guid GroupId, string? Repeat, int? Energy = null);
 
 /// <summary>A deadline that falls in the shown days (a marker on its day).</summary>
 public sealed record PlanDeadlineDto(Guid Id, string Title, DateTimeOffset Deadline, bool Done);
@@ -57,10 +57,13 @@ public sealed record PlanDeadlineDto(Guid Id, string Title, DateTimeOffset Deadl
 /// put off: snoozed, waiting for another task, or a repeating task until its next time (<paramref name="WakeAt"/>).
 /// </summary>
 public sealed record PlanTaskDto(Guid Id, string Title, IReadOnlyList<string> Breadcrumb, string? Icon, string? Accent, string Priority, int Minutes,
-    string? Repeat = null, DateTimeOffset? WakeAt = null, string? WaitingFor = null);
+    string? Repeat = null, DateTimeOffset? WakeAt = null, string? WaitingFor = null, int? Energy = null);
+
+/// <summary>Energy on the days shown: what there is in a day, and what each day's planned blocks take (every group).</summary>
+public sealed record PlanEnergyDto(int PerDay, IReadOnlyDictionary<string, double> Days);
 
 public sealed record PlanDto(string From, int Days, PlanSettings Settings, IReadOnlyList<PlanBlockDto> Blocks, IReadOnlyList<PlanDeadlineDto> Deadlines, IReadOnlyList<PlanTaskDto> Unplanned,
-    IReadOnlyList<PlanTaskDto> Later);
+    IReadOnlyList<PlanTaskDto> Later, PlanEnergyDto? Energy = null);
 
 public sealed record PlanRequest(DateTimeOffset? Start = null, int? Minutes = null);
 
@@ -89,7 +92,7 @@ internal static class PlanEndpoints
                 var items = b.AllItems().Where(i => !i.IsArchived && InGroup(i)).ToList();
                 var blocks = items.Where(i => i.PlannedAt is { } at && at < end && at + i.PlannedLength > start)
                     .OrderBy(i => i.PlannedAt)
-                    .Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString()))
+                    .Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))
                     .ToList();
                 var deadlines = items.Where(i => i.Deadline is { } dl && dl >= start && dl < end)
                     .OrderBy(i => i.Deadline)
@@ -98,10 +101,12 @@ internal static class PlanEndpoints
                 var agenda = Agenda.Build(b, now, 0, group);
                 bool NotPlanned(AgendaEntry e) => e.Item.PlannedAt is null || e.Item.PlannedAt + e.Item.PlannedLength <= now;
                 PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
-                    e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title);
+                    e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title, e.Item.Energy);
                 var unplanned = agenda.Now.Where(NotPlanned).Select(Task).ToList();
                 var later = agenda.Waiting.Where(NotPlanned).Select(Task).ToList();
-                return new PlanDto(first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), count, settings.PlanFor(Key(group)), blocks, deadlines, unplanned, later);
+                var energy = new PlanEnergyDto(b.DailyEnergy, Enumerable.Range(0, count).Select(first.AddDays)
+                    .ToDictionary(d => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), d => Energy.PlannedOn(b, d, zone)));
+                return new PlanDto(first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), count, settings.PlanFor(Key(group)), blocks, deadlines, unplanned, later, energy);
             });
         });
 

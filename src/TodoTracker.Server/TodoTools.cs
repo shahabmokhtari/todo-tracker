@@ -17,7 +17,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
 {
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
-    [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, and focus timer state.")]
+    [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes).")]
     public Task<DashboardDto> GetDashboard(
         [Description("Optional group (tab) name or id, e.g. 'work' or 'personal'.")] string? group = null,
         [Description("Optional filter in search syntax, e.g. '#release' or 'label:\"deep work\"'.")] string? query = null) =>
@@ -53,7 +53,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         [Description("Defer the task (and remind) this many minutes from now.")] int? deferMinutes = null,
         [Description("Free-form tags without '#', e.g. ['release', 'infra/k8s'].")] string[]? tags = null,
         [Description("Curated labels, e.g. ['Deep work']. Unknown labels are created.")] string[]? labels = null,
-        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Completing it then moves it to its next time.")] string? repeat = null) =>
+        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Completing it then moves it to its next time.")] string? repeat = null,
+        [Description("How much energy it takes per hour: 1 (light), 2 or 3 (draining). Omit when you don't know.")] int? energy = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var item = b.AddTask(
@@ -67,6 +68,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
                     Tags = tags,
                     Labels = labels,
                     Repeat = repeat,
+                    Energy = energy,
                 },
                 actor,
                 now);
@@ -132,6 +134,14 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
+    [McpServerTool(Name = "set_daily_energy"), Description("How much energy the user has in a day (1 to 100 ⚡; 10 unless set). A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; a task without one counts as 1): use it to warn about a day that's too full. Omit perDay to go back to 10. Returns what there is and what today's plan takes.")]
+    public Task<EnergyDto> SetDailyEnergy([Description("Energy in a day, 1 to 100; omit for the default (10).")] int? perDay = null) =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            b.SetEnergyPerDay(perDay);
+            return Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone);
+        }));
+
     [McpServerTool(Name = "wait_for_task"), Description("Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed.")]
     public Task<ItemDto> WaitForTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("The task it waits for.")] string afterTaskId) =>
         Mutate(server, (b, now, actor) =>
@@ -168,7 +178,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it).")]
+    [McpServerTool(Name = "update_task"), Description("Change title, details, priority, deadline, tags, labels, icon, color, how it repeats or its energy (tags/labels replace the current ones when given; an empty icon, color or repeat, or energy 0, removes it).")]
     public Task<ItemDto> UpdateTask(
         McpServer server,
         [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId,
@@ -180,7 +190,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         [Description("Curated labels: replace the current ones (unknown labels are created).")] string[]? labels = null,
         [Description("An emoji shown before the title, e.g. 🚀; empty removes it.")] string? icon = null,
         [Description("A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then).")] string? color = null,
-        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Empty: stops repeating.")] string? repeat = null) =>
+        [Description("How it repeats, e.g. \"every weekday\", \"every 2 weeks on Monday, Thursday\", \"every month on the last Friday\" (+ \"when done\", \"until 2026-12-31\", \"for 5 times\"). Empty: stops repeating.")] string? repeat = null,
+        [Description("Energy it takes per hour: 1 (light), 2 or 3 (draining); 0 removes it.")] int? energy = null) =>
         Mutate(server, (b, now, actor) =>
         {
             var id = ParseId(taskId);
@@ -196,6 +207,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
                 ClearColor = color is not null && string.IsNullOrWhiteSpace(color),
                 Repeat = string.IsNullOrWhiteSpace(repeat) ? null : repeat,
                 ClearRepeat = repeat is not null && string.IsNullOrWhiteSpace(repeat),
+                Energy = energy is 0 ? null : energy,
+                ClearEnergy = energy is 0,
             }, actor, now);
             if (tags is not null)
             {

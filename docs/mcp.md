@@ -24,7 +24,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 
 | Tool | What it does |
 | --- | --- |
-| [`get_dashboard`](#get_dashboard) | What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, and focus timer state. |
+| [`get_dashboard`](#get_dashboard) | What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes). |
 | [`list_tasks`](#list_tasks) | Full task tree (optionally for one group), including ids needed by the other tools. |
 | [`search_tasks`](#search_tasks) | Find tasks and subtasks. |
 | [`get_task`](#get_task) | One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (todotracker://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). |
@@ -33,11 +33,12 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`add_note`](#add_note) | Log progress on a task ("did X, next Y"). |
 | [`schedule_next_action`](#schedule_next_action) | Defer a task until later (it drops to Waiting) and, by default, remind the user when it is time. |
 | [`plan_task`](#plan_task) | Plan a block of time to work on a task (it shows in the Plan view, and becomes the thing to do now while the block is on); without a start, takes it off the plan. |
+| [`set_daily_energy`](#set_daily_energy) | How much energy the user has in a day (1 to 100 ⚡; 10 unless set). |
 | [`wait_for_task`](#wait_for_task) | Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed. |
 | [`add_reminder`](#add_reminder) | Add a reminder without deferring the task. |
 | [`complete_task`](#complete_task) | Mark a task done (subtasks too). |
 | [`reopen_task`](#reopen_task) | Undo a completion. |
-| [`update_task`](#update_task) | Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it). |
+| [`update_task`](#update_task) | Change title, details, priority, deadline, tags, labels, icon, color, how it repeats or its energy (tags/labels replace the current ones when given; an empty icon, color or repeat, or energy 0, removes it). |
 | [`move_task`](#move_task) | Reorganize: put a task under another task (parentId), back at the top level (toTopLevel, optionally in a group), or into another group. index alone reorders a subtask among its siblings. |
 | [`put_first`](#put_first) | Put tasks at the top of Do now, in this order; the first becomes the focus (only a reminder going off later comes above them). |
 | [`list_labels`](#list_labels) | The curated labels (name and color) the user picks from. |
@@ -62,7 +63,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 
 ### `get_dashboard`
 
-What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, and focus timer state. *(read-only)*
+What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes). *(read-only)*
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -110,6 +111,7 @@ Create a task (or a subtask when parentId is set). Use add_steps for ordered rol
 | `tags` | list of text | optional | Free-form tags without '#', e.g. ['release', 'infra/k8s']. |
 | `labels` | list of text | optional | Curated labels, e.g. ['Deep work']. Unknown labels are created. |
 | `repeat` | text | optional | How it repeats, e.g. "every weekday", "every 2 weeks on Monday, Thursday", "every month on the last Friday" (+ "when done", "until 2026-12-31", "for 5 times"). Completing it then moves it to its next time. |
+| `energy` | integer | optional | How much energy it takes per hour: 1 (light), 2 or 3 (draining). Omit when you don't know. |
 
 ### `add_steps`
 
@@ -155,6 +157,14 @@ Plan a block of time to work on a task (it shows in the Plan view, and becomes t
 | `start` | date-time (ISO 8601) | optional | ISO-8601 start of the block; omit to take it off the plan. |
 | `minutes` | integer | optional | How long, in minutes (5 to 720; default: what it had, else 30). |
 
+### `set_daily_energy`
+
+How much energy the user has in a day (1 to 100 ⚡; 10 unless set). A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; a task without one counts as 1): use it to warn about a day that's too full. Omit perDay to go back to 10. Returns what there is and what today's plan takes.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `perDay` | integer | optional | Energy in a day, 1 to 100; omit for the default (10). |
+
 ### `wait_for_task`
 
 Defer a task until another task is done: it waits (drops to Waiting) and comes back with a reminder when that one is completed.
@@ -193,7 +203,7 @@ Undo a completion. *(idempotent)*
 
 ### `update_task`
 
-Change title, details, priority, deadline, tags, labels, icon, color or how it repeats (tags/labels replace the current ones when given; an empty icon, color or repeat removes it).
+Change title, details, priority, deadline, tags, labels, icon, color, how it repeats or its energy (tags/labels replace the current ones when given; an empty icon, color or repeat, or energy 0, removes it).
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -207,6 +217,7 @@ Change title, details, priority, deadline, tags, labels, icon, color or how it r
 | `icon` | text | optional | An emoji shown before the title, e.g. 🚀; empty removes it. |
 | `color` | text | optional | A color as #rrggbb, e.g. #3b82f6; empty removes it (the first label's color shows then). |
 | `repeat` | text | optional | How it repeats, e.g. "every weekday", "every 2 weeks on Monday, Thursday", "every month on the last Friday" (+ "when done", "until 2026-12-31", "for 5 times"). Empty: stops repeating. |
+| `energy` | integer | optional | Energy it takes per hour: 1 (light), 2 or 3 (draining); 0 removes it. |
 
 ### `move_task`
 

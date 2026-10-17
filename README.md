@@ -35,6 +35,8 @@ calm until it matters.
 - 🪜 **Big things get small.** Break work into steps that unlock one at a time: perfect for rollouts ("ring 1 tomorrow").
 - ⏱️ **Focus and time, built in.** A focus timer with a full-screen break on every monitor, a timer on every task, and
   reports that show where your week actually went.
+- ⚡ **Plan for the energy you have.** Mark draining tasks ⚡⚡⚡ and easy ones ⚡; each day adds up what its plan takes
+  and tells you before you've planned more than you have.
 - 🤖 **Your AI agent's favorite to-do list.** Claude, Copilot, ChatGPT and VS Code can see your list, capture tasks,
   log progress and plan your day: through MCP, a CLI, or a skill.
 - 📁 **Your tasks are your files.** Plain markdown in a folder you own. Open it in Obsidian, version it with git, sync

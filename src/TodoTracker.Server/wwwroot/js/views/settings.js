@@ -4,6 +4,7 @@
 import { createConnectorsPanel } from '../plugins/connectors.js';
 import { THEMES, chooseTheme } from '../themes.js';
 import { describeHook } from '../hook-prompt.js';
+import { energyLine } from '../format.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
 
@@ -57,6 +58,7 @@ export function createSettingsView(ctx) {
           if (result.restartRequired) note.hidden = false;
           // Off (or a live extra on): its buttons, menus and views follow at once.
           await ctx.reloadPlugins?.();
+          if (p.id === 'energy') await load();
         } catch (err) {
           toggle.checked = !toggle.checked;
           ctx.toast(err.message, 'error');
@@ -253,10 +255,33 @@ export function createSettingsView(ctx) {
 
     return { element, open };
   }
-  function render(settings, list, labelList, hookStatus) {
+  /** The Energy extra: how much there is in a day (kept with the tasks, so every app and computer uses it). */
+  function energy(info) {
+    const input = h('input', { type: 'number', min: 1, max: 100, step: 1, value: String(info.perDay), 'aria-label': 'Energy in a day' });
+    const status = h('p', { class: 'muted small', role: 'status' }, energyLine(info));
+    const save = async (perDay) => {
+      try {
+        const next = await ctx.api('/api/energy', { method: 'PUT', body: { perDay } });
+        input.value = String(next.perDay);
+        status.textContent = energyLine(next);
+        ctx.refreshAll?.();
+      } catch (err) {
+        ctx.toast(err.message, 'error');
+      }
+    };
+    return section('energy', 'Energy', 'How much you have in a day, in ⚡. Each task takes ⚡ to ⚡⚡⚡ an hour (set it in its details; not said counts as ⚡). The plan adds up each day: its blocks’ hours times their ⚡, and shows when it’s more than you have. Every app uses this number.',
+      h('div', { class: 'row' },
+        h('label', { class: 'field' }, h('span', null, 'Energy in a day'), input),
+        h('button', { class: 'btn primary small', type: 'button', onclick: () => save(Number(input.value)) }, 'Save'),
+        h('button', { class: 'btn ghost small', type: 'button', onclick: () => save(null) }, 'Back to 10')),
+      status);
+  }
+
+  function render(settings, list, labelList, hookStatus, energyInfo) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
     root.replaceChildren(h('div', { class: 'settings' },
       appearance(settings.theme ?? 'system'),
+      energyInfo && list.some((p) => p.id === 'energy' && p.enabled) ? energy(energyInfo) : null,
       labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
@@ -267,8 +292,8 @@ export function createSettingsView(ctx) {
 
   async function load() {
     try {
-      const [settings, list, labelList, hookStatus] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null)]);
-      render(settings, list, labelList, hookStatus);
+      const [settings, list, labelList, hookStatus, energyInfo] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null), ctx.api('/api/energy').catch(() => null)]);
+      render(settings, list, labelList, hookStatus, energyInfo);
       await connectors.load();
       // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here): that section.
       const part = location.hash.match(/^#\/settings\/(plugins|hooks)/)?.[1];

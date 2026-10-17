@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -616,6 +617,18 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
         }
 
+        if (On("energy"))
+        {
+            // How draining it is, per hour (the Energy extra).
+            var energy = new MenuItem { Header = card.Energy is { } current ? $"Energy: {new string('⚡', current)}" : "Energy" };
+            foreach (var (level, label) in new (int?, string)[] { (null, "Not said (counts as ⚡)"), (1, "⚡  light"), (2, "⚡⚡"), (3, "⚡⚡⚡  draining") })
+            {
+                energy.Items.Add(new MenuItem { Header = label, IsCheckable = true, IsChecked = card.Energy == level, Command = _vm.SetEnergyCommand, CommandParameter = new CardEnergyRequest(card, level) });
+            }
+
+            menu.Items.Add(energy);
+        }
+
         menu.Items.Add(new MenuItem { Header = "Add subtask…", Command = _vm.AddSubtaskCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Edit details in browser", Command = _vm.EditInBrowserCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Copy link", Command = _vm.CopyLinkCommand, CommandParameter = card });
@@ -638,7 +651,7 @@ public partial class MainWindow : Window
         return menu;
     }
 
-    private void OnMenuClick(object sender, RoutedEventArgs e)
+    private async void OnMenuClick(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
         menu.Items.Add(new MenuItem { Header = "Open the app", Command = _vm.OpenDashboardCommand, ToolTip = "Board, outline, reports and more, in their own window" });
@@ -655,6 +668,11 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Full timeline", Command = _vm.OpenReportCommand });
+        if (On("energy"))
+        {
+            menu.Items.Add(await DailyEnergyMenu().ConfigureAwait(true));
+        }
+
         if (AppHost is { } host && _vm.ShowFocusTimer)
         {
             var breaks = new MenuItem { Header = "Full-screen breaks", IsCheckable = true, IsChecked = host.State.FullScreenBreaks, ToolTip = "When a focus session ends, cover every screen with a reminder to rest (you can skip it)." };
@@ -732,6 +750,19 @@ public partial class MainWindow : Window
         exit.Click += (_, _) => Close();
         menu.Items.Add(exit);
         menu.IsOpen = true;
+    }
+
+    /// <summary>How much energy there is in a day (the Energy extra): the summary and the plan compare today's blocks with it.</summary>
+    private async Task<MenuItem> DailyEnergyMenu()
+    {
+        var current = await _vm.DailyEnergyAsync().ConfigureAwait(true);
+        var item = new MenuItem { Header = $"Energy in a day: {current} ⚡", ToolTip = "A day's plan takes each block's hours × its task's ⚡ an hour. Every app uses this number." };
+        foreach (var n in new[] { 4, 6, 8, 10, 12, 14, 16 })
+        {
+            item.Items.Add(new MenuItem { Header = n == TodoTracker.Core.Energy.DefaultPerDay ? $"{n} (default)" : n.ToString(CultureInfo.InvariantCulture), IsCheckable = true, IsChecked = n == current, Command = _vm.SetDailyEnergyCommand, CommandParameter = n });
+        }
+
+        return item;
     }
 
     /// <summary>Sync with other computers: where, how it went, sync now, and the Sync panel (conflicts, provider).</summary>

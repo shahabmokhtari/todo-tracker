@@ -73,6 +73,13 @@ The web app (and the app window on Windows) has six views; switch with the side 
   *Later*, with when each comes back, and marked on that day; drag them in too. Each group keeps its own view (day or
   week, work hours or the whole day). An extra: switch it off in Settings.
 
+**How much energy do you have?** (the Energy extra) Say how draining a task is: ⚡ (light), ⚡⚡ or ⚡⚡⚡ (draining) an
+hour, in its details or ⋯ › Energy on any card (not said counts as ⚡). Say how much you have in a day in Settings ›
+Energy (10 unless you change it; every app uses the same number). Today then says "⚡ 4.5 of 10 planned today", and
+each day in the Plan view has a meter: its blocks' hours times their ⚡. Past what you have, it turns red, so you can
+move something to another day before you run out. `tt energy 8` and `tt edit <task> --energy 3` do it from a terminal,
+and AI apps can too.
+
 Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
 closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add
 by hand. Starting a focus session on a task starts that task's timer too (the session's time counts as focus time on

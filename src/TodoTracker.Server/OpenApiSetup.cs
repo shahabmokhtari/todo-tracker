@@ -33,6 +33,8 @@ internal static partial class OpenApiSetup
         ["POST api/items/{id}/schedule"] = ("scheduleNextAction", "Defer a task until later and remind the user"),
         ["POST api/items/{id}/after"] = ("waitForTask", "Defer a task until another task is done"),
         ["GET api/items/{id}/wait-candidates"] = ("waitCandidates", "Open tasks a task can wait for (optionally matching q)"),
+        ["GET api/energy"] = ("getEnergy", "Energy today: what there is in a day and what today's planned blocks take"),
+        ["PUT api/energy"] = ("setDailyEnergy", "Set how much energy there is in a day (1 to 100; null: 10)"),
         ["GET api/snooze"] = ("snoozeChoices", "The snooze choices now, and what a typed snooze rule means"),
         ["POST api/items/{id}/reminders"] = ("addReminder", "Add a reminder"),
         ["POST api/items/{id}/reminders/{reminderId}/dismiss"] = ("dismissReminder", "Dismiss a reminder"),

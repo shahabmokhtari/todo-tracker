@@ -14,6 +14,19 @@ public sealed partial class TaskBoard
     /// </summary>
     public DateTimeOffset? NowArrangedAt { get; internal set; }
 
+    /// <summary>How much energy there is in a day (⚡; null: <see cref="Energy.DefaultPerDay"/>). Kept with the board, so every app uses it.</summary>
+    public int? EnergyPerDay { get; internal set; }
+
+    public int DailyEnergy => EnergyPerDay ?? Energy.DefaultPerDay;
+
+    /// <summary>Sets how much energy there is in a day (null: back to the default).</summary>
+    public void SetEnergyPerDay(int? perDay)
+    {
+        EnergyPerDay = perDay is null or (>= 1 and <= Energy.MaxPerDay)
+            ? perDay
+            : throw new ArgumentOutOfRangeException(nameof(perDay), $"A day's energy is 1 to {Energy.MaxPerDay} ⚡.");
+    }
+
     /// <summary>
     /// Records the order of the tasks someone sees in Do now (e.g. after dragging one), tasks with a due reminder
     /// included. Only the places those tasks already had are reused, so arranging one group's tab doesn't move the

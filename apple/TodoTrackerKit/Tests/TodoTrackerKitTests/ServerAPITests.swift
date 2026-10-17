@@ -26,6 +26,10 @@ final class ServerAPITests: XCTestCase {
         XCTAssertEqual(request(.schedule(item, at: at)),
                        ServerRequest(method: "POST", path: "\(itemPath)/schedule", body: #"{"at":"2026-01-05T10:00:00.000Z","notify":true}"#))
         XCTAssertEqual(request(.bringBack(item)), ServerRequest(method: "POST", path: "\(itemPath)/schedule", body: #"{"clear":true}"#))
+        XCTAssertEqual(request(.setEnergy(item, level: 2)), ServerRequest(method: "PATCH", path: itemPath, body: #"{"energy":2}"#))
+        XCTAssertEqual(request(.setEnergy(item, level: nil)).body, #"{"energy":0}"#)
+        XCTAssertEqual(request(.setDailyEnergy(8)), ServerRequest(method: "PUT", path: "/api/energy", body: #"{"perDay":8}"#))
+        XCTAssertEqual(request(.setDailyEnergy(nil)).body, "{}")
         XCTAssertEqual(request(.arrangeNow([other, item])),
                        ServerRequest(method: "POST", path: "/api/now/order", body: #"{"ids":["8b0f2c1e-1111-4a6b-9c1d-000000000002","8b0f2c1e-1111-4a6b-9c1d-000000000001"]}"#))
         XCTAssertEqual(request(.waitFor(item, after: other)),

@@ -327,6 +327,21 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Energy_on_a_task_and_for_the_day()
+    {
+        var id = (await _tt.Json("add", "Design doc", "--energy", "3")).Id().ToString();
+        Assert.Equal(3, (await _tt.Json("show", id))["energy"]!.GetValue<int>());
+        Assert.Equal(1, (await _tt.Json("edit", id, "--energy", "1"))["energy"]!.GetValue<int>());
+        Assert.Null((await _tt.Json("edit", id, "--energy", "none"))["energy"]);
+        Assert.Equal(2, (await _tt.Run("edit", id, "--energy", "5")).ExitCode);
+
+        Assert.Equal(10, (await _tt.Json("energy"))["perDay"]!.GetValue<int>());
+        Assert.Equal(7, (await _tt.Json("energy", "7"))["perDay"]!.GetValue<int>());
+        Assert.Contains("of 7 planned", await _tt.Ok("energy"), StringComparison.Ordinal);
+        Assert.Equal(10, (await _tt.Json("energy", "default"))["perDay"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task Tag_and_label_add_and_remove()
     {
         var id = (await _tt.Json("add", "Refactor #tech")).Id().ToString();

@@ -44,6 +44,9 @@ public enum ToastAction
 /// <summary>Snooze a card: one of the shared quick choices (<see cref="Snooze.Choices"/> id), a typed rule, or until another task is done.</summary>
 public sealed record SnoozeRequest(CardViewModel Card, string? Choice = null, string? Rule = null, Guid? AfterId = null);
 
+/// <summary>Set how much energy a card's task takes per hour (1 to 3; null: not said).</summary>
+public sealed record CardEnergyRequest(CardViewModel Card, int? Level);
+
 /// <summary>A label shown on a card: its name and <c>#rrggbb</c> color.</summary>
 public sealed record LabelChip(string Name, string Color);
 
@@ -104,6 +107,10 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial string? LastNote { get; set; }
 
+    /// <summary>Energy the task takes per hour (1 to 3); null: not said.</summary>
+    [ObservableProperty]
+    public partial int? Energy { get; set; }
+
     /// <summary>Short toned facts (step, back in, due/overdue, notes) rendered as chips, same as the web dashboard.</summary>
     [ObservableProperty]
     public partial IReadOnlyList<ChipViewModel> Chips { get; set; } = [];
@@ -155,6 +162,7 @@ public sealed partial class CardViewModel : ObservableObject
         CanComplete = other.CanComplete;
         IsTiming = other.IsTiming;
         LastNote = other.LastNote;
+        Energy = other.Energy;
         Chips = other.Chips;
         Tags = other.Tags;
         Labels = other.Labels;

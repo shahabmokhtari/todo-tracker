@@ -267,6 +267,18 @@
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="Todo Tracker" FontWeight="Bold" FontSize="14.5" FontFamily="Segoe UI Variable Display, Segoe UI" />
                     <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    <TextBlock x:Name="EnergyLine" Text="{Binding EnergyText}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                               Visibility="{Binding EnergyText, Converter={StaticResource VisibleWhen}}" ToolTip="Energy: each planned block's hours × its task's ⚡ an hour, against what you have in a day">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding EnergyOver}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </DockPanel>
 
