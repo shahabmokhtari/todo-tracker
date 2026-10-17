@@ -1,253 +1,191 @@
+<div align="center">
+
+<img src="docs/images/logo.png" alt="" width="96" height="96">
+
 # Todo Tracker
 
-An ADHD-friendly task sidebar that always tells you **what to do now**. Deferred work stays out of sight and comes
-back on time with a reminder. Rollout steps unlock themselves 24 hours apart, and AI apps (Claude, Copilot, ChatGPT,
-VS Code…) can read your list and add, organize and finish tasks for you.
+**The to-do list that tells you what to do *now*.**
+Built for ADHD brains, busy weeks, and the AI agents that help you get through them.
 
-Your tasks are **plain markdown files in a folder you own**, ready for Obsidian, git, sync services, and AI agents
-that work with files. Every change is versioned, and nothing needs a Save button.
+[![CI](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml)
+![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-000000?logo=ios&logoColor=white)
+![Android](https://img.shields.io/badge/Android-34A853?logo=android&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=black)
+![MCP](https://img.shields.io/badge/MCP-server-8B5CF6)
+
+[Get started](#get-started) · [Use it with AI](#your-ai-can-use-it-too) · [Guide](docs/guide.md) · [Docs](#documentation)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/today-dark.png">
+  <img src="docs/images/today-light.png" alt="Today: one task to do now, with its reminder and actions, then the rest of Do now, what got done today, and the progress of a rollout">
+</picture>
+
+</div>
+
+## Why Todo Tracker
+
+Most task apps show you everything, all the time. Todo Tracker shows you **one thing to do now**, and keeps the rest
+calm until it matters.
+
+- 🎯 **One focus, not fifty.** A big card says what to do now. The rest waits below, in the order *you* chose.
+- 💤 **Later means later.** Snooze to "tomorrow 9:00", "next week", or "after the other task is done". It disappears
+  and comes back on time, with a reminder. Nothing rots at the top of a list.
+- 🪜 **Big things get small.** Break work into steps that unlock one at a time: perfect for rollouts ("ring 1 tomorrow").
+- ⏱️ **Focus and time, built in.** A focus timer with a full-screen break on every monitor, a timer on every task, and
+  reports that show where your week actually went.
+- 🤖 **Your AI agent's favorite to-do list.** Claude, Copilot, ChatGPT and VS Code can see your list, capture tasks,
+  log progress and plan your day: through MCP, a CLI, or a skill.
+- 📁 **Your tasks are your files.** Plain markdown in a folder you own. Open it in Obsidian, version it with git, sync
+  it however you like. No account, no cloud, no telemetry.
+
+## A quick tour
+
+| Board | Plan your day or week |
+|---|---|
+| ![Board: Inbox, Next, Doing and Done columns with cards that show labels, tags, deadlines, progress and time](docs/images/board.png) | ![Plan: a week as a time grid with blocks of work, and the tasks not planned yet on the side](docs/images/plan.png) |
+| **Drag cards** along, or use the keyboard. Doing is kept to three, on purpose. | **Drag a task onto a time** to block it out; while the block is on, it's the thing to do now. |
+
+| Reports | Every task, as an outline |
+|---|---|
+| ![Reports: time tracked, tasks done, a streak, time per day, a donut by group, where the time went, and when you work](docs/images/reports.png) | ![Tasks: an outline of every task with icons, labels, tags, deadlines and time spent; a rollout expanded into its steps](docs/images/tasks.png) |
+| See **where the time went**: by day, group and task, and when you work best. | **Type an outline**: Enter for the next task, Tab to nest, Space to finish. |
+
+| Everything about a task | The Windows sidebar | On your phone |
+|---|---|---|
+| ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
+| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. |
+
+<details>
+<summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>
+
+| Dark mode | Sidebar, dark |
+|---|---|
+| ![Today in dark mode](docs/images/today-dark.png) | ![The Windows sidebar in dark mode](docs/images/windows-sidebar-dark.png) |
+
+| Mac and iPhone (SwiftUI) | Browser side panel |
+|---|---|
+| ![The SwiftUI app on macOS and iOS](docs/images/macos-ios-light.png) | ![The Edge and Chrome side panel](docs/images/browser-extension.png) |
+
+</details>
+
+*Every screenshot shows a made-up demo board (`node tests/e2e/screenshots.mjs` makes them).*
+
+## Your AI can use it too
+
+Todo Tracker speaks **MCP**, so your AI agent can work with your list like a good assistant: capture what you said in
+a meeting, tell you what to do next, break a project into steps, log what it did, and snooze what can wait.
+
+> **You:** what should I work on now?
+> **Agent:** *Reply to the security review*: it's critical and the review closes at 5 pm. Two findings are left; want
+> me to draft the replies?
+
+> **You:** add follow-ups from this meeting: send Maya the API notes by Friday, book the offsite, ask IT about runners
+> **Agent:** Added three tasks to Work: *Send Maya the API notes* (due Fri), *Book the offsite*, *Ask IT about runners*.
+
+Connect it in one line:
+
+```bash
+claude mcp add todo-tracker --scope user -- tt mcp          # Claude Code
+copilot plugin install todo-tracker@todo-tracker            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
+```
+
+…or **⋯ › Connect an AI app** in the app, which writes the setup for Claude Desktop, VS Code, Cursor and others. Every
+change an agent makes is **attributed to it and versioned**, there's deliberately **no delete tool**, and hooks an
+agent adds wait until you allow them.
+
+📚 [Connect an AI app](docs/ai-connectors.md) · [MCP tools](docs/mcp.md) · [`tt` commands](docs/cli.md) ·
+[The skill](integrations/agent-plugin/skills/todo-tracker/SKILL.md) · [`llms.txt`](llms.txt)
+
+## Your tasks are just files
+
+```
+Documents/Todo Tracker/
+├── Work/
+│   ├── Ship v2.4 release.md        ← one file per task: frontmatter, steps as checkboxes, notes as callouts
+│   └── Reply to the security review.md
+└── Personal/
+    └── Renew passport.md
+```
+
+- **Obsidian-friendly:** point the app at your vault and every task opens in Obsidian.
+- **Version history:** every change is a version you can look at and restore.
+- **Sync your way:** OneDrive, iCloud Drive or a private GitHub gist, merging changes made on two computers.
+- **Or live on GitHub:** each group can be a private GitHub repository with tasks as issues (snoozes and reminders as
+  labels), made for you with the GitHub CLI. [More](docs/connectors.md#github-issues)
+- **Connectors:** keep a group in step with Notion or Microsoft To Do, both ways, never deleting anything.
+
+## Everywhere you work
 
 | | |
 |---|---|
-| **Windows** | Native WPF sidebar docked to the screen edge (maximized windows don't cover it), toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window (**⋯ › Open the app**), a task timer in the sidebar, and a full-screen break on every monitor when a focus session ends (**⋯ › Full-screen breaks**) |
-| **Web** | The whole app at `http://127.0.0.1:5317`: Today, a Board (Inbox → Next → Doing → Done), a Tasks outline, Done & Archive, Reports with charts and a timeline; works on phones too |
-| **Time** | A timer on every task (one runs at a time), focus sessions with a full-screen break, time reports by day, group and task |
-| **macOS / iOS** | Native SwiftUI apps (macOS adds a menu bar glance and syncs with your other computers) |
-| **Linux** | A tray app (`todo-tracker`): runs everything (tasks folder, sync, the web app, MCP); click it for the full window, its menu adds a task and runs the focus timer |
-| **Android** | A native app (Kotlin, Jetpack Compose): Today with the one thing to do now, Do now, Waiting, groups, quick capture, snooze and notes, task timers and the focus timer with full-screen breaks; the same rules as every other app (CI builds the APK) |
-| **Browser** | Edge/Chrome side panel: glance, capture, and notes that attach the current page |
-| **AI apps** | `tt mcp` (stdio) and `/mcp` (HTTP) MCP servers, a Claude Desktop extension, a Claude Code / Copilot CLI plugin with a skill, OpenAPI for GPT Actions and Copilot Studio; changes are attributed to the agent |
-| **Terminal** | `tt` CLI: `tt now`, `tt add …`, `tt done …`, `--json` for scripts and agents |
-| **Teams** | Reminder cards through a Teams Workflows webhook |
-| **Ask AI** | Chat with Copilot, Claude Code or a model with an API key in the app, with every chat kept: "add: call the bank tomorrow, renew passport !!" |
-| **Plugins** | Every extra can be switched off ([`docs/plugins.md`](docs/plugins.md)) |
-| **Sync** | Your computers stay in step through OneDrive, iCloud Drive or a private GitHub gist, merging changes made on both ([`docs/sync.md`](docs/sync.md)) |
-| **Connectors** | Keep a group in step with a Notion database, a Microsoft To Do list or its own private GitHub repository (tasks as issues; snoozes and reminders as labels; repositories made for you with the GitHub CLI), both ways and never deleting anything, or copy it as a checklist into Loop ([`docs/connectors.md`](docs/connectors.md)) |
-| **Files** | An Obsidian-compatible markdown vault (`Documents/Todo Tracker` by default), with version history |
+| **Windows** | A native sidebar docked to the screen edge, toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window, full-screen breaks on every monitor |
+| **macOS / iOS** | Native SwiftUI apps; the Mac adds a menu bar glance |
+| **Android** | A native app: Today, quick capture, snooze, notes, task timers and the focus timer with full-screen breaks |
+| **Linux** | A tray app that runs everything; click it for the full window |
+| **Web** | The whole app at `http://127.0.0.1:5317` (local only), on any screen |
+| **Browser** | An Edge, Chrome and Safari side panel: glance, capture, and notes that keep the page you were on |
+| **Terminal** | `tt now`, `tt add 'Call the bank @tomorrow'`, `tt done`, with `--json` for scripts |
+| **Teams** | Reminder cards in a channel |
 
-The full plan, design, rules, and requirement traceability are in [`docs/product-spec.md`](docs/product-spec.md). The original request is in [`docs/request.md`](docs/request.md).
+Type tasks the way you think: `Deploy ring 2 !! @2h due:tomorrow #release` is a critical task, back in two hours with a
+reminder, due tomorrow, tagged *release*. Repeat with plain words: `every weekday`, `every month on the last Friday`.
 
-## Screenshots
+## Get started
 
-| Web dashboard | Dark mode |
-|---|---|
-| ![Web dashboard](docs/images/web-dashboard-light.png) | ![Web dashboard, dark](docs/images/web-dashboard-dark.png) |
-
-| Windows sidebar | macOS / iOS | Browser side panel |
-|---|---|---|
-| ![Windows sidebar](docs/images/windows-sidebar.png) | ![SwiftUI app](docs/images/macos-ios-light.png) | ![Browser extension](docs/images/browser-extension.png) |
-
-The report page shows the full task tree and a timeline: ![Report](docs/images/web-report.png)
-
-| Board | Reports |
-|---|---|
-| ![Board](docs/images/web-board.png) | ![Reports](docs/images/web-reports.png) |
-
-## Quick start (Windows)
+**Windows.** With the [.NET 10 SDK](https://dotnet.microsoft.com/download):
 
 ```powershell
+git clone https://github.com/shahabmokhtari/todo-tracker && cd todo-tracker
 dotnet run --project src/TodoTracker.Windows
 ```
 
-The sidebar docks on the right. To move it, use **⋯ › Position**:
-- **Dock right** or **Dock left** reserves that edge, on any monitor.
-- **Float as a window** makes it a normal window you can drag and resize. Turn on **⋯ › Always on top** if you want it
-  to stay above other windows.
+The sidebar docks on the right (move it with **⋯ › Position**). Ready-built apps for every platform are attached to each
+[CI run](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml) (sign in to GitHub to download):
+`windows-sidebar` (the Windows app), `linux-tray`, `macos-app`, `android-app`, `browser-extension`,
+`safari-extension`, and `ai-connectors` (`tt` and the Claude Desktop extension).
 
-Your choice is remembered. Todo Tracker also sits in the notification area (the tray): click its icon to bring the
-sidebar back; right-click it to open the full window, add a task, start or pause the focus timer, hide the sidebar
-(it gives the screen edge back) or quit. A red dot on it means a reminder is due.
+**Linux.** Unpack `linux-tray` and run `./install.sh` (add `--autostart` to start with your session).
 
-**⋯ › Hide the sidebar** puts it away until you want it back: it keeps running in the notification area, also after a
-restart. Click the tray icon, press Ctrl+Alt+Space, or start Todo Tracker again to bring it back.
+**macOS / iOS.** `cd apple && brew install xcodegen && xcodegen generate && open TodoTracker.xcodeproj`.
 
-**Full-screen apps and Remote Desktop:** a full-screen window (a Remote Desktop session, a video) ignores the edge the
-sidebar reserves, so the sidebar goes behind it rather than covering part of it. A full-screen Remote Desktop session
-you're using is resized to sit next to the sidebar instead (turn this off in **⋯ › Position › Make room for
-full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
-
-**Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put. A reminder that
-goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
-the web task panel.
-
-Type a task in the box at the top and press Enter:
-
-```
-Deploy ring 2 !! @2h due:tomorrow      →  critical, back in 2h with a reminder, due tomorrow 17:00
-Plan the offsite @next-week            →  back next Monday 9:00   (also @fri, @weekend, @tonight, @2w…)
-```
-
-**Not now?** Press **Later** on a task: back in 15 minutes, an hour, 3 hours, this evening, tomorrow morning, in 2 days,
-next Monday, in a week or a month (each says when, e.g. *Fri 9:00*). Or **Pick a time…** and type it the way you'd say
-it (`next week`, `fri 14:30`, `3d`, `weekend`, `2026-03-01 14:00`; it shows when that is before you snooze), or pick a
-date. Or **After another task…**: it waits until that task is done, then comes back with a reminder. Every app offers
-the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other task>`, and the AI tools too).
-
-**Again and again?** Type a rule in a task's **Repeat** box: `every weekday`, `every 2 weeks on Monday, Thursday`,
-`every month on the last Friday`, `every 3 days when done`. Done moves it to its next time (deadline and all) instead
-of finishing it; it still counts as done today.
-
-**Your own automations.** Hooks run a script or call a webhook when a task is done, a reminder goes off, a break
-starts… Add them in Settings › Hooks, with `tt hooks add`, or ask your AI agent (the app asks you to allow its hooks: Allow once and they just run).
-Extensions can listen to `GET /api/events`. See [docs/hooks.md](docs/hooks.md).
-
-### The full app
-
-The web app (and the app window on Windows) has six views; switch with the side bar, `Alt+1`…`Alt+6`, or `Ctrl+K`:
-
-- **Today**: what to do now (the same list as the sidebar).
-- **Board**: Inbox → Next → Doing → Done. Drag cards along, or focus one and press `Alt+←/→` (`Alt+↑/↓` within a
-  column). Doing is kept to three on purpose. New tasks start in Inbox.
-- **Tasks**: every task as an outline. Type to rename, `Enter` for the next task, `Tab`/`Shift+Tab` to nest and
-  un-nest, `Alt+↑/↓` to move, `Space` to finish, `Esc` to leave; or drag a row before, after or into another.
-- **Done**: what you finished, day by day, with the time it took. Archive finished tasks (or everything older than a
-  week or a month) to keep it short; bring them back from **Archive**, or delete them.
-- **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per
-  day, a donut by group, where the time went, when you work (weekday × hour), active days, and a timeline of each
-  task's work, deadline and finish.
-- **Plan**: your day or week as a time grid. Drag a task from *Not planned* onto a time to plan a block of work on it,
-  drag the block to move it or its bottom edge to change how long; while a block is on, that task is the one to do
-  now. Each group keeps its own view (day or week, work hours or the whole day). An extra: switch it off in Settings.
-
-Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
-closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add
-by hand. Starting a focus session on a task starts that task's timer too (the session's time counts as focus time on
-it). When the session ends, a full-screen break reminds you to rest: take it, skip it, or **Start next focus now**
-(same task, the break ends). When a break you saw runs out, it asks **Break's over: Start next focus** or **Not now**;
-on Windows the notification has the button too. The phone apps do the same (Android and iPhone), and say
-when a focus session or a break ends with the app closed.
-
-To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add rollout steps*), enter one step per line,
-and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
-waits 24 hours and then comes back with a reminder.
-
-**Links to a task.** The link button in a task's header (or **Copy link** on a sidebar card) copies
-`todotracker://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
-named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
-starts if it wasn't running), on macOS and iPhone the task's details open, on Android a card with Done and Add note,
-and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
-it with every task (`link`). The app registers the link for you when it starts (Windows: per user, no admin rights;
-Linux: `install.sh`).
-
-### Where your tasks live
-
-Tasks are markdown files in **Documents/Todo Tracker**: one folder per group (tab), one file per task, with subtasks
-as checkboxes (Obsidian Tasks syntax), notes as callouts, and attachments next to them. Edit them anywhere: in the
-app, in Obsidian, in an editor, or with an AI agent. The app picks the changes up. See
-[`docs/vault-format.md`](docs/vault-format.md).
-
-- **Use Obsidian:** **⋯ › Tasks folder › Keep tasks in an Obsidian vault** lists your vaults. The app then uses
-  `<vault>/Todo Tracker` (restart to switch). Any task opens in Obsidian from its menu or the web drawer.
-- **Pointing the app at existing notes is safe.** It reads them without rewriting anything until you change a task.
-- **History:** every change is saved as a version (needs `git`). Open a task in the web drawer › *History* to view or
-  restore a version.
-- **Tags, labels, search:** add `#tags` and colored labels to tasks; click one (or press `/`) to filter. The same
-  syntax works everywhere: `#release label:"Deep work" group:work is:done words`.
-
-### Connect AI apps
-
-Choose **⋯ › Connect an AI app** (or ✨ in the web dashboard), pick Claude Code, Copilot CLI, Claude Desktop, VS Code
-or another app, and copy the one line it shows. For example:
+**Anywhere (the web app, API and MCP server):**
 
 ```bash
-claude mcp add todo-tracker --scope user -- tt mcp
+dotnet run --project src/TodoTracker.Web -- --port 5317
 ```
 
-`tt mcp` works on your tasks folder directly, so AI apps work even when Todo Tracker isn't running. There is also a
-Claude Desktop extension (`.mcpb`), a plugin with a skill for Claude Code and Copilot CLI
-(`/plugin marketplace add shahabmokhtari/todo-tracker`), and OpenAPI descriptions for cloud tools. See
-[`docs/ai-connectors.md`](docs/ai-connectors.md), including ChatGPT and Copilot Studio.
+Then read the [guide](docs/guide.md): the sidebar, the views and their keyboard shortcuts, snoozing, rollouts, links
+to tasks, and more.
 
-### Ask AI and plugins
+## Documentation
 
-Type in the **Ask AI** box at the bottom of the sidebar (or the chat button in the dashboard): Copilot, Claude Code,
-or a model you add with an API key (OpenAI, Anthropic, Azure, OpenRouter, Ollama, LM Studio…) adds, finds and
-organizes tasks for you, asking before it changes anything. Every chat is kept: **Chats** finds, reopens, renames or
-deletes them. Turn any extra off under **⋯ › Plugins**. See [`docs/plugins.md`](docs/plugins.md).
-
-### Browser extension
-
-Edge, Chrome and Safari. Open **Browser extension** (puzzle button in the dashboard, or **⋯ › Set up the browser
-extension** in the sidebar): it walks you through loading it (it isn't in the stores yet) and pairs it with a 6-digit
-code. See [`docs/browser-extension.md`](docs/browser-extension.md).
-
-### Teams reminders
-
-Choose sidebar menu **⋯ › Connect Teams reminders…** and paste a Teams Workflows webhook URL.
-
-## Linux
-
-CI builds `todo-tracker-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
-(add `--autostart` to start it with your session): it puts Todo Tracker in your app menu and `todo-tracker` and `tt` in
-`~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the AppIndicator extension. A second start opens
-the running one's window.
-
-## Other platforms
-
-```bash
-# Web dashboard / API / MCP without the WPF shell (any OS)
-dotnet run --project src/TodoTracker.Web -- --port 5317 --data ./data
-
-# macOS / iOS (on a Mac with Xcode)
-cd apple/TodoTrackerKit && swift test
-cd apple && brew install xcodegen && xcodegen generate && open TodoTracker.xcodeproj
-```
-
-## Development
-
-```bash
-dotnet build TodoTracker.slnx -warnaserror
-dotnet test --solution TodoTracker.slnx               # xUnit v3 on Microsoft Testing Platform
-node --test tests/web/*.test.mjs extension/tests/*.test.mjs
-cd tests/e2e && npm install && npx playwright install chromium && npx playwright test
-```
-
-Notes for contributors:
-
-* **Shared fixtures** in `tests/fixtures` are checked by more than one platform. `scenarios/*.json` and `breaks.json`
-  are hand-written. `export.json` (the board `/api/export` sends, which the Mac app reads) is written by C#: after
-  changing the board format, run `ExportFixtureTests` with `TT_WRITE_FIXTURES=1` and commit the result.
-* **Swift** (apple/) only builds and runs its tests in CI (macOS runner); keep Swift changes small and covered by
-  `swift test`.
-* `extension/lib/format.js` and `icons.js` are exact copies of the web app's (a test checks): copy them after changing
-  either.
-* Only one copy of the Windows app runs at a time: stop it before running a test build (it's fine to stop the copy
-  you use, as long as you start it again afterwards). Point a test copy at its own folder with `--data <folder>`
-  and `--port`, and set `TODOTRACKER_CLOUD=off` so it never syncs into your OneDrive.
-* **Android** builds and runs its unit tests locally with JDK 17, Gradle 8.11 and the Android SDK (platform 35):
-  `gradle testDebugUnitTest assembleDebug` in `android/`. An emulator (`system-images;android-35;google_apis;x86_64`)
-  runs the app for checks by hand; `adb shell date @<seconds>` moves its clock (as root) to reach a break quickly.
-`src/TodoTracker.Windows/bin/.../TodoTracker.exe --smoke-test --smoke-log smoke.log` boots the real app against a
-temporary board and verifies that the API and the sidebar see the same data. CI runs it on every PR.
-
-System tests drive the real sidebar with UI Automation on the live Windows shell (pass `-Exe <path to TodoTracker.exe>`):
-* `tests/system/placement.system-test.ps1`: dock right/left, float, always on top, persistence across restarts,
-  and a floating window being pulled back on screen after a display change. Runs in Windows CI.
-* `tests/system/multimonitor.system-test.ps1`: docks and floats on every display (including displays at negative
-  coordinates), checks that only that display's work area changes, that the display is saved by its stable device
-  path, and that a display change keeps the sidebar on it. Needs two or more monitors, so it skips in CI.
-  Run it locally after changing placement code.
-* `tests/system/fullscreen.system-test.ps1`: a stand-in full-screen window (`FakeFullScreen.cs`, built with Windows
-  PowerShell) puts the docked sidebar behind it; a stand-in Remote Desktop window is fitted next to it and goes back to
-  full screen when the sidebar is hidden; hidden is remembered across a restart and a second start shows it again; a
-  client that won't be resized is left alone. Runs in Windows CI. It covers the screen and takes the keyboard focus for
-  about half a minute, so don't run it while you work.
-
-| Path | What |
+| | |
 |---|---|
-| `src/TodoTracker.Core` | Domain model, agenda rules, search, quick capture, focus timer, markdown vault store and history, reminder dispatcher |
-| `src/TodoTracker.Server` | REST API, MCP tools, security, Teams notifier, reminder loop, embedded web UI (`wwwroot`) |
-| `src/TodoTracker.Web` | Standalone server host |
-| `src/TodoTracker.Cli` | `tt` command and `tt mcp` (MCP over stdio) |
-| `integrations/` | Claude Desktop extension manifest, Claude Code / Copilot CLI plugin and skill, VS Code sample |
-| `src/TodoTracker.Desktop` | Platform-neutral view models for the sidebar |
-| `src/TodoTracker.Windows` | WPF sidebar (AppBar, toasts, hotkey) |
-| `apple/` | Swift core port, SwiftUI UI, and XcodeGen project for iOS and macOS |
-| `extension/` | Edge/Chrome side panel extension |
-| `tests/fixtures/scenarios` | Shared agenda scenarios run by both the C# and Swift tests |
+| [Guide](docs/guide.md) | Using every part of the app |
+| [Connect AI apps](docs/ai-connectors.md) | Claude, Copilot, VS Code, ChatGPT, Copilot Studio |
+| [MCP tools](docs/mcp.md) · [`tt` commands](docs/cli.md) | The full references (made from the code) |
+| [Task files](docs/vault-format.md) | The markdown format, for Obsidian and agents |
+| [Sync](docs/sync.md) · [Connectors](docs/connectors.md) | Your computers, Notion, Microsoft To Do, GitHub Issues |
+| [Hooks](docs/hooks.md) · [Plugins](docs/plugins.md) | Automations and the event stream; every extra and its switch |
+| [Browser extension](docs/browser-extension.md) | Install and pair |
+| [Product spec](docs/product-spec.md) | Design, rules, security, decisions |
 
-CI (`.github/workflows/ci.yml`) runs on Linux (core, server, CLI, view models, coverage gates), web (JS tests and
-Playwright), AI connectors (the `tt` tool package, self-contained `tt` and Claude Desktop extensions for Windows, macOS
-and Linux, manifest validation, an MCP smoke test of the bundle), Windows (full build, tests, publish, smoke test), and
-macOS (Swift tests, iOS and macOS app builds).
+## Privacy and security
+
+Everything runs on your computer. The server only listens on `127.0.0.1`, checks the address it was called on (no DNS
+rebinding) and a 256-bit token, and never puts the token in a URL. There's no account and no telemetry: the app only
+talks to the services you switch on (sync, connectors, an AI model you add). Details:
+[product spec › Security](docs/product-spec.md#8-security-local-server).
+
+## Contributing
+
+Issues and pull requests are welcome. [AGENTS.md](AGENTS.md) is the place to start, for people and coding agents
+alike: the map of the code, how to build and test, and the rules that keep users' tasks safe. In short:
+
+```bash
+dotnet build TodoTracker.slnx -c Release -warnaserror
+dotnet test --solution TodoTracker.slnx -c Release --no-build
+node --test tests/web/*.test.mjs extension/tests/*.test.mjs
+```

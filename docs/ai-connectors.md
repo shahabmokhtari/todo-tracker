@@ -124,48 +124,22 @@ MSIX yet; until then, use the Claude Desktop or VS Code setup.
 ```
 tt                                  what to do now (and what is waiting)
 tt add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
-tt add Renew passport --due 7d --tag admin  the same without quick words
-tt add 'Book flights' --under trip  a subtask; <task> is an id prefix or words from the title
 tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
-tt show passport                    a task with subtasks, notes, its markdown file and its link
-tt open passport                    open it in the app (todotracker://task/<id>)
-tt note passport 'Booked appointment for Tuesday'   (or tt note passport - to read it from stdin)
-tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, 2026-02-01, 2026-02-01T14:30
-tt snooze "move in" after keys      wait until another task is done
-tt done Renew passport              finish (several at once by id: tt done a1b2c3 d4e5f6)
-tt first call the bank              put it at the top of Do now (it becomes the focus)
-tt steps rollout "Ring 0" "Ring 1" --delay 24
-tt edit passport --priority high --due none
-tt tag passport +travel -admin      tt label passport "+Deep work"
-tt move visa --under trip           --top, -g Personal, --index 0
-tt attach outage ./timeline.log
-tt history passport                 tt restore passport <version>
-tt vault                            where the files are; tt vault guide; tt vault use <folder|Obsidian vault>
+tt note passport 'Booked appointment for Tuesday'
+tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
+tt done passport                    finish
 tt mcp                              the MCP server over stdio
 ```
 
 Every command takes `--json` (the same shapes as the REST API and MCP tools) and `--as <name>` to attribute changes to
-an agent (or set `TT_AGENT`). Exit codes: `0` done, `1` couldn't (the reason is on stderr), `2` wrong usage.
+an agent (or set `TT_AGENT`). All the commands and options: [cli.md](cli.md).
 
 ## What the AI sees
 
 The MCP server introduces itself with short instructions (start with the dashboard, capture in the user's words,
-make big things small, log progress, defer instead of piling up, never delete). The tools:
+make big things small, log progress, defer instead of piling up, never delete), and every tool and parameter is
+described for the model. The full list, made from the code: [mcp.md](mcp.md). There is deliberately no delete tool.
 
-| Tool | What it does |
-| --- | --- |
-| `get_dashboard` | What to do now, what is waiting (with wake times), an overview per group, recent notes |
-| `search_tasks`, `list_tasks`, `get_task` | Find and read tasks (search syntax: words, `#tag`, `label:x`, `group:x`, `is:done`) |
-| `create_task`, `add_steps` | Capture tasks and subtasks; ordered steps that unlock one at a time |
-| `add_note`, `attach_text`, `set_rich_html` | Log progress; attach text; a rich HTML version for tables and layouts |
-| `schedule_next_action`, `add_reminder` | Defer and remind |
-| `complete_task`, `reopen_task`, `update_task`, `move_task` | Finish, undo, change, reorganize |
-| `put_first` | Put tasks at the top of Do now (when the user says what matters most) |
-| `plan_task` | Plan a block of time to work on a task (it becomes the thing to do now while the block is on) |
-| `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks: run a command or call a web address when something happens. A hook an agent adds or changes waits until the user approves it (Settings › Hooks, or `tt hooks approve`) |
-| `list_labels`, `vault_info`, `get_report` | Labels, where the files are (and their format), the timeline |
-| `task_history`, `restore_task_version` | Every change is a version; put a task back |
-| `move_card`, `archive_task`, `unarchive_task` | Board columns (inbox, next, doing); put finished tasks away |
-| `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time spent on tasks, and where the time went (per day, group, task) |
-
-There is deliberately no delete tool.
+For Claude Code and Copilot CLI, the plugin adds a skill
+([`SKILL.md`](../integrations/agent-plugin/skills/todo-tracker/SKILL.md)) with recipes: what to do now, follow-ups
+after a meeting, planning a day, rollouts, end of day, automations.

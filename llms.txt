@@ -1,0 +1,30 @@
+# Todo Tracker
+
+> An ADHD-friendly task app that always shows the one thing to do now. Tasks are markdown files in a folder you own
+> (Obsidian-compatible). Native apps for Windows, macOS, iOS, Android and Linux, a web app, a browser extension, and
+> first-class AI agent support: an MCP server (`tt mcp`), a CLI (`tt`), and a skill for Claude Code and Copilot CLI.
+
+Agents changing tasks get no delete tool, every change is attributed and versioned, and deferred work comes back on
+time with a reminder.
+
+## Use it from an AI agent
+
+- [Connect an AI app](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/ai-connectors.md): Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, ChatGPT, Copilot Studio
+- [MCP tools reference](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/mcp.md): every tool and parameter (made from the code)
+- [`tt` command reference](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/cli.md): every command and option (made from the code)
+- [Agent skill](https://github.com/shahabmokhtari/todo-tracker/blob/master/integrations/agent-plugin/skills/todo-tracker/SKILL.md): how to help a user with their tasks, with recipes
+- [Task file format](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/vault-format.md): for agents that edit the markdown files directly
+- [Hooks and events](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/hooks.md): run scripts or webhooks when something happens; `GET /api/events` stream
+
+## Work on the code
+
+- [AGENTS.md](https://github.com/shahabmokhtari/todo-tracker/blob/master/AGENTS.md): map, build and test commands, rules, where to look when changing things
+- [Product spec](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/product-spec.md): design, scheduling rules, security, decisions
+
+## Docs
+
+- [README](https://github.com/shahabmokhtari/todo-tracker/blob/master/README.md): what it does, screenshots, install
+- [Sync](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/sync.md): OneDrive, iCloud Drive, a GitHub gist
+- [Connectors](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/connectors.md): Notion, Microsoft To Do, GitHub Issues (a repository per group), Loop
+- [Plugins](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/plugins.md): every extra and how to switch it off
+- [Browser extension](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/browser-extension.md)

@@ -291,6 +291,16 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>The mouse wheel scrolls the group tabs sideways (they have no scrollbar).</summary>
+    private void OnGroupTabsWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (sender is ScrollViewer tabs && tabs.ScrollableWidth > 0)
+        {
+            tabs.ScrollToHorizontalOffset(tabs.HorizontalOffset - e.Delta / 2.0);
+            e.Handled = true;
+        }
+    }
+
     /// <summary>
     /// Monitors were plugged in or out, rearranged, or changed resolution. Docked: dock on the saved monitor if it is
     /// connected (so the sidebar returns when it is plugged back in), else on the primary. The saved choice is kept.

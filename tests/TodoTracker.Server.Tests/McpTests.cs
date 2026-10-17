@@ -217,6 +217,21 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Moving_a_subtask_with_only_a_position_reorders_it_under_its_parent_instead_of_promoting_it()
+    {
+        var trip = await Call("create_task", new() { ["title"] = "Plan the trip" });
+        var tripId = trip.GetProperty("id").GetString();
+        await Call("create_task", new() { ["title"] = "Book flights", ["parentId"] = tripId });
+        var hotel = await Call("create_task", new() { ["title"] = "Book the hotel", ["parentId"] = tripId });
+
+        var moved = await Call("move_task", new() { ["taskId"] = hotel.GetProperty("id").GetString(), ["index"] = 0 });
+
+        Assert.Equal(tripId, moved.GetProperty("parentId").GetString());
+        var children = (await Call("get_task", new() { ["taskId"] = tripId })).GetProperty("children");
+        Assert.Equal(["Book the hotel", "Book flights"], children.EnumerateArray().Select(c => c.GetProperty("title").GetString()));
+    }
+
+    [Fact]
     public async Task Agents_can_attach_text_and_keep_a_rich_html_version()
     {
         var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();

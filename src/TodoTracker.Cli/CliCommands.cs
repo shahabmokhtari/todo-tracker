@@ -74,17 +74,25 @@ internal static class CliCommands
             text.AppendLine(CultureInfo.InvariantCulture, $"  {c.Name.PadRight(width)}{c.Summary}");
         }
 
-        text.AppendLine()
-            .AppendLine("Options for every command:")
-            .AppendLine("  --json          print JSON (same shapes as the REST API and MCP tools)")
-            .AppendLine("  --as <name>     attribute changes to an agent, e.g. --as claude (or set TT_AGENT)")
-            .AppendLine("  --vault <dir>   use another tasks folder (default: the app's, or TODOTRACKER_VAULT)")
-            .AppendLine("  --data <dir>    use another app data folder (or TODOTRACKER_DATA)")
-            .AppendLine("  --no-history    don't save a version for this change")
-            .AppendLine()
-            .AppendLine("tt help <command> shows details. <task> is an id prefix or words from the title.");
+        text.AppendLine().AppendLine("Options for every command:");
+        foreach (var (option, what) in GlobalOptions)
+        {
+            text.AppendLine(CultureInfo.InvariantCulture, $"  {option,-16}{what}");
+        }
+
+        text.AppendLine().AppendLine("tt help <command> shows details. <task> is an id prefix or words from the title.");
         return text.ToString();
     }
+
+    /// <summary>The options every command takes (tt help and docs/cli.md list them).</summary>
+    public static readonly IReadOnlyList<(string Option, string What)> GlobalOptions =
+    [
+        ("--json", "print JSON (same shapes as the REST API and MCP tools)"),
+        ("--as <name>", "attribute changes to an agent, e.g. --as claude (or set TT_AGENT)"),
+        ("--vault <dir>", "use another tasks folder (default: the app's, or TODOTRACKER_VAULT)"),
+        ("--data <dir>", "use another app data folder (or TODOTRACKER_DATA)"),
+        ("--no-history", "don't save a version for this change"),
+    ];
 
     private static async Task Now(CliSession s, CliArgs a)
     {
