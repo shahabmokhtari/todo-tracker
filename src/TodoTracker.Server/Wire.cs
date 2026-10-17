@@ -47,7 +47,8 @@ public sealed record CardDto(
     string? Repeat = null,
     DateTimeOffset? PlannedAt = null,
     int? PlannedMinutes = null,
-    int? Energy = null);
+    int? Energy = null,
+    IReadOnlyList<NoteDto>? Notes = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -382,7 +383,9 @@ public static class Wire
             item.Repeat?.ToString(),
             item.PlannedAt,
             item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes,
-            item.Energy);
+            item.Energy,
+            // Every note, newest first: a card can show them all (the focus card does).
+            item.Notes.OrderByDescending(n => n.At).Select(n => Note(item, n)).ToList());
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(

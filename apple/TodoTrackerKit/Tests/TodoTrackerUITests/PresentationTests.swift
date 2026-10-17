@@ -34,6 +34,20 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.energyLine(board, now: t0, timeZone: utc), "⚡ 3 of 10 planned today.")
     }
 
+    func testACardsNotesAreNewestFirstWithWhoAndWhen() throws {
+        let board = TaskBoard()
+        let task = try board.addTask(NewTask("Send the RU report"), now: t0)
+        try board.addNote(task.id, text: "Pulled the numbers", now: t0)
+        try board.addNote(task.id, text: "Include hot partition splitting", actor: .agent("copilot"), now: t0.addingTimeInterval(300))
+
+        let notes = Presentation.notes(task, now: t0.addingTimeInterval(600))
+        XCTAssertEqual(notes.map(\.text), ["Include hot partition splitting", "Pulled the numbers"])
+        XCTAssertTrue(notes[0].meta.hasPrefix("Agent: copilot ·"), notes[0].meta)
+        XCTAssertEqual(Presentation.notesToggle(count: 2, open: false), "2 notes ▾")
+        XCTAssertEqual(Presentation.notesToggle(count: 1, open: false), "1 note ▾")
+        XCTAssertEqual(Presentation.notesToggle(count: 2, open: true), "Hide notes ▴")
+    }
+
     func testSummaryAndGreeting() throws {
         let board = TaskBoard()
         XCTAssertEqual(Presentation.summary(Agenda.build(board, now: t0)), "All clear. Nothing needs you right now.")

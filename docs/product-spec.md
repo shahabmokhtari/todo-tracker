@@ -203,7 +203,9 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   counts too (it has moved on to its next time); *Reopen* on it means *not done after all*.
 * Card actions: ✓ mark done, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
   time…*, *After another task*), 🗒 inline note (a sticky note: a pen would mean "edit"),
-  ▶ focus, and ⋯ (dismiss reminder, add subtask, edit in browser, copy link, open report). The focus card says
+  ▶ focus, and ⋯ (dismiss reminder, add subtask, open in the app, open in the browser, copy link, open report).
+  Clicking a title opens the task full size in the app window. The focus card shows every note (newest first, with
+  author and when); other cards have a "2 notes ▾" toggle that shows them in place (web, Mac/iPhone and Android too). The focus card says
   **Mark done** (a bare "Done" read as "close this") and **Skip** (do something else first: it moves down one; it
   was an unlabeled arrow that looked like a menu). Same on the web, Mac/iOS and Android.
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional

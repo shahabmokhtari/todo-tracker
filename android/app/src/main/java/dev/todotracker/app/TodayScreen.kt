@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -165,9 +166,11 @@ private fun LinkedTaskDialog(item: WorkItem, vm: BoardViewModel, onNote: () -> U
         onDismissRequest = close,
         title = { Text(listOfNotNull(item.icon, item.title).joinToString(" ")) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Scrolls: a task can have many notes (the dialog's text area has a fixed height).
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 if (item.isDone) Text("Done", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
                 item.details?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                CardNotes(item)
             }
         },
         confirmButton = {
@@ -275,6 +278,32 @@ private fun Meta(entry: AgendaEntry) {
     if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
+/** A card's notes, newest first: the text, then who wrote it and when. */
+@Composable
+private fun CardNotes(item: WorkItem) {
+    if (item.notes.isEmpty()) return
+    val now = Instant.now()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.semantics { contentDescription = "Notes" }) {
+        for (note in item.notes.sortedByDescending { it.at }) {
+            Column(Modifier.padding(start = 8.dp)) {
+                Text(note.text, style = MaterialTheme.typography.bodyMedium)
+                Text("${note.author.displayName} · ${ago(note.at, now)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** How long ago: "now", "5m ago", "2h ago", "3d ago". */
+private fun ago(at: Instant, now: Instant): String {
+    val minutes = Duration.between(at, now).toMinutes()
+    return when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m ago"
+        minutes < 24 * 60 -> "${minutes / 60}h ago"
+        else -> "${minutes / (24 * 60)}d ago"
+    }
+}
+
 @Composable
 private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
@@ -282,6 +311,8 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Meta(entry)
+            // The task you're on: every note, newest first.
+            CardNotes(entry.item)
             Actions(entry, vm, onNote, onFocus, focus = true)
         }
     }
@@ -293,6 +324,14 @@ private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, 
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium)
             Meta(entry)
+            if (entry.item.notes.isNotEmpty()) {
+                var open by rememberSaveable(entry.item.id) { mutableStateOf(false) }
+                val count = entry.item.notes.size
+                TextButton(onClick = { open = !open }, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                    Text(if (open) "Hide notes ▴" else if (count == 1) "1 note ▾" else "$count notes ▾", style = MaterialTheme.typography.labelMedium)
+                }
+                if (open) CardNotes(entry.item)
+            }
             Actions(entry, vm, onNote, onFocus)
         }
     }
@@ -340,6 +379,8 @@ private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
     Box {
         TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // The task's own card: details, every note, done or not.
+            DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTaskId = entry.item.id })
             entry.dueReminder?.let { r ->
                 DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
             }

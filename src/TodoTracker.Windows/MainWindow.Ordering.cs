@@ -21,8 +21,27 @@ public partial class MainWindow
         Focus();
     }
 
-    private void OnCardMouseDown(object sender, MouseButtonEventArgs e) =>
-        _dragStart = e.OriginalSource is DependencyObject source && IsInteractive(source, sender as DependencyObject) ? null : e.GetPosition(this);
+    private void OnCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _pressAt = e.GetPosition(this);
+        _dragStart = e.OriginalSource is DependencyObject source && IsInteractive(source, sender as DependencyObject) ? null : _pressAt;
+    }
+
+    /// <summary>Where the last press on a card was: a click on its title opens the task, a drag from it doesn't.</summary>
+    private Point? _pressAt;
+
+    /// <summary>Clicking a card's title opens the task in the app window (the browser without one).</summary>
+    private void OnTitleMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        var at = e.GetPosition(this);
+        if (sender is FrameworkElement { DataContext: CardViewModel card } && _pressAt is { } press
+            && Math.Abs(at.X - press.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(at.Y - press.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            _pressAt = null;
+            _vm.OpenInAppCommand.Execute(card);
+            e.Handled = true;
+        }
+    }
 
     /// <summary>A press that ended without a drag must not start one later from its old position.</summary>
     private void OnWindowPreviewMouseUp(object sender, MouseButtonEventArgs e) => _dragStart = null;

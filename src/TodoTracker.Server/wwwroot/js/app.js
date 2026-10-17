@@ -207,9 +207,9 @@ function render() {
   // Any redraw (a live update, a plugin loading) keeps the keyboard where it was on the board.
   const kept = state.refocus ? { id: state.refocus } : boardFocus();
   $('#greeting').textContent = greeting();
-  // Energy once something is planned today (the same rule in every app).
-  $('#summary').textContent = [summaryLine(d), pluginOn('energy') && d.energy?.plannedToday > 0 ? energyLine(d.energy) : ''].filter(Boolean).join(' ');
-  $('#summary').classList.toggle('over-energy', pluginOn('energy') && !!d.energy && d.energy.plannedToday > d.energy.perDay);
+  // Energy once something is planned today (the same rule in every app); in red past what there is in a day.
+  const energy = pluginOn('energy') && d.energy?.plannedToday > 0 ? energyLine(d.energy) : '';
+  $('#summary').replaceChildren(summaryLine(d), ...(energy ? [' ', h('span', { class: `energy-line${d.energy.plannedToday > d.energy.perDay ? ' over' : ''}` }, energy)] : []));
   renderTabs(d);
   const pick = $('#capture-group');
   if (pick.dataset.chosen && pick.dataset.tab !== (state.group ?? '')) delete pick.dataset.chosen;
@@ -370,7 +370,7 @@ function renderFocus(d) {
   }
 
   const meta = priorityMeta(f.priority);
-  const chips = metaChips(f, { energy: pluginOn('energy') }).filter((c) => c.tone !== 'step');
+  const chips = metaChips(f, { energy: pluginOn('energy'), notes: false }).filter((c) => c.tone !== 'step');
   const sub = [];
   if (f.stepNumber) {
     sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
@@ -385,7 +385,8 @@ function renderFocus(d) {
     h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, iconBadge(f.icon), f.title, repeatMark(f.repeat)),
     sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
     f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
-    f.lastNote ? h('blockquote', { class: 'last-note' }, f.lastNote) : null,
+    // The task you're on: every note, newest first.
+    f.notes?.length ? h('ul', { class: 'card-notes focus-notes', 'aria-label': 'Notes' }, ...f.notes.map(cardNote)) : null,
     actions(f, { big: true }));
   el.style.setProperty('--prio', meta.color);
   withAccent(el, f.accent);
@@ -575,9 +576,10 @@ function card(c, { waiting = false, orderable = false } = {}) {
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, iconBadge(c.icon), c.title),
-      h('div', { class: 'meta' }, ...metaChips(c, { waiting, energy: pluginOn('energy') }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting, energy: pluginOn('energy'), notes: false }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
-      c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
+      c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null,
+      ...notesToggle(c)),
     actions(c, { waiting }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
   withAccent(li, c.accent);
@@ -648,6 +650,8 @@ function moreButton(c, big = false) {
   const menu = h('div', { class: 'menu more-menu', hidden: true, role: 'menu', 'aria-label': `More for ${c.title}` });
   const fill = () => menu.replaceChildren(
     ...(c.needsAttention && c.reminderId ? [item('bellOff', 'Dismiss reminder', () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`), 'Reminder dismissed'))] : []),
+    item('expand', 'Open full size', () => { location.hash = `#/task/${c.id}`; }),
+    item('external', 'Open in a new tab', () => window.open(`/#/task/${c.id}`, '_blank', 'noopener')),
     item('link', 'Copy link', () => copyTaskLink(c)),
     ...visibleTaskActions().map((a) => item(a.iconName, a.label, () => a.onClick(c.id))));
   const button = h('button', { class: big ? 'btn' : 'icon-btn', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => {
@@ -794,6 +798,36 @@ function renderDoneToday(done) {
     h('span', { class: 'muted small' }, new Date(d.completedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })),
     h('button', { class: 'btn small ghost', type: 'button', title: 'Not done after all', 'aria-label': `Reopen ${d.title}`, onclick: () => act(post(`/api/items/${d.id}/reopen`), 'Reopened') }, icon('undo', { size: 14 }), 'Reopen'))),
   done.length, 'Finish something and it shows up here.');
+}
+
+/** Cards whose notes are open (kept across redraws). */
+const openNotes = new Set();
+
+/** A card's "2 notes ▾": shows every note on the card, newest first, without opening the task. */
+function notesToggle(c) {
+  if (!c.notes?.length) return [];
+  const label = (open) => (open ? 'Hide notes ▴' : `${c.notes.length} note${c.notes.length > 1 ? 's' : ''} ▾`);
+  const open = openNotes.has(c.id);
+  const list = h('ul', { class: 'card-notes', hidden: !open, 'aria-label': `Notes on ${c.title}` }, ...c.notes.map(cardNote));
+  const button = h('button', { class: 'link notes-toggle', type: 'button', 'aria-expanded': String(open), onclick: () => {
+    const now = list.hidden;
+    list.hidden = !now;
+    if (now) openNotes.add(c.id); else openNotes.delete(c.id);
+    button.setAttribute('aria-expanded', String(now));
+    button.textContent = label(now);
+  } }, label(open));
+  return [button, list];
+}
+
+/** One of a card's notes: the text (pictures too), who wrote it, when, and the page it came from. */
+function cardNote(n) {
+  return h('li', { class: 'card-note' },
+    h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
+    h('div', { class: 'meta' },
+      h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
+      h('span', null, '·'),
+      h('span', null, relativeTime(n.at)),
+      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null));
 }
 
 function noteRow(n) {

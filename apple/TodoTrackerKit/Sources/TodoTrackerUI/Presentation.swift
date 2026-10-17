@@ -15,6 +15,13 @@ public struct Chip: Hashable, Sendable {
     }
 }
 
+/// A note as a card shows it.
+public struct NoteLine: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let text: String
+    public let meta: String
+}
+
 public enum Presentation {
     /// A task's title with its icon (an emoji, set in the other apps) in front.
     public static func titleWithIcon(_ item: WorkItem) -> String {
@@ -23,7 +30,8 @@ public enum Presentation {
         return "\(icon) \(title)"
     }
 
-    public static func chips(for entry: AgendaEntry, now: Date) -> [Chip] {
+    /// `notes`: a "2 notes" chip (cards that show their notes themselves leave it out).
+    public static func chips(for entry: AgendaEntry, now: Date, notes showNotes: Bool = true) -> [Chip] {
         var chips: [Chip] = []
         if let step = entry.stepLabel { chips.append(Chip(step, .step)) }
         if entry.state == .waiting, let wake = entry.wakeAt { chips.append(Chip("back \(RelativeTime.format(wake, now: now))", .info)) }
@@ -35,8 +43,18 @@ public enum Presentation {
         }
         if let energy = entry.item.energy { chips.append(Chip(String(repeating: "⚡", count: energy), .energy)) }
         let notes = entry.item.notes.count
-        if notes > 0 { chips.append(Chip(notes == 1 ? "1 note" : "\(notes) notes", .muted)) }
+        if showNotes && notes > 0 { chips.append(Chip(notes == 1 ? "1 note" : "\(notes) notes", .muted)) }
         return chips
+    }
+
+    /// A card's notes, newest first, with who wrote each and when ("You · 2h ago").
+    public static func notes(_ item: WorkItem, now: Date) -> [NoteLine] {
+        item.notes.sorted { $0.at > $1.at }.map { NoteLine(id: $0.id, text: $0.text, meta: "\($0.author.displayName) · \(RelativeTime.format($0.at, now: now))") }
+    }
+
+    /// "2 notes ▾" to show them, "Hide notes ▴" when they're shown (the same words as the Windows sidebar and the web).
+    public static func notesToggle(count: Int, open: Bool) -> String {
+        open ? "Hide notes ▴" : count == 1 ? "1 note ▾" : "\(count) notes ▾"
     }
 
     /// Today's energy ("⚡ 4.5 of 10 planned today."), once something is planned today (the same rule in every app).

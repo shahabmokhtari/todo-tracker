@@ -17,6 +17,13 @@ class TaskBoardTest {
     private val t0: Instant = Instant.parse("2026-01-05T09:00:00Z")
 
     @Test
+    fun `who wrote a note reads like the other apps`() {
+        assertEquals("You", Actor.USER.displayName)
+        assertEquals("Agent: copilot", Actor(ActorKind.AGENT, "copilot").displayName)
+        assertEquals("System", Actor.SYSTEM.displayName)
+    }
+
+    @Test
     fun `arranging Do now puts the skipped task second and keeps other tasks places`() {
         val board = TaskBoard()
         val a = board.addTask(NewTask("A", priority = Priority.HIGH), now = t0)

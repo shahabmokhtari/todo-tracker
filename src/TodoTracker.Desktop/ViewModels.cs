@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using TodoTracker.Core;
 
 namespace TodoTracker.Desktop;
@@ -104,8 +105,23 @@ public sealed partial class CardViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsTiming { get; set; }
 
+    /// <summary>Every note on the task, newest first (shown when the card's notes are open, and always on the focus card).</summary>
     [ObservableProperty]
-    public partial string? LastNote { get; set; }
+    [NotifyPropertyChangedFor(nameof(NotesToggleText), nameof(HasNotes))]
+    public partial IReadOnlyList<CardNote> Notes { get; set; } = [];
+
+    /// <summary>The card's notes are shown (the "2 notes" toggle); kept across refreshes.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesToggleText))]
+    public partial bool IsNotesOpen { get; set; }
+
+    public bool HasNotes => Notes.Count > 0;
+
+    /// <summary>"2 notes ▾" to open them, "Hide notes ▴" when they're open.</summary>
+    public string NotesToggleText => IsNotesOpen ? "Hide notes ▴" : Notes.Count == 1 ? "1 note ▾" : $"{Notes.Count} notes ▾";
+
+    [RelayCommand]
+    private void ToggleNotes() => IsNotesOpen = !IsNotesOpen;
 
     /// <summary>Energy the task takes per hour (1 to 3); null: not said.</summary>
     [ObservableProperty]
@@ -161,7 +177,7 @@ public sealed partial class CardViewModel : ObservableObject
         IsWaiting = other.IsWaiting;
         CanComplete = other.CanComplete;
         IsTiming = other.IsTiming;
-        LastNote = other.LastNote;
+        Notes = other.Notes;
         Energy = other.Energy;
         Chips = other.Chips;
         Tags = other.Tags;
@@ -199,6 +215,9 @@ public sealed record ChipViewModel(string Text, string Tone);
 public sealed record WorkstreamViewModel(Guid Id, string Title, string PriorityColor, int ProgressPercent, string Summary);
 
 public sealed record NoteViewModel(Guid NoteId, Guid ItemId, string Text, string ItemTitle, string Meta, string? SourceUrl);
+
+/// <summary>One of a card's notes: its text, who wrote it and when ("You · 2h ago"), and the page it came from.</summary>
+public sealed record CardNote(Guid Id, string Text, string Meta, string? SourceUrl);
 
 /// <summary>Something finished today: <see cref="Context"/> is where it belongs (its parents), <see cref="Time"/> when.</summary>
 public sealed record DoneViewModel(Guid Id, string Title, string? Context, string Time);
