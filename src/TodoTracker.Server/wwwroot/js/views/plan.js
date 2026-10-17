@@ -1,6 +1,7 @@
 // Plan: a day or a week as a time grid. Drag a task from "Not planned" onto a time to plan a block of work on it; drag a
 // block to move it, its bottom edge to make it longer or shorter, click it to open the task. Deadlines show on their day,
-// "now" is a line, done blocks are ticked. Each group keeps its own view (day or week, work hours or the whole day, and
+// "now" is a line, done blocks are ticked. Tasks put off (snoozed, waiting, a repeating task until its next time) are
+// listed under "Later" with when they come back, and marked on that day. Each group keeps its own view (day or week, work hours or the whole day, and
 // what work hours and days are). The keyboard way in: a task's details have a Plan field.
 
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
@@ -29,6 +30,13 @@ export function firstDay(date, view, weekStart = 1) {
 /** Minutes after local midnight, snapped to the grid. */
 export function snapMinutes(minutes, step = SNAP) {
   return Math.max(0, Math.min(24 * 60 - step, Math.round(minutes / step) * step));
+}
+
+/** When a task put off comes back: "Mon 09:00" (its time today: "09:00"). */
+export function backLabel(at, now = new Date()) {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return isoDay(d) === isoDay(now) ? time : `${d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} ${time}`;
 }
 
 const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -173,19 +181,27 @@ export function createPlanView(ctx) {
     return h('span', { class: 'plan-settings-wrap' }, toggle, box);
   }
 
+  function taskItem(t) {
+    const back = t.wakeAt ? `back ${backLabel(t.wakeAt)}` : t.waitingFor ? `after “${t.waitingFor}”` : null;
+    const li = h('li', { class: `plan-task${back ? ' later' : ''}`, draggable: 'true', tabindex: 0, dataset: { id: t.id }, title: 'Drag onto a time to plan it (or set it in its details)',
+      onclick: () => ctx.openDrawer(t.id),
+      onkeydown: (e) => { if (e.key === 'Enter') ctx.openDrawer(t.id); } },
+    iconBadge(t.icon), h('span', { class: 'plan-task-title' }, t.title, repeatMark(t.repeat)),
+    t.breadcrumb?.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null,
+    back ? h('span', { class: 'muted small plan-back' }, back) : null);
+    li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: t.id, minutes: t.minutes })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); });
+    li.addEventListener('dragend', () => li.classList.remove('dragging'));
+    return withAccent(li, t.accent);
+  }
+
   function unplannedList() {
-    const items = plan.unplanned.map((t) => {
-      const li = h('li', { class: 'plan-task', draggable: 'true', tabindex: 0, dataset: { id: t.id }, title: 'Drag onto a time to plan it (or set it in its details)',
-        onclick: () => ctx.openDrawer(t.id),
-        onkeydown: (e) => { if (e.key === 'Enter') ctx.openDrawer(t.id); } },
-      iconBadge(t.icon), h('span', { class: 'plan-task-title' }, t.title), t.breadcrumb?.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null);
-      li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: t.id, minutes: t.minutes })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); });
-      li.addEventListener('dragend', () => li.classList.remove('dragging'));
-      return withAccent(li, t.accent);
-    });
+    const items = plan.unplanned.map(taskItem);
+    const later = (plan.later ?? []).map(taskItem);
     return h('aside', { class: 'plan-unplanned', 'aria-label': 'Not planned' },
       h('h3', null, 'Not planned'),
-      items.length ? h('ul', null, ...items) : h('p', { class: 'muted small' }, 'Everything to do now is planned.'));
+      items.length ? h('ul', { 'aria-label': 'Not planned' }, ...items) : h('p', { class: 'muted small' }, 'Everything to do now is planned.'),
+      later.length ? h('h3', { class: 'plan-later-head' }, 'Later') : null,
+      later.length ? h('ul', { 'aria-label': 'Later' }, ...later) : null);
   }
 
   function block(b, seg, from) {
@@ -251,6 +267,7 @@ export function createPlanView(ctx) {
     const key = isoDay(day);
     const parts = plan.blocks.flatMap((b) => segments(b).filter((s) => s.day === key).map((s) => block(b, s, from)));
     const deadlines = plan.deadlines.filter((d) => isoDay(new Date(d.deadline)) === key);
+    const comingBack = (plan.later ?? []).filter((t) => t.wakeAt && isoDay(new Date(t.wakeAt)) === key);
     const col = h('div', { class: 'plan-day', dataset: { day: key }, 'aria-label': day.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }) },
       ...parts);
     col.style.setProperty('--height', `${(to - from) * PX_PER_MIN}px`);
@@ -281,7 +298,9 @@ export function createPlanView(ctx) {
       h('span', { class: 'plan-day-name' }, day.toLocaleDateString(undefined, { weekday: 'short' })),
       h('span', { class: 'plan-day-date' }, String(day.getDate())),
       ...deadlines.map((d) => h('button', { class: `chip ${d.done ? 'muted' : 'warn'} plan-deadline`, type: 'button', title: `Due ${new Date(d.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, onclick: () => ctx.openDrawer(d.id) },
-        icon('flag', { size: 11 }), d.title)));
+        icon('flag', { size: 11 }), d.title)),
+      ...comingBack.map((t) => h('button', { class: 'chip plan-back-chip', type: 'button', title: `Back ${backLabel(t.wakeAt)}`, onclick: () => ctx.openDrawer(t.id) },
+        icon('clock', { size: 11 }), t.title, repeatMark(t.repeat))));
     return { head, col };
   }
 

@@ -113,7 +113,8 @@ struct TaskDetailView: View {
                 }
                 .navigationTitle(item.title)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                    // "Close", not "Done": next to "Mark done" a bare "Done" reads as finishing the task.
+                    ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } }
                 }
                 .confirmationDialog("Also mark the open subtasks as done?", isPresented: $confirmComplete) {
                     Button("Mark all done") {

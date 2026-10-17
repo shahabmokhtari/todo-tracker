@@ -594,6 +594,12 @@ public partial class MainWindow : Window
         }
 
         var menu = new ContextMenu { PlacementTarget = element };
+        if (card.NeedsAttention)
+        {
+            menu.Items.Add(new MenuItem { Header = "Dismiss reminder", Command = _vm.DismissReminderCommand, CommandParameter = card, ToolTip = "Keep the task; stop showing this reminder" });
+            menu.Items.Add(new Separator());
+        }
+
         if (Vault?.PathOf(card.Id) is { } rel)
         {
             var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
@@ -754,7 +760,7 @@ public partial class MainWindow : Window
         return item;
     }
 
-    /// <summary>Every optional feature is a plugin: switch it on or off (applies after a restart).</summary>
+    /// <summary>Every optional feature is a plugin: switch it on or off (off at once; some need a restart to come on).</summary>
     private MenuItem PluginsMenu(TodoTracker.Server.Plugins.PluginHost host)
     {
         var plugins = new MenuItem { Header = "Plugins" };

@@ -52,7 +52,7 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await page.locator('#sec-notes > summary').click();
   await expect(page.locator('#sec-notes .note').first()).toContainText('Ring 0 healthy');
 
-  await page.locator('.focus-card').getByRole('button', { name: 'Done', exact: true }).click();
+  await page.locator('.focus-card').getByRole('button', { name: 'Mark done', exact: true }).click();
   await expect(page.locator('.focus-card')).toContainText('Nothing is due');
   await page.locator('#sec-waiting > summary').click();
   await expect(page.locator('#sec-waiting .item')).toContainText('Ring 1');
@@ -220,7 +220,7 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
   await expect.poll(nowTitles).toEqual(['Order bravo', 'Order alpha', 'Order charlie']);
 
   // The focus card has its own way down.
-  await page.getByRole('button', { name: 'Do something else first' }).click();
+  await page.locator('.focus-card').getByRole('button', { name: 'Skip', exact: true }).click();
   await expect(focus).toHaveText('Order alpha');
   await expect.poll(nowTitles).toEqual(['Order alpha', 'Order bravo', 'Order charlie']);
 
@@ -337,20 +337,37 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
   }
 });
 
-test('Plugins: every extra can be switched off (after a restart)', async ({ page, request }) => {
+test('Plugins: an extra switched off is gone at once, and the light ones come back at once', async ({ page, request }) => {
   const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
-  // The extras moved from a Plugins panel into Settings (the side bar's Settings link); same switches, same rule.
+  // The extras moved from a Plugins panel into Settings (the side bar's Settings link).
   await page.locator('#settings-link').click();
   const drawer = page.locator('#view-settings');
-  for (const name of ['Ask AI', 'Connect AI apps', 'Focus timer', 'Version history', 'Obsidian', 'Teams reminders']) {
+  for (const name of ['Ask AI', 'Connect AI apps', 'Focus timer', 'Version history', 'Obsidian', 'Teams reminders', 'Copy for Loop', 'Plan']) {
     await expect(drawer.getByRole('checkbox', { name })).toBeChecked();
   }
+
+  // What an extra adds (Copy for Loop's button, the Plan view's link) goes the moment it's off, and comes back on.
+  const loop = page.locator('#plugin-buttons').getByRole('button', { name: 'Copy for Loop' });
+  const planLink = page.locator('.nav-link[data-view="plan"]');
+  await expect(loop).toBeVisible();
+  await drawer.getByRole('checkbox', { name: 'Copy for Loop' }).uncheck();
+  await expect(loop).toBeHidden();
+  await drawer.getByRole('checkbox', { name: 'Plan' }).uncheck();
+  await expect(planLink).toBeHidden();
+  const restart = drawer.getByText('Restart Todo Tracker to switch it on.');
+  await expect(restart).toBeHidden();
+  await drawer.getByRole('checkbox', { name: 'Copy for Loop' }).check();
+  await expect(loop).toBeVisible();
+  await drawer.getByRole('checkbox', { name: 'Plan' }).check();
+  await expect(planLink).toBeVisible();
+
+  // One with background work stops at once too (and, started with the app, comes back without a restart).
   await drawer.getByRole('checkbox', { name: 'Teams reminders' }).uncheck();
-  await expect(drawer).toContainText('Restart Todo Tracker to apply');
   const plugins = await (await request.get('/api/plugins', { headers: { Authorization: `Bearer ${token}` } })).json();
-  expect(plugins.find((p) => p.id === 'teams').enabled).toBe(true); // still running until the restart
+  expect(plugins.find((p) => p.id === 'teams').enabled).toBe(false);
   await drawer.getByRole('checkbox', { name: 'Teams reminders' }).check();
+  await expect(restart).toBeHidden();
 });
 
 test('Sync: the panel says where it syncs and sync can be switched off', async ({ page, request }) => {

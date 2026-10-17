@@ -329,6 +329,28 @@ public final class TaskBoard {
         return reminder
     }
 
+    /// Records the order of the tasks someone sees in Do now (TaskBoard.ArrangeNow in C#, same rules): only the places
+    /// those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks.
+    public func arrangeNow(_ ids: [UUID], now: Date) throws {
+        guard Set(ids).count == ids.count else { throw BoardError.invalid("Each task can appear only once.") }
+        for id in ids { _ = try get(id) }
+        let arranged = Set(ids)
+        let slots = nowOrder.indices.filter { arranged.contains(nowOrder[$0]) }
+        var result: [UUID]
+        if slots.count == ids.count {
+            // Same set of places: keep them, fill them in the new order.
+            result = nowOrder
+            for (k, slot) in slots.enumerated() { result[slot] = ids[k] }
+        } else {
+            let start = nowOrder.firstIndex(where: arranged.contains)
+            let at = start.map { nowOrder[..<$0].filter { !arranged.contains($0) }.count } ?? 0
+            result = nowOrder.filter { !arranged.contains($0) }
+            result.insert(contentsOf: ids, at: at)
+        }
+        nowOrder = result.filter { find($0).map { !$0.isDone } ?? false }
+        nowArrangedAt = now
+    }
+
     public func dismissReminder(_ id: UUID, reminderId: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         guard let reminder = item.reminders.first(where: { $0.id == reminderId }) else {

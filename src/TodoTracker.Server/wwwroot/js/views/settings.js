@@ -49,12 +49,14 @@ export function createSettingsView(ctx) {
   }
 
   function plugins(list) {
-    const note = h('p', { class: 'muted small', hidden: true, role: 'status' }, 'Restart Todo Tracker to apply the change.');
+    const note = h('p', { class: 'muted small', hidden: true, role: 'status' }, 'Restart Todo Tracker to switch it on.');
     const row = (p) => {
       const toggle = h('input', { type: 'checkbox', checked: p.enabled, 'aria-label': p.name, onchange: async () => {
         try {
           const result = await ctx.api(`/api/plugins/${encodeURIComponent(p.id)}`, { method: 'PUT', body: { enabled: toggle.checked } });
           if (result.restartRequired) note.hidden = false;
+          // Off (or a live extra on): its buttons, menus and views follow at once.
+          await ctx.reloadPlugins?.();
         } catch (err) {
           toggle.checked = !toggle.checked;
           ctx.toast(err.message, 'error');

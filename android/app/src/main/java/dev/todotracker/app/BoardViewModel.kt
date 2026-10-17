@@ -293,6 +293,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissReminder(id: UUID, reminderId: UUID) = change(null) { board.dismissReminder(id, reminderId, now = it) }
 
+    /** Do something else first: the task moves one down Do now (the next one becomes the focus). */
+    fun skip(id: UUID) {
+        val ids = dashboard.now.map { it.item.id }.toMutableList()
+        val i = ids.indexOf(id)
+        if (i < 0 || i + 1 >= ids.size) return
+        java.util.Collections.swap(ids, i, i + 1)
+        change(null) { board.arrangeNow(ids, now = it) }
+    }
+
     fun addNote(id: UUID, text: String) = change("Note saved") { board.addNote(id, text, now = it) }
 
     fun addGroup(name: String) = change(null) { selectedGroup = board.addGroup(name, now = it).id }

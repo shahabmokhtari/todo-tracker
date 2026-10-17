@@ -52,10 +52,15 @@ public sealed record PlanBlockDto(Guid Id, string Title, IReadOnlyList<string> P
 /// <summary>A deadline that falls in the shown days (a marker on its day).</summary>
 public sealed record PlanDeadlineDto(Guid Id, string Title, DateTimeOffset Deadline, bool Done);
 
-/// <summary>Something to do that isn't planned yet (in Do now order), to drag onto the plan.</summary>
-public sealed record PlanTaskDto(Guid Id, string Title, IReadOnlyList<string> Breadcrumb, string? Icon, string? Accent, string Priority, int Minutes);
+/// <summary>
+/// Something to do that isn't planned yet, to drag onto the plan: in Do now order, or (in <see cref="PlanDto.Later"/>)
+/// put off: snoozed, waiting for another task, or a repeating task until its next time (<paramref name="WakeAt"/>).
+/// </summary>
+public sealed record PlanTaskDto(Guid Id, string Title, IReadOnlyList<string> Breadcrumb, string? Icon, string? Accent, string Priority, int Minutes,
+    string? Repeat = null, DateTimeOffset? WakeAt = null, string? WaitingFor = null);
 
-public sealed record PlanDto(string From, int Days, PlanSettings Settings, IReadOnlyList<PlanBlockDto> Blocks, IReadOnlyList<PlanDeadlineDto> Deadlines, IReadOnlyList<PlanTaskDto> Unplanned);
+public sealed record PlanDto(string From, int Days, PlanSettings Settings, IReadOnlyList<PlanBlockDto> Blocks, IReadOnlyList<PlanDeadlineDto> Deadlines, IReadOnlyList<PlanTaskDto> Unplanned,
+    IReadOnlyList<PlanTaskDto> Later);
 
 public sealed record PlanRequest(DateTimeOffset? Start = null, int? Minutes = null);
 
@@ -90,10 +95,13 @@ internal static class PlanEndpoints
                     .OrderBy(i => i.Deadline)
                     .Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))
                     .ToList();
-                var unplanned = Agenda.Build(b, now, 0, group).Now.Where(e => e.Item.PlannedAt is null || e.Item.PlannedAt + e.Item.PlannedLength <= now)
-                    .Select(e => new PlanTaskDto(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes))
-                    .ToList();
-                return new PlanDto(first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), count, settings.PlanFor(Key(group)), blocks, deadlines, unplanned);
+                var agenda = Agenda.Build(b, now, 0, group);
+                bool NotPlanned(AgendaEntry e) => e.Item.PlannedAt is null || e.Item.PlannedAt + e.Item.PlannedLength <= now;
+                PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
+                    e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title);
+                var unplanned = agenda.Now.Where(NotPlanned).Select(Task).ToList();
+                var later = agenda.Waiting.Where(NotPlanned).Select(Task).ToList();
+                return new PlanDto(first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), count, settings.PlanFor(Key(group)), blocks, deadlines, unplanned, later);
             });
         });
 

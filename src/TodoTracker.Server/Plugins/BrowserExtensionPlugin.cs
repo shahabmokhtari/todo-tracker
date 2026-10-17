@@ -96,7 +96,9 @@ public sealed class BrowserExtensionPlugin : ITodoPlugin
 {
     public const string ClaimPath = "/api/plugins/browser-extension/claim";
 
-    public PluginInfo Info { get; } = new("browser-extension", "Browser extension", "Edge, Chrome and Safari: see what to do now, add tasks and save notes from the page you're on.");
+    public const string Id = "browser-extension";
+
+    public PluginInfo Info { get; } = new(Id, "Browser extension", "Edge, Chrome and Safari: see what to do now, add tasks and save notes from the page you're on.", Live: true);
 
     public string? WebModule => "/js/plugins/browser-extension.js";
 

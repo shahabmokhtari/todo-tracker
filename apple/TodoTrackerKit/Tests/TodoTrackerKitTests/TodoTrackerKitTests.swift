@@ -224,6 +224,23 @@ final class AgendaTests: XCTestCase {
         XCTAssertEqual(d.recentNotes.map(\.note.text), ["second"])
         XCTAssertEqual(d.waiting.first?.stepLabel, "Step 2 of 2")
     }
+
+    func testArrangingDoNowPutsTheSkippedTaskSecondAndKeepsOtherTasksPlaces() throws {
+        let board = TaskBoard()
+        let a = try board.addTask(NewTask("A", priority: .high), now: t0)
+        let b = try board.addTask(NewTask("B"), now: t0)
+        let c = try board.addTask(NewTask("C"), now: t0)
+        XCTAssertEqual(Agenda.build(board, now: t0).now.map(\.item.id), [a.id, b.id, c.id])
+
+        try board.arrangeNow([b.id, a.id, c.id], now: t0)
+        XCTAssertEqual(Agenda.build(board, now: t0).now.map(\.item.id), [b.id, a.id, c.id])
+        XCTAssertEqual(board.nowArrangedAt, t0)
+
+        // Only the arranged tasks' places are reused (another tab's order stays).
+        try board.arrangeNow([c.id, b.id], now: t0)
+        XCTAssertEqual(board.nowOrder, [c.id, a.id, b.id])
+        XCTAssertThrowsError(try board.arrangeNow([a.id, a.id], now: t0))
+    }
 }
 
 final class PomodoroAndFormattingTests: XCTestCase {

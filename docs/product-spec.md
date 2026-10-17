@@ -201,9 +201,11 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   on their own count. Archived tasks are left out. Each row can be reopened (a slip of the finger is undone in place).
   Same rule in every core (`Agenda.DoneToday`/`doneToday`), tested in C#, Swift and Kotlin. A repeating task done today
   counts too (it has moved on to its next time); *Reopen* on it means *not done after all*.
-* Card actions: ✓ done, 🔕 dismiss, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
-  time…*, *After another task*), ✎ inline note,
-  ▶ focus, and ⋯ (add subtask, edit in browser, open report).
+* Card actions: ✓ mark done, ↩ bring back, ⏰ snooze menu (the quick choices with when each ends, *Pick a
+  time…*, *After another task*), 🗒 inline note (a sticky note: a pen would mean "edit"),
+  ▶ focus, and ⋯ (dismiss reminder, add subtask, edit in browser, copy link, open report). The focus card says
+  **Mark done** (a bare "Done" read as "close this") and **Skip** (do something else first: it moves down one; it
+  was an unlabeled arrow that looked like a menu). Same on the web, Mac/iOS and Android.
 * Native toasts offer Done and Snooze 1h. `Ctrl+Alt+Space` opens quick capture from any app. There is an optional
   *Start with Windows*.
 * The menu has: Position (with *Make room for full-screen Remote Desktop*), Always on top, Hide the sidebar, Connect an
@@ -351,8 +353,10 @@ links, wiki-link attachments. Point the app at a folder inside an Obsidian vault
 tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidian://open?path=…`).
 
 ### Plugins and Ask AI
-Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, version history, Obsidian, Teams)
-that can be switched off; the choice lives in `plugins.json` and applies after a restart. Ask AI drives GitHub Copilot
+Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, Plan, version history, Obsidian,
+browser extension, sync, connectors, Copy for Loop, Teams) that can be switched off; the choice lives in `plugins.json`.
+Off applies at once everywhere (UI, API, background work); extras without background work also come on at once, the
+others at the next start. Ask AI drives GitHub Copilot
 CLI or Claude Code over the Agent Client Protocol with Todo Tracker's MCP tools attached, or a model reached with an API
 key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the same tools. Reading needs no permission;
 changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and

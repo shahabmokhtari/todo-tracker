@@ -325,6 +325,14 @@ public final class BoardModel: ObservableObject {
 
     public func bringBack(_ id: UUID) { change(nil, server: .bringBack(id)) { try board.clearNextAction(id, now: $0) } }
 
+    /// Do something else first: the task moves one down Do now (the next one becomes the focus).
+    public func skip(_ id: UUID) {
+        var ids = dashboard.now.map(\.item.id)
+        guard let i = ids.firstIndex(of: id), i + 1 < ids.count else { return }
+        ids.swapAt(i, i + 1)
+        change(nil, server: .arrangeNow(ids)) { try board.arrangeNow(ids, now: $0) }
+    }
+
     public func dismissReminder(_ id: UUID, reminderId: UUID) {
         change(nil, server: .dismissReminder(id, reminderId: reminderId)) { try board.dismissReminder(id, reminderId: reminderId, now: $0) }
     }

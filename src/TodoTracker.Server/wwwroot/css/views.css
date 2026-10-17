@@ -571,6 +571,10 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .plan-unplanned { padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); max-height: 70vh; overflow: auto; }
 .plan-unplanned h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #64748b); }
 .plan-unplanned ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.plan-unplanned .plan-later-head { margin-top: 14px; }
+.plan-task.later { opacity: .8; }
+.plan-back { display: block; }
+.plan-back-chip { font-size: 11px; }
 .plan-task { display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); cursor: grab; border-left: 3px solid var(--task-accent, transparent); }
 .plan-task:focus-visible { outline: 2px solid var(--accent); }
 .plan-task.dragging, .plan-block.dragging { opacity: .5; }

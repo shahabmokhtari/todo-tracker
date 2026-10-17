@@ -171,14 +171,15 @@ public sealed class SettingsStore
 }
 
 /// <summary>Posts reminder Adaptive Cards to a Teams Workflows (incoming webhook) URL, if one is configured.</summary>
-public sealed class TeamsWebhookNotifier(IHttpClientFactory httpClients, SettingsStore settings, TodoTrackerServerOptions options) : IReminderNotifier
+public sealed class TeamsWebhookNotifier(IHttpClientFactory httpClients, SettingsStore settings, TodoTrackerServerOptions options, Plugins.PluginHost? plugins = null) : IReminderNotifier
 {
     public const string HttpClientName = "teams";
 
     public async Task NotifyAsync(ReminderNotification notification, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(notification);
-        if (settings.Current.TeamsWebhookUrl is not { } url)
+        // Switched off since the app started: no more cards.
+        if (settings.Current.TeamsWebhookUrl is not { } url || plugins?.IsSwitchedOff("teams") == true)
         {
             return;
         }

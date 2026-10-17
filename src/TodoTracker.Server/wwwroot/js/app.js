@@ -389,11 +389,13 @@ function renderFocus(d) {
   withAccent(el, f.accent);
   // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
   sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
+  // Said in words: an unlabeled arrow among labeled buttons read as a menu.
   if (blockIds(f.id).length > 1) {
-    el.querySelector('.focus-top').append(h('button', {
-      class: 'icon-btn order-btn', type: 'button', 'aria-label': 'Do something else first', title: 'Do something else first (Alt+↓)',
+    const bar = el.querySelector('.actions.big');
+    bar.insertBefore(actionButton({
+      name: 'Skip', iconName: 'down', big: true, title: 'Do something else first: moves this one down the list (Alt+↓)',
       onclick: () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id),
-    }, icon('down', { size: 16 })));
+    }), bar.lastElementChild);
   }
   $('#focus').replaceChildren(el);
 }
@@ -621,11 +623,11 @@ function actions(c, { waiting = false, big = false } = {}) {
   const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: (e) => { e.preventDefault(); finish(); } },
     noteInput, h('button', { class: 'btn', type: 'submit', title: 'Finish this note (Enter)', 'aria-label': 'Finish note' }, icon('check', { size: 16 }), 'Finish'));
 
-  if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Done', iconName: 'check', big, tone: 'ok', primary: true, onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
-  if (c.needsAttention && c.reminderId) bar.append(actionButton({ name: 'Dismiss', iconName: 'bellOff', big, title: 'Dismiss reminder', onclick: () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`)) }));
+  // "Mark done", not "Done": next to a panel's close button a bare "Done" reads as "I'm finished here".
+  if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Mark done', iconName: 'check', big, tone: 'ok', primary: true, title: 'Mark this task done', onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
   if (waiting) bar.append(actionButton({ name: 'Do now', iconName: 'undo', big, title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }));
   bar.append(snoozeButton(c, big));
-  bar.append(actionButton({ name: 'Note', iconName: 'pencil', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
+  bar.append(actionButton({ name: 'Note', iconName: 'note', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
   if (!waiting) bar.append(actionButton({ name: 'Focus', iconName: 'target', big, tone: 'warn', title: 'Start a focus session (Pomodoro)', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
   if (!waiting) {
     bar.append(c.timing
@@ -634,7 +636,37 @@ function actions(c, { waiting = false, big = false } = {}) {
   }
   // Said out loud: the title opens it too, but nothing else told you so.
   bar.append(actionButton({ name: big ? 'Details' : 'Open', iconName: 'expand', big, title: 'Open details: subtasks, notes, time, files', onclick: () => openDrawer(c.id) }));
+  bar.append(moreButton(c, big));
   return h('div', { class: 'action-wrap' }, bar, noteBox);
+}
+
+/** The rarer actions (dismissing a reminder, copying a link, what extras add) behind ⋯, so the buttons stay few. */
+function moreButton(c, big = false) {
+  const item = (iconName, label, onclick) => h('button', { role: 'menuitem', class: 'wide', onclick }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label));
+  const menu = h('div', { class: 'menu more-menu', hidden: true, role: 'menu', 'aria-label': `More for ${c.title}` });
+  const fill = () => menu.replaceChildren(
+    ...(c.needsAttention && c.reminderId ? [item('bellOff', 'Dismiss reminder', () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`), 'Reminder dismissed'))] : []),
+    item('link', 'Copy link', () => copyTaskLink(c)),
+    ...visibleTaskActions().map((a) => item(a.iconName, a.label, () => a.onClick(c.id))));
+  const button = h('button', { class: big ? 'btn' : 'icon-btn', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => {
+    e.stopPropagation();
+    const opening = menu.hidden;
+    closeMenus();
+    if (!opening) return;
+    fill();
+    menu.hidden = false;
+    fitMenu(menu);
+    button.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button')?.focus();
+  } }, icon('more', { size: big ? 16 : 18 }));
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMenus(); button.focus(); }
+  });
+  return h('span', { class: 'menu-wrap' }, button, menu);
 }
 
 /** The quick choices come from the server (its clock and zone decide "this evening", "next Monday"…); kept a minute. */
@@ -1037,7 +1069,7 @@ async function openDrawer(id, { full = null } = {}) {
       h('span', { class: 'prio-pill' }, meta.label),
       h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
       item.obsidianUrl && pluginOn('obsidian') ? obsidianAnchor(item.obsidianUrl, { class: 'icon-btn', iconOnly: true, file: item.file }) : null,
-      h('span', { class: 'task-actions' }, ...taskActions.map((a) => taskActionButton(a, id))),
+      h('span', { class: 'task-actions' }, ...visibleTaskActions().map((a) => taskActionButton(a, id))),
       h('button', {
         class: 'icon-btn', type: 'button', 'aria-label': 'Copy link', title: 'Copy a link that opens this task in the app (paste it in a note, chat, or mail)',
         onclick: () => copyTaskLink(item),
@@ -1092,7 +1124,7 @@ async function openDrawer(id, { full = null } = {}) {
           const open = item.children.filter((c) => !c.completedAt).length;
           if (open && !confirm(`Also mark ${open} open subtask${open > 1 ? 's' : ''} as done?`)) return;
           act(post(`/api/items/${id}/complete`), 'Done');
-        } }, icon('check', { size: 16 }), 'Done'),
+        } }, icon('check', { size: 16 }), 'Mark done'),
       item.completedAt ? null : snoozeButton(item, true),
       h('a', { class: 'btn ghost', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, icon('report', { size: 16 }), 'Full report'),
       h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks? (It goes to the vault's trash.)`)) { autosave.cancel(); closeDrawer(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
@@ -1217,8 +1249,13 @@ async function openPanel(title, content, { iconName = null, onClose = null } = {
   return true;
 }
 
-/** Buttons plugins add to every task's details (Copy for Loop…): onClick gets the task's id. */
+/** Buttons plugins add to every task's details and ⋯ menu (Copy for Loop…): onClick gets the task's id. */
 const taskActions = [];
+/** Each loaded plugin module, and the plugins it serves (the sync module serves OneDrive, iCloud and gist). */
+const loadedModules = new Map();
+const moduleOn = (module) => [...(loadedModules.get(module) ?? [])].some((id) => pluginOn(id));
+/** What plugins added that is on now (switched off in Settings: gone at once, no reload). */
+const visibleTaskActions = () => taskActions.filter((a) => !a.module || moduleOn(a.module));
 const taskActionButton = (a, id) => h('button', { class: 'icon-btn', type: 'button', 'aria-label': a.label, title: a.title ?? a.label, onclick: () => a.onClick(id) }, icon(a.iconName));
 
 /** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
@@ -1237,14 +1274,35 @@ const pluginHost = {
     taskActions.push(action);
     // A task opened from a link shows before the plugins load: it gets the button too.
     const id = $('#drawer').dataset.itemId;
-    if (id) $('#drawer .task-actions')?.append(taskActionButton(action, id));
+    if (id && (!action.module || moduleOn(action.module))) $('#drawer .task-actions')?.append(taskActionButton(action, id));
   },
 };
+
+/** The host a module gets: what it adds is tagged with it, so it hides when its plugin is switched off. */
+function hostFor(module) {
+  return {
+    ...pluginHost,
+    /** Whether this module's plugin is on now (e.g. before acting on a link to its view). */
+    on: () => moduleOn(module),
+    addHeaderButton(button) {
+      const el = pluginHost.addHeaderButton(button);
+      el.dataset.module = module;
+      return el;
+    },
+    addTaskAction(action) {
+      pluginHost.addTaskAction({ ...action, module });
+    },
+  };
+}
 
 /** Whether a built-in feature (plugin) is on. Until the list loads everything shows. */
 const pluginOn = (id) => !state.plugins || state.plugins.has(id);
 
-/** Loads the UI of each enabled plugin (built-in modules served by the app). One failing never breaks the board. */
+/**
+ * Loads the UI of each enabled plugin (built-in modules served by the app), and again after one is switched on or off
+ * in Settings: what a plugin that's off added is hidden at once, one switched on is loaded. One failing never breaks
+ * the board.
+ */
 async function loadPlugins() {
   let plugins = [];
   try {
@@ -1253,17 +1311,26 @@ async function loadPlugins() {
     return;
   }
   state.plugins = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
-  // Views that are extras (Plan) leave the navigation when they're off.
+  // Views that are extras (Plan) leave the navigation when they're off (and the view, if it's open).
   document.querySelectorAll('.nav-link[data-view="plan"], .bottom-link[data-view="plan"]').forEach((a) => { a.hidden = !pluginOn('plan'); });
+  if (!pluginOn('plan') && location.hash.startsWith('#/plan')) location.hash = '#/';
   if (state.dashboard) render();
   for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
+    if (loadedModules.has(p.webModule)) {
+      loadedModules.get(p.webModule).add(p.id);
+      continue;
+    }
+    loadedModules.set(p.webModule, new Set([p.id]));
     try {
       const module = await import(p.webModule);
-      await module.activate?.(pluginHost);
+      await module.activate?.(hostFor(p.webModule));
     } catch (err) {
       console.warn(`Plugin ${p.id} failed to load`, err);
     }
   }
+  document.querySelectorAll('[data-module]').forEach((el) => { el.hidden = !moduleOn(el.dataset.module); });
+  const open = $('#drawer').dataset.itemId;
+  $('#drawer .task-actions')?.replaceChildren(...(open ? visibleTaskActions().map((a) => taskActionButton(a, open)) : []));
 }
 
 // ---------- plugins panel ----------
@@ -1796,6 +1863,7 @@ const ctx = {
   closeDrawer,
   drawerOpen: () => !$('#drawer').hidden,
   pluginOn: (id) => pluginOn(id),
+  reloadPlugins: () => loadPlugins(),
   saveFocus: () => { lastFocused = document.activeElement; },
   restoreFocus: () => { lastFocused?.focus?.(); lastFocused = null; },
   views: {},

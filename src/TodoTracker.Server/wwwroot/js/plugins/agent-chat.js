@@ -386,7 +386,7 @@ export function activate(host) {
   host.addHeaderButton({ iconName: 'chat', label: 'Ask AI', onClick: open });
   // #/ask (the desktop's "open the whole chat") opens the chat over the view on screen, without reloading the app.
   const askRoute = () => {
-    if (location.hash !== '#/ask') return;
+    if (location.hash !== '#/ask' || host.on?.() === false) return;
     history.replaceState(null, '', `#/${localStorage.getItem('tt.view') || 'today'}`);
     open();
   };

@@ -8,8 +8,8 @@ using TodoTracker.Core;
 
 namespace TodoTracker.Server.Plugins;
 
-/// <param name="Live">Switches on and off at once (its services are always there and check the switch);
-/// others apply after a restart.</param>
+/// <param name="Live">Switches on at once too (its services are always there and check the switch); others are
+/// switched off at once but on only after a restart.</param>
 public sealed record PluginInfo(string Id, string Name, string Description, bool DefaultEnabled = true, bool Live = false);
 
 /// <summary>What the app shows about a plugin (and the web module that adds its UI, when enabled).</summary>
@@ -20,7 +20,8 @@ public sealed record PluginToggle(bool Enabled);
 /// <summary>
 /// A feature that can be switched on or off: it adds services, endpoints under <c>/api/plugins/{id}</c>, and
 /// optionally a web module (a script in the embedded web UI). Plugins are built in and reviewed with the app; code
-/// from elsewhere is never loaded. Switching one on or off applies after a restart.
+/// from elsewhere is never loaded. Switching one off takes it away at once (UI, endpoints, background work); switching
+/// one on that wasn't started applies after a restart unless it's live.
 /// </summary>
 public interface ITodoPlugin
 {
@@ -50,6 +51,9 @@ public sealed class PluginSettings
         _path = Path.Combine(dataDirectory, "plugins.json");
     }
 
+    /// <summary>Raised after a plugin is switched on or off (any window or the API), with its id.</summary>
+    public event EventHandler<string>? Changed;
+
     public bool IsEnabled(PluginInfo plugin)
     {
         ArgumentNullException.ThrowIfNull(plugin);
@@ -69,6 +73,8 @@ public sealed class PluginSettings
             File.WriteAllText(_path, all.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
             _known = all;
         }
+
+        Changed?.Invoke(this, id);
     }
 
     private JsonObject Read()
@@ -126,7 +132,14 @@ public sealed class PluginHost
 
     public PluginSettings Settings { get; }
 
-    public bool IsRunning(string id) => Plugins.Any(p => p.Plugin.Info.Id == id && (p.Plugin.Info.Live ? Settings.IsEnabled(p.Plugin.Info) : p.Enabled));
+    /// <summary>
+    /// On now: switching a plugin off takes it away at once (its UI, endpoints and background work); switching on a
+    /// plugin that wasn't started needs a restart unless it's live.
+    /// </summary>
+    public bool IsRunning(string id) => Plugins.Any(p => p.Plugin.Info.Id == id && (p.Plugin.Info.Live || p.Enabled) && Settings.IsEnabled(p.Plugin.Info));
+
+    /// <summary>A built-in plugin that isn't on (false for an id that isn't a plugin).</summary>
+    public bool IsSwitchedOff(string id) => Plugins.Any(p => p.Plugin.Info.Id == id) && !IsRunning(id);
 
     public static void AddServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -172,7 +185,12 @@ public sealed class PluginHost
         {
             if (enabled || plugin.Info.Live)
             {
-                plugin.MapEndpoints(app.MapGroup($"/api/plugins/{plugin.Info.Id}").AddEndpointFilter(ApiEndpoints.MapDomainErrors));
+                var id = plugin.Info.Id;
+                plugin.MapEndpoints(app.MapGroup($"/api/plugins/{id}")
+                    .AddEndpointFilter(async (context, next) => host.IsRunning(id)
+                        ? await next(context).ConfigureAwait(false)
+                        : Results.Problem($"The {plugin.Info.Name} extra is off.", statusCode: StatusCodes.Status404NotFound))
+                    .AddEndpointFilter(ApiEndpoints.MapDomainErrors));
             }
         }
 
@@ -185,7 +203,7 @@ public sealed class PluginHost
 /// <summary>"Connect an AI app": ready-made setups for Claude, Copilot, VS Code, ChatGPT…</summary>
 public sealed class ConnectAiPlugin : ITodoPlugin
 {
-    public PluginInfo Info { get; } = new("connect-ai", "Connect AI apps", "Step-by-step setup for Claude, Copilot, VS Code, ChatGPT and other AI apps.");
+    public PluginInfo Info { get; } = new("connect-ai", "Connect AI apps", "Step-by-step setup for Claude, Copilot, VS Code, ChatGPT and other AI apps.", Live: true);
 
     public string? WebModule => "/js/plugins/connect-ai.js";
 
@@ -203,7 +221,7 @@ public sealed class ConnectAiPlugin : ITodoPlugin
 /// <summary>The focus timer (Pomodoro) in the dashboard and the sidebar.</summary>
 public sealed class FocusTimerPlugin : ITodoPlugin
 {
-    public PluginInfo Info { get; } = new("focus-timer", "Focus timer", "A Pomodoro-style timer linked to the task you're working on.");
+    public PluginInfo Info { get; } = new("focus-timer", "Focus timer", "A Pomodoro-style timer linked to the task you're working on.", Live: true);
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -213,7 +231,7 @@ public sealed class FocusTimerPlugin : ITodoPlugin
 /// <summary>The Plan view: a day or week grid to plan blocks of time for tasks (the data and API stay either way).</summary>
 public sealed class PlanPlugin : ITodoPlugin
 {
-    public PluginInfo Info { get; } = new("plan", "Plan", "A day and week planner: drag tasks onto times to plan blocks of work.");
+    public PluginInfo Info { get; } = new("plan", "Plan", "A day and week planner: drag tasks onto times to plan blocks of work.", Live: true);
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {
@@ -239,7 +257,7 @@ public sealed class HistoryPlugin : ITodoPlugin
 /// <summary>Open tasks and the tasks folder in Obsidian; keep tasks in an Obsidian vault.</summary>
 public sealed class ObsidianPlugin : ITodoPlugin
 {
-    public PluginInfo Info { get; } = new("obsidian", "Obsidian", "Open tasks in Obsidian and keep them in an Obsidian vault.");
+    public PluginInfo Info { get; } = new("obsidian", "Obsidian", "Open tasks in Obsidian and keep them in an Obsidian vault.", Live: true);
 
     public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options)
     {

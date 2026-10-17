@@ -248,6 +248,15 @@ public partial class App : Application
         window.Plugins = plugins;
         window.Sync = services.GetService<TodoTracker.Server.Plugins.Sync.SyncService>();
         _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
+        var sidebar = _viewModel;
+        plugins.Settings.Changed += (_, id) =>
+        {
+            // Switched in Settings (any window) or over the API: the sidebar follows without a restart.
+            if (id == "focus-timer")
+            {
+                Dispatcher.BeginInvoke(() => sidebar.ShowFocusTimer = plugins.IsRunning("focus-timer"));
+            }
+        };
         window.AppHost = _appHost;
         MainWindow = window;
         _window = window;

@@ -23,9 +23,14 @@ you're using is resized to sit next to the sidebar instead (turn this off in **�
 full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
 
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓. New tasks go below the ones you arranged, so your focus stays put. A reminder that
+or use its ↑/↓ buttons or Alt+↑/↓; **Skip** on the big card does something else first (it moves down one). New tasks
+go below the ones you arranged, so your focus stays put. A reminder that
 goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
 the web task panel.
+
+**On every card:** **Mark done**, **Later**, **Note** (the sticky note), **Focus**, **Timer**, and **⋯** for the
+rest: **Dismiss reminder** (keeps the task, stops showing the reminder), **Copy link**, and what extras add (Copy for
+Loop; Open in Obsidian in the sidebar). Same on Windows, the web, Mac, iPhone and Android.
 
 Type a task in the box at the top and press Enter:
 
@@ -64,7 +69,9 @@ The web app (and the app window on Windows) has six views; switch with the side 
   task's work, deadline and finish.
 - **Plan**: your day or week as a time grid. Drag a task from *Not planned* onto a time to plan a block of work on it,
   drag the block to move it or its bottom edge to change how long; while a block is on, that task is the one to do
-  now. Each group keeps its own view (day or week, work hours or the whole day). An extra: switch it off in Settings.
+  now. Tasks you put off (snoozed, waiting for another task, a repeating task until its next time) are under
+  *Later*, with when each comes back, and marked on that day; drag them in too. Each group keeps its own view (day or
+  week, work hours or the whole day). An extra: switch it off in Settings.
 
 Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
 closes it). Its **Time** section starts or stops the timer and lists the time spent, which you can fix, remove or add
@@ -78,10 +85,10 @@ To set up a rollout, open the task (⋯ › *Edit details in browser* › *Add r
 and choose 24 hours between steps. Only the current step shows in **Do now**. When you finish it, the next step
 waits 24 hours and then comes back with a reminder.
 
-**Links to a task.** The link button in a task's header (or **Copy link** on a sidebar card) copies
+**Links to a task.** The link button in a task's header (or **⋯ › Copy link** on any card) copies
 `todotracker://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
 named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
-starts if it wasn't running), on macOS and iPhone the task's details open, on Android a card with Done and Add note,
+starts if it wasn't running), on macOS and iPhone the task's details open, on Android a card with Mark done and Add note,
 and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
 it with every task (`link`). The app registers the link for you when it starts (Windows: per user, no admin rights;
 Linux: `install.sh`).

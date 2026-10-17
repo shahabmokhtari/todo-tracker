@@ -1,6 +1,11 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import TodoTrackerKit
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 extension Color {
     init(hex: String) {
@@ -457,20 +462,24 @@ struct FocusCard: View {
             FlowLayout(spacing: 6) {
                 if entry.state == .actionable {
                     Button { model.complete(entry.item.id) } label: {
-                        Label("Done", systemImage: "checkmark").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                        // "Mark done", not "Done": a bare "Done" reads as "close this".
+                        Label("Mark done", systemImage: "checkmark").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                             .padding(.horizontal, 14).padding(.vertical, 7)
                             .background(Capsule().fill(Theme.brand))
                     }
                     .buttonStyle(.plain)
                 }
-                if let reminder = entry.dueReminder {
-                    PillButton(title: "Dismiss", systemImage: "bell.slash") { model.dismissReminder(entry.item.id, reminderId: reminder.id) }
-                }
                 SnoozeMenu(model: model, id: entry.item.id, pill: true)
-                PillButton(title: "Note", systemImage: "square.and.pencil") { model.toggleNote(entry.item.id) }
+                PillButton(title: "Note", systemImage: "note.text") { model.toggleNote(entry.item.id) }
                 PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
                 let timing = model.runningTimer?.item.id == entry.item.id
                 PillButton(title: timing ? "Stop timer" : "Timer", systemImage: timing ? "stop.circle" : "stopwatch") { model.toggleTimer(entry.item.id) }
+                if model.dashboard.now.count > 1 {
+                    // Said in words: an unlabeled arrow among labeled buttons reads as a menu.
+                    PillButton(title: "Skip", systemImage: "arrow.down") { model.skip(entry.item.id) }
+                        .help("Do something else first: moves this one down the list")
+                }
+                MoreMenu(model: model, entry: entry, pill: true)
             }
             if model.openNotes.contains(entry.item.id) {
                 NoteField(model: model, id: entry.item.id)
@@ -485,6 +494,49 @@ struct FocusCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(entry.needsAttention ? Theme.attention : Theme.brand, lineWidth: 1.5))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
+    }
+}
+
+/// The rarer actions behind ⋯ (dismissing a reminder, copying a link), so the buttons stay few.
+struct MoreMenu: View {
+    @ObservedObject var model: BoardModel
+    let entry: AgendaEntry
+    var pill = false
+
+    var body: some View {
+        Menu {
+            if let reminder = entry.dueReminder {
+                Button { model.dismissReminder(entry.item.id, reminderId: reminder.id) } label: { Label("Dismiss reminder", systemImage: "bell.slash") }
+            }
+            Button { Clipboard.copy(TaskLinks.forTask(entry.item.id)) } label: { Label("Copy link", systemImage: "link") }
+        } label: {
+            if pill {
+                Image(systemName: "ellipsis").font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .background(Capsule().fill(.background))
+                    .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
+            } else {
+                Image(systemName: "ellipsis")
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("More")
+        .help("More")
+    }
+}
+
+/// Plain text on the clipboard (macOS and iOS).
+enum Clipboard {
+    static func copy(_ text: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #elseif canImport(UIKit)
+        UIPasteboard.general.string = text
+        #endif
     }
 }
 
@@ -622,21 +674,19 @@ struct TaskRow: View {
                 }
                 HStack(spacing: 14) {
                     if entry.state == .actionable {
-                        iconButton("checkmark", "Done") { model.complete(entry.item.id) }
-                    }
-                    if let reminder = entry.dueReminder {
-                        iconButton("bell.slash", "Dismiss reminder") { model.dismissReminder(entry.item.id, reminderId: reminder.id) }
+                        iconButton("checkmark", "Mark done") { model.complete(entry.item.id) }
                     }
                     if entry.state == .waiting && !entry.needsAttention {
                         iconButton("arrow.uturn.backward", "Bring back now") { model.bringBack(entry.item.id) }
                     }
                     SnoozeMenu(model: model, id: entry.item.id)
-                    iconButton("square.and.pencil", "Note") { model.toggleNote(entry.item.id) }
+                    iconButton("note.text", "Note") { model.toggleNote(entry.item.id) }
                     if entry.state != .waiting {
                         iconButton("play", "Focus") { model.startFocus(entry.item.id) }
                         let timing = model.runningTimer?.item.id == entry.item.id
                         iconButton(timing ? "stop.circle" : "stopwatch", timing ? "Stop the timer" : "Time this task") { model.toggleTimer(entry.item.id) }
                     }
+                    MoreMenu(model: model, entry: entry)
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)

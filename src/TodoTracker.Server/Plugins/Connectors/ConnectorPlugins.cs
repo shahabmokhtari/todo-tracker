@@ -111,7 +111,7 @@ public sealed class MicrosoftToDoConnectorPlugin : ConnectorPlugin
 /// <summary>"Copy for Loop": a group's tasks as a checklist to paste into Microsoft Loop (Loop has no API to write to).</summary>
 public sealed class LoopPlugin : ITodoPlugin
 {
-    public PluginInfo Info { get; } = new("loop", "Copy for Loop", "Copies a group's tasks as a checklist to paste into Microsoft Loop (or anything that takes markdown).");
+    public PluginInfo Info { get; } = new("loop", "Copy for Loop", "Copies a group's tasks as a checklist to paste into Microsoft Loop (or anything that takes markdown).", Live: true);
 
     public string? WebModule => "/js/plugins/loop.js";
 

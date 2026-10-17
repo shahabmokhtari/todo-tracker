@@ -317,6 +317,25 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_plan_lists_tasks_for_later_too_snoozed_and_repeating_with_when_they_come_back()
+    {
+        await _client.PostJson("/api/items", new { title = "Answer mail" });
+        var snoozed = await _client.PostJson("/api/items", new { title = "Renew passport" });
+        await _client.PostJson($"/api/items/{snoozed.Id()}/schedule", new { at = ServerFixture.T0.AddDays(2) });
+        var weekly = await _client.PostJson("/api/items", new { title = "Water the plants", repeat = "weekly" });
+        await _client.PostJson($"/api/items/{weekly.Id()}/complete", new { });
+
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=7");
+
+        Assert.Equal(["Answer mail"], plan["unplanned"]!.AsArray().Select(t => t!["title"]!.GetValue<string>()));
+        var later = plan["later"]!.AsArray();
+        Assert.Equal(["Renew passport", "Water the plants"], later.Select(t => t!["title"]!.GetValue<string>()));
+        Assert.Equal(ServerFixture.T0.AddDays(2), later[0]!["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.StartsWith("every week", later[1]!["repeat"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.True(later[1]!["wakeAt"]!.GetValue<DateTimeOffset>() > ServerFixture.T0);
+    }
+
+    [Fact]
     public async Task A_repeating_task_moves_on_when_done_and_its_rule_can_change()
     {
         var bad = await _client.PostAsJsonAsync("/api/items", new { title = "Plants", repeat = "now and then" });
