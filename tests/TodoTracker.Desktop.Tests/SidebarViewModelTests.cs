@@ -640,19 +640,19 @@ public sealed class SidebarViewModelTests : IDisposable
         var item = await Seed("Design doc");
         await _store.UpdateAsync(b => b.Plan(item.Id, T0, 120, Actor.User, T0));
         await _vm.RefreshAsync();
-        Assert.EndsWith("⚡ 2 of 10 planned today.", _vm.Summary, StringComparison.Ordinal);
+        Assert.Equal("⚡ 2 of 10 planned today.", _vm.EnergyText);
 
         await _vm.SetEnergyCommand.ExecuteAsync(new CardEnergyRequest(_vm.Focus!, 3));
         await _vm.SetDailyEnergyCommand.ExecuteAsync(4);
         Assert.Equal(3, _vm.Focus!.Energy);
         Assert.Contains(_vm.Focus.Chips, c => c.Text == "⚡⚡⚡" && c.Tone == "energy");
-        Assert.EndsWith("⚡ 6 of 4 planned today: 2 too much.", _vm.Summary, StringComparison.Ordinal);
+        Assert.Equal("⚡ 6 of 4 planned today: 2 too much.", _vm.EnergyText);
         Assert.True(_vm.EnergyOver);
 
         // The Energy extra switched off: no energy anywhere in the sidebar.
         _vm.ShowEnergy = false;
         await _vm.RefreshAsync();
-        Assert.DoesNotContain("⚡", _vm.Summary, StringComparison.Ordinal);
+        Assert.Null(_vm.EnergyText);
         Assert.DoesNotContain(_vm.Focus!.Chips, c => c.Tone == "energy");
     }
 

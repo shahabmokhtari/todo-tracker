@@ -190,7 +190,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         WaitingCount = snapshot.Waiting.Count;
         HasAttention = snapshot.HasAttention;
         NextUpText = snapshot.NextUp;
-        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count) + (snapshot.Energy is { } energy ? " " + energy : string.Empty);
+        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
+        EnergyText = snapshot.Energy;
         EnergyOver = snapshot.EnergyOver;
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
         Break.Update(snapshot.Pomodoro, now, snapshot.NextFocus);
@@ -356,6 +357,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     public partial bool ShowEnergy { get; set; } = true;
 
     partial void OnShowEnergyChanged(bool value) => QueueRefresh();
+
+    /// <summary>Today's energy ("⚡ 4.5 of 10 planned today."), once something is planned today; null: nothing to say.</summary>
+    [ObservableProperty]
+    public partial string? EnergyText { get; set; }
 
     /// <summary>Today's plan takes more energy than there is in a day.</summary>
     [ObservableProperty]
