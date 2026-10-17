@@ -50,6 +50,7 @@ public sealed class MacAppContractTests : IAsyncLifetime
         var reminder = (await Send(HttpMethod.Get, $"/api/items/{step}"))!["reminders"]!.AsArray().Single()!.Id();
         await Send(HttpMethod.Post, $"/api/items/{step}/reminders/{reminder}/dismiss");
         await Send(HttpMethod.Post, $"/api/items/{step}/schedule", """{"clear":true}""");
+        await Send(HttpMethod.Post, "/api/now/order", $$"""{"ids":["{{step}}","{{task}}"]}""");
         await Send(HttpMethod.Post, $"/api/items/{step}/complete");
         await Send(HttpMethod.Post, $"/api/items/{step}/reopen");
         await Send(HttpMethod.Post, "/api/pomodoro/start", $$"""{"itemId":"{{task}}"}""");

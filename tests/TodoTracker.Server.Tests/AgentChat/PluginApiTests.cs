@@ -31,7 +31,7 @@ public sealed class PluginApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Plugins_are_listed_with_their_web_module_and_can_be_switched_off_after_a_restart()
+    public async Task Plugins_are_listed_with_their_web_module_and_switching_one_off_takes_it_away_at_once()
     {
         var plugins = (await _client.GetJson("/api/plugins")).AsArray();
         Assert.Contains(plugins, p => p!["id"]!.GetValue<string>() == "teams");
@@ -40,7 +40,16 @@ public sealed class PluginApiTests : IAsyncLifetime
         Assert.Equal("/js/plugins/agent-chat.js", chat["webModule"]!.GetValue<string>());
 
         var off = await (await _client.PutAsJsonAsync("/api/plugins/agent-chat", new { enabled = false })).Json();
-        Assert.True(off["restartRequired"]!.GetValue<bool>());
+        Assert.False(off["restartRequired"]!.GetValue<bool>());
+        var listed = (await _client.GetJson("/api/plugins")).AsArray().Single(p => p!["id"]!.GetValue<string>() == "agent-chat")!;
+        Assert.False(listed["enabled"]!.GetValue<bool>());
+        Assert.Null(listed["webModule"]);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, (await _client.GetAsync(new Uri("/api/plugins/agent-chat", UriKind.Relative))).StatusCode);
+
+        // Back on (it was started with the app): at once too.
+        Assert.False((await (await _client.PutAsJsonAsync("/api/plugins/agent-chat", new { enabled = true })).Json())["restartRequired"]!.GetValue<bool>());
+        (await _client.GetAsync(new Uri("/api/plugins/agent-chat", UriKind.Relative))).EnsureSuccessStatusCode();
+        await _client.PutAsJsonAsync("/api/plugins/agent-chat", new { enabled = false });
         var saved = await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "plugins.json"), TestContext.Current.CancellationToken);
 
         // The next start (another data folder with the same plugins.json) runs without it.
@@ -52,6 +61,38 @@ public sealed class PluginApiTests : IAsyncLifetime
             using var client = restarted.Client();
             Assert.False((await client.GetJson("/api/plugins")).AsArray().Single(p => p!["id"]!.GetValue<string>() == "agent-chat")!["enabled"]!.GetValue<bool>());
             Assert.False((await client.GetAsync(new Uri("/api/plugins/agent-chat", UriKind.Relative))).IsSuccessStatusCode);
+        }
+        finally
+        {
+            Directory.Delete(data, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Extras_that_only_change_what_the_app_shows_switch_on_and_off_without_a_restart()
+    {
+        var data = Directory.CreateTempSubdirectory("tt-plugins-").FullName;
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), "{\"obsidian\": false, \"loop\": false, \"plan\": false, \"focus-timer\": false, \"connect-ai\": false, \"browser-extension\": false, \"sync-gist\": false}", TestContext.Current.CancellationToken);
+            await using var server = await ServerFixture.StartAsync(o => o.DataDirectory = data);
+            using var client = server.Client();
+            bool On(JsonNode list, string id) => list.AsArray().Single(p => p!["id"]!.GetValue<string>() == id)!["enabled"]!.GetValue<bool>();
+
+            Assert.Equal(System.Net.HttpStatusCode.NotFound, (await client.GetAsync(new Uri("/api/plugins/connect-ai", UriKind.Relative))).StatusCode);
+            foreach (var id in new[] { "obsidian", "loop", "plan", "focus-timer", "connect-ai", "browser-extension" })
+            {
+                var result = await (await client.PutAsJsonAsync($"/api/plugins/{id}", new { enabled = true })).Json();
+                Assert.False(result["restartRequired"]!.GetValue<bool>(), id);
+                Assert.True(On(await client.GetJson("/api/plugins"), id), id);
+            }
+
+            (await client.GetAsync(new Uri("/api/plugins/connect-ai", UriKind.Relative))).EnsureSuccessStatusCode();
+            Assert.Equal("/js/plugins/loop.js", (await client.GetJson("/api/plugins")).AsArray().Single(p => p!["id"]!.GetValue<string>() == "loop")!["webModule"]!.GetValue<string>());
+
+            // One with background work that wasn't started (gist sync) still needs a restart to come on.
+            Assert.True((await (await client.PutAsJsonAsync("/api/plugins/sync-gist", new { enabled = true })).Json())["restartRequired"]!.GetValue<bool>());
+            Assert.False(On(await client.GetJson("/api/plugins"), "sync-gist"));
         }
         finally
         {

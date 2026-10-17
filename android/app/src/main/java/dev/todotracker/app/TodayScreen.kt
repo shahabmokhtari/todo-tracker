@@ -30,6 +30,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -172,7 +174,7 @@ private fun LinkedTaskDialog(item: WorkItem, vm: BoardViewModel, onNote: () -> U
             if (item.isDone) {
                 TextButton(onClick = { vm.reopen(item.id); close() }) { Text("Not done") }
             } else {
-                TextButton(onClick = { vm.complete(item.id); close() }) { Text("Done") }
+                TextButton(onClick = { vm.complete(item.id); close() }) { Text("Mark done") }
             }
         },
         dismissButton = {
@@ -276,7 +278,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Meta(entry)
-            Actions(entry, vm, onNote, onFocus)
+            Actions(entry, vm, onNote, onFocus, focus = true)
         }
     }
 }
@@ -293,17 +295,40 @@ private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, 
 }
 
 @Composable
-private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
+private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit, focus: Boolean = false) {
     // Wraps onto a second line on a narrow phone (every button stays in sight).
     @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (!entry.item.hasOpenChildren) Button(onClick = { vm.complete(entry.item.id) }) { Text("Done") }
-        entry.dueReminder?.let { r -> OutlinedButton(onClick = { vm.dismissReminder(entry.item.id, r.id) }) { Text("Dismiss") } }
+        // "Mark done", not "Done": a bare "Done" reads as "close this".
+        if (!entry.item.hasOpenChildren) Button(onClick = { vm.complete(entry.item.id) }) { Text("Mark done") }
         LaterMenu(entry.item.id, vm)
         TextButton(onClick = onNote) { Text("Note") }
         TextButton(onClick = { onFocus(entry.item.id) }) { Text("Focus") }
         val timing = vm.timer?.item?.id == entry.item.id
         TextButton(onClick = { vm.toggleTimer(entry.item.id) }) { Text(if (timing) "Stop timer" else "Timer") }
+        // Do something else first: this one moves down the list.
+        if (focus && vm.dashboard.now.size > 1) TextButton(onClick = { vm.skip(entry.item.id) }) { Text("Skip") }
+        MoreMenu(entry, vm)
+    }
+}
+
+/** The rarer actions behind ⋯ (dismissing a reminder, copying a link), so the buttons stay few. */
+@Composable
+private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
+    var open by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Box {
+        TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            entry.dueReminder?.let { r ->
+                DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
+            }
+            DropdownMenuItem(text = { Text("Copy link") }, onClick = {
+                open = false
+                context.getSystemService(android.content.ClipboardManager::class.java)
+                    ?.setPrimaryClip(android.content.ClipData.newPlainText("Task link", dev.todotracker.core.TaskLinks.forTask(entry.item.id)))
+            })
+        }
     }
 }
 

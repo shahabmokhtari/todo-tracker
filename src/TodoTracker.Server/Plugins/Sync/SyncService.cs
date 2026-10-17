@@ -59,7 +59,8 @@ public sealed class SyncService : IDisposable
     private static readonly TimeSpan LookAgain = TimeSpan.FromMinutes(10);
 
     private readonly VaultBoardStore _vault;
-    private readonly IReadOnlyList<ISyncProvider> _providers;
+    private readonly IReadOnlyList<ISyncProvider> _all;
+    private readonly Plugins.PluginHost? _plugins;
     private readonly string _dir;
     private readonly TimeProvider _time;
     private readonly Lock _lock = new();
@@ -70,11 +71,12 @@ public sealed class SyncService : IDisposable
     private bool _syncing;
     private string? _problem;
 
-    public SyncService(VaultBoardStore vault, IEnumerable<ISyncProvider> providers, TodoTrackerServerOptions options, TimeProvider? time = null)
+    public SyncService(VaultBoardStore vault, IEnumerable<ISyncProvider> providers, TodoTrackerServerOptions options, TimeProvider? time = null, Plugins.PluginHost? plugins = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
-        _providers = [.. (providers ?? []).OrderBy(p => p.Order)];
+        _all = [.. (providers ?? []).OrderBy(p => p.Order)];
+        _plugins = plugins;
         _time = time ?? TimeProvider.System;
 
         // Per tasks folder: a computer can sync more than one.
@@ -92,7 +94,8 @@ public sealed class SyncService : IDisposable
     /// <summary>Which set of tasks this folder is (the folder's name unless changed): one folder or gist each.</summary>
     public string Library => Setting("library") is { Length: > 0 } library ? library : DefaultLibrary(_vault.RootPath);
 
-    public IReadOnlyList<ISyncProvider> Providers => _providers;
+    /// <summary>The providers whose plugin is on (one switched off since the app started stops at once).</summary>
+    public IReadOnlyList<ISyncProvider> Providers => _plugins is null ? _all : [.. _all.Where(p => !_plugins.IsSwitchedOff("sync-" + p.Id))];
 
     public SyncView View
     {
@@ -103,8 +106,8 @@ public sealed class SyncService : IDisposable
             var primary = uses.Count > 0 ? uses[0].Provider : null;
             var states = uses.Select(u => (u.Provider, u.Mode, State: StateFor(u.Provider))).ToList();
             var status = states.Count > 0 ? states[0].State.Status : SyncStatus.Empty;
-            var checks = _providers.ToDictionary(p => p.Id, p => p.Check(_vault.RootPath));
-            var views = _providers.Select(p => new SyncProviderView(p.Id, p.Name, checks[p.Id].Available, checks[p.Id].Detail, p == primary)).ToList();
+            var checks = Providers.ToDictionary(p => p.Id, p => p.Check(_vault.RootPath));
+            var views = Providers.Select(p => new SyncProviderView(p.Id, p.Name, checks[p.Id].Available, checks[p.Id].Detail, p == primary)).ToList();
             bool syncing;
             string? problem;
             lock (_lock)
@@ -113,7 +116,7 @@ public sealed class SyncService : IDisposable
                 problem = _problem;
             }
 
-            var places = _providers.Select(p =>
+            var places = Providers.Select(p =>
             {
                 var use = uses.FirstOrDefault(u => u.Provider == p);
                 var others = use.Provider is not null ? StateFor(p).Status.Devices.Count : Seen(p);
@@ -143,7 +146,7 @@ public sealed class SyncService : IDisposable
     /// <summary>Picks one provider ("auto", "off" or an id) and syncs with it from now on (any per-place choice is cleared).</summary>
     public async Task ChooseAsync(string choice, CancellationToken cancellationToken = default)
     {
-        if (choice is not ("auto" or "off") && !_providers.Any(p => p.Id == choice))
+        if (choice is not ("auto" or "off") && !Providers.Any(p => p.Id == choice))
         {
             throw new ArgumentException($"There is no sync provider \"{choice}\".", nameof(choice));
         }
@@ -159,7 +162,7 @@ public sealed class SyncService : IDisposable
     /// </summary>
     public async Task SetModeAsync(string provider, string mode, CancellationToken cancellationToken = default)
     {
-        if (!_providers.Any(p => p.Id == provider))
+        if (!Providers.Any(p => p.Id == provider))
         {
             throw new ArgumentException($"There is no sync provider \"{provider}\".", nameof(provider));
         }
@@ -219,7 +222,7 @@ public sealed class SyncService : IDisposable
 
         var uses = Uses(out _);
         string? problem = null;
-        foreach (var provider in _providers.Where(p => pending.Contains(p.Id)))
+        foreach (var provider in Providers.Where(p => pending.Contains(p.Id)))
         {
             var mode = uses.FirstOrDefault(u => u.Provider == provider).Mode;
             if (mode.HasFlag(SyncMode.Write))
@@ -374,7 +377,7 @@ public sealed class SyncService : IDisposable
     {
         var library = Library;
         var now = _time.GetUtcNow();
-        foreach (var provider in _providers.Where(p => !used.Contains(p) && p.Check(_vault.RootPath).Available))
+        foreach (var provider in Providers.Where(p => !used.Contains(p) && p.Check(_vault.RootPath).Available))
         {
             lock (_lock)
             {
@@ -590,7 +593,7 @@ public sealed class SyncService : IDisposable
         foreach (var pair in (Setting("modes") ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             var parts = pair.Split('=', 2);
-            if (parts.Length == 2 && ParseMode(parts[1]) is { } mode && _providers.Any(p => p.Id == parts[0]))
+            if (parts.Length == 2 && ParseMode(parts[1]) is { } mode && Providers.Any(p => p.Id == parts[0]))
             {
                 modes[parts[0]] = mode;
             }
@@ -611,7 +614,7 @@ public sealed class SyncService : IDisposable
         var modes = Modes();
         if (modes.Count > 0)
         {
-            var chosen = _providers.Where(p => modes.GetValueOrDefault(p.Id) != SyncMode.None).ToList();
+            var chosen = Providers.Where(p => modes.GetValueOrDefault(p.Id) != SyncMode.None).ToList();
             var here = chosen.Where(p => p.Check(_vault.RootPath).Available).Select(p => (p, modes[p.Id])).ToList();
             reason = here.Count > 0 ? string.Empty : chosen.Count == 0 ? "Every place is set to off." : "None of the places chosen is available here.";
             return here;
@@ -698,7 +701,7 @@ public sealed class SyncService : IDisposable
     private ISyncProvider? Active(out string reason)
     {
         var choice = Choice;
-        var candidates = choice == "auto" ? _providers.Where(p => p.Automatic) : _providers.Where(p => p.Id == choice);
+        var candidates = choice == "auto" ? Providers.Where(p => p.Automatic) : Providers.Where(p => p.Id == choice);
         string? why = null;
         foreach (var provider in candidates)
         {
@@ -712,7 +715,7 @@ public sealed class SyncService : IDisposable
             why ??= check.Detail;
         }
 
-        reason = why ?? (_providers.Count == 0 ? "No sync plugin is on." : "Nothing to sync with on this computer.");
+        reason = why ?? (Providers.Count == 0 ? "No sync plugin is on." : "Nothing to sync with on this computer.");
         return null;
     }
 

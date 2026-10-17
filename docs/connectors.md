@@ -1,8 +1,8 @@
 # Connectors: Notion, Microsoft To Do, GitHub Issues, Loop
 
 Todo Tracker can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
-Microsoft To Do are **off** until you switch them on in **Plugins** (the puzzle button in the app, or the sidebar's
-**⋯ › Plugins**), then restart the app. After that, open **Connectors** (the link button in the app's top bar).
+Microsoft To Do are **off** until you switch them on in **Settings › Connected apps** (or the sidebar's
+**⋯ › Plugins**); they come on at once. Then open **Connectors** (the link button in the app's top bar).
 
 | | Both ways | What it keeps in step |
 |---|---|---|

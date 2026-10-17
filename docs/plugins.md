@@ -1,14 +1,22 @@
 # Plugins
 
 Every optional part of Todo Tracker is a plugin, so you can turn off what you don't use and keep the app calm.
-Switch them in the dashboard (**Plugins** button in the header) or the sidebar menu (**⋯ › Plugins**). A change
-applies after a restart; the sidebar offers to restart right away.
+Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
+
+* **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
+  its API answers 404, a paired browser extension loses access, and its background work stops (Teams cards, version
+  saving, sync).
+* **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser
+  extension, Copy for Loop, and the connectors). The ones with their own background work (Ask AI, Version history, the
+  sync providers, Teams reminders) come on at the next start if they weren't running; Settings says so, and the
+  sidebar offers to restart right away.
 
 | Plugin | What it adds | On by default |
 | --- | --- | --- |
 | **Ask AI** | Chat with GitHub Copilot, Claude Code, or a model with an API key (OpenAI, Anthropic, Azure, Ollama…) inside the app; every chat is kept (dashboard panel and a one-line box in the sidebar) | Yes |
 | **Connect AI apps** | Step-by-step setup for Claude, Copilot, VS Code, ChatGPT… | Yes |
 | **Focus timer** | The Pomodoro-style timer | Yes |
+| **Plan** | The Plan view: a day or week grid to plan blocks of work, with what isn't planned (and what's put off till later) beside it | Yes |
 | **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
 | **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
 | **Browser extension** | Setup guide for the Edge, Chrome and Safari extension, with pairing codes ([`browser-extension.md`](browser-extension.md)) | Yes |
@@ -89,5 +97,13 @@ public sealed class MyPlugin : ITodoPlugin
 * Endpoints live under `/api/plugins/{id}` and share the API's security (token or session, loopback only). They are
   not part of the OpenAPI description for AI tools.
 * The web module exports `activate(host)`; `host` offers `api`, `post`, `put`, `del`, `h`, `icon`, `toast`,
-  `openPanel`, `closePanel`, `refresh`, `addHeaderButton`, and `addTaskAction` (a button in every task's details). See `wwwroot/js/plugins/agent-chat.js`.
+  `openPanel`, `closePanel`, `refresh`, `addHeaderButton`, `addTaskAction` (a button in every task's details and its
+  ⋯ menu), and `on()` (whether the plugin is on now). See `wwwroot/js/plugins/agent-chat.js`.
+* What a module adds through `host` is tagged with it and hidden the moment its plugin is switched off (no reload).
+  Anything else it shows must check `host.on()`.
+* Set `Live: true` in `PluginInfo` when the plugin has no background work of its own (its services are always
+  registered): it then comes on without a restart too. Either way, endpoints under `/api/plugins/{id}` answer 404 while
+  it's off, and services that keep working in the background must check `PluginHost.IsSwitchedOff(id)`.
+* Native UI (the Windows sidebar) checks `PluginHost.IsRunning(id)` each time it builds a menu, and listens to
+  `PluginSettings.Changed` for anything always on screen.
 * Plugins are built in and reviewed with the app. Code from elsewhere is never loaded.

@@ -69,17 +69,14 @@
                             <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
                         </StackPanel>
                         <StackPanel x:Name="Actions" Orientation="Horizontal" Margin="-4,4,0,0" Opacity="0.55">
-                            <Button Style="{StaticResource IconButton}" Content="&#xE73E;" ToolTip="Done" AutomationProperties.Name="Done"
+                            <Button Style="{StaticResource IconButton}" Content="&#xE73E;" ToolTip="Mark done" AutomationProperties.Name="Mark done"
                                     Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
                                     Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Dismiss reminder" AutomationProperties.Name="Dismiss reminder"
-                                    Command="{Binding DataContext.DismissReminderCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" ToolTip="Bring back to Do now" AutomationProperties.Name="Bring back"
                                     Command="{Binding DataContext.BringBackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
                                     Visibility="{Binding IsWaiting, Converter={StaticResource VisibleWhen}}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE823;" ToolTip="Snooze (remind me later)" AutomationProperties.Name="Snooze" Click="OnSnoozeClick" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE70F;" ToolTip="Add note" AutomationProperties.Name="Add note"
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70B;" ToolTip="Add note" AutomationProperties.Name="Add note"
                                     Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
                             <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus timer on this" AutomationProperties.Name="Focus"
                                     Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
@@ -165,20 +162,12 @@
                             <TextBlock Text="{Binding LastNote}" FontStyle="Italic" Style="{StaticResource Muted}" />
                         </Border>
                         <WrapPanel Margin="0,10,0,0">
-                            <Button Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Done"
+                            <Button Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Mark done" ToolTip="Mark this task done"
                                     Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
                                     Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
-                                    <TextBlock Text="Done" />
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Dismiss reminder"
-                                    Command="{Binding DataContext.DismissReminderCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE711;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
-                                    <TextBlock Text="Dismiss" />
+                                    <TextBlock Text="Mark done" />
                                 </StackPanel>
                             </Button>
                             <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Snooze" Click="OnSnoozeClick">
@@ -190,7 +179,7 @@
                             <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Add note"
                                     Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE70F;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="&#xE70B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
                                     <TextBlock Text="Note" />
                                 </StackPanel>
                             </Button>
@@ -217,8 +206,13 @@
                                     <TextBlock Text="Stop timer" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource IconButton}" Content="&#xE70D;" ToolTip="Do something else first (Alt+↓)" AutomationProperties.Name="Move down"
-                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Margin="0,0,0,6" />
+                            <Button Style="{StaticResource PillButton}" ToolTip="Do something else first: moves this one down the list (Alt+↓)" AutomationProperties.Name="Skip"
+                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Skip" />
+                                </StackPanel>
+                            </Button>
                             <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" Margin="0,0,0,6" />
                         </WrapPanel>
                         <Grid Margin="0,2,0,6" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">

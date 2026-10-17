@@ -17,6 +17,24 @@ class TaskBoardTest {
     private val t0: Instant = Instant.parse("2026-01-05T09:00:00Z")
 
     @Test
+    fun `arranging Do now puts the skipped task second and keeps other tasks places`() {
+        val board = TaskBoard()
+        val a = board.addTask(NewTask("A", priority = Priority.HIGH), now = t0)
+        val b = board.addTask(NewTask("B"), now = t0)
+        val c = board.addTask(NewTask("C"), now = t0)
+        assertEquals(listOf(a.id, b.id, c.id), Agenda.build(board, t0).now.map { it.item.id })
+
+        board.arrangeNow(listOf(b.id, a.id, c.id), now = t0)
+        assertEquals(listOf(b.id, a.id, c.id), Agenda.build(board, t0).now.map { it.item.id })
+        assertEquals(t0, board.nowArrangedAt)
+
+        // Only the arranged tasks' places are reused (another tab's order stays).
+        board.arrangeNow(listOf(c.id, b.id), now = t0)
+        assertEquals(listOf(c.id, a.id, b.id), board.nowOrder)
+        assertThrows(BoardException::class.java) { board.arrangeNow(listOf(a.id, a.id), now = t0) }
+    }
+
+    @Test
     fun doneTodayListsWhatWasFinishedSinceLocalMidnightAndCheers() {
         val board = TaskBoard()
         val newYork = ZoneId.of("America/New_York")

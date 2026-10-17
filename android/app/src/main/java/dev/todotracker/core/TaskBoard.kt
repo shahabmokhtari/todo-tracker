@@ -211,6 +211,31 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         log(now, id, "scheduled", "Cleared next action; back to Now", actor)
     }
 
+    /**
+     * Records the order of the tasks someone sees in Do now (TaskBoard.ArrangeNow in C#, same rules): only the places
+     * those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks.
+     */
+    fun arrangeNow(ids: List<UUID>, now: Instant) {
+        if (ids.toSet().size != ids.size) throw BoardException("Each task can appear only once.")
+        ids.forEach { get(it) }
+        val arranged = ids.toSet()
+        val slots = nowOrder.indices.filter { nowOrder[it] in arranged }
+        val result: MutableList<UUID>
+        if (slots.size == ids.size) {
+            // Same set of places: keep them, fill them in the new order.
+            result = nowOrder.toMutableList()
+            slots.forEachIndexed { k, slot -> result[slot] = ids[k] }
+        } else {
+            val start = nowOrder.indexOfFirst { it in arranged }
+            val at = if (start < 0) 0 else nowOrder.take(start).count { it !in arranged }
+            result = nowOrder.filter { it !in arranged }.toMutableList()
+            result.addAll(at, ids)
+        }
+        nowOrder.clear()
+        nowOrder.addAll(result.filter { find(it)?.isDone == false })
+        nowArrangedAt = now
+    }
+
     fun dismissReminder(id: UUID, reminderId: UUID, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
         val reminder = item.reminders.firstOrNull { it.id == reminderId } ?: throw BoardException("Reminder $reminderId was not found.")

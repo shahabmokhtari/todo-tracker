@@ -11,6 +11,8 @@ public enum ServerAction: Equatable, Sendable {
     case waitFor(UUID, after: UUID)
     case bringBack(UUID)
     case dismissReminder(UUID, reminderId: UUID)
+    /// The order of Do now as arranged (e.g. the focus task skipped down one).
+    case arrangeNow([UUID])
     case addNote(UUID, text: String)
     case update(UUID, title: String, priority: Priority)
     case addSubtask(parent: UUID, title: String)
@@ -70,6 +72,8 @@ public enum ServerAPI {
             return post("/api/items/\(id(item))/schedule", ["clear": true])
         case let .dismissReminder(item, reminderId):
             return post("/api/items/\(id(item))/reminders/\(id(reminderId))/dismiss")
+        case let .arrangeNow(ids):
+            return post("/api/now/order", ["ids": ids.map(id)])
         case let .addNote(item, text):
             return post("/api/items/\(id(item))/notes", ["text": text])
         case let .update(item, title, priority):

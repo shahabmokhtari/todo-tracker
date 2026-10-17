@@ -118,7 +118,8 @@ internal static class Security
         {
             context.Items[ActorKey] = ParseActor(context.Request.Headers[ActorHeader].ToString());
         }
-        else if (bearer is not null && context.RequestServices.GetService<PairedBrowsers>()?.Match(bearer) is not null)
+        else if (bearer is not null && context.RequestServices.GetService<PairedBrowsers>()?.Match(bearer) is not null
+            && context.RequestServices.GetService<Plugins.PluginHost>()?.IsSwitchedOff(Plugins.BrowserExtensionPlugin.Id) != true)
         {
             // A paired browser reaches only what the extension does (see BrowserRoutes), always as the browser.
             if (isMcp || !BrowserMayReach(path, context.Request.Method.ToUpperInvariant()))

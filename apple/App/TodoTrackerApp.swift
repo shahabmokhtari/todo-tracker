@@ -72,7 +72,7 @@ struct MenuBarGlance: View {
             if let focus = model.dashboard.focus {
                 Text(focus.item.title).font(.headline)
                 HStack {
-                    Button("Done") { model.complete(focus.item.id) }
+                    Button("Mark done") { model.complete(focus.item.id) }
                     Button("Later (1h)") { model.snooze(focus.item.id, minutes: 60) }
                     Button("Tomorrow") { model.snoozeUntilTomorrow(focus.item.id) }
                 }

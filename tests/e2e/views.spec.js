@@ -852,3 +852,35 @@ test('Plan: drag a task onto a time, see the block, open it, and take it off the
   await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).plannedAt ?? null).toBeNull();
   expect(errors).toEqual([]);
 });
+
+test('Plan: tasks put off (snoozed, repeating) are listed under Later with when they come back', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const passport = await add(request, 'Renew the passport');
+  const back = new Date(Date.now() + 2 * 86400000);
+  back.setHours(9, 0, 0, 0);
+  await request.post(`/api/items/${passport.id}/schedule`, { headers: auth, data: { at: back.toISOString() } });
+  await open(page, request);
+  await page.evaluate(() => { location.hash = '#/plan'; });
+  const plan = page.locator('#view-plan');
+  const later = plan.getByRole('list', { name: 'Later' });
+  await expect(later.locator('.plan-task', { hasText: 'Renew the passport' })).toContainText('back');
+  await expect(plan.locator('.plan-unplanned .plan-task', { hasText: 'Renew the passport' })).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('Focus card: "Mark done" says what it does, and the reminder is dismissed from ⋯ More', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const task = await add(request, 'Call the dentist', { priority: 'critical' });
+  await request.post(`/api/items/${task.id}/reminders`, { headers: auth, data: { at: new Date(Date.now() - 60000).toISOString(), message: 'Before noon' } });
+  await open(page, request);
+  await expect(page.locator('.focus-card').getByRole('button', { name: 'Mark done', exact: true })).toBeVisible();
+  // Its card (the focus card, or a row when another reminder came first).
+  const card = page.locator('.focus-card, .item').filter({ hasText: 'Call the dentist' }).first();
+  await expect(card).toContainText('Before noon');
+  await expect(card.getByRole('button', { name: 'Dismiss', exact: true })).toHaveCount(0);
+  await card.getByRole('button', { name: 'More', exact: true }).click();
+  await card.getByRole('menuitem', { name: 'Dismiss reminder' }).click();
+  await expect.poll(async () => (await (await request.get(`/api/items/${task.id}`, { headers: auth })).json()).reminders.every((r) => r.dismissedAt)).toBe(true);
+  await request.post(`/api/items/${task.id}/complete`, { headers: auth });
+  expect(errors).toEqual([]);
+});

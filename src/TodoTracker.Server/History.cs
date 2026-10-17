@@ -26,7 +26,7 @@ public sealed class HistoryService : IDisposable
 /// Saves a version a few seconds after things settle (so a burst of edits becomes one version), and checks
 /// periodically so edits made outside the app (Obsidian, agents) are captured too.
 /// </summary>
-public sealed partial class HistoryLoop(HistoryService history, IBoardStore store, ILogger<HistoryLoop> logger) : BackgroundService
+public sealed partial class HistoryLoop(HistoryService history, IBoardStore store, ILogger<HistoryLoop> logger, Plugins.PluginHost? plugins = null) : BackgroundService
 {
     private static readonly TimeSpan Quiet = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan Periodic = TimeSpan.FromMinutes(2);
@@ -68,6 +68,12 @@ public sealed partial class HistoryLoop(HistoryService history, IBoardStore stor
 
     private async Task CommitAsync(VaultHistory versions, CancellationToken cancellationToken)
     {
+        // Switched off since the app started: no more versions.
+        if (plugins?.IsSwitchedOff(Plugins.HistoryPlugin.Definition.Id) == true)
+        {
+            return;
+        }
+
         try
         {
             await versions.CommitAsync(cancellationToken).ConfigureAwait(false);
