@@ -25,6 +25,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
     /** How much energy there is in a day (null: [Energy.DEFAULT_PER_DAY]); kept with the board, so every app uses it. */
     var energyPerDay: Int? = null
+        internal set
 
     val dailyEnergy: Int get() = energyPerDay ?: Energy.DEFAULT_PER_DAY
 
