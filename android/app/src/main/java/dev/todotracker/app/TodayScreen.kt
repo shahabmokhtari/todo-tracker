@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -165,7 +166,8 @@ private fun LinkedTaskDialog(item: WorkItem, vm: BoardViewModel, onNote: () -> U
         onDismissRequest = close,
         title = { Text(listOfNotNull(item.icon, item.title).joinToString(" ")) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Scrolls: a task can have many notes (the dialog's text area has a fixed height).
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 if (item.isDone) Text("Done", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
                 item.details?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 CardNotes(item)
