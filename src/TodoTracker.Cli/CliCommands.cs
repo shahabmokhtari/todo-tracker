@@ -14,7 +14,7 @@ internal static class CliCommands
     public static readonly IReadOnlyDictionary<string, CliCommand> All = new[]
     {
         new CliCommand("now", "tt [now] [filter] [-g group]", "What to do now, and what is waiting", "filter uses the list syntax, e.g. tt now #release", Now),
-        new CliCommand("add", "tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when]", "Add a task",
+        new CliCommand("add", "tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3]", "Add a task",
             "Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.\n" +
             "Quote the title: shells treat # ! @ specially. Example: tt add 'Renew passport !! due:7d #admin'\n" +
             "Or use options: tt add Renew passport --due 7d --tag admin", Add),
@@ -27,7 +27,10 @@ internal static class CliCommands
         new CliCommand("first", "tt first <task> | tt first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
         new CliCommand("note", "tt note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
         new CliCommand("snooze", "tt snooze <task> <when | after <task>>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>", Snooze),
-        new CliCommand("edit", "tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none]", "Change a task", null, Edit),
+        new CliCommand("edit", "tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none]", "Change a task",
+            "--energy: how much energy it takes per hour, 1 (light) to 3 (draining).", Edit),
+        new CliCommand("energy", "tt energy [per-day | default]", "Energy today: what you have in a day and what today's plan takes",
+            "A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; none counts as 1). tt energy 8 sets 8 a day; tt energy default goes back to 10.", EnergyCommand),
         new CliCommand("tag", "tt tag <task> [+]tag… -tag…", "Add or remove tags", null, (s, a) => Tags(s, a, labels: false)),
         new CliCommand("label", "tt label <task> [+]label… -label…", "Add or remove labels (quote names with spaces)", null, (s, a) => Tags(s, a, labels: true)),
         new CliCommand("move", "tt move <task> (--under task | --top | -g group) [--index n]", "Put a task under another, at the top level, or in another group", null, Move),
@@ -104,7 +107,7 @@ internal static class CliCommands
 
     private static async Task Add(CliSession s, CliArgs a)
     {
-        a.Allow("group", "under", "details", "tag", "label", "due", "snooze");
+        a.Allow("group", "under", "details", "tag", "label", "due", "snooze", "energy");
         var text = a.WordsFrom(0, "what to add");
         var item = await s.Change((b, now) =>
         {
@@ -120,6 +123,7 @@ internal static class CliCommands
                     Deadline = a.Value("due") is { } due ? CliTime.Deadline(due, now, s.Zone) : capture.Deadline,
                     Tags = [.. capture.Tags, .. a.Values("tag")],
                     Labels = a.Values("label").Count > 0 ? a.Values("label") : null,
+                    Energy = a.Value("energy") is { } level ? EnergyLevel(level) : null,
                 },
                 s.Actor,
                 now);
@@ -368,12 +372,15 @@ internal static class CliCommands
 
     private static async Task Edit(CliSession s, CliArgs a)
     {
-        a.Allow("title", "details", "priority", "due");
+        a.Allow("title", "details", "priority", "due", "energy");
         var reference = a.WordsFrom(0, "which task");
-        if (!a.Has("title") && !a.Has("details") && !a.Has("priority") && !a.Has("due"))
+        if (!a.Has("title") && !a.Has("details") && !a.Has("priority") && !a.Has("due") && !a.Has("energy"))
         {
-            throw new CliUsageException("Say what to change: --title, --details, --priority, or --due.");
+            throw new CliUsageException("Say what to change: --title, --details, --priority, --due, or --energy.");
         }
+
+        var energy = a.Value("energy");
+        var noEnergy = energy is not null && energy.Equals("none", StringComparison.OrdinalIgnoreCase);
 
         var item = await s.Change((b, now) =>
         {
@@ -389,12 +396,43 @@ internal static class CliCommands
                     Priority = a.Value("priority") is { } p ? Wire.ParsePriority(p) : null,
                     Deadline = due is not null && !clear ? CliTime.Deadline(due, now, s.Zone) : null,
                     ClearDeadline = clear,
+                    Energy = energy is not null && !noEnergy ? EnergyLevel(energy) : null,
+                    ClearEnergy = noEnergy,
                 },
                 s.Actor,
                 now);
             return found;
         }).ConfigureAwait(false);
         await s.Print(item, (o, i) => o.Changed("Updated", i)).ConfigureAwait(false);
+    }
+
+    private static int EnergyLevel(string text) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var level) && level is >= Energy.Min and <= Energy.Max
+            ? level
+            : throw new CliUsageException("--energy is 1, 2 or 3 (energy per hour), or none.");
+
+    private static async Task EnergyCommand(CliSession s, CliArgs a)
+    {
+        a.Allow();
+        var set = string.Join(' ', a.Words).Trim();
+        EnergyDto energy;
+        if (string.IsNullOrWhiteSpace(set))
+        {
+            energy = await s.Read(b => Wire.EnergyToday(b, s.Now, s.Zone)).ConfigureAwait(false);
+        }
+        else
+        {
+            int? perDay = set.Equals("default", StringComparison.OrdinalIgnoreCase) ? null
+                : int.TryParse(set, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n is >= 1 and <= Energy.MaxPerDay ? n
+                : throw new CliUsageException($"tt energy takes a number from 1 to {Energy.MaxPerDay}, or default.");
+            energy = await s.Store.UpdateAsync(b =>
+            {
+                b.SetEnergyPerDay(perDay);
+                return Wire.EnergyToday(b, s.Now, s.Zone);
+            }).ConfigureAwait(false);
+        }
+
+        await s.Print(energy, (o, e) => o.Energy(e)).ConfigureAwait(false);
     }
 
     private static async Task Tags(CliSession s, CliArgs a, bool labels)

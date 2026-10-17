@@ -7,7 +7,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
   its API answers 404, a paired browser extension loses access, and its background work stops (Teams cards, version
   saving, sync).
 * **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser
-  extension, Copy for Loop, and the connectors). The ones with their own background work (Ask AI, Version history, the
+  extension, Copy for Loop, Energy, and the connectors). The ones with their own background work (Ask AI, Version history, the
   sync providers, Teams reminders) come on at the next start if they weren't running; Settings says so, and the
   sidebar offers to restart right away.
 
@@ -17,6 +17,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **Connect AI apps** | Step-by-step setup for Claude, Copilot, VS Code, ChatGPT… | Yes |
 | **Focus timer** | The Pomodoro-style timer | Yes |
 | **Plan** | The Plan view: a day or week grid to plan blocks of work, with what isn't planned (and what's put off till later) beside it | Yes |
+| **Energy** | Say how much energy each task takes (⚡ to ⚡⚡⚡ an hour) and how much you have in a day; cards show ⚡, Today and the plan add up each day and say when it's too much | Yes |
 | **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
 | **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
 | **Browser extension** | Setup guide for the Edge, Chrome and Safari extension, with pairing codes ([`browser-extension.md`](browser-extension.md)) | Yes |

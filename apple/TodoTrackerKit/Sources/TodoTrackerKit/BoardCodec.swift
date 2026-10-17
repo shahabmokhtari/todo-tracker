@@ -71,6 +71,7 @@ struct BoardDocument: Codable {
     var pomodoro: PomodoroDocument?
     var nowOrder: [UUID]?
     var nowArrangedAt: Date?
+    var energyPerDay: Int?
 
     init(_ board: TaskBoard) {
         schemaVersion = TaskBoard.currentSchemaVersion
@@ -79,6 +80,7 @@ struct BoardDocument: Codable {
         activity = board.activity.map { ActivityDocument(at: $0.at, itemId: $0.itemId, kind: $0.kind, summary: $0.summary, actor: $0.actor) }
         nowOrder = board.nowOrder.isEmpty ? nil : board.nowOrder
         nowArrangedAt = board.nowArrangedAt
+        energyPerDay = board.energyPerDay
         let p = board.pomodoro
         pomodoro = PomodoroDocument(
             settings: p.settings,
@@ -103,6 +105,7 @@ struct BoardDocument: Codable {
         var seen = Set<UUID>()
         board.nowOrder = (nowOrder ?? []).filter { board.find($0) != nil && seen.insert($0).inserted }
         board.nowArrangedAt = nowArrangedAt
+        board.energyPerDay = energyPerDay.flatMap { (1...Energy.maxPerDay).contains($0) ? $0 : nil }
         if let p = pomodoro {
             var timer = PomodoroTimer(settings: p.settings ?? PomodoroSettings())
             timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0, breakEndedAt: p.breakEndedAt)
@@ -124,6 +127,7 @@ struct BoardDocument: Codable {
         item.repeatUndo = doc.repeatUndo
         item.plannedAt = doc.plannedAt
         item.plannedMinutes = doc.plannedMinutes
+        item.energy = doc.energy.flatMap { Energy.levels.contains($0) ? $0 : nil }
         item.deadline = doc.deadline
         item.nextActionAt = doc.nextActionAt
         item.afterId = doc.after
@@ -161,6 +165,7 @@ struct ItemDocument: Codable {
     var repeatUndo: RepeatUndo?
     var plannedAt: Date?
     var plannedMinutes: Int?
+    var energy: Int?
     var deadline: Date?
     var nextActionAt: Date?
     var after: UUID?
@@ -186,6 +191,7 @@ struct ItemDocument: Codable {
         repeatUndo = item.repeatUndo
         plannedAt = item.plannedAt
         plannedMinutes = item.plannedMinutes
+        energy = item.energy
         deadline = item.deadline
         nextActionAt = item.nextActionAt
         after = item.afterId

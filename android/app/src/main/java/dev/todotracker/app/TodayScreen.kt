@@ -203,6 +203,9 @@ private fun Header(vm: BoardViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        vm.energyToday?.let { energy ->
+            Text(energy, style = MaterialTheme.typography.bodySmall, color = if (energy.contains("too much")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -267,6 +270,7 @@ private fun Meta(entry: AgendaEntry) {
         priorityLabel(entry.effectivePriority),
         if (entry.isOverdue) "overdue" else entry.item.deadline?.let { "due ${relative(it)}" },
         entry.dueReminder?.let { "⏰ ${it.message}" },
+        entry.item.energy?.let { "⚡".repeat(it) },
     )
     if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
@@ -316,6 +320,22 @@ private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, 
 @Composable
 private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
     var open by remember { mutableStateOf(false) }
+    var pickingEnergy by remember { mutableStateOf(false) }
+    if (pickingEnergy) {
+        AlertDialog(
+            onDismissRequest = { pickingEnergy = false },
+            title = { Text("Energy in a day") },
+            text = {
+                Column {
+                    Text("A day's plan takes each block's hours × its task's ⚡ an hour.", style = MaterialTheme.typography.bodySmall)
+                    listOf(4, 6, 8, 10, 12, 14, 16).forEach { n ->
+                        TextButton(onClick = { pickingEnergy = false; vm.setDailyEnergy(n) }) { Text(if (n == vm.dailyEnergy) "✓ $n ⚡" else "$n ⚡") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickingEnergy = false }) { Text("Close") } },
+        )
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     Box {
         TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
@@ -323,6 +343,14 @@ private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
             entry.dueReminder?.let { r ->
                 DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
             }
+            // How draining it is, per hour, and how much there is in a day (every app uses the same number).
+            listOf(null to "Energy: not said", 1 to "Energy: ⚡ light", 2 to "Energy: ⚡⚡", 3 to "Energy: ⚡⚡⚡ draining").forEach { (level, label) ->
+                DropdownMenuItem(
+                    text = { Text(if (entry.item.energy == level) "✓ $label" else label) },
+                    onClick = { open = false; vm.setEnergy(entry.item.id, level) },
+                )
+            }
+            DropdownMenuItem(text = { Text("Energy in a day: ${vm.dailyEnergy}…") }, onClick = { open = false; pickingEnergy = true })
             DropdownMenuItem(text = { Text("Copy link") }, onClick = {
                 open = false
                 context.getSystemService(android.content.ClipboardManager::class.java)

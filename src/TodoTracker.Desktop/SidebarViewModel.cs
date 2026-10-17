@@ -190,7 +190,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         WaitingCount = snapshot.Waiting.Count;
         HasAttention = snapshot.HasAttention;
         NextUpText = snapshot.NextUp;
-        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
+        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count) + (snapshot.Energy is { } energy ? " " + energy : string.Empty);
+        EnergyOver = snapshot.EnergyOver;
         Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
         Break.Update(snapshot.Pomodoro, now, snapshot.NextFocus);
         Timer.Update(snapshot.Timer, now);
@@ -349,6 +350,35 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
     }
 
+
+    /// <summary>Whether energy shows (the Energy plugin): ⚡ on cards, today's energy in the summary, setting it in ⋯.</summary>
+    [ObservableProperty]
+    public partial bool ShowEnergy { get; set; } = true;
+
+    partial void OnShowEnergyChanged(bool value) => QueueRefresh();
+
+    /// <summary>Today's plan takes more energy than there is in a day.</summary>
+    [ObservableProperty]
+    public partial bool EnergyOver { get; set; }
+
+    /// <summary>How much energy a task takes per hour (1 to 3; null: not said).</summary>
+    [RelayCommand]
+    private Task SetEnergy(CardEnergyRequest? request) => request is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.Update(request.Card.Id, request.Level is { } level ? new TaskChanges { Energy = level } : new TaskChanges { ClearEnergy = true }, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return request.Level is { } l ? $"Energy: {new string('⚡', l)} an hour" : "Energy: not said";
+    });
+
+    /// <summary>How much energy there is in a day (null: back to the default).</summary>
+    [RelayCommand]
+    private Task SetDailyEnergy(int? perDay) => Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.SetEnergyPerDay(perDay is > 0 ? perDay : null)).ConfigureAwait(true);
+        return $"Energy in a day: {perDay ?? Core.Energy.DefaultPerDay}";
+    });
+
+    /// <summary>How much energy there is in a day now (for the menu).</summary>
+    public Task<int> DailyEnergyAsync() => _store.ReadAsync(b => b.DailyEnergy);
 
     /// <summary>Whether the focus timer is shown (the Focus timer plugin).</summary>
     [ObservableProperty]
@@ -853,7 +883,9 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         bool GroupMissing,
         RunningTimerState? Timer = null,
         string? NextFocus = null,
-        IReadOnlyList<DoneViewModel>? Done = null);
+        IReadOnlyList<DoneViewModel>? Done = null,
+        string? Energy = null,
+        bool EnergyOver = false);
 
     private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
     {
@@ -885,13 +917,16 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             ? Selected(keep, t.IsSelected)
             : t).ToList();
 
-        var cards = d.Now.Select(e => ToCard(e, now, board, timer?.ItemId)).ToList();
+        var energyOn = ShowEnergy;
+        var cards = d.Now.Select(e => ToCard(e, now, board, timer?.ItemId, energyOn)).ToList();
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, _options.TimeZone).DateTime);
+        var planned = energyOn ? Core.Energy.PlannedOn(board, today, _options.TimeZone) : 0;
         var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
         return new Snapshot(
             reusedTabs,
             cards.FirstOrDefault(),
             cards.Skip(1).ToList(),
-            d.Waiting.Select(e => ToCard(e, now, board, timer?.ItemId)).ToList(),
+            d.Waiting.Select(e => ToCard(e, now, board, timer?.ItemId, energyOn)).ToList(),
             // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
             d.Overview.Where(o => o.Item.Children.Count > 0).Select(o => new WorkstreamViewModel(
                 o.Item.Id,
@@ -913,7 +948,18 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
                 i.Id,
                 i.Title,
                 i.Parent is null ? null : string.Join(" › ", i.Path.SkipLast(1)),
-                TimeZoneInfo.ConvertTime(Agenda.DoneAt(board, i)!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList());
+                TimeZoneInfo.ConvertTime(Agenda.DoneAt(board, i)!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList(),
+            // Once something is planned today (the same rule in every app).
+            energyOn && planned > 0 ? EnergyLine(planned, board.DailyEnergy) : null,
+            energyOn && planned > board.DailyEnergy);
+    }
+
+    /// <summary>Same wording as the web's energyLine(): "⚡ 4.5 of 10 planned today."</summary>
+    internal static string EnergyLine(double planned, int perDay)
+    {
+        static string N(double x) => Math.Round(x, 1, MidpointRounding.AwayFromZero).ToString("0.#", CultureInfo.InvariantCulture);
+        var over = planned - perDay;
+        return over > 0 ? $"⚡ {N(planned)} of {perDay} planned today: {N(over)} too much." : $"⚡ {N(planned)} of {perDay} planned today.";
     }
 
     private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)
@@ -922,7 +968,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return tab;
     }
 
-    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing)
+    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing, bool energy = false)
     {
         var item = e.Item;
         var meta = new List<string>();
@@ -963,7 +1009,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             CanComplete = e.State == ItemState.Actionable,
             IsTiming = item.Id == timing,
             LastNote = item.Notes.Count > 0 ? item.Notes[^1].Text : null,
-            Chips = ChipsFor(e, now),
+            Chips = ChipsFor(e, now, energy),
+            Energy = item.Energy,
             Tags = item.Tags.Select(t => "#" + t).ToList(),
             Labels = item.Labels.Select(n => new LabelChip(n, board.FindLabel(n)?.Color ?? "#64748b")).ToList(),
         };
@@ -992,7 +1039,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Mirrors metaChips() in format.js (the breadcrumb is shown separately in the sidebar).</summary>
-    private static List<ChipViewModel> ChipsFor(AgendaEntry e, DateTimeOffset now)
+    private static List<ChipViewModel> ChipsFor(AgendaEntry e, DateTimeOffset now, bool energy = false)
     {
         var item = e.Item;
         var chips = new List<ChipViewModel>();
@@ -1023,6 +1070,11 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             var to = from + item.PlannedLength;
             var day = from.Date == TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local).Date ? string.Empty : from.ToString("ddd ", CultureInfo.InvariantCulture);
             chips.Add(new($"🗓 {day}{from.ToString("HH:mm", CultureInfo.InvariantCulture)}–{to.ToString("HH:mm", CultureInfo.InvariantCulture)}", "info"));
+        }
+
+        if (energy && item.Energy is { } level)
+        {
+            chips.Add(new(new string('⚡', level), "energy"));
         }
 
         if (item.Notes.Count > 0)

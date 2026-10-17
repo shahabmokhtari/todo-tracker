@@ -29,6 +29,7 @@ enum Theme {
         case .warn: return warnText
         case .danger: return Color(hex: "#ef4444")
         case .muted: return .secondary
+        case .energy: return Color(hex: "#ca8a04")
         }
     }
 }
@@ -201,6 +202,9 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(Presentation.greeting(model.now)).font(.title3.weight(.bold))
                 Text(Presentation.summary(model.dashboard)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if let energy = Presentation.energyLine(model.board, now: model.now) {
+                    Text(energy).font(.caption).foregroundStyle(energy.contains("too much") ? Color(hex: "#ef4444") : .secondary).lineLimit(1)
+                }
             }
             Spacer()
             ThemeMenu { model.setTheme($0) }
@@ -508,6 +512,20 @@ struct MoreMenu: View {
             if let reminder = entry.dueReminder {
                 Button { model.dismissReminder(entry.item.id, reminderId: reminder.id) } label: { Label("Dismiss reminder", systemImage: "bell.slash") }
             }
+            Menu {
+                ForEach(EnergyChoice.all) { choice in
+                    Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
+                        if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+                    }
+                }
+            } label: { Label("Energy per hour", systemImage: "bolt") }
+            Menu {
+                ForEach([4, 6, 8, 10, 12, 14, 16], id: \.self) { n in
+                    Button { model.setDailyEnergy(n) } label: {
+                        if model.board.dailyEnergy == n { Label("\(n)", systemImage: "checkmark") } else { Text("\(n)") }
+                    }
+                }
+            } label: { Label("Energy in a day: \(model.board.dailyEnergy)", systemImage: "bolt.circle") }
             Button { Clipboard.copy(TaskLinks.forTask(entry.item.id)) } label: { Label("Copy link", systemImage: "link") }
         } label: {
             if pill {
@@ -526,6 +544,20 @@ struct MoreMenu: View {
         .accessibilityLabel("More")
         .help("More")
     }
+}
+
+/// A task's energy per hour, as offered in ⋯ › Energy per hour.
+struct EnergyChoice: Identifiable {
+    let level: Int?
+    let label: String
+    var id: String { label }
+
+    static let all = [
+        EnergyChoice(level: nil, label: "Not said (counts as ⚡)"),
+        EnergyChoice(level: 1, label: "⚡ light"),
+        EnergyChoice(level: 2, label: "⚡⚡"),
+        EnergyChoice(level: 3, label: "⚡⚡⚡ draining"),
+    ]
 }
 
 /// Plain text on the clipboard (macOS and iOS).

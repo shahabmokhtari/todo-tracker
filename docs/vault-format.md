@@ -18,7 +18,7 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
   _attachments/7b0c2f9e/plan.pdf    ← files attached in the app
   .todo-tracker/                    ← app data (hidden in Obsidian)
     config.json                     ← group ids/colors/order, label colors, task order
-    state.json                      ← focus timer
+    state.json                      ← focus timer, Do now order, energy in a day
     activity.jsonl                  ← audit log (append-only)
     trash/                          ← deleted task files (kept 30 days)
 ```
@@ -42,6 +42,7 @@ due: 2026-01-07T17:00                # local time; a date alone means 17:00
 scheduled: 2026-01-06T09:00          # "not before": waits until then; a date alone means 09:00
 sequential: true                     # steps must be done in order
 step-delay: 1d                       # minimum wait between steps (90m, 24h, 1d)
+energy: 2                            # energy it takes per hour: 1 (light) to 3 (draining); omitted = not said
 tags:
   - release
 labels:
@@ -83,7 +84,8 @@ Free-form details in markdown. Any other headings, tables, embeds, or sections b
 ### Properties
 
 The app owns `id` (or `tt-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
-`scheduled`, `sequential`, `step-delay`, `tags`, `labels`, and `reminders`. Everything else (`aliases`, `cssclasses`, plugin properties,
+`scheduled`, `sequential`, `step-delay`, `icon`, `color`, `repeat`, `planned`, `planned-length`, `energy`, `tags`, `labels`,
+and `reminders`. A subtask keeps the same in its `%%{…}%%` (`energy`, `plan`, `planMin`…). Everything else (`aliases`, `cssclasses`, plugin properties,
 comments) is kept exactly as written and in place. An owned property whose value hasn't changed is written back
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
 example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.

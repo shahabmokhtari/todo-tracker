@@ -46,7 +46,8 @@ public sealed record CardDto(
     string? Accent = null,
     string? Repeat = null,
     DateTimeOffset? PlannedAt = null,
-    int? PlannedMinutes = null);
+    int? PlannedMinutes = null,
+    int? Energy = null);
 
 public sealed record OverviewDto(
     Guid Id,
@@ -105,7 +106,8 @@ public sealed record ItemDto(
     string? Repeat = null,
     DateTimeOffset? PlannedAt = null,
     int? PlannedMinutes = null,
-    string? Link = null);
+    string? Link = null,
+    int? Energy = null);
 
 /// <summary>A stretch of time spent on a task; <c>Source</c> is manual or focus; a running one has no end.</summary>
 public sealed record TimeEntryDto(Guid Id, Guid ItemId, DateTimeOffset Start, DateTimeOffset? End, long Seconds, string Source, string? Device);
@@ -146,7 +148,8 @@ public sealed record TreeNodeDto(
     string? Accent = null,
     string? Repeat = null,
     DateTimeOffset? PlannedAt = null,
-    int? PlannedMinutes = null);
+    int? PlannedMinutes = null,
+    int? Energy = null);
 
 /// <summary>A search result: enough to show and act on a task without loading its whole tree.</summary>
 public sealed record SearchHitDto(
@@ -196,7 +199,11 @@ public sealed record DashboardDto(
     IReadOnlyList<VaultProblem> Problems,
     string? Query,
     TimerDto? Timer = null,
-    IReadOnlyList<DoneDto>? DoneToday = null);
+    IReadOnlyList<DoneDto>? DoneToday = null,
+    EnergyDto? Energy = null);
+
+/// <summary>Energy today: what there is in a day, and what today's planned blocks take (both in ⚡).</summary>
+public sealed record EnergyDto(int PerDay, double PlannedToday);
 
 /// <summary>Something finished today: <see cref="Path"/> is its parents' titles (empty for a top-level task).</summary>
 public sealed record DoneDto(Guid Id, string Title, IReadOnlyList<string> Path, DateTimeOffset CompletedAt, Guid GroupId);
@@ -265,7 +272,16 @@ public static class Wire
             string.IsNullOrWhiteSpace(query) ? null : query.Trim(),
             Timer(board, now),
             Agenda.DoneToday(board, now, zone ?? TimeZoneInfo.Local, groupId)
-                .Select(i => new DoneDto(i.Id, i.Title, i.Path.SkipLast(1).ToList(), Agenda.DoneAt(board, i)!.Value, i.GroupId)).ToList());
+                .Select(i => new DoneDto(i.Id, i.Title, i.Path.SkipLast(1).ToList(), Agenda.DoneAt(board, i)!.Value, i.GroupId)).ToList(),
+            EnergyToday(board, now, zone ?? TimeZoneInfo.Local));
+    }
+
+    /// <summary>Energy today (every group: there's one of you).</summary>
+    public static EnergyDto EnergyToday(TaskBoard board, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        return new EnergyDto(board.DailyEnergy, Energy.PlannedOn(board, today, zone));
     }
 
     public static TimerDto Timer(TaskBoard board, DateTimeOffset now) =>
@@ -312,7 +328,8 @@ public static class Wire
             board.AccentOf(item),
             item.Repeat?.ToString(),
             item.PlannedAt,
-            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes,
+            item.Energy);
     }
 
     /// <param name="timing">The task the timer runs on (looked up once per response, not per card).</param>
@@ -364,7 +381,8 @@ public static class Wire
             board.AccentOf(item),
             item.Repeat?.ToString(),
             item.PlannedAt,
-            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes);
+            item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes,
+            item.Energy);
     }
 
     public static ItemDto Item(WorkItem item, DateTimeOffset now, TaskBoard board, VaultLinks? links = null) => new(
@@ -407,7 +425,8 @@ public static class Wire
             item.Repeat?.ToString(),
             item.PlannedAt,
             item.PlannedAt is null ? null : (int)item.PlannedLength.TotalMinutes,
-            TaskLinks.ForTask(item.Id));
+            TaskLinks.ForTask(item.Id),
+            item.Energy);
 
     /// <summary>The task whose snooze or wait keeps this one waiting: itself, or the nearest parent that waits (null: not waiting).</summary>
     private static WorkItem? Wait(WorkItem item, DateTimeOffset now) =>

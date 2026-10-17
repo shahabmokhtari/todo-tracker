@@ -31,6 +31,7 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | Not until another task is done | `wait_for_task` | `tt snooze <task> after <other task>` |
 | A reminder without deferring | `add_reminder` | (`tt snooze` reminds too) |
 | Work on it at a set time (a block on the plan) | `plan_task` | (the Plan view) |
+| How draining a task is (1 to 3 ⚡ an hour), how much energy a day has | `update_task` (`energy`), `set_daily_energy` | `tt edit <task> --energy 3`, `tt energy 8` |
 | Decide what comes first | `put_first` | `tt first <task>` |
 | Finish or undo | `complete_task`, `reopen_task` | `tt done <task>`, `tt reopen <task>` |
 | Rename, re-prioritize, deadline, icon, color, repeat | `update_task` | `tt edit <task> --priority high --due fri` |
@@ -75,7 +76,9 @@ Do now). Offer one small first step. Don't read the whole list back.
 said ("by Friday"); `add_note` on an existing task when it's progress on it, not new work.
 
 **Plan my day / week:** `get_dashboard`, ask (once) what matters most, `put_first` those, then `plan_task` blocks for
-the two or three biggest ones. Leave room: an ADHD-friendly day is not a full calendar.
+the two or three biggest ones. Leave room: an ADHD-friendly day is not a full calendar. Watch `energy` in the dashboard:
+a day's plan takes its blocks' hours times each task's energy (1 to 3 an hour; set it with `update_task` when the user
+says something is draining or easy). Past `perDay`, say so and offer to move a block to another day.
 
 **A rollout or a sequence:** `create_task` for the whole thing, `add_steps` with `stepDelayHours: 24`. Only the current
 step shows in Do now; finishing it brings the next one back after the delay, with a reminder.

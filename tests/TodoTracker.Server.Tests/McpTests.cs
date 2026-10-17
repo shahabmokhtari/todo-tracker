@@ -131,6 +131,23 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_say_how_much_energy_a_task_takes_and_how_much_there_is_in_a_day()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Write the design doc", ["energy"] = 3 });
+        var id = task.GetProperty("id").GetString();
+        Assert.Equal(3, task.GetProperty("energy").GetInt32());
+        await Call("plan_task", new() { ["taskId"] = id, ["start"] = "2026-01-05T10:00:00Z", ["minutes"] = 120 });
+
+        var energy = await Call("set_daily_energy", new() { ["perDay"] = 5 });
+        Assert.Equal((5, 6.0), (energy.GetProperty("perDay").GetInt32(), energy.GetProperty("plannedToday").GetDouble()));
+        Assert.Equal(6.0, (await Call("get_dashboard", new())).GetProperty("energy").GetProperty("plannedToday").GetDouble());
+
+        var cleared = await Call("update_task", new() { ["taskId"] = id, ["energy"] = 0 });
+        Assert.True(!cleared.TryGetProperty("energy", out var none) || none.ValueKind == JsonValueKind.Null);
+        Assert.Equal(10, (await Call("set_daily_energy", new())).GetProperty("perDay").GetInt32());
+    }
+
+    [Fact]
     public async Task Agent_can_move_cards_time_work_and_read_the_time_report()
     {
         var task = await Call("create_task", new() { ["title"] = "Write report" });

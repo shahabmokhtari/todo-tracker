@@ -13,6 +13,10 @@ public enum ServerAction: Equatable, Sendable {
     case dismissReminder(UUID, reminderId: UUID)
     /// The order of Do now as arranged (e.g. the focus task skipped down one).
     case arrangeNow([UUID])
+    /// Energy a task takes per hour (1 to 3; nil: not said).
+    case setEnergy(UUID, level: Int?)
+    /// Energy in a day (nil: back to the default).
+    case setDailyEnergy(Int?)
     case addNote(UUID, text: String)
     case update(UUID, title: String, priority: Priority)
     case addSubtask(parent: UUID, title: String)
@@ -74,6 +78,10 @@ public enum ServerAPI {
             return post("/api/items/\(id(item))/reminders/\(id(reminderId))/dismiss")
         case let .arrangeNow(ids):
             return post("/api/now/order", ["ids": ids.map(id)])
+        case let .setEnergy(item, level):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["energy": level ?? 0]))
+        case let .setDailyEnergy(perDay):
+            return ServerRequest(method: "PUT", path: "/api/energy", body: json(["perDay": perDay]))
         case let .addNote(item, text):
             return post("/api/items/\(id(item))/notes", ["text": text])
         case let .update(item, title, priority):

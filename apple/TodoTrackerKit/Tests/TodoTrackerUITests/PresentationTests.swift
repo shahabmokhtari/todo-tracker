@@ -20,6 +20,20 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.chips(for: d.waiting[0], now: t0), [Chip("Step 2 of 2", .step), Chip("back in 1d", .info)])
     }
 
+    func testEnergyShowsOnCardsAndTodayOnceThereIsSomethingToSay() throws {
+        let board = TaskBoard()
+        let utc = TimeZone(identifier: "UTC")!
+        let doc = try board.addTask(NewTask("Design doc"), now: t0)
+        XCTAssertNil(Presentation.energyLine(board, now: t0, timeZone: utc))
+        try board.setEnergy(doc.id, level: 2, now: t0)
+        // Planned in the other apps (the Plan view is on the desktop and the web).
+        doc.plannedAt = t0
+        doc.plannedMinutes = 90
+
+        XCTAssertTrue(Presentation.chips(for: Agenda.build(board, now: t0).now[0], now: t0).contains(Chip("⚡⚡", .energy)))
+        XCTAssertEqual(Presentation.energyLine(board, now: t0, timeZone: utc), "⚡ 3 of 10 planned today.")
+    }
+
     func testSummaryAndGreeting() throws {
         let board = TaskBoard()
         XCTAssertEqual(Presentation.summary(Agenda.build(board, now: t0)), "All clear. Nothing needs you right now.")

@@ -11,6 +11,7 @@ import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.BoardException
 import dev.todotracker.core.BoardFileStore
 import dev.todotracker.core.Dashboard
+import dev.todotracker.core.Energy
 import dev.todotracker.core.NewTask
 import dev.todotracker.core.BreakPrompt
 import dev.todotracker.core.Breaks
@@ -59,6 +60,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
     var dashboard: Dashboard by mutableStateOf(Dashboard(null, emptyList(), emptyList(), emptyMap()))
         private set
+
+    /** Today's energy line ("⚡ 3 of 10 planned today."), when there's something to say. */
+    var energyToday: String? by mutableStateOf(null)
+        private set
+
+    /** How much energy there is in a day. */
+    var dailyEnergy: Int by mutableStateOf(Energy.DEFAULT_PER_DAY)
+        private set
+
     /** What got done today (newest first): something to look back on. */
     var doneToday: List<WorkItem> by mutableStateOf(emptyList())
         private set
@@ -137,8 +147,16 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         now = Instant.now()
         dashboard = Agenda.build(board, now, selectedGroup)
         doneToday = Agenda.doneToday(board, now, ZoneId.systemDefault(), selectedGroup)
+        energyToday = Energy.today(board, now, ZoneId.systemDefault())
+        dailyEnergy = board.dailyEnergy
         showTimers()
     }
+
+    /** How much energy a task takes per hour (1 to 3; null: not said). */
+    fun setEnergy(id: UUID, level: Int?) = change(if (level == null) "Energy: not said" else "Energy: ${"⚡".repeat(level)} an hour") { board.setEnergy(id, level, now = it) }
+
+    /** How much energy there is in a day (every app uses it). */
+    fun setDailyEnergy(perDay: Int?) = change("Energy in a day: ${perDay ?: Energy.DEFAULT_PER_DAY}") { board.setEnergyPerDay(perDay) }
 
     /** Not done after all (from Done today): back in Do now. */
     fun reopen(id: UUID) { change(null) { board.reopen(id, now = it) } }

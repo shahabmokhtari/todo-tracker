@@ -325,6 +325,18 @@ public final class BoardModel: ObservableObject {
 
     public func bringBack(_ id: UUID) { change(nil, server: .bringBack(id)) { try board.clearNextAction(id, now: $0) } }
 
+    /// How much energy a task takes per hour (1 to 3; nil: not said).
+    public func setEnergy(_ id: UUID, level: Int?) {
+        change(level.map { "Energy: \(String(repeating: "⚡", count: $0)) an hour" } ?? "Energy: not said", server: .setEnergy(id, level: level)) {
+            try board.setEnergy(id, level: level, now: $0)
+        }
+    }
+
+    /// How much energy there is in a day (every app uses it).
+    public func setDailyEnergy(_ perDay: Int?) {
+        change("Energy in a day: \(perDay ?? Energy.defaultPerDay)", server: .setDailyEnergy(perDay)) { _ in try board.setEnergyPerDay(perDay) }
+    }
+
     /// Do something else first: the task moves one down Do now (the next one becomes the focus).
     public func skip(_ id: UUID) {
         var ids = dashboard.now.map(\.item.id)

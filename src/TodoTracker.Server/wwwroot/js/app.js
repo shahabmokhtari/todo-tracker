@@ -1,5 +1,5 @@
 import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
-import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText, taskLink } from './format.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText, taskLink, energyMarks, energyLine } from './format.js';
 import { icon, ring } from './icons.js';
 import { createAutosave, changedFields } from './autosave.js';
 import { step, drop, beforeOf, changed } from './order.js';
@@ -207,7 +207,9 @@ function render() {
   // Any redraw (a live update, a plugin loading) keeps the keyboard where it was on the board.
   const kept = state.refocus ? { id: state.refocus } : boardFocus();
   $('#greeting').textContent = greeting();
-  $('#summary').textContent = summaryLine(d);
+  // Energy once something is planned today (the same rule in every app).
+  $('#summary').textContent = [summaryLine(d), pluginOn('energy') && d.energy?.plannedToday > 0 ? energyLine(d.energy) : ''].filter(Boolean).join(' ');
+  $('#summary').classList.toggle('over-energy', pluginOn('energy') && !!d.energy && d.energy.plannedToday > d.energy.perDay);
   renderTabs(d);
   const pick = $('#capture-group');
   if (pick.dataset.chosen && pick.dataset.tab !== (state.group ?? '')) delete pick.dataset.chosen;
@@ -368,7 +370,7 @@ function renderFocus(d) {
   }
 
   const meta = priorityMeta(f.priority);
-  const chips = metaChips(f).filter((c) => c.tone !== 'step');
+  const chips = metaChips(f, { energy: pluginOn('energy') }).filter((c) => c.tone !== 'step');
   const sub = [];
   if (f.stepNumber) {
     sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
@@ -573,7 +575,7 @@ function card(c, { waiting = false, orderable = false } = {}) {
     h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
     h('div', { class: 'body' },
       h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, iconBadge(c.icon), c.title),
-      h('div', { class: 'meta' }, ...metaChips(c, { waiting }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting, energy: pluginOn('energy') }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null),
     actions(c, { waiting }));
@@ -1106,6 +1108,7 @@ async function openDrawer(id, { full = null } = {}) {
       await act(Promise.resolve(), text ? 'Repeats' : 'Doesn’t repeat any more');
     })),
     item.repeat ? h('p', { class: 'hint' }, 'Done moves it to its next time (its deadline and when it comes back move along).') : null,
+    pluginOn('energy') ? energyField(item) : null,
     pluginOn('plan') ? planField(item) : null,
     field('Details', details),
     detailImages,
@@ -1423,6 +1426,18 @@ async function showInTree(item) {
  * When to work on it (a block on the Plan view): a start and how long; saved when changed. The keyboard way to plan
  * (the Plan view drags). "Off the plan" takes the block away.
  */
+/** How much energy the task takes per hour: not said, ⚡, ⚡⚡ or ⚡⚡⚡ (the Energy extra). */
+function energyField(item) {
+  const choices = [[0, 'Not said'], [1, `${energyMarks(1)} light`], [2, energyMarks(2)], [3, `${energyMarks(3)} draining`]];
+  const set = (level) => act(patch(`/api/items/${item.id}`, { energy: level }), level ? `Energy: ${energyMarks(level)} an hour` : 'Energy: not said');
+  // A div, not a label: a label around several buttons would click the first one too.
+  return h('div', { class: 'field' }, h('span', null, 'Energy per hour'), h('div', { class: 'seg energy-seg', role: 'group', 'aria-label': 'Energy per hour' },
+    ...choices.map(([level, label]) => h('button', {
+      type: 'button', 'aria-pressed': String((item.energy ?? 0) === level), title: level ? `Takes ${energyMarks(level)} an hour` : 'Counts as ⚡ an hour',
+      onclick: () => { if ((item.energy ?? 0) !== level) set(level); },
+    }, label))));
+}
+
 function planField(item) {
   if (item.completedAt) return null;
   const start = h('input', { type: 'datetime-local', step: 900, value: toLocalInput(item.plannedAt), 'aria-label': 'Planned start' });

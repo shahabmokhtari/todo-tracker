@@ -32,9 +32,9 @@ object BoardCodec {
     fun parseDate(text: String): Instant? =
         runCatching { Instant.parse(text) }.getOrNull() ?: runCatching { OffsetDateTime.parse(text).toInstant() }.getOrNull()
 
-    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder", "nowArrangedAt")
+    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder", "nowArrangedAt", "energyPerDay")
     private val itemKeys = setOf(
-        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "plannedAt", "plannedMinutes", "deadline", "nextActionAt", "after", "sequential",
+        "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "plannedAt", "plannedMinutes", "energy", "deadline", "nextActionAt", "after", "sequential",
         "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
     )
 
@@ -76,6 +76,7 @@ object BoardCodec {
             if (board.find(uuid) != null && seen.add(uuid)) board.nowOrder.add(uuid)
         }
         board.nowArrangedAt = doc.string("nowArrangedAt")?.let(::parseDate)
+        board.energyPerDay = doc["energyPerDay"]?.jsonPrimitive?.intOrNull?.takeIf { it in 1..Energy.MAX_PER_DAY }
         (doc["pomodoro"] as? JsonObject)?.let { readPomodoro(it, board) }
         board.extra = unknown(doc, boardKeys)
         return board
@@ -107,6 +108,7 @@ object BoardCodec {
         put("pomodoro", pomodoroJson(board))
         if (board.nowOrder.isNotEmpty()) put("nowOrder", JsonArray(board.nowOrder.map { JsonPrimitive(it.toString()) }))
         board.nowArrangedAt?.let { put("nowArrangedAt", formatDate(it)) }
+        board.energyPerDay?.let { put("energyPerDay", it) }
     })
 
     private fun item(i: WorkItem): JsonObject = buildJsonObject {
@@ -123,6 +125,7 @@ object BoardCodec {
         i.repeat?.let { put("repeat", it.toString()) }
         i.plannedAt?.let { put("plannedAt", formatDate(it)) }
         i.plannedMinutes?.let { put("plannedMinutes", it) }
+        i.energy?.let { put("energy", it) }
         i.repeatUndo?.let { undo ->
             put("repeatUndo", buildJsonObject {
                 undo.deadline?.let { put("deadline", formatDate(it)) }
@@ -181,6 +184,7 @@ object BoardCodec {
         item.repeat = Recurrence.parseOrNull(o.string("repeat"))
         item.plannedAt = o.date("plannedAt")
         item.plannedMinutes = o["plannedMinutes"]?.jsonPrimitive?.intOrNull
+        item.energy = o["energy"]?.jsonPrimitive?.intOrNull?.takeIf { it in Energy.LEVELS }
         item.repeatUndo = (o["repeatUndo"] as? JsonObject)?.let { RepeatUndo(it.date("deadline"), it.date("nextActionAt"), it.date("plannedAt")) }
         item.deadline = o.date("deadline")
         item.nextActionAt = o.date("nextActionAt")

@@ -1,10 +1,12 @@
 // Plan: a day or a week as a time grid. Drag a task from "Not planned" onto a time to plan a block of work on it; drag a
 // block to move it, its bottom edge to make it longer or shorter, click it to open the task. Deadlines show on their day,
 // "now" is a line, done blocks are ticked. Tasks put off (snoozed, waiting, a repeating task until its next time) are
-// listed under "Later" with when they come back, and marked on that day. Each group keeps its own view (day or week, work hours or the whole day, and
+// listed under "Later" with when they come back, and marked on that day. With the Energy extra, each day says what its
+// blocks take (hours × each task's ⚡ an hour) against what there is in a day, and turns red past it. Each group keeps its own view (day or week, work hours or the whole day, and
 // what work hours and days are). The keyboard way in: a task's details have a Plan field.
 
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
+import { energyMarks } from '../format.js';
 import { latest } from './common.js';
 
 const SNAP = 15;
@@ -186,7 +188,7 @@ export function createPlanView(ctx) {
     const li = h('li', { class: `plan-task${back ? ' later' : ''}`, draggable: 'true', tabindex: 0, dataset: { id: t.id }, title: 'Drag onto a time to plan it (or set it in its details)',
       onclick: () => ctx.openDrawer(t.id),
       onkeydown: (e) => { if (e.key === 'Enter') ctx.openDrawer(t.id); } },
-    iconBadge(t.icon), h('span', { class: 'plan-task-title' }, t.title, repeatMark(t.repeat)),
+    iconBadge(t.icon), h('span', { class: 'plan-task-title' }, t.title, repeatMark(t.repeat), energyMark(t.energy)),
     t.breadcrumb?.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null,
     back ? h('span', { class: 'muted small plan-back' }, back) : null);
     li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: t.id, minutes: t.minutes })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); });
@@ -204,6 +206,24 @@ export function createPlanView(ctx) {
       later.length ? h('ul', { 'aria-label': 'Later' }, ...later) : null);
   }
 
+  const energyOn = () => ctx.pluginOn?.('energy') !== false && !!plan.energy;
+  const energyMark = (level) => (energyOn() && level ? h('span', { class: 'energy-mark', title: `${energyMarks(level)} an hour` }, energyMarks(level)) : null);
+
+  /** What the day's blocks take against what there is in a day (Settings › Energy). */
+  function energyMeter(key) {
+    if (!energyOn()) return null;
+    const used = plan.energy.days?.[key] ?? 0;
+    const per = plan.energy.perDay;
+    const over = used > per;
+    const n = Math.round(used * 10) / 10;
+    const meter = h('span', {
+      class: `plan-energy${over ? ' over' : ''}`, role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': String(per), 'aria-valuenow': String(n),
+      'aria-label': `Energy: ${n} of ${per}`, title: over ? `${n} of ${per} ⚡: more than you have in a day` : `${n} of ${per} ⚡ planned (each block: hours × its ⚡ an hour)`,
+    }, `⚡ ${n}/${per}`);
+    meter.style.setProperty('--fill', `${Math.min(100, (used / per) * 100)}%`);
+    return meter;
+  }
+
   function block(b, seg, from) {
     const start = new Date(b.start);
     const top = (seg.from - from) * PX_PER_MIN;
@@ -217,7 +237,7 @@ export function createPlanView(ctx) {
       onkeydown: (e) => { if (e.key === 'Enter') ctx.openDrawer(b.id); },
     },
     h('span', { class: 'plan-block-time' }, `${hhmm(minutesOf(start))}–${hhmm(minutesOf(end))}`),
-    h('span', { class: 'plan-block-title' }, b.done ? icon('check', { size: 12 }) : null, iconBadge(b.icon), b.title, repeatMark(b.repeat)),
+    h('span', { class: 'plan-block-title' }, b.done ? icon('check', { size: 12 }) : null, iconBadge(b.icon), b.title, repeatMark(b.repeat), energyMark(b.energy)),
     movable && seg.last ? h('span', { class: 'plan-resize', title: 'Drag to make it longer or shorter', 'aria-hidden': 'true' }) : null);
     el.style.setProperty('--top', `${top}px`);
     el.style.setProperty('--height', `${Math.max((seg.to - seg.from) * PX_PER_MIN, 18)}px`);
@@ -297,6 +317,7 @@ export function createPlanView(ctx) {
     const head = h('div', { class: `plan-day-head${key === isoDay(new Date()) ? ' today' : ''}` },
       h('span', { class: 'plan-day-name' }, day.toLocaleDateString(undefined, { weekday: 'short' })),
       h('span', { class: 'plan-day-date' }, String(day.getDate())),
+      energyMeter(key),
       ...deadlines.map((d) => h('button', { class: `chip ${d.done ? 'muted' : 'warn'} plan-deadline`, type: 'button', title: `Due ${new Date(d.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, onclick: () => ctx.openDrawer(d.id) },
         icon('flag', { size: 11 }), d.title)),
       ...comingBack.map((t) => h('button', { class: 'chip plan-back-chip', type: 'button', title: `Back ${backLabel(t.wakeAt)}`, onclick: () => ctx.openDrawer(t.id) },

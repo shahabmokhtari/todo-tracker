@@ -248,6 +248,7 @@ public partial class App : Application
         window.Plugins = plugins;
         window.Sync = services.GetService<TodoTracker.Server.Plugins.Sync.SyncService>();
         _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
+        _viewModel.ShowEnergy = plugins.IsRunning("energy");
         var sidebar = _viewModel;
         plugins.Settings.Changed += (_, id) =>
         {
@@ -255,6 +256,10 @@ public partial class App : Application
             if (id == "focus-timer")
             {
                 Dispatcher.BeginInvoke(() => sidebar.ShowFocusTimer = plugins.IsRunning("focus-timer"));
+            }
+            else if (id == "energy")
+            {
+                Dispatcher.BeginInvoke(() => sidebar.ShowEnergy = plugins.IsRunning("energy"));
             }
         };
         window.AppHost = _appHost;

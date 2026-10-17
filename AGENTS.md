@@ -82,9 +82,13 @@ dotnet run --project src/TodoTracker.Cli -- now --data "$DATA" --vault "$DATA/va
   every change is a version. Don't add a path that destroys user data without an explicit, human-only action.
 - **Every change says who made it.** Mutations go through `TaskBoard` with an `Actor` (user, agent, connector, vault,
   system); the timeline and hooks show it. Use the `X-TodoTracker-Actor` header / `--as` / the MCP client name.
-- **The same rules on every platform.** Agenda, snooze choices, repeat rules, deep links and the export format are
-  implemented in C#, Swift and Kotlin with shared cases in `tests/fixtures` (`scenarios/`, `snooze.json`,
-  `breaks.json`, `export.json`). Change one, change all three and the fixture.
+- **The same rules on every platform.** Agenda, snooze choices, repeat rules, energy, deep links and the export format
+  are implemented in C#, Swift and Kotlin with shared cases in `tests/fixtures` (`scenarios/`, `snooze.json`,
+  `breaks.json`, `repeat.json`, `energy.json`, `export.json`). Change one, change all three and the fixture.
+- **Every feature on every platform, docs in the same PR.** A user-facing change lands in the web app, the Windows
+  sidebar, Mac/iPhone (SwiftUI) and Android where it applies (the Linux tray is quick add only), and the docs it touches
+  (`docs/guide.md`, `docs/product-spec.md`, `docs/plugins.md`, the README, the skill) change with it. An optional
+  feature is a plugin (`docs/plugins.md`): switched off, it leaves every window at once.
 - **Cross-platform by default.** Server, Core, CLI and tray code run on Windows, macOS and Linux: guard OS-specific
   code with `OperatingSystem.IsWindows()`/`IsMacOS()`, use `Path.Combine`, and find external tools (git, gh) without
   assuming the PATH a terminal has.

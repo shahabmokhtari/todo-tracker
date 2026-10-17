@@ -51,6 +51,10 @@ public sealed class MacAppContractTests : IAsyncLifetime
         await Send(HttpMethod.Post, $"/api/items/{step}/reminders/{reminder}/dismiss");
         await Send(HttpMethod.Post, $"/api/items/{step}/schedule", """{"clear":true}""");
         await Send(HttpMethod.Post, "/api/now/order", $$"""{"ids":["{{step}}","{{task}}"]}""");
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"energy":2}""");
+        await Send(HttpMethod.Patch, $"/api/items/{step}", """{"energy":0}""");
+        await Send(HttpMethod.Put, "/api/energy", """{"perDay":8}""");
+        await Send(HttpMethod.Put, "/api/energy", "{}");
         await Send(HttpMethod.Post, $"/api/items/{step}/complete");
         await Send(HttpMethod.Post, $"/api/items/{step}/reopen");
         await Send(HttpMethod.Post, "/api/pomodoro/start", $$"""{"itemId":"{{task}}"}""");

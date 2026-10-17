@@ -44,7 +44,10 @@ public static class ExtraKeys
     /// <summary>How it repeats ("every weekday").</summary>
     public const string Repeat = "repeat";
 
-    public static readonly IReadOnlyList<string> All = [Snooze, Remind, Stage, Labels, Icon, Color, Plan, Repeat];
+    /// <summary>Energy per hour, 1 to 3.</summary>
+    public const string Energy = "energy";
+
+    public static readonly IReadOnlyList<string> All = [Snooze, Remind, Stage, Labels, Icon, Color, Plan, Repeat, Energy];
 }
 
 /// <summary>Which side new tasks are created on (linked tasks always sync both ways).</summary>

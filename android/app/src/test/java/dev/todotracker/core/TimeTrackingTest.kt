@@ -289,5 +289,9 @@ class TimeTrackingTest {
         val again = Json.parseToJsonElement(BoardCodec.encode(board)).jsonObject
         assertTrue((again["items"]!!.jsonArray.first { it.jsonObject["title"]!!.jsonPrimitive.content == "Launch the site" }.jsonObject["children"]!!.jsonArray[0].jsonObject["time"]) != null)
         assertTrue(again["pomodoro"] is JsonObject)
+        // Energy: per hour on the task, and in a day on the board.
+        assertEquals(3, launch.energy)
+        assertEquals(8, board.dailyEnergy)
+        assertEquals(8, again["energyPerDay"]!!.jsonPrimitive.content.toInt())
     }
 }

@@ -16,6 +16,9 @@ public final class TaskBoard {
     public internal(set) var nowOrder: [UUID] = []
     /// When Do now was last arranged: a reminder going off after it brings its task back to the top.
     public internal(set) var nowArrangedAt: Date?
+    /// How much energy there is in a day (nil: `Energy.defaultPerDay`); kept with the board, so every app uses it.
+    public internal(set) var energyPerDay: Int?
+    public var dailyEnergy: Int { energyPerDay ?? Energy.defaultPerDay }
     private var index: [UUID: WorkItem] = [:]
 
     public init(seedDefaultGroups: Bool = true) {
@@ -327,6 +330,20 @@ public final class TaskBoard {
         item.reminders.append(reminder)
         log(now, id, "reminderAdded", "Reminder: \(reminder.message)", actor)
         return reminder
+    }
+
+    /// How much energy a task takes per hour (1 to 3; nil: not said).
+    public func setEnergy(_ id: UUID, level: Int?, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        if let level, !Energy.levels.contains(level) { throw BoardError.invalid("Energy is 1 to 3 (⚡ to ⚡⚡⚡ an hour).") }
+        item.energy = level
+        log(now, id, "updated", "Updated \"\(item.title)\"", actor)
+    }
+
+    /// How much energy there is in a day (nil: back to the default).
+    public func setEnergyPerDay(_ perDay: Int?) throws {
+        if let perDay, !(1...Energy.maxPerDay).contains(perDay) { throw BoardError.invalid("A day's energy is 1 to \(Energy.maxPerDay) ⚡.") }
+        energyPerDay = perDay
     }
 
     /// Records the order of the tasks someone sees in Do now (TaskBoard.ArrangeNow in C#, same rules): only the places

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText, taskLink } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText, taskLink, energyMarks, energyLine } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -204,4 +204,17 @@ test('taskLink opens the app on the task and pastes as a link named after it', (
   assert.equal(link.text, 'todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f');
   assert.equal(link.html, '<a href="todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f">Fix &lt;the&gt; &quot;bug&quot; &amp; ship</a>');
   assert.equal(taskLink('x', '  ').html, '<a href="todotracker://task/x">Task</a>');
+});
+
+test('energy: lightning per hour, and what the plan takes today against what there is', () => {
+  assert.equal(energyMarks(1), '⚡');
+  assert.equal(energyMarks(3), '⚡⚡⚡');
+  assert.equal(energyMarks(null), '');
+  assert.equal(energyMarks(4), '');
+  assert.equal(energyLine({ perDay: 10, plannedToday: 4.5 }), '⚡ 4.5 of 10 planned today.');
+  assert.equal(energyLine({ perDay: 8, plannedToday: 9.25 }), '⚡ 9.3 of 8 planned today: 1.3 too much.');
+  assert.equal(energyLine(null), '');
+  const chips = metaChips({ energy: 2, noteCount: 0 }, { now, energy: true });
+  assert.deepEqual(chips, [{ text: '⚡⚡', tone: 'energy' }]);
+  assert.deepEqual(metaChips({ energy: 2 }, { now }), []);
 });

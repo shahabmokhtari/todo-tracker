@@ -77,6 +77,7 @@ public sealed partial class TaskBoard
             Icon = CleanIcon(spec.Icon),
             Color = CleanColor(spec.Color),
             Repeat = repeat,
+            Energy = Core.Energy.Clean(spec.Energy),
         };
         item.TagList.AddRange(tags);
         item.LabelList.AddRange(labels.Select(l => EnsureLabel(l).Name));
@@ -110,6 +111,7 @@ public sealed partial class TaskBoard
         var icon = changes.Icon is null ? null : CleanIcon(changes.Icon);
         var color = changes.Color is null ? null : CleanColor(changes.Color);
         var repeat = changes.Repeat is null ? null : ParseRepeat(changes.Repeat);
+        var energy = Core.Energy.Clean(changes.Energy);
 
         item.Title = title;
         if (changes.Details is not null)
@@ -124,6 +126,7 @@ public sealed partial class TaskBoard
         item.Icon = changes.ClearIcon ? null : icon ?? item.Icon;
         item.Color = changes.ClearColor ? null : color ?? item.Color;
         item.Repeat = changes.ClearRepeat ? null : repeat ?? item.Repeat;
+        item.Energy = changes.ClearEnergy ? null : energy ?? item.Energy;
         Log(now, id, ActivityKind.Updated, $"Updated \"{item.Title}\"", actor);
     }
 

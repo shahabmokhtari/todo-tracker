@@ -24,7 +24,8 @@ public sealed record CreateItemRequest(
     string? Stage = null,
     string? Icon = null,
     string? Color = null,
-    string? Repeat = null);
+    string? Repeat = null,
+    int? Energy = null);
 
 public sealed record PatchItemRequest(
     string? Title = null,
@@ -42,7 +43,12 @@ public sealed record PatchItemRequest(
     /// <summary>#rrggbb; "" removes it.</summary>
     string? Color = null,
     /// <summary>A repeat rule ("every weekday"); "" stops it repeating.</summary>
-    string? Repeat = null);
+    string? Repeat = null,
+    /// <summary>Energy per hour, 1 to 3; 0 removes it.</summary>
+    int? Energy = null);
+
+/// <summary>How much energy there is in a day (1 to 100 ⚡); null: the default (10).</summary>
+public sealed record EnergyRequest(int? PerDay);
 
 public sealed record StepsRequest(IReadOnlyList<string>? Titles, int? StepDelayMinutes = null);
 
@@ -191,6 +197,7 @@ internal static class ApiEndpoints
                         Icon = request.Icon,
                         Color = request.Color,
                         Repeat = request.Repeat,
+                        Energy = request.Energy,
                     },
                     actor,
                     now);
@@ -241,6 +248,8 @@ internal static class ApiEndpoints
                         ClearColor = request.Color is not null && string.IsNullOrWhiteSpace(request.Color),
                         Repeat = string.IsNullOrWhiteSpace(request.Repeat) ? null : request.Repeat,
                         ClearRepeat = request.Repeat is not null && string.IsNullOrWhiteSpace(request.Repeat),
+                        Energy = request.Energy is 0 ? null : request.Energy,
+                        ClearEnergy = request.Energy is 0,
                     },
                     actor,
                     now);
@@ -255,6 +264,17 @@ internal static class ApiEndpoints
                 }
 
                 return b.Get(id);
+            }));
+
+        // Energy: what there is in a day (kept with the board, so every app uses it) and what today's plan takes.
+        api.MapGet("/energy", (IBoardStore store, TimeProvider time, TodoTrackerServerOptions options) =>
+            store.ReadAsync(b => Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone)));
+
+        api.MapPut("/energy", (EnergyRequest request, IBoardStore store, TimeProvider time, TodoTrackerServerOptions options) =>
+            store.UpdateAsync(b =>
+            {
+                b.SetEnergyPerDay(request.PerDay);
+                return Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone);
             }));
 
         api.MapDelete("/items/{id:guid}", async (Guid id, HttpContext http, IBoardStore store, TimeProvider time) =>

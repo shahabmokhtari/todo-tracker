@@ -336,6 +336,28 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Energy_is_set_on_a_task_and_for_the_day_and_the_plan_and_dashboard_add_it_up()
+    {
+        var doc = await _client.PostJson("/api/items", new { title = "Design doc", energy = 2 });
+        Assert.Equal(2, doc["energy"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PatchAsJsonAsync($"/api/items/{doc.Id()}", new { energy = 4 })).StatusCode);
+        await _client.PostJson($"/api/items/{doc.Id()}/plan", new { start = ServerFixture.T0.AddHours(1), minutes = 90 });
+
+        var set = await (await _client.PutAsJsonAsync("/api/energy", new { perDay = 6 })).Json();
+        Assert.Equal((6, 3.0), (set["perDay"]!.GetValue<int>(), set["plannedToday"]!.GetValue<double>()));
+        Assert.Equal(3.0, (await Dashboard())["energy"]!["plannedToday"]!.GetValue<double>());
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=2");
+        Assert.Equal(6, plan["energy"]!["perDay"]!.GetValue<int>());
+        Assert.Equal(3.0, plan["energy"]!["days"]!["2026-01-05"]!.GetValue<double>());
+        Assert.Equal(2, plan["blocks"]![0]!["energy"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/energy", new { perDay = 0 })).StatusCode);
+
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{doc.Id()}", new { energy = 0 })).Json();
+        Assert.Null(cleared["energy"]);
+        Assert.Equal(1.5, (await _client.GetJson("/api/energy"))["plannedToday"]!.GetValue<double>());
+    }
+
+    [Fact]
     public async Task A_repeating_task_moves_on_when_done_and_its_rule_can_change()
     {
         var bad = await _client.PostAsJsonAsync("/api/items", new { title = "Plants", repeat = "now and then" });
