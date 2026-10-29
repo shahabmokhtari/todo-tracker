@@ -247,7 +247,7 @@ internal static class Security
         ("POST", Route("/api/items")),
         ("PATCH", Route($"/api/items/{Id}")),
         ("DELETE", Route($"/api/items/{Id}")),
-        ("POST", Route($"/api/items/{Id}/(complete|reopen|notes|schedule|after|steps|reminders|move|reorder)")),
+        ("POST", Route($"/api/items/{Id}/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder)")),
         ("POST", Route($"/api/items/{Id}/reminders/{Id}/dismiss")),
         ("POST", Route("/api/now/(order|first)")),
         ("GET", Route("/api/energy")),

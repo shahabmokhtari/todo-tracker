@@ -354,7 +354,7 @@ public sealed class PhoneTests
     [InlineData("POST", "/api/launch")]
     [InlineData("GET", "/api/dashboard")]
     [InlineData("POST", "/api/hooks")]
-    [InlineData("POST", "/api/items/{id}/archive")]
+    [InlineData("POST", "/api/archive")]
     [InlineData("POST", "/api/items/{id}/attachments")]
     [InlineData("GET", "/api/items/{id}/rich")]
     [InlineData("HEAD", "/api/export")]
@@ -397,6 +397,10 @@ public sealed class PhoneTests
         await phone.PostOk("/api/now/first", new { ids = new[] { id } });
         await phone.PostOk($"/api/items/{id}/move", new { groupId = group.Id() });
         await phone.PostOk($"/api/items/{id}/complete", new { });
+        await phone.PostOk($"/api/items/{id}/reopen", new { });
+        await phone.PostOk($"/api/items/{id}/complete", new { });
+        await phone.PostOk($"/api/items/{id}/archive", new { });
+        await phone.PostOk($"/api/items/{id}/unarchive", new { });
         await phone.PostOk($"/api/items/{id}/reopen", new { });
         await phone.PostOk("/api/pomodoro/start", new { itemId = id });
         await phone.PostOk("/api/pomodoro/reset", new { });
