@@ -33,7 +33,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private Dictionary<string, ((DateTime Time, long Size) Stamp, DateTimeOffset Seen)> _firstSeen = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<Guid, bool>? _mutationBaseline;
     private volatile bool _reactionPending;
-    private List<ConfigGroup> _dormantGroups = [];
+    private List<(ConfigGroup Group, List<Guid> Before)> _dormantGroups = [];
     private FileSystemWatcher? _watcher;
     private Timer? _rescan;
     private Timer? _debounce;
@@ -538,9 +538,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         // Config groups whose folder is missing stay dormant (a sync client may deliver the folder later).
         var groups = new List<(Guid Id, string Folder, string? Color)>();
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var dormant = new List<ConfigGroup>();
-        foreach (var g in config.Groups)
+        var dormant = new List<(ConfigGroup Group, List<Guid> Before)>();
+        for (var index = 0; index < config.Groups.Count; index++)
         {
+            var g = config.Groups[index];
             var folder = folders.FirstOrDefault(f => string.Equals(f, g.Folder, StringComparison.OrdinalIgnoreCase) && !claimed.Contains(f));
             if (folder is null && !groups.Exists(x => x.Id == g.Id))
             {
@@ -552,7 +553,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             {
                 if (folder is null && !groups.Exists(x => x.Id == g.Id))
                 {
-                    dormant.Add(g);
+                    // It keeps its place: after the config groups before it (nearest first), see ConfigText.
+                    dormant.Add((g, config.Groups.Take(index).Select(c => c.Id).Reverse().ToList()));
                 }
 
                 continue;
@@ -1335,7 +1337,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     // ---- Settings, timer state, activity ------------------------------------------------
 
-    private sealed record ConfigGroup(Guid Id, string Folder, string? Color);
+    internal sealed record ConfigGroup(Guid Id, string Folder, string? Color);
 
     private sealed record ConfigLabel(string Name, string Color);
 
@@ -1391,12 +1393,45 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _pendingStamps.Clear();
     }
 
+    /// <summary>
+    /// The tabs as config.json lists them: the ones with a folder in tab order, and each dormant one (in config, without
+    /// a folder here yet) right after the nearest tab that came before it in config, or first when none did. A folder
+    /// that's empty doesn't sync, so another device has this tab dormant: both must still write the same config.json,
+    /// or they never agree on it (and later config changes merge without a base).
+    /// </summary>
+    internal static List<ConfigGroup> GroupsInOrder(List<ConfigGroup> live, IReadOnlyList<(ConfigGroup Group, List<Guid> Before)> dormant)
+    {
+        var ids = live.Select(g => g.Id).ToHashSet();
+        var front = new List<ConfigGroup>();
+        var after = new Dictionary<Guid, List<ConfigGroup>>();
+        foreach (var (group, before) in dormant)
+        {
+            if (before.FirstOrDefault(ids.Contains) is var anchor && anchor != Guid.Empty && ids.Contains(anchor))
+            {
+                (after.TryGetValue(anchor, out var list) ? list : after[anchor] = []).Add(group);
+            }
+            else
+            {
+                front.Add(group);
+            }
+        }
+
+        var result = new List<ConfigGroup>(front);
+        foreach (var group in live)
+        {
+            result.Add(group);
+            result.AddRange(after.GetValueOrDefault(group.Id) ?? []);
+        }
+
+        return result;
+    }
+
     private string ConfigText()
     {
         var folders = _caches.GroupFolders;
         var doc = new ConfigDocument(
             2,
-            _board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color)).Concat(_dormantGroups).ToList(),
+            GroupsInOrder(_board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color)).ToList(), _dormantGroups),
             _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color)).ToList(),
             _board.Items.Select(i => i.Id).ToList(),
             _board.EnergyPerDay);

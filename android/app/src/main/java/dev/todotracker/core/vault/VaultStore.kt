@@ -85,7 +85,7 @@ class VaultStore(
     private val lock = Any()
     private var caches = Caches()
     private var board: TaskBoard = TaskBoard(seedDefaultGroups = false)
-    private var dormantGroups: List<ConfigGroup> = emptyList()
+    private var dormantGroups: List<Pair<ConfigGroup, List<UUID>>> = emptyList()
     private var configText = ""
     private var stateText = ""
     private var activityLines = mutableListOf<ActivityEntry>()
@@ -270,8 +270,8 @@ class VaultStore(
         // Config groups whose folder is missing stay dormant (sync may bring the folder later).
         val groups = mutableListOf<Triple<UUID, String, String?>>()
         val claimed = HashSet<String>()
-        val dormant = mutableListOf<ConfigGroup>()
-        for (g in config.groups) {
+        val dormant = mutableListOf<Pair<ConfigGroup, List<UUID>>>()
+        for ((index, g) in config.groups.withIndex()) {
             var folder = folders.firstOrNull { Net.equalsCi(it, g.folder) && Net.ci(it) !in claimed }
             if (folder == null && groups.none { it.first == g.id }) {
                 folder = folders.firstOrNull { f ->
@@ -280,7 +280,8 @@ class VaultStore(
                 }
             }
             if (folder == null || groups.any { it.first == g.id }) {
-                if (folder == null && groups.none { it.first == g.id }) dormant.add(g)
+                // It keeps its place: after the config groups before it (nearest first), see groupsInOrder.
+                if (folder == null && groups.none { it.first == g.id }) dormant.add(g to config.groups.take(index).map { it.id }.reversed())
                 continue
             }
             claimed.add(Net.ci(folder))
@@ -749,8 +750,25 @@ class VaultStore(
 
     private fun buildConfigText(): String {
         val folders = caches.groupFolders
-        val groups = board.groups.filter { folders.containsKey(it.id) }.map { ConfigGroup(it.id, folders[it.id]!!, it.color) } + dormantGroups
+        val groups = groupsInOrder(board.groups.filter { folders.containsKey(it.id) }.map { ConfigGroup(it.id, folders[it.id]!!, it.color) }, dormantGroups)
         return configJson(groups, board.labels, board.items.map { it.id }, board.energyPerDay)
+    }
+
+    /**
+     * The tabs as config.json lists them: the ones with a folder in tab order, and each dormant one (in config, without a
+     * folder here yet) right after the nearest tab that came before it in config and is still there, or first when none
+     * is. An empty folder doesn't sync, so another device has the tab dormant: both must write the same config.json, or
+     * they never agree on it (and later settings changes merge without a base).
+     */
+    private fun groupsInOrder(live: List<ConfigGroup>, dormant: List<Pair<ConfigGroup, List<UUID>>>): List<ConfigGroup> {
+        val ids = live.map { it.id }.toSet()
+        val front = mutableListOf<ConfigGroup>()
+        val after = HashMap<UUID, MutableList<ConfigGroup>>()
+        for ((group, before) in dormant) {
+            val anchor = before.firstOrNull { it in ids }
+            if (anchor == null) front.add(group) else after.getOrPut(anchor) { mutableListOf() }.add(group)
+        }
+        return front + live.flatMap { listOf(it) + (after[it.id] ?: emptyList()) }
     }
 
     private fun writeMetadataIfChanged(undo: ArrayDeque<() -> Unit>?): Boolean {
