@@ -236,6 +236,20 @@ final class PhonePairingTests: XCTestCase {
         XCTAssertNil(store.lastRead)
     }
 
+    func testThePhonesNameIsRememberedEvenAfterDisconnecting() throws {
+        let suite = "PhonePairingTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PairingStore(defaults: defaults, secrets: InMemorySecretStore())
+        XCTAssertNil(store.phoneName)
+        store.phoneName = "  Shahab’s iPad "
+        XCTAssertEqual(store.phoneName, "Shahab’s iPad")
+        store.forget()
+        XCTAssertEqual(store.phoneName, "Shahab’s iPad", "used again the next time this phone connects")
+        store.phoneName = "   "
+        XCTAssertNil(store.phoneName)
+    }
+
     func testAPairingWithoutItsTokenIsntOne() throws {
         let suite = "PhonePairingTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

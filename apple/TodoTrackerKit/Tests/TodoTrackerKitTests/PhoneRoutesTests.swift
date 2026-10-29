@@ -15,7 +15,7 @@ final class PhoneRoutesTests: XCTestCase {
         ("POST", "/api/items"),
         ("PATCH", "/api/items/\(id)"),
         ("DELETE", "/api/items/\(id)"),
-        ("POST", "/api/items/\(id)/(complete|reopen|notes|schedule|after|steps|reminders|move|reorder)"),
+        ("POST", "/api/items/\(id)/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder)"),
         ("POST", "/api/items/\(id)/reminders/\(id)/dismiss"),
         ("POST", "/api/now/(order|first)"),
         ("GET", "/api/energy"),
@@ -45,6 +45,7 @@ final class PhoneRoutesTests: XCTestCase {
             .addGroup(name: "g"), .updateGroup(a, name: "g", color: nil), .deleteGroup(a, moveTo: b),
             .pomodoro(.start, itemId: a), .pomodoro(.pause, itemId: nil), .pomodoro(.resume, itemId: nil), .pomodoro(.skip, itemId: nil),
             .pomodoro(.reset, itemId: nil), .pomodoro(.next, itemId: a), .startTimer(a), .stopTimer, .setTheme("dark"),
+            .archive(a), .unarchive(a),
         ]
         for action in actions {
             let request = ServerAPI.request(for: action)
@@ -53,10 +54,8 @@ final class PhoneRoutesTests: XCTestCase {
         for read in [ServerAPI.export, ServerAPI.settings, ServerAPI.health] { XCTAssertTrue(allowed(read), read.path) }
     }
 
-    /// Not open to phones (so the phone doesn't offer them): archiving, and signing in the browser.
+    /// Not open to phones (so the phone doesn't offer it): signing in the browser.
     func testWhatThePhoneDoesntOfferIsntAllowed() {
-        XCTAssertFalse(allowed(ServerAPI.request(for: .archive(UUID()))))
-        XCTAssertFalse(allowed(ServerAPI.request(for: .unarchive(UUID()))))
         XCTAssertFalse(allowed(ServerAPI.launch()))
     }
 }

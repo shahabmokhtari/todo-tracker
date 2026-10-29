@@ -91,6 +91,7 @@ public final class PairingStore {
     static let tokenKey = "phone-token"
     static let settingsKey = "pairedComputer"
     static let lastReadKey = "pairedComputerLastRead"
+    static let phoneNameKey = "phoneName"
 
     public init(defaults: UserDefaults = .standard, secrets: SecretStore) {
         self.defaults = defaults
@@ -121,6 +122,16 @@ public final class PairingStore {
         secrets.remove(Self.tokenKey)
         defaults.removeObject(forKey: Self.settingsKey)
         defaults.removeObject(forKey: Self.lastReadKey)
+    }
+
+    /// The name this phone gave itself when it connected ("Shahab's iPad"): offered again next time, so it's kept when
+    /// the phone disconnects. Blank: none.
+    public var phoneName: String? {
+        get { defaults.string(forKey: Self.phoneNameKey).flatMap { $0.isEmpty ? nil : $0 } }
+        set {
+            let clean = newValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if clean.isEmpty { defaults.removeObject(forKey: Self.phoneNameKey) } else { defaults.set(clean, forKey: Self.phoneNameKey) }
+        }
     }
 
     /// When the board was last read from the computer (what the cached copy shows).

@@ -133,8 +133,6 @@ public final class BoardModel: ObservableObject {
     /// The full window in the browser: on the Mac, from its own server (not from a phone).
     public var canOpenInBrowser: Bool { serverURL != nil && !isRemote }
 
-    /// Archive needs a route phones don't have yet: offered on a board on this device and on the Mac.
-    public var canArchive: Bool { !isRemote }
 
     /// Opening the tasks folder (the server is starting): nothing changes meanwhile, so nothing is written to the board
     /// on this Mac that the server may be moving into the folder right now.
@@ -804,9 +802,16 @@ public final class BoardModel: ObservableObject {
         findComputer()
     }
 
-    /// Connects this phone with the link from Settings › Phones on a computer (scanned, pasted or opened).
-    public func pair(link text: String) {
+    /// The name the computer shows for this phone ("Shahab's iPad"): the one typed last time, else the device's own
+    /// (on a real device that's just "iPhone" or "iPad").
+    public var phoneName: String { phone?.pairings.phoneName ?? phone?.phoneName ?? "" }
+
+    /// Connects this phone with the link from Settings › Phones on a computer (scanned, pasted or opened), under the
+    /// name given (nil or blank: the one it has).
+    public func pair(link text: String, phoneName typed: String? = nil) {
         guard let phone else { return }
+        if let typed, !Self.isBlank(typed) { phone.pairings.phoneName = typed }
+        let name = phoneName
         let link: PairingLink
         do {
             link = try PairingLink.parse(text)
@@ -823,7 +828,7 @@ public final class BoardModel: ObservableObject {
         Task {
             defer { isPairing = false }
             do {
-                let made = try await PhoneConnect.claim(link, phoneName: phone.phoneName, fetch: PhoneConnect.fetch(with: session))
+                let made = try await PhoneConnect.claim(link, phoneName: name, fetch: PhoneConnect.fetch(with: session))
                 let saved = PairedComputer(hosts: link.hosts, fingerprint: link.fingerprint, computer: made.computer, lastHost: made.host, token: made.token)
                 guard phone.pairings.save(saved) else {
                     pairingError = "Couldn’t keep the connection on this phone (its Keychain said no). Try again."

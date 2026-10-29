@@ -186,7 +186,7 @@ struct TaskDetailContent: View {
         Section {
             if item.isDone {
                 Button { model.reopen(itemId) } label: { Label("Reopen", systemImage: "arrow.uturn.backward") }
-                if item.parent == nil, model.canArchive {
+                if item.parent == nil {
                     if item.archivedAt == nil {
                         Button { model.archive(itemId) } label: { Label("Archive", systemImage: "archivebox") }
                     } else {

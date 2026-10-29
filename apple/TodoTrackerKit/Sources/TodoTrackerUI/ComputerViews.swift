@@ -46,6 +46,7 @@ struct ComputerSection: View {
             if model.isRemote, let name = model.remoteComputer {
                 LabeledContent("Connected to", value: name)
                     .accessibilityIdentifier("settings-connected-to")
+                LabeledContent("As", value: model.phoneName)
                 if let text = model.remoteBanner { Text(text).font(.footnote).foregroundStyle(.secondary) }
                 Button("Disconnect", role: .destructive) { confirmDisconnect = true }
                     .confirmationDialog("Disconnect from \(name)?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
@@ -75,10 +76,21 @@ struct ConnectComputerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var pasted = ""
     @State private var started = false
+    /// How the computer lists this phone (prefilled; on a real device the system only says "iPhone" or "iPad").
+    @State private var name = ""
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    TextField("This phone’s name", text: $name)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("connect-name")
+                } header: {
+                    Text("This phone’s name")
+                } footer: {
+                    Text("The computer lists this phone by it, and your changes from it say so (for example “Shahab’s iPad”).")
+                }
                 #if os(iOS) && canImport(VisionKit)
                 if QRScanner.canScan {
                     Section {
@@ -123,7 +135,10 @@ struct ConnectComputerView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
-            .onAppear { model.pairingError = nil }
+            .onAppear {
+                model.pairingError = nil
+                if name.isEmpty { name = model.phoneName }
+            }
             .onChange(of: model.isRemote) { _, connected in if connected && started { dismiss() } }
         }
     }
@@ -138,7 +153,7 @@ struct ConnectComputerView: View {
 
     private func connect(_ link: String) {
         started = true
-        model.pair(link: link)
+        model.pair(link: link, phoneName: name)
     }
 }
 

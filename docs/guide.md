@@ -245,12 +245,13 @@ your Wi-Fi at home or anywhere with Tailscale:
 
 1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
    Tracker. Choose **Connect a phone**: it shows a QR code and a link.
-2. On the phone, open **Settings › Computer › Connect to a computer…** and scan the code (or paste the link; opening
-   the link on the phone works too). The code works once, for 10 minutes.
+2. On the phone, open **Settings › Computer › Connect to a computer…**, check **This phone's name** (the computer lists
+   the phone by it; type e.g. "Shahab's iPad", since the phone only offers "iPad"), and scan the code (or paste the
+   link; opening the link on the phone works too). The code works once, for 10 minutes.
 
 From then on the phone shows the computer's tasks and your changes go straight there (the timeline says they came from
-your phone). Settings says **Connected to** your computer. A few things stay on the computer: *Archive*, and opening
-the full app in the browser.
+your phone). Settings says **Connected to** your computer. Only opening the full app in the browser stays on the
+computer.
 
 * **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
   computer, with the time: "Can't reach … You're seeing your tasks from 6:05 PM; changes wait until you're back on its

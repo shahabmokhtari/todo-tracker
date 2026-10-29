@@ -27,6 +27,13 @@ final class FakeComputer: URLProtocol {
         set { lock.withLock { storedRequests = newValue } }
     }
 
+    private static var storedName: String?
+    /// The name the phone sent with its claim.
+    static var claimedName: String? {
+        get { lock.withLock { storedName } }
+        set { lock.withLock { storedName = newValue } }
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -34,6 +41,10 @@ final class FakeComputer: URLProtocol {
         let url = request.url!
         let line = "\(request.httpMethod ?? "GET") \(url.path) \(request.value(forHTTPHeaderField: "Authorization") ?? "-")"
         Self.lock.withLock { Self.storedRequests.append(line) }
+        if url.path == "/api/phones/claim", let body = Self.body(of: request),
+           let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            Self.claimedName = object["name"] as? String
+        }
         let status: Int
         let body: Data
         switch Self.mode {
@@ -58,6 +69,22 @@ final class FakeComputer: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// URLSession hands a protocol the body as a stream.
+    private static func body(of request: URLRequest) -> Data? {
+        if let data = request.httpBody { return data }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: buffer.count)
+            guard read > 0 else { break }
+            data.append(buffer, count: read)
+        }
+        return data
+    }
 }
 
 /// An iPhone or iPad using a computer's tasks (Settings › Connect to a computer): pairing, reading and changing them
@@ -77,6 +104,7 @@ final class RemoteModeTests: XCTestCase {
         secrets = InMemorySecretStore()
         FakeComputer.mode = .up
         FakeComputer.requests = []
+        FakeComputer.claimedName = nil
         let computer = TaskBoard()
         _ = try computer.addTask(NewTask("On the computer"), now: Date())
         FakeComputer.board = try BoardCodec.encode(computer)
@@ -130,9 +158,9 @@ final class RemoteModeTests: XCTestCase {
         XCTAssertTrue(model.isRemote)
         XCTAssertNil(model.remoteBanner)
         XCTAssertFalse(model.canOpenInBrowser, "no browser sign-in from a phone")
-        XCTAssertFalse(model.canArchive)
         XCTAssertEqual(secrets.read("phone-token"), "ttp_test", "the token is a secret")
         XCTAssertTrue(FakeComputer.requests.contains("POST /api/phones/claim -"))
+        XCTAssertEqual(FakeComputer.claimedName, "Test iPhone", "the device's name when none was typed")
         XCTAssertTrue(FakeComputer.requests.contains("GET /api/export Bearer ttp_test"))
 
         let task = try XCTUnwrap(model.board.items.first)
@@ -213,6 +241,24 @@ final class RemoteModeTests: XCTestCase {
         XCTAssertEqual(model.status, "Disconnected from Studio Mac. These are the tasks on this phone, as you left them.")
         XCTAssertNil(PairingStore(defaults: UserDefaults(suiteName: suite)!, secrets: secrets).load())
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("computer-board.json").path))
+    }
+
+    func testTheNameTypedForThePhoneIsSentAndRemembered() async throws {
+        let model = BoardModel(store: try phoneStore(), phone: setup())
+        XCTAssertEqual(model.phoneName, "Test iPhone", "prefilled with the device's name")
+        model.pair(link: link, phoneName: "Shahab’s iPad")
+        try await waitUntil("pairing") { model.remote?.canChange == true }
+        XCTAssertEqual(FakeComputer.claimedName, "Shahab’s iPad")
+
+        model.disconnectComputer()
+        XCTAssertEqual(BoardModel(store: nil, phone: setup()).phoneName, "Shahab’s iPad", "offered again next time")
+    }
+
+    func testArchivingWhileConnectedGoesToTheComputer() async throws {
+        let model = try await pairedModel(try phoneStore())
+        let task = try XCTUnwrap(model.board.items.first)
+        model.archive(task.id)
+        try await waitUntil("archive") { FakeComputer.requests.contains("POST /api/items/\(task.id.uuidString.lowercased())/archive Bearer ttp_test") }
     }
 
     func testABadLinkSaysWhyAndChangesNothing() async throws {
