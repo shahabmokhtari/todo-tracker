@@ -63,7 +63,8 @@ public enum Agenda {
 
     /// What got done since midnight (in `timeZone`), newest first. A parent finished together with its subtasks is one
     /// entry (the subtasks it closed aren't repeated); steps done on their own count. Same rule as the C# core.
-    public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil) -> [WorkItem] {
+    public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil, query: String? = nil) -> [WorkItem] {
+        let search = TaskSearch(query)
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let start = calendar.startOfDay(for: now)
@@ -74,6 +75,7 @@ public enum Agenda {
             .compactMap { offset, item -> (offset: Int, item: WorkItem, at: Date)? in
                 if item.isArchived { return nil }
                 if let groupId, item.groupId != groupId { return nil }
+                if !search.isEmpty && !search.matches(item) { return nil }
                 if let at = item.completedAt {
                     guard at >= start, at <= now else { return nil }
                     return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)") ? (offset: offset, item: item, at: at) : nil
@@ -109,8 +111,11 @@ public enum Agenda {
         (item.ancestors.map(\.priority) + [item.priority]).max() ?? item.priority
     }
 
-    public static func build(_ board: TaskBoard, now: Date, recentNoteCount: Int = 5, groupId: UUID? = nil) -> Dashboard {
-        let openItems = board.allItems.filter { !$0.isDone }.enumerated().map { (offset: $0.offset, entry: describe($0.element, now: now)) }
+    /// `query`: only tasks whose title, details or notes have these words are listed (TaskSearch); the group counts
+    /// keep their totals.
+    public static func build(_ board: TaskBoard, now: Date, recentNoteCount: Int = 5, groupId: UUID? = nil, query: String? = nil) -> Dashboard {
+        let search = TaskSearch(query)
+        let openItems = board.allItems.filter { !$0.isDone && !$0.isArchived }.enumerated().map { (offset: $0.offset, entry: describe($0.element, now: now)) }
         let nowAll = openItems.filter { $0.entry.state == .actionable || ($0.entry.needsAttention && ($0.entry.state == .waiting || $0.entry.state == .container)) }
         let waitingAll = openItems.filter {
             $0.entry.state == .waiting && !$0.entry.needsAttention && waits($0.entry.item, now)
@@ -125,7 +130,7 @@ public enum Agenda {
                 attention: nowAll.filter { $0.entry.item.groupId == g.id && $0.entry.needsAttention }.count)
         }
 
-        func inScope(_ item: WorkItem) -> Bool { groupId == nil || item.groupId == groupId }
+        func inScope(_ item: WorkItem) -> Bool { (groupId == nil || item.groupId == groupId) && (search.isEmpty || search.matches(item)) }
 
         // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
         // (priority, overdue, deadline, age). Same rules as TodoTracker.Core.Agenda.
@@ -161,7 +166,7 @@ public enum Agenda {
         let overview = board.items.filter { !$0.isDone && inScope($0) }.map { summarize($0, now: nowList, waiting: waitingList) }
 
         let notes: [RecentNote] = recentNoteCount <= 0 ? [] : Array(
-            board.allItems.filter(inScope)
+            board.allItems.filter { !$0.isArchived && inScope($0) }
                 .flatMap { item in item.notes.map { RecentNote(item: item, note: $0) } }
                 .enumerated()
                 .sorted { $0.element.note.at != $1.element.note.at ? $0.element.note.at > $1.element.note.at : $0.offset < $1.offset }

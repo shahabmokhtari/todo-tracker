@@ -17,8 +17,41 @@ final class ServerAPITests: XCTestCase {
                        ServerRequest(method: "POST", path: "\(itemPath)/reminders/8b0f2c1e-1111-4a6b-9c1d-000000000002/dismiss"))
         XCTAssertEqual(request(.addNote(item, text: "Called \"Sam\" / done")),
                        ServerRequest(method: "POST", path: "\(itemPath)/notes", body: #"{"text":"Called \"Sam\" / done"}"#))
-        XCTAssertEqual(request(.update(item, title: "New title", priority: .high)),
+        XCTAssertEqual(request(.edit(item, TaskChanges(title: "New title", priority: .high))),
                        ServerRequest(method: "PATCH", path: itemPath, body: #"{"priority":"high","title":"New title"}"#))
+    }
+
+    func testDetailsFieldsGoInOnePatchWithTheServersFieldNames() {
+        let friday = BoardCodec.parseDate("2026-01-09T17:00:00.000Z")!
+        XCTAssertEqual(request(.edit(item, TaskChanges(details: "", deadline: .some(friday)))).body,
+                       #"{"deadline":"2026-01-09T17:00:00.000Z","details":""}"#)
+        XCTAssertEqual(request(.edit(item, TaskChanges(deadline: .some(nil)))).body, #"{"clearDeadline":true}"#)
+        XCTAssertEqual(request(.edit(item, TaskChanges(sequential: true, stepDelay: .some(5400)))).body,
+                       #"{"sequential":true,"stepDelayMinutes":90}"#)
+        XCTAssertEqual(request(.edit(item, TaskChanges(sequential: false, stepDelay: .some(nil)))).body,
+                       #"{"clearStepDelay":true,"sequential":false}"#)
+        XCTAssertEqual(request(.edit(item, TaskChanges(repeatRule: "every weekday"))).body, #"{"repeat":"every weekday"}"#)
+        XCTAssertEqual(request(.edit(item, TaskChanges(repeatRule: ""))).body, #"{"repeat":""}"#, "blank stops it repeating")
+    }
+
+    func testRemindersMovingAndArchiving() {
+        let at = BoardCodec.parseDate("2026-01-05T16:30:00.000Z")!
+        XCTAssertEqual(request(.addReminder(item, at: at, message: "Call back")),
+                       ServerRequest(method: "POST", path: "\(itemPath)/reminders", body: #"{"at":"2026-01-05T16:30:00.000Z","message":"Call back"}"#))
+        XCTAssertEqual(request(.addReminder(item, at: at, message: nil)).body, #"{"at":"2026-01-05T16:30:00.000Z"}"#)
+        XCTAssertEqual(request(.moveToGroup(item, groupId: other)),
+                       ServerRequest(method: "POST", path: "\(itemPath)/move", body: #"{"groupId":"8b0f2c1e-1111-4a6b-9c1d-000000000002"}"#))
+        XCTAssertEqual(request(.archive(item)), ServerRequest(method: "POST", path: "\(itemPath)/archive"))
+        XCTAssertEqual(request(.unarchive(item)), ServerRequest(method: "POST", path: "\(itemPath)/unarchive"))
+    }
+
+    func testGroupsAreRenamedRecoloredAndDeletedIntoAnother() {
+        let group = "/api/groups/8b0f2c1e-1111-4a6b-9c1d-000000000001"
+        XCTAssertEqual(request(.updateGroup(item, name: "Home", color: "#ef4444")),
+                       ServerRequest(method: "PATCH", path: group, body: ##"{"color":"#ef4444","name":"Home"}"##))
+        XCTAssertEqual(request(.updateGroup(item, name: "Home", color: nil)).body, #"{"name":"Home"}"#)
+        XCTAssertEqual(request(.deleteGroup(item, moveTo: other)),
+                       ServerRequest(method: "DELETE", path: "\(group)?moveTo=8b0f2c1e-1111-4a6b-9c1d-000000000002"))
     }
 
     func testSnoozeAndBringBack() {

@@ -267,3 +267,29 @@ public struct NewTask {
         self.stepDelay = stepDelay
     }
 }
+
+/// Changes to a task from its details (TaskChanges in C#). A field left nil stays as it is; for `deadline` and
+/// `stepDelay`, `.some(nil)` clears it. `details` or `repeatRule` blank clears them (a blank rule stops it repeating).
+public struct TaskChanges: Equatable, Sendable {
+    public var title: String?
+    public var details: String?
+    public var priority: Priority?
+    public var deadline: Date??
+    public var sequential: Bool?
+    public var stepDelay: TimeInterval??
+    /// A repeat rule in words ("every weekday"); blank: it doesn't repeat any more.
+    public var repeatRule: String?
+
+    public init(title: String? = nil, details: String? = nil, priority: Priority? = nil, deadline: Date?? = nil,
+                sequential: Bool? = nil, stepDelay: TimeInterval?? = nil, repeatRule: String? = nil) {
+        self.title = title
+        self.details = details
+        self.priority = priority
+        self.deadline = deadline
+        self.sequential = sequential
+        self.stepDelay = stepDelay
+        self.repeatRule = repeatRule
+    }
+
+    public var isEmpty: Bool { self == TaskChanges() }
+}

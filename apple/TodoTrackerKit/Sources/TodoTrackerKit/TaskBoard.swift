@@ -195,6 +195,7 @@ public final class TaskBoard {
             return
         }
         item.completedAt = nil
+        item.root.archivedAt = nil
         var reopened = [item]
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil; reopened.append(d) }
@@ -396,13 +397,66 @@ public final class TaskBoard {
 
     /// Edits fields; `deadline: .some(nil)` clears the deadline, `nil` leaves it unchanged.
     public func update(_ id: UUID, title: String? = nil, details: String? = nil, priority: Priority? = nil, deadline: Date?? = nil, actor: Actor = .user, now: Date) throws {
+        try update(id, TaskChanges(title: title, details: details, priority: priority, deadline: deadline), actor: actor, now: now)
+    }
+
+    /// Edits the fields `changes` names (TaskBoard.Update in C#): all are checked first, so a field that isn't valid
+    /// changes nothing.
+    public func update(_ id: UUID, _ changes: TaskChanges, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        let newTitle = try title.map { try Self.requireText($0, "A task title is required.") } ?? item.title
+        let newTitle = try changes.title.map { try Self.requireText($0, "A task title is required.") } ?? item.title
+        if let details = changes.details, details.utf16.count > Self.maxTextLength {
+            throw BoardError.invalid("Details must be at most \(Self.maxTextLength) characters.")
+        }
+        if let delay = changes.stepDelay { try Self.validate(stepDelay: delay) }
+        var rule: Recurrence?
+        if let text = changes.repeatRule, Self.optionalText(text) != nil {
+            do {
+                rule = try Recurrence.parse(text)
+            } catch {
+                throw BoardError.invalid((error as? LocalizedError)?.errorDescription ?? "That repeat rule isn't understood.")
+            }
+        }
+
         item.title = newTitle
-        if let details { item.details = Self.optionalText(details) }
-        if let priority { item.priority = priority }
-        if let deadline { item.deadline = deadline }
+        if let details = changes.details { item.details = Self.optionalText(details) }
+        if let priority = changes.priority { item.priority = priority }
+        if let deadline = changes.deadline { item.deadline = deadline }
+        if let sequential = changes.sequential { item.sequential = sequential }
+        if let delay = changes.stepDelay { item.stepDelay = delay }
+        if changes.repeatRule != nil { item.repeatRule = rule }
         log(now, id, "updated", "Updated \"\(newTitle)\"", actor)
+    }
+
+    public static let maxTextLength = 10_000
+
+    // MARK: Archive (same rules as TodoTracker.Core.TaskBoard.Archive)
+
+    /// Puts a finished top-level task away: out of every list, kept (never deleted).
+    public func archive(_ id: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        if item.parent != nil { throw BoardError.conflict("Subtasks are archived with their task.") }
+        if !item.isDone { throw BoardError.conflict("Finish \"\(item.title)\" before archiving it.") }
+        if item.archivedAt != nil { return }
+        item.archivedAt = now
+        log(now, id, "archived", "Archived \"\(item.title)\"", actor)
+    }
+
+    /// Brings an archived task back (into Done).
+    public func unarchive(_ id: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        guard item.archivedAt != nil else { return }
+        item.archivedAt = nil
+        log(now, id, "archived", "Brought \"\(item.title)\" back from the archive", actor)
+    }
+
+    /// The focus timer's lengths (a session, the breaks, and how many sessions before a long break).
+    public func setPomodoroSettings(_ settings: PomodoroSettings) throws {
+        guard (1...180).contains(settings.focusMinutes), (1...60).contains(settings.shortBreakMinutes),
+              (1...120).contains(settings.longBreakMinutes), (1...12).contains(settings.focusesBeforeLongBreak) else {
+            throw BoardError.invalid("Focus is 1 to 180 minutes, a break 1 to 60, a long break 1 to 120, every 1 to 12 sessions.")
+        }
+        pomodoro.settings = settings
     }
 
     // MARK: Groups
@@ -414,6 +468,26 @@ public final class TaskBoard {
         groups.append(group)
         log(now, TaskBoard.boardScopeId, "groupChanged", "Added group \"\(clean)\"", actor)
         return group
+    }
+
+    /// Renames or recolors a group (`color` nil: none).
+    public func updateGroup(_ groupId: UUID, name: String, color: String?, actor: Actor = .user, now: Date) throws {
+        let group = try group(groupId)
+        let clean = try validateGroup(name: name, color: color, except: group)
+        group.name = clean
+        group.color = color
+        log(now, TaskBoard.boardScopeId, "groupChanged", "Updated group \"\(clean)\"", actor)
+    }
+
+    /// Deletes a group; its tasks move to `moveTasksTo` (nothing is lost).
+    public func deleteGroup(_ groupId: UUID, moveTasksTo: UUID, actor: Actor = .user, now: Date) throws {
+        let group = try group(groupId)
+        if groups.count == 1 { throw BoardError.conflict("At least one group is required.") }
+        let target = try self.group(moveTasksTo)
+        if target === group { throw BoardError.conflict("Choose a different group to move the tasks into.") }
+        for root in items where root.ownGroupId == group.id { root.ownGroupId = target.id }
+        groups.removeAll { $0 === group }
+        log(now, TaskBoard.boardScopeId, "groupChanged", "Deleted group \"\(group.name)\"", actor)
     }
 
     public func moveToGroup(_ id: UUID, groupId: UUID, actor: Actor = .user, now: Date) throws {

@@ -18,11 +18,23 @@ public enum ServerAction: Equatable, Sendable {
     /// Energy in a day (nil: back to the default).
     case setDailyEnergy(Int?)
     case addNote(UUID, text: String)
-    case update(UUID, title: String, priority: Priority)
+    /// Fields changed in a task's details (PATCH /api/items/{id}: only what changed is sent).
+    case edit(UUID, TaskChanges)
+    /// "Remind me" at a time (the message is the server's default when nil).
+    case addReminder(UUID, at: Date, message: String?)
+    /// A top-level task to another group.
+    case moveToGroup(UUID, groupId: UUID)
+    /// Put a finished task away, or bring it back.
+    case archive(UUID)
+    case unarchive(UUID)
     case addSubtask(parent: UUID, title: String)
     case addSteps(parent: UUID, titles: [String], stepDelayMinutes: Int?)
     case delete(UUID)
     case addGroup(name: String)
+    /// Rename or recolor a group (color nil: none).
+    case updateGroup(UUID, name: String, color: String?)
+    /// Delete a group; its tasks move to `moveTo`.
+    case deleteGroup(UUID, moveTo: UUID)
     case pomodoro(PomodoroCommand, itemId: UUID?)
     /// Time a task (any other timer stops), or stop the timer.
     case startTimer(UUID)
@@ -84,8 +96,16 @@ public enum ServerAPI {
             return ServerRequest(method: "PUT", path: "/api/energy", body: json(["perDay": perDay]))
         case let .addNote(item, text):
             return post("/api/items/\(id(item))/notes", ["text": text])
-        case let .update(item, title, priority):
-            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["title": title, "priority": priority.rawValue]))
+        case let .edit(item, changes):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(patch(changes)))
+        case let .addReminder(item, at, message):
+            return post("/api/items/\(id(item))/reminders", ["at": BoardCodec.formatDate(at), "message": message])
+        case let .moveToGroup(item, groupId):
+            return post("/api/items/\(id(item))/move", ["groupId": id(groupId)])
+        case let .archive(item):
+            return post("/api/items/\(id(item))/archive")
+        case let .unarchive(item):
+            return post("/api/items/\(id(item))/unarchive")
         case let .addSubtask(parent, title):
             return post("/api/items", ["title": title, "parentId": id(parent)])
         case let .addSteps(parent, titles, stepDelayMinutes):
@@ -94,6 +114,10 @@ public enum ServerAPI {
             return ServerRequest(method: "DELETE", path: "/api/items/\(id(item))")
         case let .addGroup(name):
             return post("/api/groups", ["name": name])
+        case let .updateGroup(group, name, color):
+            return ServerRequest(method: "PATCH", path: "/api/groups/\(id(group))", body: json(["name": name, "color": color]))
+        case let .deleteGroup(group, moveTo):
+            return ServerRequest(method: "DELETE", path: "/api/groups/\(id(group))?moveTo=\(id(moveTo))")
         case let .pomodoro(command, itemId):
             return post("/api/pomodoro/\(command.rawValue)", itemId.map { ["itemId": id($0)] as [String: Any?] })
         case let .startTimer(item):
@@ -106,6 +130,19 @@ public enum ServerAPI {
     }
 
     static func id(_ uuid: UUID) -> String { uuid.uuidString.lowercased() }
+
+    /// PatchItemRequest's fields (ApiEndpoints.cs): a cleared deadline or step delay is said with clearDeadline /
+    /// clearStepDelay; a blank repeat stops it repeating.
+    private static func patch(_ c: TaskChanges) -> [String: Any?] {
+        var body: [String: Any?] = ["title": c.title, "details": c.details, "priority": c.priority?.rawValue, "sequential": c.sequential, "repeat": c.repeatRule]
+        if let deadline = c.deadline {
+            if let deadline { body["deadline"] = BoardCodec.formatDate(deadline) } else { body["clearDeadline"] = true }
+        }
+        if let delay = c.stepDelay {
+            if let delay { body["stepDelayMinutes"] = Int((delay / 60).rounded()) } else { body["clearStepDelay"] = true }
+        }
+        return body
+    }
 
     private static func post(_ path: String, _ body: [String: Any?]? = nil) -> ServerRequest {
         ServerRequest(method: "POST", path: path, body: body.map(json))
