@@ -2,6 +2,7 @@ package dev.todotracker.core.sync
 
 import dev.todotracker.core.vault.VaultStore
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 
 /** Small settings kept on the phone (SharedPreferences in the app, a map in tests); null removes a key. */
@@ -77,6 +78,13 @@ class SyncSettings(private val values: KeyValues, private val box: SecretBox) {
         set(value) {
             values["notice"] = value
         }
+
+    /** The install these settings belong to (PhoneSync's installId). */
+    var installId: String?
+        get() = values["installId"]
+        set(value) {
+            values["installId"] = value
+        }
 }
 
 /** What one sync did here: [changed] when the tasks on this phone changed (reload and redraw). */
@@ -96,6 +104,11 @@ class PhoneSync(
     private val remoteFor: (SyncSettings) -> SyncRemote,
     /** The board.json an older version kept, if it's still there (brought in beside what came, at the first join). */
     private val legacyBoard: () -> File? = { null },
+    /**
+     * This install of the app (kept where backups don't go). What sync remembers belongs to it: restored or copied to
+     * another phone, the same files would make two phones publish as one device, so then this one starts afresh.
+     */
+    installId: String? = null,
     private val clock: () -> Instant = Instant::now,
 ) {
     companion object {
@@ -109,7 +122,32 @@ class PhoneSync(
 
     val on: Boolean get() = settings.enabled
 
-    private fun state(place: String): SyncState = SyncState(File(stateDir, place), stateDir, deviceName())
+    init {
+        val owner = settings.installId
+        if (installId != null && owner != installId) {
+            if (owner != null) {
+                // Copied from another install (a restore, a new phone): its identity and what it agreed on are set
+                // aside (never deleted), and this phone joins again as a new device.
+                if (stateDir.exists()) {
+                    var aside = File(stateDir.parentFile, stateDir.name + ".copied")
+                    var n = 2
+                    while (aside.exists()) aside = File(stateDir.parentFile, stateDir.name + ".copied ${n++}")
+                    if (!stateDir.renameTo(aside)) throw IOException("Couldn't set aside the sync state copied from another phone.")
+                }
+                settings.joinedTo = null
+                settings.gistId = null
+                settings.notice = null
+            }
+            settings.installId = installId
+        }
+    }
+
+    /**
+     * What sync remembers with one place and library: another library is a place of its own (nothing agreed on,
+     * published or deleted in one carries over to the other). The device id is shared by all of them.
+     */
+    private fun state(place: String): SyncState =
+        SyncState(File(stateDir, "$place-" + SyncHash.of(settings.library.toByteArray(Charsets.UTF_8)).substring(0, 16)), stateDir, deviceName())
 
     private fun engine(): SyncEngine {
         val place = settings.place ?: throw IllegalStateException("Sync is off on this phone.")
@@ -134,10 +172,11 @@ class PhoneSync(
     fun turnOn(place: String, token: String?, library: String, connected: Boolean) = synchronized(lock) {
         check(!connected) { "This phone uses a computer's tasks. Disconnect it first (Settings › Connect to a computer), then turn on sync." }
         val clean = library.trim().ifEmpty { SyncSettings.DEFAULT_LIBRARY }
-        if (settings.place != place || settings.library != clean) settings.gistId = null
-        settings.place = place
-        settings.library = clean
+        // Sealed first: if the keystore fails, sync stays off (never on without its token).
         if (token != null) settings.token = token.trim()
+        if (settings.place != place || settings.library != clean) settings.gistId = null
+        settings.library = clean
+        settings.place = place
         settings.notice = null
         engine = null
     }

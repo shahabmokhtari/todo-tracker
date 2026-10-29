@@ -359,6 +359,14 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   computer to choose*; *Got it* hides one), the library, *Turn sync off* (tasks stay; the token is forgotten). Debug
   builds can also sync through a folder in the app's external files (`TodoTrackerSync/<library>`), to try it against a
   computer's `Apps/TodoTrackerSync` folder without GitHub.
+* **Sync identity:** `SyncState` is kept per place and library (`filesDir/sync/<place>-<hash of library>`; the device id
+  in `filesDir/sync/device.json` is shared), so another library starts with nothing agreed, published or deleted. Backups
+  and device transfers (`dataExtractionRules`, `fullBackupContent`) leave out `sync.xml`, `files/sync/`, `phone.xml`
+  and the computer's cached board, and keep `files/vault/`. If sync state still arrives from another install (its id is
+  kept in no-backup storage), it's set aside as `sync.copied` and the phone joins as a new device.
+* **Opening:** the tasks folder opens off the main thread (*Moving your tasks into a tasks folder on this phone…* the
+  first time). The move builds the folder in `vault.moving` and renames it into place; any failure leaves `board.json`
+  untouched and turns changes off with why, never a crash.
 * **Connect to a computer** (Settings, or a `todotracker://pair` link: opened, scanned with the camera via ZXing, or
   pasted; asked first). The code is traded for a phone token (`POST /api/phones/claim` with *This phone's name*: prefilled
   from the device name, else the model, and kept on the phone), kept

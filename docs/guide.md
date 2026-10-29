@@ -165,7 +165,10 @@ The Sync screen shows when it last synced, **Sync now**, your **other devices** 
 any more), problems (a token GitHub doesn't accept: paste a new one there; changes from another device that haven't
 arrived yet), and **Changed on both**: the same line changed on the phone and elsewhere. Both versions are kept in the
 task; to choose one, open it on a computer (Keep mine / Keep theirs aren't on the phone yet). **Turn sync off** keeps
-your tasks on the phone and forgets the token.
+your tasks on the phone and forgets the token. Joining another library adds this phone's tasks to it too.
+
+Your phone's backup (and moving to a new phone) keeps your tasks, but not the sync sign-in or a computer connection: on
+the new phone, set up sync again (it joins as a new device) or connect again.
 
 A phone either syncs on its own or uses a computer's tasks: connecting to a computer turns sync off (the computer syncs
 then), and to sync on its own again, disconnect first.

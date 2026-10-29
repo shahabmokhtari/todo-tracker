@@ -51,7 +51,20 @@ object SyncHub {
         PhoneSync(
             store, settings, File(app.filesDir, "sync"), { PhoneConnection.phoneName(app) }, { s -> remote(app, s) },
             { LocalBoard.legacyFile(app.filesDir).takeIf { it.exists() } },
+            installId(app),
         ).also { sync = it }
+    }
+
+    /**
+     * This install's id, kept in no-backup storage (never restored or moved to another phone): sync state that came
+     * along with a backup anyway belongs to another install, and this phone joins as a new device.
+     */
+    private fun installId(context: Context): String {
+        val file = File(context.noBackupFilesDir, "install-id")
+        file.takeIf { it.exists() }?.readText()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val id = java.util.UUID.randomUUID().toString()
+        dev.todotracker.core.vault.VaultFiles.writeAtomic(file, id.toByteArray(Charsets.UTF_8))
+        return id
     }
 
     /** Debug builds can sync through a folder on the phone (to try it against a computer without a GitHub account). */

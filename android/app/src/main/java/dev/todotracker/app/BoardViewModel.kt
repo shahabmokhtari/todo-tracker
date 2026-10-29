@@ -37,6 +37,7 @@ import dev.todotracker.core.TaskChanges
 import dev.todotracker.core.TaskLinks
 import dev.todotracker.core.TaskSearch
 import dev.todotracker.core.WorkItem
+import dev.todotracker.core.LocalBoard
 import dev.todotracker.core.sync.PhoneMode
 import dev.todotracker.core.sync.PhoneSync
 import dev.todotracker.core.sync.PhoneSyncOutcome
@@ -77,8 +78,15 @@ data class FocusState(
  * phone syncs on launch and resume, 5 s after a change and every minute while open (off the screen's thread).
  */
 class BoardViewModel(application: Application) : AndroidViewModel(application), BoardHub.LiveBoard {
-    private val opened = BoardHub.local(application)
-    private val store: VaultStore? get() = opened.store
+    // The tasks folder, opened off the screen's thread (the first time, board.json moves in): null until then.
+    private var opened: LocalBoard.Opened? = null
+    private val store: VaultStore? get() = opened?.store
+
+    /** While the tasks move from the old board file into the tasks folder (the first start): what to say. */
+    var moving: String? by mutableStateOf(
+        if (LocalBoard.needsMove(application.filesDir)) "Moving your tasks into a tasks folder on this phone…" else null,
+    )
+        private set
     private val prefs = application.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
     private var board: TaskBoard
 
@@ -222,7 +230,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     // ---- Sync with your other devices: its state (the actions are at the end) ----
 
-    private val phoneSync: PhoneSync? = SyncHub.get(application)
+    private var phoneSync: PhoneSync? = null
     private val syncSchedule = SyncSchedule()
 
     /** Only on this phone, syncing on its own, or a computer's tasks: one at a time. */
@@ -268,11 +276,23 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             RemoteCheck.start(application)
             BoardHub.live = this
         } else {
-            // From now on alarms and notification buttons change the tasks through this screen (the same store).
-            board = deviceBoard(register = true)
+            // Shown once the tasks folder is open (just below); changes wait until then.
+            board = TaskBoard()
+            readOnly = true
         }
-        readSyncStatus()
-        if (syncOn) SyncHub.startBackground(application)
+        viewModelScope.launch {
+            val local = withContext(Dispatchers.IO) { BoardHub.local(application) }
+            val sync = withContext(Dispatchers.IO) { SyncHub.get(application) }
+            opened = local
+            phoneSync = sync
+            moving = null
+            // From now on alarms and notification buttons change the tasks through this screen (the same store).
+            if (!isRemote) board = deviceBoard(register = true)
+            readSyncStatus()
+            if (syncOn) SyncHub.startBackground(application)
+            reminderSet = false
+            refresh()
+        }
         refresh()
         viewModelScope.launch {
             var seconds = 0
@@ -291,14 +311,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     /** This phone's own board, as its tasks folder holds it (a board.json from a newer app: changes are off, nothing is overwritten). */
     private fun deviceBoard(register: Boolean = false): TaskBoard {
-        val s = store
+        val o = opened ?: run {
+            // Still opening: shown when it's open.
+            readOnly = true
+            return TaskBoard()
+        }
+        val s = o.store
         val loaded = if (s == null) {
             readOnly = true
-            status = opened.problem
+            status = o.problem
             TaskBoard()
         } else {
             readOnly = false
-            opened.problem?.let { status = it }
+            o.problem?.let { status = it }
             s.problems.firstOrNull()?.let { status = "“${it.path}” couldn't be read (${it.message}). It's kept as it is." }
             s.snapshot()
         }
@@ -511,7 +536,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             search.apply(board).filter { selectedGroup == null || it.groupId == selectedGroup }.sortedBy { it.isDone }
         }
         val nextReminder = if (isRemote) remoteNext else if (readOnly) null else Reminders.nextAt(board, now)
-        if (nextReminder != scheduledReminder || !reminderSet) {
+        // While the tasks folder opens, the alarm set before stays as it is (the board shown is only a placeholder).
+        if ((nextReminder != scheduledReminder || !reminderSet) && (isRemote || opened != null)) {
             scheduledReminder = nextReminder
             reminderSet = true
             ReminderAlarm.schedule(getApplication(), nextReminder)
@@ -886,8 +912,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             }
             return false
         }
+        if (opened == null) {
+            status = "Just a moment: your tasks are still opening."
+            return false
+        }
         if (readOnly) {
-            status = "Your board is from a newer version of the app, so changes are off to protect it."
+            status = opened?.problem ?: "Your board is from a newer version of the app, so changes are off to protect it."
             return false
         }
         return try {
@@ -990,7 +1020,11 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     private fun synced(result: Result<PhoneSyncOutcome>, asked: Boolean) {
         syncBusy = false
         result.onSuccess { if (it.changed) reloadLocal() }
-        result.onFailure { e -> if (asked) syncMessage = e.message ?: "Sync didn't work this time." }
+        result.onFailure { e ->
+            // A sync that failed part way may have brought some changes in already: show the tasks as they are.
+            reloadLocal()
+            if (asked) syncMessage = e.message ?: "Sync didn't work this time."
+        }
         readSyncStatus()
     }
 

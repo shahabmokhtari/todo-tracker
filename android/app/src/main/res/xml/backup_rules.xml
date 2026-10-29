@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older: back up the tasks (files/vault) and settings, but never what makes this phone itself:
+     its sync identity and state (sync.xml, files/sync/) or its key to a connected computer (phone.xml). Restored on
+     another phone they would make two phones one device; there it signs in and joins again instead. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="sync.xml" />
+    <exclude domain="sharedpref" path="phone.xml" />
+    <exclude domain="file" path="sync/" />
+    <exclude domain="file" path="remote-board.json" />
+</full-backup-content>

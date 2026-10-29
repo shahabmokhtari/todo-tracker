@@ -139,6 +139,47 @@ class PhoneSyncTest {
         assertFalse(File(files, "vault").exists())
     }
 
+    @Test
+    fun aTasksFolderThatCantBeOpenedTurnsChangesOffWithoutTouchingTheOldBoard() {
+        val files = File(dir, "phone")
+        writeLegacy(files, "Call the dentist")
+        val text = File(files, "board.json").readText()
+        // Something in the way where the folder goes.
+        File(files, "vault").writeText("not a folder")
+        val opened = LocalBoard.open(files, ZoneOffset.UTC) { now }
+        assertNull(opened.store)
+        assertTrue(opened.problem!!.startsWith("Couldn't open your tasks"))
+        assertEquals(text, File(files, "board.json").readText())
+        assertFalse(File(files, "board.json.migrated").exists())
+    }
+
+    @Test
+    fun aHalfBuiltFolderFromAnInterruptedMoveIsNotTakenForTheTasks() {
+        val files = File(dir, "phone")
+        writeLegacy(files, "Call the dentist", "Water the plants")
+        // A move that stopped half way leaves its work in a temporary folder, never in vault/.
+        File(files, "vault.moving/Work").mkdirs()
+        File(files, "vault.moving/Work/Call the dentist.md").writeText("half")
+        val opened = LocalBoard.open(files, ZoneOffset.UTC) { now }
+        assertEquals(2, opened.migrated)
+        assertEquals(listOf("Call the dentist", "Water the plants"), opened.store!!.read { b -> b.items.map { it.title }.sorted() })
+        assertFalse(File(files, "vault.moving").exists())
+    }
+
+    @Test
+    fun aBackupLeavesOutWhatMakesAPhoneItselfButKeepsTheTasks() {
+        val rules = listOf(File("src/main/res/xml/backup_rules.xml"), File("src/main/res/xml/data_extraction_rules.xml")).map { it.readText() }
+        for (r in rules) {
+            assertTrue(r, r.contains("""domain="sharedpref" path="sync.xml""""))
+            assertTrue(r, r.contains("""domain="sharedpref" path="phone.xml""""))
+            assertTrue(r, r.contains("""domain="file" path="sync/""""))
+            assertFalse(r, r.contains("""path="vault"""))
+        }
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        assertTrue(manifest.contains("android:dataExtractionRules=\"@xml/data_extraction_rules\""))
+        assertTrue(manifest.contains("android:fullBackupContent=\"@xml/backup_rules\""))
+    }
+
     // ---- Joining and syncing ----
 
     @Test
@@ -366,5 +407,79 @@ class PhoneSyncTest {
         phone.sync()
         val config = ".todo-tracker/config.json"
         assertEquals(File(dir, "laptop/vault/$config").readText(), File(files, "vault/$config").readText())
+    }
+
+    // ---- Review fixes: identity, places, failures ----
+
+    @Test
+    fun aCopiedPhoneStartsAsANewDeviceAndJoinsAgain() {
+        val laptop = Laptop()
+        laptop.sync()
+        val files = File(dir, "phone").also { it.mkdirs() }
+        val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
+        val values = MapValues()
+        fun phoneSync(install: String) = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = install) { now }
+        val first = phoneSync("install-1")
+        first.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        first.sync()
+        val id = first.deviceId
+        assertTrue(first.settings.joined)
+
+        // The same files and settings on another install (a restored or transferred phone): a new device that joins again.
+        val copy = phoneSync("install-2")
+        assertNotEquals(id, copy.deviceId)
+        assertFalse(copy.settings.joined)
+        assertTrue(copy.sync().joined)
+        assertEquals(2, laptop.sync().let { laptop.engine.state.status.devices.size })
+        // What the old identity remembered is kept aside, never deleted.
+        assertTrue(files.listFiles()!!.any { it.name.startsWith("sync.copied") })
+    }
+
+    @Test
+    fun theSameInstallKeepsItsIdentity() {
+        val files = File(dir, "phone").also { it.mkdirs() }
+        val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
+        val values = MapValues()
+        val a = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = "same") { now }
+        val id = a.deviceId
+        val b = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = "same") { now }
+        assertEquals(id, b.deviceId)
+    }
+
+    @Test
+    fun anotherLibraryStartsWithNothingRememberedButTheSameDevice() {
+        val files = File(dir, "phone").also { it.mkdirs() }
+        val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
+        val sync = PhoneSync(store, SyncSettings(MapValues(), FakeBox()), File(files, "sync"), { "Pixel" }, { s -> FolderRemote(File(dir, "lib/" + s.library)) }) { now }
+        sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        val id = store.update { it.addTask(NewTask("Gone soon", groupId = it.groups[0].id), Actor.USER, now).id }
+        sync.sync().also { tick() }
+        store.update { it.delete(id, Actor.USER, now) }
+        sync.sync().also { tick() }
+        val device = sync.deviceId
+        fun deleted(library: String) = SyncJson.readSnapshot(File(dir, "lib/$library/devices/$device.json").readText()).deleted
+        assertEquals(1, deleted("Todo Tracker").size)
+
+        sync.changeLibrary("Work stuff")
+        assertEquals(device, sync.deviceId)
+        assertNull(sync.status().lastSync)
+        assertTrue(sync.sync().joined)
+        // Nothing this phone deleted in the other library is said to be deleted in this one.
+        assertEquals(0, deleted("Work stuff").size)
+    }
+
+    @Test
+    fun theTokenIsSealedBeforeSyncIsOn() {
+        val files = File(dir, "phone").also { it.mkdirs() }
+        val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
+        val broken = object : SecretBox {
+            override fun seal(plain: String): String = throw IllegalStateException("The keystore isn't available.")
+
+            override fun open(sealed: String): String? = null
+        }
+        val settings = SyncSettings(MapValues(), broken)
+        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }) { now }
+        assertThrows(IllegalStateException::class.java) { sync.turnOn(SyncSettings.GIST, "ghp_x", "Todo Tracker", connected = false) }
+        assertFalse(sync.on)
     }
 }

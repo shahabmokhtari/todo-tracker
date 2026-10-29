@@ -29,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -115,7 +116,8 @@ private fun Connected(vm: BoardViewModel) {
 private fun SetUp(vm: BoardViewModel) {
     val context = LocalContext.current
     var place by rememberSaveable { mutableStateOf(SyncSettings.GIST) }
-    var token by rememberSaveable { mutableStateOf("") }
+    // Not saveable: the token never goes into the saved screen state.
+    var token by remember { mutableStateOf("") }
     var library by rememberSaveable { mutableStateOf(vm.syncLibrary) }
     Heading("Sync with your other devices")
     Hint("Your tasks stay on this phone and sync with your computers and other phones through a private GitHub gist, even when no computer is on. Changes made on more than one device are merged.")
@@ -136,8 +138,11 @@ private fun SetUp(vm: BoardViewModel) {
     }
     LibraryField(library) { library = it }
     vm.syncMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    Button(onClick = { vm.turnOnSync(place, token, library) }, enabled = place != SyncSettings.GIST || token.isNotBlank()) { Text("Turn on sync") }
-    Hint("The first sync brings in the tasks your other devices have, then adds this phone's beside them (nothing is replaced).")
+    Button(onClick = {
+        vm.turnOnSync(place, token, library)
+        token = ""
+    }, enabled = place != SyncSettings.GIST || token.isNotBlank()) { Text("Turn on sync") }
+    Hint("Joining a library adds this phone's tasks to it: the first sync brings in the tasks your other devices have, then adds this phone's beside them (nothing is replaced).")
 }
 
 @Composable
@@ -182,12 +187,15 @@ private fun Syncing(vm: BoardViewModel) {
     vm.syncMessage?.takeIf { it != status.lastError }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
 
     if (vm.syncNeedsToken || status.lastError?.contains("sign-in") == true || status.lastError?.contains("Sign in") == true) {
-        var token by rememberSaveable { mutableStateOf("") }
+        var token by remember { mutableStateOf("") }
         val context = LocalContext.current
         Text("Sign in to GitHub again", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
         OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SyncHub.NEW_TOKEN_URL))) }) { Text("Make a new token") }
         TokenField(token) { token = it }
-        OutlinedButton(onClick = { vm.turnOnSync(SyncSettings.GIST, token, vm.syncLibrary) }, enabled = token.isNotBlank()) { Text("Use this token") }
+        OutlinedButton(onClick = {
+            vm.turnOnSync(SyncSettings.GIST, token, vm.syncLibrary)
+            token = ""
+        }, enabled = token.isNotBlank()) { Text("Use this token") }
     }
 
     HorizontalDivider()
@@ -222,6 +230,7 @@ private fun Syncing(vm: BoardViewModel) {
     var library by rememberSaveable(vm.syncLibrary) { mutableStateOf(vm.syncLibrary) }
     LibraryField(library) { library = it }
     OutlinedButton(onClick = { vm.changeSyncLibrary(library) }, enabled = library.isNotBlank() && library.trim() != vm.syncLibrary) { Text("Use this library") }
+    Hint("Using another library adds this phone's tasks to it too (they stay in this one as well).")
 
     HorizontalDivider()
     OutlinedButton(onClick = { turningOff = true }) { Text("Turn sync off") }
