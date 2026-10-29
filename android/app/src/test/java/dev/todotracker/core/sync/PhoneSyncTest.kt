@@ -13,7 +13,6 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Base64
 import org.junit.After
-import org.junit.Ignore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -384,10 +383,8 @@ class PhoneSyncTest {
         assertTrue(github.ids.isEmpty())
     }
 
-    // Known, shared with the C# store: an empty tab's folder doesn't sync (only files do), so on the device without it
-    // the tab is "dormant" and written last in config.json; the two configs then differ in order for good. To be fixed
-    // in C#, Swift and Kotlin together (keep a dormant tab in its place), with a fixture.
-    @Ignore("Tab order diverges when a tab's folder is empty on one device (C# store too)")
+    // An empty tab's folder doesn't sync (only files do): on the device without it the tab keeps its place in
+    // config.json, so both end with the same tabs in the same order.
     @Test
     fun aPhoneWithItsOwnTabEndsWithTheSameTabsAsTheLaptop() {
         val laptop = Laptop()
