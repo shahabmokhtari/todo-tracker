@@ -332,7 +332,26 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   *Mark done*.
 * **Settings** (⚙): theme (System, Light, Dark; kept on the phone), energy in a day, the focus timer's lengths (focus,
   break, long break; 1–180 minutes, kept with the board), and whether notifications and on-time alarms are allowed.
-* The board is a JSON file on the phone (using a computer's tasks over the phone port is on the roadmap).
+* The board is a JSON file on the phone, unless it's connected to a computer (below).
+* **Connect to a computer** (Settings, or a `todotracker://pair` link: opened, scanned with the camera via ZXing, or
+  pasted; asked first). The code is traded for a phone token (`POST /api/phones/claim` with *This phone's name*: prefilled
+  from the device name, else the model, and kept on the phone), kept
+  encrypted with an Android Keystore key; the computer's certificate is trusted only when its SHA-256 equals the link's
+  `fp` (custom trust manager and host name check; HTTPS only, no cleartext). The link's addresses are tried in order,
+  the one that answered last first. While connected, the board is the computer's: `GET /api/export` (ETag, `304`) every
+  30 s and on resume, kept on disk; each action is the matching REST call on the phone allow-list, shown at once and
+  then read back (one that fails is taken back, with why). The focus timer's lengths (no phone route) are hidden; the
+  theme stays on the phone. The header says *On <computer>*.
+* **Can't reach it:** the last export is shown read-only under a banner (*Can't reach <computer>. You're seeing your
+  tasks from <time>; changes wait until you're back on its Wi-Fi or Tailscale.*, with *Try again*). **401:** the phone
+  was disconnected there; its own board (untouched while connected) comes back, with *Reconnect*. **Disconnect** in
+  Settings does the same on purpose.
+* **Reminders while connected:** the computer reminds on its own; the phone also tells each reminder on the computer's
+  board that comes due after it last looked (once each, whatever `notifiedAt` says; not dismissed, task open), from the
+  export it read (with the app closed, the alarm reads it again briefly, else uses the kept one). *Mark done* / *In an
+  hour* call the API; if the computer can't be reached the notification says so and opens the task. Nothing is
+  written back. With the app closed, a WorkManager check (every 15 minutes or so, network required, only while
+  connected) reads the computer again, so a reminder added there meanwhile still rings.
 
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.
@@ -492,8 +511,8 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 
 * **Next:**
   * Rotate the API token, and compact the activity log.
-  * Phones remote mode in the iPhone, iPad and Android apps (the server side, Settings › Phones and pairing, is in;
-    then cloud sync with conflict-free merges).
+  * Phones away from the computer: cloud sync with conflict-free merges (remote mode over the phone port is in on
+    iPhone, iPad and Android).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Recurring tasks.
   * Keyboard navigation of cards.

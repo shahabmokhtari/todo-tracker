@@ -59,6 +59,8 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
                 }
                 vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ConnectToComputer(vm)
+                    HorizontalDivider()
                     Setting("Theme", "Light, dark, or as your phone is.") {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (value, label) ->
@@ -73,8 +75,10 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
                         }
                     }
                     HorizontalDivider()
-                    FocusLengths(vm)
-                    HorizontalDivider()
+                    if (vm.canSetFocusLengths) {
+                        FocusLengths(vm)
+                        HorizontalDivider()
+                    }
                     Setting("Notifications", "Reminders, snoozes ending, and the end of a focus session or a break are told with a notification, even with the app closed.") {
                         val notifyOff = android.os.Build.VERSION.SDK_INT >= 33 &&
                             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED

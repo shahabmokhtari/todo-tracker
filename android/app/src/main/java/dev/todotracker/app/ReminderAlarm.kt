@@ -17,10 +17,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.todotracker.R
 import dev.todotracker.core.Actor
+import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.BoardException
 import dev.todotracker.core.BoardFileStore
 import dev.todotracker.core.DueReminder
+import dev.todotracker.core.PhoneException
 import dev.todotracker.core.Reminders
+import dev.todotracker.core.RemoteAction
+import dev.todotracker.core.RemoteReminders
 import dev.todotracker.core.TaskBoard
 import dev.todotracker.core.TaskLinks
 import java.io.File
@@ -51,6 +55,9 @@ object BoardHub {
     interface LiveBoard {
         /** Applies [action] (on the main thread), saves, and redraws; false when the board refused it (with why). */
         fun applyOutside(action: (TaskBoard, Instant) -> Unit): Result<Unit>
+
+        /** Connected to a computer: something changed there (from a notification), or a reminder is due: read it again. */
+        fun remoteChanged()
     }
 
     fun file(context: Context) = File(context.filesDir, "board.json")
@@ -125,6 +132,42 @@ object ReminderAlarm {
      */
     fun deliver(context: Context, board: TaskBoard, now: Instant): Boolean = Reminders.deliver(board, now) { notify(context, it) } > 0
 
+    /**
+     * Connected to a computer: tells the reminders on its board that came due since the phone last looked (once each),
+     * and gives when the next one is due (for its alarm). Nothing is written to the computer (it tells its own). With
+     * notifications off, one that couldn't be shown (and those after it) is told once they're on.
+     */
+    fun deliverRemote(context: Context, connection: PhoneConnection, board: TaskBoard, now: Instant): Instant? {
+        val due = RemoteReminders.due(board, connection.remindersSince, now)
+        if (due.isNotEmpty()) {
+            val missed = due.firstOrNull { !notify(context, it) }
+            connection.remindersSince = missed?.reminder?.dueAt?.minusMillis(1) ?: now
+        }
+        return RemoteReminders.nextAt(board, now)
+    }
+
+    /** A button on a reminder couldn't reach the computer: the notification says so, and opens the task. */
+    fun couldNotReach(context: Context, item: UUID, notification: Int, message: String) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val open = PendingIntent.getActivity(
+            context, notification,
+            Intent(Intent.ACTION_VIEW, Uri.parse(TaskLinks.forTask(item)), context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        manager.notify(
+            notification,
+            NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Not changed yet")
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setAutoCancel(true)
+                .setContentIntent(open)
+                .build(),
+        )
+    }
+
     /** Shows the reminder; false when the phone won't (notifications off for the app or its reminders). */
     private fun notify(context: Context, due: DueReminder): Boolean {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
@@ -171,8 +214,14 @@ object ReminderAlarm {
 class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
+        val app = context.applicationContext
+        val connection = PhoneConnection(app)
+        if (connection.load() != null) {
+            RemoteAlarm.due(app, connection) { pending.finish() }
+            return
+        }
         // Delivering is part of every change (the app's or the file's): an empty change is enough.
-        BoardHub.change(context.applicationContext, { _, _ -> }) { pending.finish() }
+        BoardHub.change(app, { _, _ -> }) { pending.finish() }
     }
 }
 
@@ -183,6 +232,19 @@ class ReminderActionReceiver : BroadcastReceiver() {
         val app = context.applicationContext
         val pending = goAsync()
         app.getSystemService(NotificationManager::class.java)?.cancel(intent.getIntExtra(ReminderAlarm.EXTRA_NOTIFICATION, 0))
+        val connection = PhoneConnection(app)
+        connection.load()?.let { pairing ->
+            val remote = when (intent.action) {
+                ReminderAlarm.ACTION_DONE -> RemoteAction.Complete(id)
+                ReminderAlarm.ACTION_LATER -> RemoteAction.Schedule(id, Instant.now().plus(1, ChronoUnit.HOURS))
+                else -> return pending.finish()
+            }
+            RemoteAlarm.perform(app, pairing, remote) { error ->
+                if (error != null) ReminderAlarm.couldNotReach(app, id, intent.getIntExtra(ReminderAlarm.EXTRA_NOTIFICATION, 0), error)
+                pending.finish()
+            }
+            return
+        }
         val action: (TaskBoard, Instant) -> Unit = when (intent.action) {
             ReminderAlarm.ACTION_DONE -> { board, now ->
                 // An older notification, from before it had subtasks: finishing them all is asked in the app.
@@ -197,5 +259,78 @@ class ReminderActionReceiver : BroadcastReceiver() {
             result.exceptionOrNull()?.let { Toast.makeText(app, it.message ?: "Couldn't change the task.", Toast.LENGTH_LONG).show() }
             pending.finish()
         }
+    }
+}
+
+/**
+ * Reminders and their buttons while connected to a computer: through the running app when it's open, else straight
+ * to the computer (its board read again, or the last one kept when it can't be reached).
+ */
+object RemoteAlarm {
+    /** A reminder is due: the board is read again (briefly), then what came due is told and the next alarm set. */
+    fun due(context: Context, connection: PhoneConnection, done: () -> Unit) {
+        BoardHub.live?.let { live ->
+            Handler(Looper.getMainLooper()).post {
+                live.remoteChanged()
+                done()
+            }
+            return
+        }
+        Thread {
+            try {
+                readAndDeliver(context, connection)
+            } finally {
+                done()
+            }
+        }.start()
+    }
+
+    /**
+     * Off the screen's thread: reads the computer's board (briefly; the kept one when it can't be reached), tells what
+     * came due, and sets the alarm for the next reminder. False when it couldn't reach the computer.
+     */
+    fun readAndDeliver(context: Context, connection: PhoneConnection): Boolean {
+        val pairing = connection.load() ?: return true
+        val now = Instant.now()
+        var reached = true
+        val text = try {
+            val client = connection.client(pairing, connectMillis = 3_000, readMillis = 5_000)
+            val export = client.export(connection.cached()?.etag)
+            connection.answered(client)
+            if (export == null) {
+                connection.stillCurrent(now)
+                connection.cached()?.text
+            } else {
+                connection.cache(export.text, export.etag, now)
+                export.text
+            }
+        } catch (e: PhoneException) {
+            reached = false
+            connection.cached()?.text
+        }
+        val board = text?.let { runCatching { BoardCodec.decode(it) }.getOrNull() } ?: return reached
+        ReminderAlarm.schedule(context, ReminderAlarm.deliverRemote(context, connection, board, now))
+        return reached
+    }
+
+    /** Mark done / In an hour, sent to the computer; [done] gets why it didn't happen (null: it did). */
+    fun perform(context: Context, pairing: PhoneConnection.Pairing, action: RemoteAction, done: (String?) -> Unit) {
+        val connection = PhoneConnection(context)
+        Thread {
+            val error = try {
+                val client = connection.client(pairing, connectMillis = 3_000, readMillis = 8_000)
+                client.perform(action)
+                connection.answered(client)
+                null
+            } catch (e: PhoneException.Unreachable) {
+                "Couldn't reach ${pairing.computer}. Open the app to do it when you're back on its Wi-Fi or Tailscale."
+            } catch (e: PhoneException) {
+                e.message ?: "${pairing.computer} couldn't do that."
+            }
+            Handler(Looper.getMainLooper()).post {
+                BoardHub.live?.remoteChanged()
+                done(error)
+            }
+        }.start()
     }
 }

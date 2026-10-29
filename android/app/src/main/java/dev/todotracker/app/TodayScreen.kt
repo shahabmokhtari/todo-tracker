@@ -121,6 +121,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         ) { padding ->
             Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
                 Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") })
+                RemoteBanner(vm)
                 GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
                 Capture(vm)
                 if (searching || vm.query.isNotEmpty()) SearchBox(vm, onClose = { searching = false; vm.search("") })
@@ -143,6 +144,8 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         // A task's details (from a card, a search, a todotracker://task/<id> link or a reminder's notification).
         vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
         if (settings) SettingsScreen(vm, onClose = { settings = false })
+        // A todotracker://pair link (opened, scanned or pasted): asked first.
+        PairingDialog(vm)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
       }
         if (askExact) {
@@ -228,6 +231,8 @@ private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> U
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // Connected: whose tasks these are.
+            vm.computer?.let { Text("On $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1) }
             vm.energyToday?.let { energy ->
                 Text(energy, style = MaterialTheme.typography.bodySmall, color = if (vm.energyOver) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
