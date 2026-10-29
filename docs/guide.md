@@ -238,6 +238,31 @@ Workstreams and Recent notes (tap one to open its task).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
 
+### Use your computer's tasks on an iPhone or iPad
+
+On its own, the iPhone and iPad app keeps its tasks on the device. It can use the tasks on your computer instead, over
+your Wi-Fi at home or anywhere with Tailscale:
+
+1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
+   Tracker. Choose **Connect a phone**: it shows a QR code and a link.
+2. On the phone, open **Settings › Computer › Connect to a computer…** and scan the code (or paste the link; opening
+   the link on the phone works too). The code works once, for 10 minutes.
+
+From then on the phone shows the computer's tasks and your changes go straight there (the timeline says they came from
+your phone). Settings says **Connected to** your computer. A few things stay on the computer: *Archive*, and opening
+the full app in the browser.
+
+* **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
+  computer, with the time: "Can't reach … You're seeing your tasks from 6:05 PM; changes wait until you're back on its
+  Wi-Fi or Tailscale." Changes are off until then. The phone tries again every 30 seconds and each time you open the
+  app; pull down to try now.
+* **Disconnect** (Settings › Computer) takes the phone back to its own tasks, just as you left them: they're never
+  touched while it's connected. To remove the phone on the computer too, use **Disconnect** in Settings › Phones there.
+* If the computer **disconnects the phone**, the app says so and goes back to the phone's own tasks; **Reconnect**
+  pairs it again.
+* The phone only trusts your computer: it checks the computer's certificate against the fingerprint in the code, and
+  keeps its key in the Keychain.
+
 ## The server on its own, and the Apple apps from source
 
 ```bash

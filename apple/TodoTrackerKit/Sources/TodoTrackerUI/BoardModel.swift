@@ -5,6 +5,9 @@ import TodoTrackerKit
 #if canImport(UserNotifications)
 import UserNotifications
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 /// View model for the iOS and macOS apps. On its own it owns a board on this device: persists after every change,
 /// ticks the focus timer, and keeps local notifications in sync with pending reminders. On a Mac it uses Todo Tracker's
@@ -69,8 +72,25 @@ public final class BoardModel: ObservableObject {
     private var etag: String?
     private var themeSettled = false
 
-    public init(store: BoardFileStore?) {
+    /// Where the phone stands with the computer it's connected to (nil: it uses the tasks kept on it).
+    @Published public private(set) var remote: RemoteState?
+    /// The computer's name, while connected to it (or just disconnected by it, to say so).
+    @Published public private(set) var remoteComputer: String?
+    /// When the board shown was last read from the computer.
+    @Published public private(set) var remoteLastRead: Date?
+    /// Trading a pairing code for a token right now.
+    @Published public private(set) var isPairing = false
+    /// Why the last try to connect didn't work (shown on the Connect screen).
+    @Published public var pairingError: String?
+    /// Connecting to a computer (iPhone and iPad; nil on the Mac, which uses its own server).
+    public let phone: PhoneSetup?
+    private var paired: PairedComputer?
+    private var findingComputer = false
+    private var lastFind = Date.distantPast
+
+    public init(store: BoardFileStore?, phone: PhoneSetup? = nil) {
         self.store = store
+        self.phone = phone
         var loadError: String?
         let loaded: TaskBoard
         do {
@@ -92,14 +112,29 @@ public final class BoardModel: ObservableObject {
     }
 
     public static func live() -> BoardModel {
-        BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()))
+        #if os(iOS)
+        let model = BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()), phone: .live())
+        model.connectToPairedComputer()
+        return model
+        #else
+        return BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()))
+        #endif
     }
 
     public static func requestNotificationPermission() { NotificationScheduler.requestAuthorization() }
 
     // MARK: Server (Mac)
 
-    public var usesServer: Bool { serverURL != nil }
+    public var usesServer: Bool { serverURL != nil || isRemote }
+
+    /// Using a computer's tasks from this phone (connected now or not).
+    public var isRemote: Bool { remote != nil && remote != .revoked }
+
+    /// The full window in the browser: on the Mac, from its own server (not from a phone).
+    public var canOpenInBrowser: Bool { serverURL != nil && !isRemote }
+
+    /// Archive needs a route phones don't have yet: offered on a board on this device and on the Mac.
+    public var canArchive: Bool { !isRemote }
 
     /// Opening the tasks folder (the server is starting): nothing changes meanwhile, so nothing is written to the board
     /// on this Mac that the server may be moving into the folder right now.
@@ -191,6 +226,11 @@ public final class BoardModel: ObservableObject {
             if let fresh {
                 board = fresh
                 NotificationScheduler.sync(board)
+                if isRemote { saveRemoteCopy(fresh) }
+            }
+            if isRemote {
+                remoteLastRead = Date()
+                phone?.pairings.lastRead = remoteLastRead
             }
             if let theme { adopt(theme: theme, from: server) }
             if readFailed {
@@ -201,6 +241,10 @@ public final class BoardModel: ObservableObject {
             refresh()
         } catch {
             guard mine == generation else { return }
+            if isRemote {
+                remoteReadFailed(error)
+                return
+            }
             readFailed = true
             status = Self.describe(error)
             if let failure = error as? ServerError, case .unreachable(_) = failure {
@@ -245,6 +289,11 @@ public final class BoardModel: ObservableObject {
 
     /// While the tasks folder is opening, changes wait (says so). True when it's opening.
     private func waitWhileConnecting() -> Bool {
+        if isRemote, remote?.canChange != true {
+            // Nothing is changed on the copy shown: it goes to the computer once it answers again.
+            status = remoteBanner ?? "One moment: connecting to \(remoteComputer ?? "your computer")…"
+            return true
+        }
         guard isConnecting else { return false }
         status = "One moment: opening your tasks folder…"
         return true
@@ -310,6 +359,10 @@ public final class BoardModel: ObservableObject {
 
     /// A clicked todotracker:// link: the task it names opens (anything else is ignored).
     public func open(link: URL) {
+        if PairingLink.isPairing(link.absoluteString) {
+            pair(link: link.absoluteString)
+            return
+        }
         if case .task(let id) = TaskLinks.target(link.absoluteString) { openTaskId = id }
     }
 
@@ -707,10 +760,201 @@ public final class BoardModel: ObservableObject {
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 
+    // MARK: A computer's tasks (iPhone and iPad)
+
+    /// How often a computer that doesn't answer is tried again (and whenever the app comes back to the front).
+    static let retryEvery: TimeInterval = 30
+
+    /// The calm line above the tasks while the computer isn't answering, or after it disconnected this phone.
+    public var remoteBanner: String? {
+        guard let remote, let remoteComputer else { return nil }
+        return remote.banner(computer: remoteComputer, lastRead: remoteLastRead, now: now)
+    }
+
+    /// At launch: when this phone is connected to a computer, its tasks as last read are shown at once (without
+    /// changes), and the computer is looked for on each of its addresses.
+    public func connectToPairedComputer() {
+        guard let phone, let saved = phone.pairings.load() else { return }
+        paired = saved
+        remoteComputer = saved.computer
+        remote = .connecting
+        remoteLastRead = phone.pairings.lastRead
+        if let cached = phone.cacheURL.flatMap({ try? Data(contentsOf: $0) }), let copy = try? BoardCodec.decode(cached) {
+            board = copy
+        } else {
+            board = TaskBoard()
+        }
+        status = nil
+        refresh()
+        findComputer()
+    }
+
+    /// Pulled down to refresh: the board is read again from the server (a computer out of reach is looked for).
+    public func pullToRefresh() async {
+        if isRemote, remote?.canChange != true {
+            findComputer()
+        } else if server != nil, !isConnecting {
+            await reload()
+        }
+    }
+
+    /// The app is in front again: a computer that wasn't answering is tried right away.
+    public func becameActive() {
+        guard isRemote, remote?.canChange != true, !findingComputer else { return }
+        findComputer()
+    }
+
+    /// Connects this phone with the link from Settings › Phones on a computer (scanned, pasted or opened).
+    public func pair(link text: String) {
+        guard let phone else { return }
+        let link: PairingLink
+        do {
+            link = try PairingLink.parse(text)
+        } catch {
+            pairingError = Self.describe(error)
+            status = pairingError
+            return
+        }
+        guard !isPairing else { return }
+        isPairing = true
+        pairingError = nil
+        status = "Connecting to \(link.computer)…"
+        let session = phone.makeSession(link.fingerprint)
+        Task {
+            defer { isPairing = false }
+            do {
+                let made = try await PhoneConnect.claim(link, phoneName: phone.phoneName, fetch: PhoneConnect.fetch(with: session))
+                let saved = PairedComputer(hosts: link.hosts, fingerprint: link.fingerprint, computer: made.computer, lastHost: made.host, token: made.token)
+                guard phone.pairings.save(saved) else {
+                    pairingError = "Couldn’t keep the connection on this phone (its Keychain said no). Try again."
+                    status = pairingError
+                    return
+                }
+                phone.pairings.lastRead = nil
+                if let cache = phone.cacheURL { try? FileManager.default.removeItem(at: cache) }
+                paired = saved
+                remoteComputer = made.computer
+                remoteLastRead = nil
+                remote = .connecting
+                connect(to: made.host)
+                status = "Connected to \(made.computer)"
+            } catch {
+                pairingError = Self.describe(error)
+                status = pairingError
+            }
+        }
+    }
+
+    /// Back to the tasks on this phone: the connection is forgotten here (the board on this phone was never touched).
+    public func disconnectComputer() {
+        let name = remoteComputer ?? "your computer"
+        let wasRevoked = remote == .revoked
+        phone?.pairings.forget()
+        if let cache = phone?.cacheURL { try? FileManager.default.removeItem(at: cache) }
+        leaveComputer()
+        remote = nil
+        remoteComputer = nil
+        status = wasRevoked ? nil : "Disconnected from \(name). These are the tasks on this phone, as you left them."
+    }
+
+    /// Looks for the computer on each of its addresses (the last good one first).
+    private func findComputer() {
+        guard let phone, let saved = paired, !findingComputer else { return }
+        findingComputer = true
+        lastFind = Date()
+        remote = remote?.after(.retrying)
+        let session = phone.makeSession(saved.fingerprint)
+        Task {
+            defer {
+                findingComputer = false
+                lastFind = Date()
+            }
+            do {
+                let host = try await PhoneConnect.findHost(saved.hosts, preferring: saved.lastHost, token: saved.token, computer: saved.computer, fetch: PhoneConnect.fetch(with: session))
+                guard paired == saved else { return }
+                if host != saved.lastHost {
+                    var moved = saved
+                    moved.lastHost = host
+                    paired = moved
+                    phone.pairings.save(moved)
+                }
+                connect(to: host)
+            } catch PhoneConnect.Failure.disconnected {
+                guard paired == saved else { return }
+                computerDisconnectedThisPhone()
+            } catch {
+                guard paired == saved else { return }
+                computerUnreachable()
+            }
+        }
+    }
+
+    /// Uses the computer at that address from now on (its tasks, read every few seconds; changes go there).
+    private func connect(to host: String) {
+        guard let phone, let saved = paired, let base = PairingLink.baseURL(host) else { return }
+        server = ServerClient(baseURL: base, token: saved.token, session: phone.makeSession(saved.fingerprint))
+        serverURL = base
+        isConnecting = false
+        isReadOnly = false
+        etag = nil
+        themeSettled = false
+        remote = remote?.after(.answered(host: host))
+        if status == remoteBanner { status = nil }
+        Task { await reload() }
+    }
+
+    private func remoteReadFailed(_ error: Error) {
+        if case let .refused(status, _)? = error as? ServerError, status == 401 {
+            computerDisconnectedThisPhone()
+        } else if case .unreachable? = error as? ServerError {
+            // That address stopped answering: every address is tried (another network may still reach it).
+            findComputer()
+        } else {
+            status = Self.describe(error)
+        }
+    }
+
+    private func computerUnreachable() {
+        server = nil
+        serverURL = nil
+        etag = nil
+        remote = remote?.after(.noAnswer)
+        refresh()
+    }
+
+    /// The computer no longer knows this phone: say so, and go back to the tasks on this phone.
+    private func computerDisconnectedThisPhone() {
+        phone?.pairings.forget()
+        if let cache = phone?.cacheURL { try? FileManager.default.removeItem(at: cache) }
+        leaveComputer()
+        remote = .revoked
+        status = nil
+    }
+
+    /// The computer's tasks leave; the board on this phone comes back.
+    private func leaveComputer() {
+        paired = nil
+        server = nil
+        serverURL = nil
+        etag = nil
+        remoteLastRead = nil
+        board = (try? store?.load()) ?? TaskBoard()
+        NotificationScheduler.sync(board)
+        refresh()
+    }
+
+    /// The board as last read, kept so the phone shows it when the computer can't be reached.
+    private func saveRemoteCopy(_ board: TaskBoard) {
+        guard let url = phone?.cacheURL, let data = try? BoardCodec.encode(board) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    }
+
     // MARK: Plumbing
 
     @discardableResult
     private func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
+        guard !isRemote else { return false }
         guard !isReadOnly else {
             status = store?.wasMigrated == true
                 ? "Your tasks are in your tasks folder, and Todo Tracker's server isn't running: changes are off until it is."
@@ -731,7 +975,8 @@ public final class BoardModel: ObservableObject {
     }
 
     private func persist() {
-        guard !isReadOnly else { return }
+        // The computer's tasks are never written to the board on this phone.
+        guard !isReadOnly, !isRemote else { return }
         do {
             try store?.save(board)
         } catch {
@@ -742,6 +987,19 @@ public final class BoardModel: ObservableObject {
 
     private func tick() {
         let current = Date()
+        if isRemote {
+            now = current
+            if remote?.canChange == true {
+                if changesInFlight == 0, readsInFlight == 0, current.timeIntervalSince(lastRefresh) >= 5 {
+                    lastRefresh = current
+                    Task { await reload() }
+                }
+            } else if !findingComputer, current.timeIntervalSince(lastFind) >= Self.retryEvery {
+                // Not answering: every 30 s, every address again.
+                findComputer()
+            }
+            return
+        }
         if server != nil || isConnecting {
             // The server runs the focus timer and the reminders; here the clock moves and the board is read again
             // every few seconds (changes from the other computers, Obsidian, the browser).
@@ -776,6 +1034,32 @@ public enum DraftField: Hashable, Sendable { case title, details, repeatRule }
 public struct FieldDraft: Equatable, Sendable {
     public let text: String
     public let base: String
+}
+
+/// What the phone needs to use a computer's tasks: where the pairing is kept, where the last board read is kept, the
+/// network (trusting only the paired certificate) and the phone's name as the computer shows it.
+public struct PhoneSetup {
+    public let pairings: PairingStore
+    public let cacheURL: URL?
+    public let makeSession: (_ fingerprint: String) -> URLSession
+    public let phoneName: String
+
+    public init(pairings: PairingStore, cacheURL: URL?, phoneName: String, makeSession: @escaping (_ fingerprint: String) -> URLSession = { PinnedTrust.session(fingerprint: $0) }) {
+        self.pairings = pairings
+        self.cacheURL = cacheURL
+        self.makeSession = makeSession
+        self.phoneName = phoneName
+    }
+
+    #if os(iOS)
+    @MainActor
+    public static func live() -> PhoneSetup {
+        let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        return PhoneSetup(pairings: PairingStore(secrets: KeychainSecretStore()),
+                          cacheURL: base?.appendingPathComponent("TodoTracker", isDirectory: true).appendingPathComponent("computer-board.json"),
+                          phoneName: UIDevice.current.name)
+    }
+    #endif
 }
 
 /// Mirrors pending reminders into local notifications (the OS delivers them even when the app is closed).

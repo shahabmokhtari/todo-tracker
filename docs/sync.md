@@ -88,9 +88,12 @@ Windows computer does:
   (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need
   `xattr -dr com.apple.quarantine "/Applications/TodoTracker.app"` once.
 * **iPhone and iPad** (and Android) can't run the server, but with the **Phones** extra they use a computer's: turn on
-  **Settings › Phones › Let phones connect** there and scan the QR code in the phone app ([plugins.md](plugins.md#phones)).
-  The phone then works on that computer's tasks folder (over Wi-Fi, or anywhere with Tailscale), so it's in step with
-  everything this page syncs. Without it, a phone keeps its tasks on the device.
+  **Settings › Phones › Let phones connect** there, choose **Connect a phone**, and scan the QR code in the phone app
+  (on iPhone and iPad: **Settings › Computer › Connect to a computer…**; [plugins.md](plugins.md#phones)). The phone
+  then works on that computer's tasks folder (over Wi-Fi, or anywhere with Tailscale), so it's in step with everything
+  this page syncs. Away from both, an iPhone or iPad shows the tasks as last read and changes wait
+  ([guide.md](guide.md#use-your-computers-tasks-on-an-iphone-or-ipad)). Without it, a phone keeps its tasks on the
+  device.
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,

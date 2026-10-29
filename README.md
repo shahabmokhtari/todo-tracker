@@ -57,7 +57,7 @@ calm until it matters.
 | Everything about a task | The Windows sidebar | On your phone |
 |---|---|---|
 | ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
-| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. |
+| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too, and an iPhone or iPad can use your computer's tasks over Wi-Fi or Tailscale. |
 
 <details>
 <summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>

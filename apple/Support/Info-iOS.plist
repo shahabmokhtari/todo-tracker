@@ -13,5 +13,14 @@
 </array>
 </dict>
 </array>
+<key>NSAppTransportSecurity</key>
+<dict>
+<key>NSAllowsLocalNetworking</key>
+<true/>
+</dict>
+<key>NSCameraUsageDescription</key>
+<string>Todo Tracker uses the camera to scan the code your computer shows when you connect this phone to it.</string>
+<key>NSLocalNetworkUsageDescription</key>
+<string>Todo Tracker connects to Todo Tracker on your computer, over your Wi-Fi, to use the tasks there.</string>
 </dict>
 </plist>
