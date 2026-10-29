@@ -27,6 +27,7 @@ Mac app have native ports of the core rules.
 | `integrations/` | Claude Desktop extension, Claude Code / Copilot CLI plugin and skill, VS Code sample | — |
 | `tests/` | xUnit v3 tests per project, `web/` (node:test), `e2e/` (Playwright), `system/` (Windows UI Automation), `fixtures/` (shared by C#, Swift and Kotlin) | |
 | `docs/` | User docs, the product spec, and generated references (`mcp.md`, `cli.md`) | |
+| `website/` | The public site at todotracker.awesomehq.app (static, Cloudflare Workers; `website/README.md` says how to deploy) | any OS |
 
 ## Build and test
 
