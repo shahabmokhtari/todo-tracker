@@ -8,12 +8,22 @@ public indirect enum JSONValue: Sendable {
     /// The number's text as read or written.
     case number(String)
     case string(String)
+    /// A string written without escaping (System.Text.Json writes dates and GUIDs as they are: `+00:00`, not `\u002B00:00`).
+    case verbatim(String)
     case array([JSONValue])
     case object(JSONObject)
 
     static func int<T: BinaryInteger>(_ n: T) -> JSONValue { .number(String(n)) }
 
-    var stringValue: String? { if case .string(let s) = self { return s }; return nil }
+    var stringValue: String? {
+        switch self {
+        case .string(let s), .verbatim(let s): return s
+        default: return nil
+        }
+    }
+
+    /// A time as System.Text.Json writes a `DateTimeOffset`.
+    static func instant(_ value: Instant) -> JSONValue { .verbatim(value.description) }
     var objectValue: JSONObject? { if case .object(let o) = self { return o }; return nil }
     var arrayValue: [JSONValue]? { if case .array(let a) = self { return a }; return nil }
     var boolValue: Bool? { if case .bool(let b) = self { return b }; return nil }
@@ -31,7 +41,7 @@ public indirect enum JSONValue: Sendable {
         case (nil, nil): return true
         case (nil, _), (_, nil): return false
         case let (.bool(x)?, .bool(y)?): return x == y
-        case let (.string(x)?, .string(y)?): return x.oEq(y)
+        case (.string?, _), (.verbatim?, _): return a?.stringValue.flatMap { x in b?.stringValue.map { x.oEq($0) } } ?? false
         case let (.number(x)?, .number(y)?): return x == y || (Decimal(string: x).map { d in Decimal(string: y) == d } ?? false)
         case let (.array(x)?, .array(y)?): return x.count == y.count && zip(x, y).allSatisfy { deepEquals($0, $1) }
         case let (.object(x)?, .object(y)?):
@@ -230,6 +240,7 @@ enum JSONText {
         case .bool(let b): out += b ? "true" : "false"
         case .number(let n): out += n
         case .string(let s): out += quote(s, escaping)
+        case .verbatim(let s): out += "\"" + s + "\""
         case .array(let a):
             if a.isEmpty { out += "[]"; return }
             out += "["

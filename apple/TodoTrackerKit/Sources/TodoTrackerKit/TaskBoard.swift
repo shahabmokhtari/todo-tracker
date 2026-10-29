@@ -642,6 +642,19 @@ public final class TaskBoard {
         if let parent { parent.children.append(item) } else { items.append(item) }
     }
 
+    /// Adds a task tree read from a file (children already linked) as a top-level task in `groupId`.
+    func attachLoaded(_ root: WorkItem, groupId: UUID) throws {
+        let tree = root.selfAndDescendants
+        if let taken = tree.first(where: { index[$0.id] != nil }) { throw BoardError.invalid("Duplicate task id \(taken.id).") }
+        root.parent = nil
+        root.ownGroupId = groupId
+        for item in tree {
+            index[item.id] = item
+            item.board = self
+        }
+        items.append(root)
+    }
+
     func seedGroups() {
         groups.append(TaskGroup(name: "Work", color: "#3b82f6"))
         groups.append(TaskGroup(name: "Personal", color: "#22c55e"))

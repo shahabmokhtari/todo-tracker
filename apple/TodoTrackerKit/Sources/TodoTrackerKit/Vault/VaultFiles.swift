@@ -80,19 +80,62 @@ public enum VaultFiles {
         return path.sub(0, path.u16 - current.u16) + ext
     }
 
+    // File names are written with POSIX calls: Foundation's file APIs turn a name into its decomposed (NFD)
+    // "file system representation", so "Café.md" would be written as "Cafe\u{301}.md" and every other device would
+    // see a different path. These keep the exact UTF-8 bytes of the name.
+
+    /// Creates a folder and the folders above it.
+    static func makeDirectories(_ path: String) throws {
+        var current = ""
+        for part in path.oSplit("/") {
+            if current.isEmpty && part.isEmpty && path.oStarts("/") { current = "/"; continue }
+            if part.isEmpty { continue }
+            current += current.isEmpty || current == "/" ? part : "/" + part
+            if mkdir(current, 0o755) != 0 && errno != EEXIST { throw posixError(current) }
+        }
+    }
+
+    static func writeFile(_ path: String, _ data: Data) throws {
+        let fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+        if fd < 0 { throw posixError(path) }
+        defer { close(fd) }
+        try data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+            var offset = 0
+            while offset < buffer.count {
+                let n = Darwin.write(fd, buffer.baseAddress! + offset, buffer.count - offset)
+                if n < 0 { throw posixError(path) }
+                offset += n
+            }
+        }
+    }
+
+    /// Moves a file or folder; the target must be free (or the same file in other letter case).
+    static func move(_ from: String, _ to: String) throws {
+        var a = stat(), b = stat()
+        if lstat(to, &b) == 0 && !(lstat(from, &a) == 0 && a.st_ino == b.st_ino && a.st_dev == b.st_dev) {
+            throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: to])
+        }
+        if rename(from, to) != 0 { throw posixError(from) }
+    }
+
+    static func posixError(_ path: String) -> Error {
+        let code = errno
+        return NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSFilePathErrorKey: path, NSLocalizedDescriptionKey: String(cString: strerror(code)) + ": " + path])
+    }
+
     /// Writes atomically (temp file + rename) so readers and sync clients never see half a file.
-    static func writeAtomic(_ url: URL, _ data: Data) throws {
-        let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let temp = dir.appendingPathComponent("." + url.lastPathComponent + "." + String(guidN(UUID()).prefix(8)) + ".tmp")
+    static func writeAtomic(_ path: String, _ data: Data) throws {
+        let dir = (path as NSString).deletingLastPathComponent
+        try makeDirectories(dir)
+        let temp = dir + "/." + (path as NSString).lastPathComponent + "." + String(guidN(UUID()).prefix(8)) + ".tmp"
         do {
-            try data.write(to: temp)
-            if rename(temp.path, url.path) != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            try writeFile(temp, data)
+            if rename(temp, path) != 0 { throw posixError(path) }
         } catch {
-            try? FileManager.default.removeItem(at: temp)
+            unlink(temp)
             throw error
         }
     }
 
-    static func writeAtomic(_ url: URL, _ text: String) throws { try writeAtomic(url, Data(text.utf8)) }
+    static func writeAtomic(_ path: String, _ text: String) throws { try writeAtomic(path, Data(text.utf8)) }
 }
