@@ -250,6 +250,146 @@
       "policy": "both",
       "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in April.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
       "conflicted": false
+    },
+    {
+      "name": "an added line equal to its neighbour, on both",
+      "base": "\nb\n",
+      "first": "\nb\nb\n",
+      "second": "Title\nb\nb\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "Title\nb\nb\n",
+      "conflicted": false
+    },
+    {
+      "name": "an added line equal to its neighbour, on both (other order)",
+      "base": "\nb\n",
+      "first": "Title\nb\nb\n",
+      "second": "\nb\nb\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "Title\nb\nb\n",
+      "conflicted": false
+    },
+    {
+      "name": "a note added on one, merged and renamed on the other",
+      "base": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n",
+      "first": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "second": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "lineKeys": "task",
+      "policy": "both",
+      "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "conflicted": false
+    },
+    {
+      "name": "a note added on one, merged and renamed on the other (other order)",
+      "base": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n",
+      "first": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "second": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "lineKeys": "task",
+      "policy": "both",
+      "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "conflicted": false
+    },
+    {
+      "name": "a note added on one, merged and renamed on the other, plain",
+      "base": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n",
+      "first": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "second": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the Lisbon trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n",
+      "conflicted": false
+    },
+    {
+      "name": "a step checked on one; merged, then the next renamed, on the other",
+      "base": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "first": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "second": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book a hotel near the beach ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "lineKeys": "task",
+      "policy": "both",
+      "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book a hotel near the beach ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "conflicted": false
+    },
+    {
+      "name": "a step checked on one; merged, then the next renamed, on the other (other order)",
+      "base": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [ ] Book flights ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "first": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book a hotel near the beach ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "second": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book hotel ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "lineKeys": "task",
+      "policy": "both",
+      "text": "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan the trip\n\nLisbon in spring.\n\n## Subtasks\n\n- [x] Book flights ✅ 2026-01-05 ^t0000002 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"created\":\"2026-01-05T09:00:00.000Z\",\"done\":\"2026-01-05T10:00:00.000Z\"}%%\n- [ ] Book a hotel near the beach ^t0000003 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000003\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n- [ ] Pack ^t0000004 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"created\":\"2026-01-05T09:00:00.000Z\"}%%\n",
+      "conflicted": false
+    },
+    {
+      "name": "the same line added among repeats",
+      "base": "x\nx\ny\n",
+      "first": "x\nx\nx\ny\n",
+      "second": "x\nx\nx\nY\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "x\nx\nx\nY\n",
+      "conflicted": false
+    },
+    {
+      "name": "the same line added next to different edits",
+      "base": "a\nm\nb\n",
+      "first": "A\nm\nm\nb\n",
+      "second": "a\nm\nm\nB\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "A\nm\nm\nB\n",
+      "conflicted": false
+    },
+    {
+      "name": "the same line added between different deletes",
+      "base": "a\nb\nc\n",
+      "first": "b\nb\nc\n",
+      "second": "a\nb\nb\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "b\nb\n",
+      "conflicted": false
+    },
+    {
+      "name": "the same line added, then deleted around on one side",
+      "base": "p\nq\nq\nr\n",
+      "first": "p\nq\nq\nq\nr\n",
+      "second": "q\nq\nq\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "q\nq\nq\n",
+      "conflicted": false
+    },
+    {
+      "name": "one of two equal lines deleted on both",
+      "base": "t\nb\nb\ne\n",
+      "first": "t\nb\ne\n",
+      "second": "T\nb\ne\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "T\nb\ne\n",
+      "conflicted": false
+    },
+    {
+      "name": "one of two equal lines deleted on both (other order)",
+      "base": "t\nb\nb\ne\n",
+      "first": "T\nb\ne\n",
+      "second": "t\nb\ne\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "T\nt\nb\ne\n",
+      "conflicted": true
+    },
+    {
+      "name": "one of two blank lines deleted on both, a title changed",
+      "base": "b\n\n\n\n",
+      "first": "b\n\n\n",
+      "second": "T\n\n\n",
+      "lineKeys": null,
+      "policy": "both",
+      "text": "T\n\n\n",
+      "conflicted": false
     }
   ],
   "taskLineKeys": [

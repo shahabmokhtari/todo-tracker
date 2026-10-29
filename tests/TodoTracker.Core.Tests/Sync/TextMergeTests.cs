@@ -157,4 +157,83 @@ public class TextMergeTests
         Assert.Equal(first, TextMerge.Merge(b, first, L("a", "b", "c", "d")).Text);
         Assert.Equal(first, TextMerge.Merge(b, L("a", "b", "c", "d"), first).Text);
     }
+
+    /// <summary>Merged both ways round, the result is <paramref name="expected"/>, without a conflict.</summary>
+    private static void MergesTo(string expected, string b, string first, string second)
+    {
+        foreach (var (x, y) in new[] { (first, second), (second, first) })
+        {
+            var result = TextMerge.Merge(b, x, y);
+            Assert.False(result.Conflicted);
+            Assert.Equal(expected, result.Text);
+        }
+    }
+
+    [Fact]
+    public void A_line_added_on_both_sides_is_kept_once_where_the_diffs_place_it_differently()
+    {
+        // Live: a note added on the phone, merged by a computer that then changed the title, ended up twice. The
+        // added line equals the one before it, so one side's diff saw it after that line and the other's before.
+        MergesTo(L("Title changed", "b", "b"), L("", "b"), L("", "b", "b"), L("Title changed", "b", "b"));
+    }
+
+    [Fact]
+    public void A_note_added_on_one_device_and_merged_with_a_title_change_is_kept_once()
+    {
+        var b = L("# Trip", string.Empty, "## Notes", string.Empty, "> [!note] 2026-01-05 10:00 · You", "> ok");
+        var note = new[] { string.Empty, "> [!note] 2026-01-05 11:00 · You", "> ok" };
+        var withNote = b + L(note);
+        var renamed = withNote.Replace("# Trip", "# Lisbon trip", StringComparison.Ordinal);
+
+        MergesTo(renamed, b, withNote, renamed);
+    }
+
+    [Fact]
+    public void A_step_checked_on_one_side_and_merged_then_the_next_renamed_on_the_other_merges_step_by_step()
+    {
+        // The second side already has the first's change (it merged it) and renamed the next step: the shared change
+        // must not hide that both lines are the same steps.
+        var b = L("# Trip", "- [ ] Flights ^s1", "- [ ] Hotel ^s2");
+        var first = L("# Trip", "- [x] Flights ^s1", "- [ ] Hotel ^s2");
+        var second = L("# Trip", "- [x] Flights ^s1", "- [ ] A hotel ^s2");
+
+        foreach (var (x, y) in new[] { (first, second), (second, first) })
+        {
+            var result = TextMerge.Merge(b, x, y, SyncPlanner.TaskLineKeys);
+            Assert.False(result.Conflicted);
+            Assert.Equal(second, result.Text);
+        }
+    }
+
+    [Fact]
+    public void The_same_line_added_at_a_place_with_repeats_is_kept_once()
+    {
+        MergesTo(L("x", "x", "x", "Y"), L("x", "x", "y"), L("x", "x", "x", "y"), L("x", "x", "x", "Y"));
+    }
+
+    [Fact]
+    public void The_same_line_added_on_both_next_to_different_edits_is_kept_once()
+    {
+        MergesTo(L("A", "m", "m", "B"), L("a", "m", "b"), L("A", "m", "m", "b"), L("a", "m", "m", "B"));
+    }
+
+    [Fact]
+    public void The_same_line_added_on_both_between_different_deletes_is_kept_once()
+    {
+        MergesTo(L("b", "b"), L("a", "b", "c"), L("b", "b", "c"), L("a", "b", "b"));
+    }
+
+    [Fact]
+    public void One_of_two_equal_lines_deleted_on_both_is_deleted_once()
+    {
+        // The other way round: both removed one "b"; the diffs may say different ones, and the other "b" must stay.
+        var b = L("t", "b", "b", "e");
+        Assert.Equal(L("T", "b", "e"), TextMerge.Merge(b, L("t", "b", "e"), L("T", "b", "e")).Text);
+
+        // Merged the other way round, the first side's own diff pairs the "t" change with the "b" it removed: that
+        // overlaps the second's removal, so it's a conflict, with both versions' lines kept and the other "b" too.
+        var other = TextMerge.Merge(b, L("T", "b", "e"), L("t", "b", "e"));
+        Assert.True(other.Conflicted);
+        Assert.Equal(L("T", "t", "b", "e"), other.Text);
+    }
 }

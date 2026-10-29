@@ -33,7 +33,8 @@ public enum TextMerge {
         }
         let no = number(o), na = number(a), nb = number(b)
         let ko = lineKeys?(o), ka = lineKeys?(a), kb = lineKeys?(b)
-        let ma = match(no, na), mb = match(no, nb)
+        let ma = match(no, na)
+        let mb = matchAgreeing(no, nb, ma, match(na, nb))
         var output: [String] = []
         var conflicted = false
         var io = 0, ia = 0, ib = 0
@@ -58,25 +59,54 @@ public enum TextMerge {
             } else if let ko, let keyed = mergeByKey(Array(o[io..<next]), la, lb, Array(ko[io..<next]), Array(ka![ia..<ea]), Array(kb![ib..<eb]), policy) {
                 output.append(contentsOf: keyed.lines)
                 conflicted = conflicted || keyed.conflicted
-            } else if ko != nil && co.isEmpty && distinctKeyed(Array(ka![ia..<ea]), Array(kb![ib..<eb])) {
-                // Both added lines that each carry their own identity (time logged on two devices): both stay.
-                output.append(contentsOf: la)
-                output.append(contentsOf: lb)
             } else {
-                conflicted = true
-                switch policy {
-                case .first: output.append(contentsOf: la)
-                case .second: output.append(contentsOf: lb)
-                case .both:
-                    output.append(contentsOf: la)
-                    output.append(contentsOf: zip(lb, cb).filter { !ca.contains($0.1) }.map(\.0))
-                }
+                // Lines both sides have at the start or the end of the stretch are the same change made on both
+                // (say, a note one device added and the other merged before editing next to it): kept once, and
+                // only what's left between them is merged.
+                var p = 0
+                while p < ca.count && p < cb.count && ca[p] == cb[p] { p += 1 }
+                var s = 0
+                while s < ca.count - p && s < cb.count - p && ca[ca.count - 1 - s] == cb[cb.count - 1 - s] { s += 1 }
+                // Base lines there that both kept are trimmed with them.
+                var po = 0
+                while po < p && po < co.count && co[po] == ca[po] { po += 1 }
+                var so = 0
+                while so < s && so < co.count - po && co[co.count - 1 - so] == ca[ca.count - 1 - so] { so += 1 }
+                output.append(contentsOf: la[0..<p])
+                let resolved = resolve(
+                    o: Array(o[(io + po)..<(next - so)]), co: Array(co[po..<(co.count - so)]),
+                    a: Array(la[p..<(la.count - s)]), ca: Array(ca[p..<(ca.count - s)]),
+                    b: Array(lb[p..<(lb.count - s)]), cb: Array(cb[p..<(cb.count - s)]),
+                    ko: ko.map { Array($0[(io + po)..<(next - so)]) },
+                    ka: ka.map { Array($0[(ia + p)..<(ea - s)]) },
+                    kb: kb.map { Array($0[(ib + p)..<(eb - s)]) },
+                    policy: policy)
+                output.append(contentsOf: resolved.lines)
+                output.append(contentsOf: la[(la.count - s)...])
+                conflicted = conflicted || resolved.conflicted
             }
             io = next
             ia = ea
             ib = eb
         }
         return TextMergeResult(text: join(output), conflicted: conflicted)
+    }
+
+    /// A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict. `co`, `ca`, `cb`
+    /// are the lines as numbers, `o`, `a`, `b` as text.
+    private static func resolve(o: [String], co: [Int], a: [String], ca: [Int], b: [String], cb: [Int], ko: [String?]?, ka: [String?]?, kb: [String?]?, policy: ConflictPolicy) -> (lines: [String], conflicted: Bool) {
+        if co == ca { return (b, false) }
+        if co == cb || ca == cb { return (a, false) }
+        if let ko, let keyed = mergeByKey(o, a, b, ko, ka!, kb!, policy) { return keyed }
+        if ko != nil && co.isEmpty && distinctKeyed(ka!, kb!) {
+            // Both added lines that each carry their own identity (time logged on two devices): both stay.
+            return (a + b, false)
+        }
+        switch policy {
+        case .first: return (a, true)
+        case .second: return (b, true)
+        case .both: return (a + zip(b, cb).filter { !ca.contains($0.1) }.map(\.0), true)
+        }
     }
 
     /// Keyed lines merge one by one when the clashing stretch has the same keys in the same order on all three sides.
@@ -128,6 +158,44 @@ public enum TextMerge {
             out += line
         }
         return out
+    }
+
+    /// For each base line, the index of the line it matches in `other` (a longest common subsequence), or -1. Equal
+    /// lines can pair up more than one way ("b" added after "b": the old "b" is the first or the second), and the two
+    /// sides' diffs must agree on which, or a line both sides added (or removed) is counted twice. So among the longest
+    /// ones, this takes the pairing that agrees most with the first side's: base line i pairs with the line of `other`
+    /// that the first side's line for i pairs with (`firstToOther`). As C#'s `TextMerge.MatchAgreeing`.
+    private static func matchAgreeing(_ o: [Int], _ other: [Int], _ baseToFirst: [Int], _ firstToOther: [Int]) -> [Int] {
+        let n = o.count, m = other.count
+        var map = Array(repeating: -1, count: n)
+        if n == 0 || m == 0 { return map }
+        // A pair is worth more than every agreement together, so the pairing stays a longest one.
+        let pair = min(n, m) + 1
+        func worth(_ i: Int, _ j: Int) -> Int {
+            o[i] != other[j] ? 0 : pair + (baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j ? 1 : 0)
+        }
+        var best = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                let skip = max(best[i + 1][j], best[i][j + 1])
+                let w = worth(i, j)
+                best[i][j] = w > 0 ? max(w + best[i + 1][j + 1], skip) : skip
+            }
+        }
+        var i = 0, j = 0
+        while i < n && j < m {
+            let w = worth(i, j)
+            if w > 0 && best[i][j] == w + best[i + 1][j + 1] {
+                map[i] = j
+                i += 1
+                j += 1
+            } else if best[i + 1][j] >= best[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return map
     }
 
     /// For each base line, the index of the line it matches in `other` (longest common subsequence), or -1.

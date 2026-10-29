@@ -240,7 +240,11 @@ public sealed class SyncFixtureTests
 
     private static readonly string Trip = TaskText("Plan the trip", "", "Lisbon in spring.\n", Flights, Hotel, Pack);
 
-    private const string TimeLog = "## Time\n\n- 2026-01-05 04:00–04:25 · 25 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000a1\",\"start\":\"2026-01-05T09:00:00.000Z\",\"end\":\"2026-01-05T09:25:00.000Z\"}%%\n";
+    // Notes as the app writes them: a blank line, the callout's head, its text (the same text in both).
+    private const string Note1 = "\n## Notes\n\n> [!note] 2026-01-05 05:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b1\",\"at\":\"2026-01-05T10:00:00.000Z\"}%%\n> ok\n";
+    private const string Note2 = "\n> [!note] 2026-01-05 06:00 · You %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000b2\",\"at\":\"2026-01-05T11:00:00.000Z\"}%%\n> ok\n";
+
+    private const string TimeLog ="## Time\n\n- 2026-01-05 04:00–04:25 · 25 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000a1\",\"start\":\"2026-01-05T09:00:00.000Z\",\"end\":\"2026-01-05T09:25:00.000Z\"}%%\n";
     private const string TimeA = "- 2026-01-05 05:00–05:30 · 30 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000a2\",\"start\":\"2026-01-05T10:00:00.000Z\",\"end\":\"2026-01-05T10:30:00.000Z\"}%%\n";
     private const string TimeB = "- 2026-01-05 06:00–06:10 · 10 min %%{\"id\":\"7b0c2f9e-0000-4000-8000-0000000000a3\",\"start\":\"2026-01-05T11:00:00.000Z\",\"end\":\"2026-01-05T11:10:00.000Z\"}%%\n";
 
@@ -272,6 +276,25 @@ public sealed class SyncFixtureTests
         yield return ("frontmatter: the same key added on both", Trip, Trip.Replace("status: open\n", "status: open\nenergy: 2\n", StringComparison.Ordinal), Trip.Replace("status: open\n", "status: open\nenergy: 3\n", StringComparison.Ordinal), true, ConflictPolicy.Both);
         yield return ("title changed on both", Trip, Trip.Replace("# Plan the trip", "# Plan the Lisbon trip", StringComparison.Ordinal), Trip.Replace("# Plan the trip", "# Trip planning", StringComparison.Ordinal), true, ConflictPolicy.Both);
         yield return ("details and a step", Trip, Trip.Replace("Lisbon in spring.", "Lisbon in April.", StringComparison.Ordinal), TaskText("Plan the trip", "", "Lisbon in spring.\n", FlightsDone, Hotel, Pack), true, ConflictPolicy.Both);
+
+        // A line both sides have that each side's own diff places differently (it equals a line next to it) is the
+        // same addition: kept once. Live: a note added on the phone, merged by a computer that then renamed the task.
+        yield return ("an added line equal to its neighbour, on both", L("", "b"), L("", "b", "b"), L("Title", "b", "b"), false, ConflictPolicy.Both);
+        yield return ("an added line equal to its neighbour, on both (other order)", L("", "b"), L("Title", "b", "b"), L("", "b", "b"), false, ConflictPolicy.Both);
+        var noted = Trip + Note1 + Note2;
+        var renamedNoted = noted.Replace("# Plan the trip", "# Plan the Lisbon trip", StringComparison.Ordinal);
+        yield return ("a note added on one, merged and renamed on the other", Trip + Note1, noted, renamedNoted, true, ConflictPolicy.Both);
+        yield return ("a note added on one, merged and renamed on the other (other order)", Trip + Note1, renamedNoted, noted, true, ConflictPolicy.Both);
+        yield return ("a note added on one, merged and renamed on the other, plain", Trip + Note1, noted, renamedNoted, false, ConflictPolicy.Both);
+        yield return ("a step checked on one; merged, then the next renamed, on the other", Trip, TaskText("Plan the trip", "", "Lisbon in spring.\n", FlightsDone, Hotel, Pack), TaskText("Plan the trip", "", "Lisbon in spring.\n", FlightsDone, HotelRenamed, Pack), true, ConflictPolicy.Both);
+        yield return ("a step checked on one; merged, then the next renamed, on the other (other order)", Trip, TaskText("Plan the trip", "", "Lisbon in spring.\n", FlightsDone, HotelRenamed, Pack), TaskText("Plan the trip", "", "Lisbon in spring.\n", FlightsDone, Hotel, Pack), true, ConflictPolicy.Both);
+        yield return ("the same line added among repeats", L("x", "x", "y"), L("x", "x", "x", "y"), L("x", "x", "x", "Y"), false, ConflictPolicy.Both);
+        yield return ("the same line added next to different edits", L("a", "m", "b"), L("A", "m", "m", "b"), L("a", "m", "m", "B"), false, ConflictPolicy.Both);
+        yield return ("the same line added between different deletes", L("a", "b", "c"), L("b", "b", "c"), L("a", "b", "b"), false, ConflictPolicy.Both);
+        yield return ("the same line added, then deleted around on one side", L("p", "q", "q", "r"), L("p", "q", "q", "q", "r"), L("q", "q", "q"), false, ConflictPolicy.Both);
+        yield return ("one of two equal lines deleted on both", L("t", "b", "b", "e"), L("t", "b", "e"), L("T", "b", "e"), false, ConflictPolicy.Both);
+        yield return ("one of two equal lines deleted on both (other order)", L("t", "b", "b", "e"), L("T", "b", "e"), L("t", "b", "e"), false, ConflictPolicy.Both);
+        yield return ("one of two blank lines deleted on both, a title changed", L("b", "", "", ""), L("b", "", ""), L("T", "", ""), false, ConflictPolicy.Both);
     }
 
     private sealed record SideSpec(string Device, string Name, (string Key, string Path, string Text)[] Entries);

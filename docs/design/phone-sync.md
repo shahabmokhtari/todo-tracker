@@ -162,9 +162,17 @@ devices). Rules the cases pin:
   **This check must accept and refuse exactly what C# does**, or the two devices plan differently.
 * Ops are ordered: moves, deletes, writes, settings/order, activity.
 
-**Text merge** (`TextMerge.Merge`, `SyncPlanner.TaskLineKeys`): port as is. Fixture: `sync/textmerge.json` (25 cases
+**Text merge** (`TextMerge.Merge`, `SyncPlanner.TaskLineKeys`): port as is. Fixture: `sync/textmerge.json` (39 cases
 incl. CRLF, missing final newline, empty base, keyed step merges, both logging time, frontmatter clashes, the three
-conflict policies; `taskLineKeys` shows the keys per line).
+conflict policies, the same line added or removed on both sides where the diffs could place it differently;
+`taskLineKeys` shows the keys per line). Two rules keep a change both sides made from counting twice:
+
+* The second side is aligned with the base *agreeing with the first side*: among its longest common subsequences
+  with the base, the one where most base lines pair with the same line the first side's line pairs with
+  (`MatchAgreeing`: a pair is worth `min(n, m) + 1`, an agreeing pair one more; the first side against the second is
+  a plain `Match`). Ties break like the plain LCS backtrack (skip a base line first).
+* In a stretch where both changed, lines both sides have at its start or end are kept once (with the base lines
+  both kept there), after one-by-one keyed merging of the whole stretch was tried, and the rest is merged as before.
 
 **Applying** (`VaultBoardStore.ApplySyncAsync` + `Verify`): before anything is written, check every op against the
 files as they are (a write's `expected` hash, `null` = must not exist; a move's target must be free unless only the

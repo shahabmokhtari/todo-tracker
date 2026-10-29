@@ -29,7 +29,7 @@ object TextMerge {
         val ka = lineKeys?.invoke(a)
         val kb = lineKeys?.invoke(b)
         val ma = match(o, a)
-        val mb = match(o, b)
+        val mb = matchAgreeing(o, b, ma, match(a, b))
         val output = mutableListOf<String>()
         var conflicted = false
         var io = 0
@@ -60,21 +60,32 @@ object TextMerge {
                     output.addAll(keyed.first)
                     conflicted = conflicted or keyed.second
                 }
-                ko != null && co.isEmpty() && distinctKeyed(ka!!.subList(ia, ea), kb!!.subList(ib, eb)) -> {
-                    // Both added lines that each carry their own identity (time logged on two devices): both stay.
-                    output.addAll(ca)
-                    output.addAll(cb)
-                }
                 else -> {
-                    conflicted = true
-                    when (policy) {
-                        ConflictPolicy.FIRST -> output.addAll(ca)
-                        ConflictPolicy.SECOND -> output.addAll(cb)
-                        ConflictPolicy.BOTH -> {
-                            output.addAll(ca)
-                            output.addAll(cb.filter { it !in ca })
-                        }
-                    }
+                    // Lines both sides have at the start or the end of the stretch are the same change made on both
+                    // (say, a note one device added and the other merged before editing next to it): kept once, and
+                    // only what's left between them is merged.
+                    var p = 0
+                    while (p < ca.size && p < cb.size && ca[p] == cb[p]) p++
+                    var s = 0
+                    while (s < ca.size - p && s < cb.size - p && ca[ca.size - 1 - s] == cb[cb.size - 1 - s]) s++
+                    // Base lines there that both kept are trimmed with them.
+                    var po = 0
+                    while (po < p && po < co.size && co[po] == ca[po]) po++
+                    var so = 0
+                    while (so < s && so < co.size - po && co[co.size - 1 - so] == ca[ca.size - 1 - so]) so++
+                    output.addAll(ca.subList(0, p))
+                    val resolved = resolve(
+                        co.subList(po, co.size - so),
+                        ca.subList(p, ca.size - s),
+                        cb.subList(p, cb.size - s),
+                        ko?.subList(io + po, next - so),
+                        ka?.subList(ia + p, ea - s),
+                        kb?.subList(ib + p, eb - s),
+                        policy,
+                    )
+                    output.addAll(resolved.first)
+                    output.addAll(ca.subList(ca.size - s, ca.size))
+                    conflicted = conflicted or resolved.second
                 }
             }
             io = next
@@ -82,6 +93,20 @@ object TextMerge {
             ib = eb
         }
         return TextMergeResult(join(output), conflicted)
+    }
+
+    /** A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict. */
+    private fun resolve(co: List<String>, ca: List<String>, cb: List<String>, ko: List<String?>?, ka: List<String?>?, kb: List<String?>?, policy: ConflictPolicy): Pair<List<String>, Boolean> {
+        if (co == ca) return cb to false
+        if (co == cb || ca == cb) return ca to false
+        if (ko != null) mergeByKey(co, ca, cb, ko, ka!!, kb!!, policy)?.let { return it }
+        // Both added lines that each carry their own identity (time logged on two devices): both stay.
+        if (ko != null && co.isEmpty() && distinctKeyed(ka!!, kb!!)) return (ca + cb) to false
+        return when (policy) {
+            ConflictPolicy.FIRST -> ca
+            ConflictPolicy.SECOND -> cb
+            ConflictPolicy.BOTH -> ca + cb.filter { it !in ca }
+        } to true
     }
 
     /** Keyed lines merge one by one when the clashing stretch has the same keys in the same order on all three sides. */
@@ -130,6 +155,47 @@ object TextMerge {
             sb.append(line)
         }
         return sb.toString()
+    }
+
+    /**
+     * For each base line, the index of the line it matches in [other] (a longest common subsequence), or -1. Equal lines
+     * can pair up more than one way ("b" added after "b": the old "b" is the first or the second), and the two sides'
+     * diffs must agree on which, or a line both sides added (or removed) is counted twice. So among the longest ones,
+     * this takes the pairing that agrees most with the first side's: base line i pairs with the line of [other] that
+     * the first side's line for i pairs with ([firstToOther]). As C#'s `TextMerge.MatchAgreeing`.
+     */
+    private fun matchAgreeing(o: List<String>, other: List<String>, baseToFirst: IntArray, firstToOther: IntArray): IntArray {
+        val n = o.size
+        val m = other.size
+        val map = IntArray(n) { -1 }
+        if (n == 0 || m == 0) return map
+        // A pair is worth more than every agreement together, so the pairing stays a longest one.
+        val pair = minOf(n, m) + 1
+        fun worth(i: Int, j: Int): Int =
+            if (o[i] != other[j]) 0 else pair + (if (baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j) 1 else 0)
+        val best = Array(n + 1) { IntArray(m + 1) }
+        for (i in n - 1 downTo 0) {
+            for (j in m - 1 downTo 0) {
+                val skip = maxOf(best[i + 1][j], best[i][j + 1])
+                val w = worth(i, j)
+                best[i][j] = if (w > 0) maxOf(w + best[i + 1][j + 1], skip) else skip
+            }
+        }
+        var i = 0
+        var j = 0
+        while (i < n && j < m) {
+            val w = worth(i, j)
+            if (w > 0 && best[i][j] == w + best[i + 1][j + 1]) {
+                map[i] = j
+                i++
+                j++
+            } else if (best[i + 1][j] >= best[i][j + 1]) {
+                i++
+            } else {
+                j++
+            }
+        }
+        return map
     }
 
     /** For each base line, the index of the line it matches in [other] (longest common subsequence), or -1. */
