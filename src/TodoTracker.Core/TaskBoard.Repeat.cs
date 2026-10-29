@@ -99,7 +99,38 @@ public sealed partial class TaskBoard
             return null;
         }
 
-        return step.Ancestors().FirstOrDefault(a => WasRolledForward(a) && ActivityList.FindLast(e => e.ItemId == a.Id && e.Kind == ActivityKind.Completed)?.At == done.At);
+        return step.Ancestors().FirstOrDefault(a => WasRolledForward(a) && IsNewest(a, done.At));
+    }
+
+    /// <summary>
+    /// Whether moving <paramref name="item"/> on (at <paramref name="at"/>) is the last thing that happened to it or its
+    /// subtasks: once its next time has begun (a step done, a reminder set…), reopening a step no longer undoes it.
+    /// </summary>
+    private bool IsNewest(WorkItem item, DateTimeOffset at)
+    {
+        var family = item.SelfAndDescendants().Select(i => i.Id).ToHashSet();
+        var roll = ActivityList.FindLastIndex(e => e.ItemId == item.Id && e.Kind == ActivityKind.Completed);
+        return roll >= 0 && ActivityList[roll].At == at && ActivityList.FindLastIndex(e => family.Contains(e.ItemId)) == roll;
+    }
+
+    /// <summary>When the task last moved on before its latest time, not counting times that were undone (null: never).</summary>
+    private DateTimeOffset? PreviousRoll(WorkItem item)
+    {
+        var entries = ActivityList.Where(a => a.ItemId == item.Id && a.Kind is ActivityKind.Completed or ActivityKind.Reopened).ToList();
+        var rolls = new Stack<DateTimeOffset>();
+        foreach (var entry in entries.Take(entries.Count - 1))
+        {
+            if (entry.Kind == ActivityKind.Completed)
+            {
+                rolls.Push(entry.At);
+            }
+            else if (rolls.Count > 0)
+            {
+                rolls.Pop();
+            }
+        }
+
+        return rolls.Count > 0 ? rolls.Peek() : null;
     }
 
     /// <summary>
@@ -110,18 +141,18 @@ public sealed partial class TaskBoard
     /// </summary>
     private void UndoRollForward(WorkItem item, Actor actor, DateTimeOffset now, WorkItem? keepOpen = null)
     {
-        var rolls = ActivityList.Where(a => a.ItemId == item.Id && a.Kind == ActivityKind.Completed).ToList();
-        if (rolls.Count > 0)
+        if (ActivityList.FindLast(a => a.ItemId == item.Id && a.Kind == ActivityKind.Completed) is { } roll)
         {
-            var rolledAt = rolls[^1].At;
-            DateTimeOffset? since = rolls.Count > 1 ? rolls[^2].At : null;
+            var rolledAt = roll.At;
+            var since = PreviousRoll(item);
             var keep = keepOpen?.SelfAndDescendants().Select(i => i.Id).ToHashSet() ?? [];
             foreach (var descendant in item.SelfAndDescendants().Skip(1).Where(d => !keep.Contains(d.Id) && !d.IsDone))
             {
                 // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                // A repeating subtask that moved on by itself wasn't finished: that doesn't count.
                 var lineage = descendant.Ancestors().TakeWhile(a => a != item).Select(a => a.Id).Prepend(descendant.Id).ToHashSet();
                 var last = ActivityList.FindLast(a => lineage.Contains(a.ItemId) && a.Kind is ActivityKind.Completed or ActivityKind.Reopened
-                    && a.At <= rolledAt && (since is null || a.At > since));
+                    && !IsRolled(a) && a.At <= rolledAt && (since is null || a.At > since));
                 if (last is { Kind: ActivityKind.Completed })
                 {
                     descendant.CompletedAt = last.At;

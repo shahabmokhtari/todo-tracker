@@ -636,7 +636,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
             item.extra = kotlinx.serialization.json.JsonObject(item.extra!! - "stage")
         }
         item.repeat = rule.countedDown()
-        log(now, item.id, "completed", "Completed \"${item.title}\" (repeats: next ${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
+        log(now, item.id, "completed", "Completed \"${item.title}\" $ROLLED_MARKER${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
         return true
     }
 
@@ -649,10 +649,31 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     private fun rolledBy(step: WorkItem): WorkItem? {
         val doneAt = activity.lastOrNull { it.itemId == step.id && (it.kind == "completed" || it.kind == "reopened") }
             ?.takeIf { it.kind == "completed" }?.at ?: return null
-        return step.ancestors.firstOrNull { a ->
-            wasRolledForward(a) && activity.lastOrNull { it.itemId == a.id && it.kind == "completed" }?.at == doneAt
-        }
+        return step.ancestors.firstOrNull { a -> wasRolledForward(a) && isNewest(a, doneAt) }
     }
+
+    /**
+     * Whether moving [item] on (at [at]) is the last thing that happened to it or its subtasks: once its next time has
+     * begun (a step done, a reminder set…), reopening a step no longer undoes it.
+     */
+    private fun isNewest(item: WorkItem, at: Instant): Boolean {
+        val family = item.selfAndDescendants.map { it.id }.toSet()
+        val roll = activity.indexOfLast { it.itemId == item.id && it.kind == "completed" }
+        return roll >= 0 && activity[roll].at == at && activity.indexOfLast { it.itemId in family } == roll
+    }
+
+    /** When the task last moved on before its latest time, not counting times that were undone (null: never). */
+    private fun previousRoll(item: WorkItem): Instant? {
+        val entries = activity.filter { it.itemId == item.id && (it.kind == "completed" || it.kind == "reopened") }
+        val rolls = ArrayDeque<Instant>()
+        for (entry in entries.dropLast(1)) {
+            if (entry.kind == "completed") rolls.addLast(entry.at) else rolls.removeLastOrNull()
+        }
+        return rolls.lastOrNull()
+    }
+
+    /** A "completed" entry of a repeating task that moved on (it stayed open): every app writes this marker. */
+    private fun isRolled(entry: ActivityEntry) = entry.kind == "completed" && entry.summary.contains(ROLLED_MARKER)
 
     /**
      * "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now, with what moving on
@@ -661,17 +682,17 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
      */
     private fun undoRollForward(item: WorkItem, actor: Actor, now: Instant, keepOpen: WorkItem? = null) {
         val rule = item.repeat ?: return
-        val rolls = activity.filter { it.itemId == item.id && it.kind == "completed" }
-        val rolledAt = rolls.lastOrNull()?.at
+        val rolledAt = activity.lastOrNull { it.itemId == item.id && it.kind == "completed" }?.at
         if (rolledAt != null) {
-            val since = rolls.dropLast(1).lastOrNull()?.at
+            val since = previousRoll(item)
             val keep = keepOpen?.selfAndDescendants?.map { it.id }?.toSet() ?: emptySet()
             for (d in item.selfAndDescendants.drop(1)) {
                 if (d.id in keep || d.isDone) continue
                 // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                // A repeating subtask that moved on by itself wasn't finished: that doesn't count.
                 val lineage = (listOf(d) + d.ancestors.takeWhile { it !== item }).map { it.id }.toSet()
                 val last = activity.lastOrNull {
-                    it.itemId in lineage && (it.kind == "completed" || it.kind == "reopened") &&
+                    it.itemId in lineage && (it.kind == "completed" || it.kind == "reopened") && !isRolled(it) &&
                         !it.at.isAfter(rolledAt) && (since == null || it.at.isAfter(since))
                 }
                 if (last?.kind == "completed") d.completedAt = last.at
@@ -703,6 +724,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         const val MAX_TITLE_LENGTH = 300
         const val MAX_TEXT_LENGTH = 10_000
         const val MAX_FOCUS_MINUTES = 180
+
+        /** What every app writes in the "completed" entry of a repeating task that moved on (it stays open). */
+        const val ROLLED_MARKER = "(repeats: next "
 
         /** A timer running longer than this was forgotten (or its device is gone): it counts this long at most. */
         val FORGOTTEN_AFTER: Duration = Duration.ofHours(12)
