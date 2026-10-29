@@ -35,10 +35,39 @@ public final class VaultBoardStore: DeviceBoardStore {
     /// `board.json` move in (it's set aside as `board.json.migrated`, never deleted). With `importLeftover`, a
     /// `board.json` still there (the folder had tasks already) is brought in beside them.
     public static func open(base: URL, importLeftover: Bool) throws -> VaultBoardStore {
+        try openReporting(base: base, importLeftover: importLeftover).store
+    }
+
+    /// Like `open`, also saying why a leftover `board.json` couldn't come in (it stays where it is; the tasks folder
+    /// opens anyway).
+    public static func openReporting(base: URL, importLeftover: Bool) throws -> (store: VaultBoardStore, problem: String?) {
         let legacy = base.appendingPathComponent("board.json")
         let vault = try VaultStore(root: base.appendingPathComponent("vault", isDirectory: true), legacyBoard: legacy)
-        if importLeftover, FileManager.default.fileExists(atPath: legacy.path) { try vault.importBeside(legacyBoard: legacy) }
-        return VaultBoardStore(vault)
+        var problem: String?
+        if importLeftover, VaultStore.hasLegacy(legacy) {
+            do {
+                try vault.importBeside(legacyBoard: legacy)
+            } catch {
+                problem = "Your tasks from before couldn't be brought in yet (\((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)). They're kept, and tried again next time."
+            }
+        }
+        if problem == nil, let unread = vault.problems.first(where: { $0.path == legacy.path }) { problem = unread.message }
+        return (VaultBoardStore(vault), problem)
+    }
+
+    /// What the app opens on an iPhone or iPad: the tasks folder, or (when it can't be opened) the tasks kept before,
+    /// shown read-only with why, every file left as it is.
+    public static func openOnDevice(base: URL, importLeftover: Bool) -> (store: VaultBoardStore?, fallback: TaskBoard?, message: String?) {
+        do {
+            let opened = try openReporting(base: base, importLeftover: importLeftover)
+            return (opened.store, nil, opened.problem)
+        } catch {
+            let why = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let legacy = base.appendingPathComponent("board.json")
+            // Read only: nothing is moved or rewritten.
+            let shown = FileManager.default.fileExists(atPath: legacy.path) ? (try? BoardCodec.decode(Data(contentsOf: legacy))) : nil
+            return (nil, shown, why.hasPrefix("Couldn't open your tasks") ? why : "Couldn't open your tasks folder (\(why)). Changes are off so nothing is lost; restarting the app tries again.")
+        }
     }
 
     public func load() throws -> TaskBoard {

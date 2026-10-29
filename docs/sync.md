@@ -121,8 +121,12 @@ Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-you
   computer.
 * **One way at a time:** a device connected to a computer (above) doesn't sync on its own; connecting turns it off.
   Turning sync off keeps the tasks on the device.
-* The first launch of this version moves the tasks the app kept (`board.json`) into the tasks folder and sets the file
-  aside as `board.json.migrated` (never deleted).
+* The first launch of this version moves the tasks the app kept (`board.json`, or its backup) into the tasks folder and
+  sets the file aside as `board.json.migrated` (never deleted). If they can't be read, nothing is made over them: the
+  app says so and keeps changes off.
+* **Backups:** the tasks folder is in your iPhone's backups; what sync remembers (this device's id, what it agreed on)
+  and the tokens in the Keychain aren't. A new iPhone restored from a backup is a new device: it joins again (pulling
+  first) and, for a gist, asks for a token.
 
 ## Safety
 

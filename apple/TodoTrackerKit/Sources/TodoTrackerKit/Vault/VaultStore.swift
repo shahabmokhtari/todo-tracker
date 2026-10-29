@@ -46,7 +46,14 @@ public final class VaultStore {
         try withLock {
             try VaultFiles.makeDirectories(self.root.path)
             let fresh = !fm.fileExists(atPath: metaPath("config.json")) && enumerateTaskFiles().isEmpty
-            if fresh, let legacyBoard, let legacy = readLegacy(legacyBoard) {
+            if fresh, let legacyBoard, Self.hasLegacy(legacyBoard) {
+                // Tasks kept before are there: they move in, or (if they can't be read) nothing is made over them.
+                let legacy: TaskBoard
+                do {
+                    legacy = try Self.loadLegacy(legacyBoard)
+                } catch {
+                    throw VaultRefusal(message: "Couldn't open your tasks (\((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)). Nothing was changed, and changes are off so they're kept as they are.")
+                }
                 try migrate(legacyBoard, legacy)
             } else if fresh {
                 // The default tabs in this order; their ids come from the folder name, so two new vaults that later sync
@@ -149,11 +156,27 @@ public final class VaultStore {
 
     // ---- Startup ----------------------------------------------------------------------
 
+    /// A board file from before, its backup, or a restore cut short is there.
+    public static func hasLegacy(_ url: URL) -> Bool {
+        [url.path, url.path + ".bak", url.path + ".restoring"].contains { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// The board kept before, through the board file's own recovery (its backup when it's damaged; a newer version's
+    /// file is never read). A restore cut short before it finished (only `.restoring` left) is read from there.
+    static func loadLegacy(_ url: URL) throws -> TaskBoard {
+        let fm = FileManager.default
+        let restoring = URL(fileURLWithPath: url.path + ".restoring")
+        if !fm.fileExists(atPath: url.path), !fm.fileExists(atPath: url.path + ".bak"), fm.fileExists(atPath: restoring.path) {
+            return try BoardCodec.decode(Data(contentsOf: restoring))
+        }
+        return try BoardFileStore(url: url).load()
+    }
+
     /// An old board file, or nil when there's none or it can't be read (then it's left where it is, untouched).
     private func readLegacy(_ url: URL) -> TaskBoard? {
-        guard fm.fileExists(atPath: url.path) else { return nil }
+        guard Self.hasLegacy(url) else { return nil }
         do {
-            return try BoardCodec.decode(Data(contentsOf: url))
+            return try Self.loadLegacy(url)
         } catch {
             problemList.append(VaultProblem(path: url.path, message: "These tasks couldn't be brought into the tasks folder: \(error.localizedDescription)"))
             return nil

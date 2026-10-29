@@ -85,6 +85,9 @@ public final class SyncSettingsStore: @unchecked Sendable {
 
     public var token: String? { secrets.read(Self.tokenKey).flatMap { $0.isEmpty ? nil : $0 } }
 
+    /// No gist any more (a folder is used): the token isn't kept.
+    public func removeToken() { secrets.remove(Self.tokenKey) }
+
     @discardableResult
     public func setToken(_ token: String) -> Bool { secrets.write(Self.tokenKey, token) }
 
@@ -152,6 +155,9 @@ public protocol DeviceSyncing: AnyObject, Sendable {
     func run() async throws -> SyncResult?
     func status() async -> SyncStatus
     func forget(_ device: String) async throws
+    /// Sync is off (or another place was chosen): what it remembered about the places goes (the next one is joined
+    /// from scratch, pulling first).
+    func reset() async
 }
 
 /// The phone syncing on its own: builds the engine for the place in the settings (again when they change) over the
@@ -192,15 +198,48 @@ public actor PhoneSyncer: DeviceSyncing {
             return nil
         }
         let engine = try engine(for: setup)
-        if setup.joined { return try await engine.sync() }
+        let marker = Self.stateDirectory(directory, setup).appendingPathComponent("joined")
+        // Joined is remembered next to what sync remembers (never in a backup): a device restored from one joins again.
+        if FileManager.default.fileExists(atPath: marker.path) { return try await engine.sync() }
         let legacy = legacyBoard.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
         let result = try await engine.join(importing: legacy)
-        // Joined once everything came in (else it's tried again next time, still pulling first).
+        // Joined once everything came in (else it's tried again next time, still pulling first). Not if sync was turned
+        // off or moved meanwhile.
+        try Task.checkCancellation()
         if result.complete || result.published, var now = settings.load(), now.key == setup.key {
+            try Data().write(to: marker)
             now.joined = true
             settings.save(now)
         }
         return result
+    }
+
+    public func reset() async {
+        current = nil
+        let fm = FileManager.default
+        for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where name != "device.json" {
+            try? fm.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
+    /// Whether this device has joined the place set up (false after a restore from a backup, or a new place).
+    public static func hasJoined(directory: URL, settings: SyncSettings) -> Bool {
+        FileManager.default.fileExists(atPath: stateDirectory(directory, settings).appendingPathComponent("joined").path)
+    }
+
+    /// What sync remembers about one place and library (another one never sees this one's deletes or bases).
+    static func stateDirectory(_ directory: URL, _ setup: SyncSettings) -> URL {
+        directory.appendingPathComponent("\(setup.kind.rawValue)-\(SyncSettingsStore.hash(setup.key))", isDirectory: true)
+    }
+
+    /// The device id and what it agreed on stay on this device: restored onto another iPhone, two devices would
+    /// publish as one.
+    private func excludeFromBackup() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var url = directory
+        try url.setResourceValues(values)
     }
 
     public func status() async -> SyncStatus {
@@ -241,8 +280,8 @@ public actor PhoneSyncer: DeviceSyncing {
                 return token
             }, loadId: { settings.gistId(library) }, saveId: { settings.setGistId($0, library) }, library: library)
         }
-        let state = try SyncState(directory: directory.appendingPathComponent("\(setup.kind.rawValue)-\(SyncSettingsStore.hash(setup.library))", isDirectory: true),
-                                  deviceDirectory: directory, deviceName: deviceName)
+        try excludeFromBackup()
+        let state = try SyncState(directory: Self.stateDirectory(directory, setup), deviceDirectory: directory, deviceName: deviceName)
         let engine = SyncEngine(store: store, remote: remote, state: state, clock: clock)
         current = (setup.key, engine)
         return engine

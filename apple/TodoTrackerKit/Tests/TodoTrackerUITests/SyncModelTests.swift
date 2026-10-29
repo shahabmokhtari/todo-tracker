@@ -7,19 +7,31 @@ import XCTest
 final class FakeSyncer: DeviceSyncing, @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var publishes = 0
+    private var resetCount = 0
     var delay: UInt64 = 0
     /// Done during a sync (say, a task arriving from another device).
     var during: (() throws -> Void)?
+    /// The sync fails after `during` (part of it came in).
+    var failure: Error?
     var result = SyncResult(changes: 1, peers: 1, conflicts: [], published: true, skipped: false)
 
     var runs: Int { lock.withLock { count } }
+    /// Syncs that got as far as publishing (as the engine does, not once cancelled).
+    var published: Int { lock.withLock { publishes } }
+    var resets: Int { lock.withLock { resetCount } }
 
     func run() async throws -> SyncResult? {
         lock.withLock { count += 1 }
         if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
         try during?()
+        if let failure { throw failure }
+        try Task.checkCancellation()
+        lock.withLock { publishes += 1 }
         return result
     }
+
+    func reset() async { lock.withLock { resetCount += 1 } }
 
     func status() async -> SyncStatus {
         var status = SyncStatus()

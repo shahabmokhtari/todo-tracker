@@ -242,6 +242,86 @@ final class PhoneSyncTests: XCTestCase {
         XCTAssertNotNil(phone.settings.gistId("Todo Tracker"), "remembered")
     }
 
+    // MARK: Backups and other libraries
+
+    private func syncFolder(_ temp: TempDir) -> URL { temp.url.appendingPathComponent("phone/TodoTracker/sync") }
+
+    private func deviceId(_ temp: TempDir) throws -> String {
+        let data = try Data(contentsOf: syncFolder(temp).appendingPathComponent("device.json"))
+        return try XCTUnwrap(JSONText.parse(data).objectValue?["id"]?.stringValue)
+    }
+
+    func testWhatSyncRemembersIsLeftOutOfBackups() async throws {
+        let temp = TempDir()
+        let sync = temp.url.appendingPathComponent("iCloud/Apps/TodoTrackerSync")
+        let phone = try phone(temp)
+        phone.settings.save(SyncSettings(kind: .folder, bookmark: try FakeBookmarks().make(sync), folderName: "TodoTrackerSync"))
+        _ = try await phone.syncer.run()
+        let values = try syncFolder(temp).resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(values.isExcludedFromBackup, true, "the device id and what it agreed on never reach another device")
+        let vault = try phone.store.root.resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertNotEqual(vault.isExcludedFromBackup, true, "the tasks are backed up")
+    }
+
+    func testARestoredBackupIsANewDeviceThatJoinsAgainPullingFirst() async throws {
+        let temp = TempDir()
+        let sync = temp.url.appendingPathComponent("iCloud/Apps/TodoTrackerSync")
+        let clock = { [unowned self] in self.tick() }
+        let laptop = try Computer(temp, sharedRoot: sync.appendingPathComponent("Todo Tracker"), tz: tz, clock: clock)
+        let id = try laptop.store.update { try $0.addTask(NewTask("Plan the trip"), now: self.now).id }
+        try await laptop.engine.sync()
+        let phone = try phone(temp)
+        phone.settings.save(SyncSettings(kind: .folder, bookmark: try FakeBookmarks().make(sync), folderName: "TodoTrackerSync"))
+        _ = try await phone.syncer.run()
+        XCTAssertEqual(phone.settings.load()?.joined, true)
+        let before = try deviceId(temp)
+
+        // A new iPhone restored from the backup: the tasks and the settings came along, what sync remembers didn't.
+        try FileManager.default.removeItem(at: syncFolder(temp))
+        // And the laptop's newest content hasn't downloaded yet.
+        try laptop.store.update { try $0.update(id, details: "Book the train", now: self.now) }
+        try await laptop.engine.sync()
+        for name in FileManager.default.enumerator(atPath: sync.appendingPathComponent("Todo Tracker/blobs").path)!.allObjects as! [String] where name.count > 3 {
+            let url = sync.appendingPathComponent("Todo Tracker/blobs").appendingPathComponent(name)
+            if (try? String(contentsOf: url, encoding: .utf8))?.contains("Book the train") == true { try FileManager.default.removeItem(at: url) }
+        }
+        let restored = try self.phone(temp)
+        let firstRun = try await restored.syncer.run()
+        let first = try XCTUnwrap(firstRun)
+        XCTAssertNotEqual(try deviceId(temp), before, "a device id of its own")
+        XCTAssertFalse(first.published, "joins again: nothing goes out before everything came in")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sync.appendingPathComponent("Todo Tracker/devices/\(try deviceId(temp)).json").path))
+    }
+
+    func testAnotherLibraryStartsFromNothingRemembered() async throws {
+        let temp = TempDir()
+        let sync = temp.url.appendingPathComponent("iCloud/Apps/TodoTrackerSync")
+        let phone = try phone(temp)
+        phone.settings.save(SyncSettings(kind: .folder, library: "Todo Tracker", bookmark: try FakeBookmarks().make(sync), folderName: "TodoTrackerSync"))
+        _ = try phone.store.update { try $0.addTask(NewTask("Plan the trip"), now: self.now) }
+        _ = try await phone.syncer.run()
+        let id = try phone.store.read { $0.items[0].id }
+        _ = try phone.store.update { try $0.delete(id, now: self.now) }
+        _ = try await phone.syncer.run()
+        let key = "t/" + id.uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        XCTAssertTrue(try String(contentsOf: sync.appendingPathComponent("Todo Tracker/devices/\(try deviceId(temp)).json"), encoding: .utf8).contains(key), "the delete is said in this library")
+
+        var other = try XCTUnwrap(phone.settings.load())
+        other.library = "Work"
+        other.joined = false
+        phone.settings.save(other)
+        _ = try await phone.syncer.run()
+        let published = try String(contentsOf: sync.appendingPathComponent("Work/devices/\(try deviceId(temp)).json"), encoding: .utf8)
+        XCTAssertFalse(published.contains(key), "no delete carried over from another library")
+
+        // Another place, the same library: nothing carried over either.
+        let elsewhere = temp.url.appendingPathComponent("Other drive/TodoTrackerSync")
+        phone.settings.save(SyncSettings(kind: .folder, library: "Todo Tracker", bookmark: try FakeBookmarks().make(elsewhere), folderName: "TodoTrackerSync"))
+        _ = try await phone.syncer.run()
+        let there = try String(contentsOf: elsewhere.appendingPathComponent("Todo Tracker/devices/\(try deviceId(temp)).json"), encoding: .utf8)
+        XCTAssertFalse(there.contains(key), "no delete carried over from another place")
+    }
+
     func testSyncOffDoesNothing() async throws {
         let temp = TempDir()
         let phone = try phone(temp)

@@ -40,8 +40,9 @@ public final class SyncModel: ObservableObject {
     public var debounce: TimeInterval
     /// How often it looks for the other devices' changes while open.
     public var interval: TimeInterval
-    /// After a sync that brought or sent something: the board is read again from the tasks folder.
-    public var onSynced: ((SyncResult) -> Void)?
+    /// After a sync that brought or sent something, or one that failed part way: the board is read again from the
+    /// tasks folder.
+    public var onSynced: (() -> Void)?
     /// While true (connected to a computer), nothing syncs.
     public var isPaused: () -> Bool = { false }
 
@@ -49,6 +50,7 @@ public final class SyncModel: ObservableObject {
     private var timer: Timer?
     private var again = false
     private var running: Task<Void, Never>?
+    private var runId = 0
 
     public init(syncer: DeviceSyncing, settings: SyncSettingsStore, bookmarks: FolderBookmarks = SystemFolderBookmarks(), debounce: TimeInterval = 5, interval: TimeInterval = 60) {
         self.syncer = syncer
@@ -109,9 +111,22 @@ public final class SyncModel: ObservableObject {
             again = true
             return
         }
+        runId += 1
+        let id = runId
         running = Task { [weak self] in
-            await self?.runLoop()
+            await self?.runLoop(id)
         }
+    }
+
+    /// Stops the sync running now and the one waiting after a change (sync turned off, or connecting to a computer):
+    /// whatever it hadn't published yet isn't.
+    public func cancel() {
+        pendingChange?.cancel()
+        pendingChange = nil
+        running?.cancel()
+        running = nil
+        again = false
+        isSyncing = false
     }
 
     /// Waits for the sync running now (and any asked for meanwhile).
@@ -122,17 +137,34 @@ public final class SyncModel: ObservableObject {
     /// The app's sync (the background refresh reaches it here).
     public private(set) static weak var current: SyncModel?
 
-    /// iOS woke the app for a background refresh.
-    public static func backgroundRefresh() async { await current?.syncInBackground() }
+    /// iOS woke the app for a background refresh: the next one is asked for first (even before the app's sync is
+    /// there), then one sync.
+    public static func backgroundRefresh() async {
+        submitBackground()
+        await current?.syncInBackground()
+    }
 
-    /// iOS woke the app in the background: one sync, then the next wake-up is asked for.
+    /// iOS woke the app in the background: one sync, the next wake-up asked for before and after. When iOS says time's
+    /// up, the sync stops (whatever it hadn't published waits for the next one).
     public func syncInBackground() async {
-        syncNow()
-        await finish()
+        scheduleBackground()
+        await withTaskCancellationHandler {
+            syncNow()
+            await finish()
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.cancelRunning() }
+        }
         scheduleBackground()
     }
 
-    private func runLoop() async {
+    private func cancelRunning() {
+        running?.cancel()
+        running = nil
+        again = false
+        isSyncing = false
+    }
+
+    private func runLoop(_ id: Int) async {
         repeat {
             again = false
             isSyncing = true
@@ -140,16 +172,19 @@ public final class SyncModel: ObservableObject {
                 if let result = try await syncer.run() {
                     problem = nil
                     waiting = result.complete ? nil : (result.problem ?? "Some changes from your other devices haven’t downloaded yet. They come in on a later sync.")
-                    if !result.skipped { onSynced?(result) }
+                    if !result.skipped { onSynced?() }
                 }
             } catch is CancellationError {
             } catch {
                 problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                // Part of it may have come in before it failed.
+                onSynced?()
             }
+            guard id == runId, !Task.isCancelled else { return }
             isSyncing = false
             await readStatus()
-        } while again && isOn && !isPaused()
-        running = nil
+        } while again && isOn && !isPaused() && !Task.isCancelled
+        if id == runId { running = nil }
     }
 
     private func readStatus() async {
@@ -157,8 +192,13 @@ public final class SyncModel: ObservableObject {
     }
 
     private func scheduleBackground() {
+        guard isOn else { return }
+        Self.submitBackground()
+    }
+
+    private static func submitBackground() {
         #if os(iOS) && canImport(BackgroundTasks)
-        guard isOn, Bundle.main.bundleURL.pathExtension == "app" else { return }
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
         let request = BGAppRefreshTaskRequest(identifier: Self.backgroundTaskId)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
@@ -233,17 +273,30 @@ public final class SyncModel: ObservableObject {
     }
 
     private func begin(_ settings: SyncSettings) {
+        // A new place: the sync running for the old one stops, what it remembered goes (this one is joined, pulling
+        // first), and a gist token isn't kept when a folder is used.
+        cancel()
+        if settings.kind == .folder { store.removeToken() }
         store.save(settings)
         self.settings = settings
         problem = nil
         waiting = nil
         status = .empty
-        syncNow()
+        // What sync remembered about the old place goes first; then the first sync joins this one.
+        runId += 1
+        let id = runId
+        let syncer = self.syncer
+        running = Task { [weak self] in
+            await syncer.reset()
+            await self?.runLoop(id)
+        }
     }
 
     /// Sync off: this phone keeps its tasks as they are; the place and the token are forgotten here.
     public func turnOff() {
-        pendingChange?.cancel()
+        cancel()
+        let syncer = self.syncer
+        Task { await syncer.reset() }
         store.clear()
         settings = nil
         status = .empty

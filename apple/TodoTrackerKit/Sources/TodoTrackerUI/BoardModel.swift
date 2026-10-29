@@ -56,6 +56,11 @@ public final class BoardModel: ObservableObject {
 
     public private(set) var board: TaskBoard
     private let store: DeviceBoardStore?
+    /// Why the tasks kept on this device couldn't be opened (nil: they could). Nothing clears it: connecting to a
+    /// computer and back never turns changes on over tasks that weren't opened.
+    public let storeFailure: String?
+    /// Shown read-only while the tasks kept on this device can't be opened.
+    private let fallback: TaskBoard?
     /// Syncing on its own with the other devices (iPhone and iPad; nil on the Mac, whose server syncs).
     public let sync: SyncModel?
     private var timer: Timer?
@@ -90,23 +95,31 @@ public final class BoardModel: ObservableObject {
     private var findingComputer = false
     private var lastFind = Date.distantPast
 
-    public init(store: DeviceBoardStore?, phone: PhoneSetup? = nil, sync: SyncModel? = nil, openError: String? = nil) {
+    /// - Parameters:
+    ///   - openError: the tasks kept on this device couldn't be opened (said, and changes stay off whatever happens).
+    ///   - fallback: what to show meanwhile (the tasks from before, read-only).
+    ///   - notice: something to say at launch (tasks from before that couldn't come in yet).
+    public init(store: DeviceBoardStore?, phone: PhoneSetup? = nil, sync: SyncModel? = nil, openError: String? = nil, fallback: TaskBoard? = nil, notice: String? = nil) {
         self.store = store
         self.phone = phone
         self.sync = sync
-        var loadError = openError
+        self.fallback = fallback
+        var loadError: String?
         let loaded: TaskBoard
         do {
-            loaded = try store?.load() ?? TaskBoard()
+            loaded = try store?.load() ?? fallback ?? TaskBoard()
         } catch {
             loaded = TaskBoard()
             loadError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
         board = loaded
         dashboard = Agenda.build(loaded, now: Date())
-        if let loadError {
+        storeFailure = openError ?? loadError.map { "Couldn't open your saved board (\($0)). Changes are disabled so nothing gets overwritten." }
+        if let storeFailure {
             isReadOnly = true
-            status = "Couldn't open your saved board (\(loadError)). Changes are disabled so nothing gets overwritten."
+            status = storeFailure
+        } else if let notice {
+            status = notice
         }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -115,7 +128,7 @@ public final class BoardModel: ObservableObject {
         if let sync {
             // Connected to a computer, the phone uses its tasks: nothing syncs on its own meanwhile.
             sync.isPaused = { [weak self] in self?.isRemote ?? true }
-            sync.onSynced = { [weak self] _ in self?.reloadFromStore() }
+            sync.onSynced = { [weak self] in self?.reloadFromStore() }
         }
     }
 
@@ -126,21 +139,28 @@ public final class BoardModel: ObservableObject {
         var store: VaultBoardStore?
         var sync: SyncModel?
         var openError: String?
+        var fallback: TaskBoard?
+        var notice: String?
         if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent("TodoTracker", isDirectory: true) {
+            let syncFolder = base.appendingPathComponent("sync", isDirectory: true)
             // Joining a sync for the first time brings a leftover board.json in after what came (never before).
-            let joining = settings.load().map { !$0.joined } ?? false
-            do {
-                let opened = try VaultBoardStore.open(base: base, importLeftover: !joining)
-                store = opened
-                let syncer = PhoneSyncer(store: opened.vault, directory: base.appendingPathComponent("sync", isDirectory: true), settings: settings,
+            let joining = settings.load().map { !PhoneSyncer.hasJoined(directory: syncFolder, settings: $0) } ?? false
+            let opened = VaultBoardStore.openOnDevice(base: base, importLeftover: !joining)
+            if let vault = opened.store {
+                store = vault
+                notice = opened.message
+                let syncer = PhoneSyncer(store: vault.vault, directory: syncFolder, settings: settings,
                                          deviceName: phone.pairings.phoneName ?? phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
                 sync = SyncModel(syncer: syncer, settings: settings)
-            } catch {
-                openError = describe(error)
+            } else {
+                openError = opened.message
+                fallback = opened.fallback
             }
+        } else {
+            openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
         }
-        let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError)
+        let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError, fallback: fallback, notice: notice)
         model.connectToPairedComputer()
         // At launch: a sync now, then every minute while the app is open.
         if !model.isRemote { sync?.start() }
@@ -837,7 +857,7 @@ public final class BoardModel: ObservableObject {
 
     /// The tasks folder changed (a sync brought something): the board is read again, reminders set up again.
     public func reloadFromStore() {
-        guard !isRemote, let store, !isReadOnly else { return }
+        guard !isRemote, let store, !isReadOnly, storeFailure == nil else { return }
         do {
             board = try store.load()
         } catch {
@@ -875,6 +895,8 @@ public final class BoardModel: ObservableObject {
             return
         }
         guard !isPairing else { return }
+        // Connecting: a sync running on its own stops now (it's turned off once connected).
+        sync?.cancel()
         isPairing = true
         pairingError = nil
         status = "Connecting to \(link.computer)…"
@@ -994,12 +1016,16 @@ public final class BoardModel: ObservableObject {
 
     /// The computer's tasks leave; the board on this phone comes back.
     private func leaveComputer() {
+        if let storeFailure {
+            isReadOnly = true
+            status = storeFailure
+        }
         paired = nil
         server = nil
         serverURL = nil
         etag = nil
         remoteLastRead = nil
-        board = (try? store?.load()) ?? TaskBoard()
+        board = (try? store?.load()) ?? fallback ?? TaskBoard()
         NotificationScheduler.sync(board)
         refresh()
     }
@@ -1016,10 +1042,10 @@ public final class BoardModel: ObservableObject {
     @discardableResult
     private func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
         guard !isRemote else { return false }
-        guard !isReadOnly else {
-            status = store?.wasMigrated == true
+        guard !isReadOnly, storeFailure == nil else {
+            status = storeFailure ?? (store?.wasMigrated == true
                 ? "Your tasks are in your tasks folder, and Todo Tracker's server isn't running: changes are off until it is."
-                : "Your saved board couldn't be opened, so changes are disabled to protect it."
+                : "Your saved board couldn't be opened, so changes are disabled to protect it.")
             return false
         }
         var ok = true
@@ -1052,7 +1078,7 @@ public final class BoardModel: ObservableObject {
     /// keeps its own board, `redo` makes it there too.
     private func persist(redo: (TaskBoard) -> Void) {
         // The computer's tasks are never written to the board on this phone.
-        guard !isReadOnly, !isRemote else { return }
+        guard !isReadOnly, storeFailure == nil, !isRemote else { return }
         do {
             if let store {
                 board = try store.apply(board) { target in if store.keepsOwnBoard { redo(target) } }
