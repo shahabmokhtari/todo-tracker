@@ -312,7 +312,7 @@ public struct DashboardView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     } else {
-                        emptyText("Finish something and it shows up here.")
+                        emptyText(model.searchText.isEmpty ? "Finish something and it shows up here." : "Nothing done today matches your search.")
                     }
                     ForEach(model.doneToday) { item in
                         HStack(spacing: 8) {
@@ -735,40 +735,47 @@ struct SnoozeMenu: View {
     @State private var picking = false
 
     var body: some View {
-        Menu {
-            let now = Date()
-            ForEach(model.snoozeChoices) { choice in
-                Button { model.snooze(id, until: choice.at) } label: {
-                    Text("\(choice.label)  ·  \(Snooze.describe(choice.at, now: now, timeZone: .current))")
+        switch style {
+        case .row:
+            // A row of a form: a plain menu (sizing it like a pill breaks the row's layout).
+            Menu { choices } label: { Label("Later…", systemImage: "clock") }
+                .accessibilityLabel("Later")
+                .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        case .pill, .icon:
+            Menu { choices } label: {
+                if style == .pill {
+                    Label("Later", systemImage: "clock").font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(.background))
+                        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
+                } else {
+                    Image(systemName: "clock")
                 }
             }
-            Divider()
-            Button { picking = true } label: { Label("Pick a time…", systemImage: "calendar") }
-            let others = model.waitCandidates(for: id)
-            Menu {
-                if others.isEmpty { Text("No other open tasks") }
-                ForEach(others.prefix(12), id: \.id) { other in
-                    Button(other.title) { model.waitFor(id, after: other) }
-                }
-            } label: { Label("After another task", systemImage: "link") }
-        } label: {
-            switch style {
-            case .pill:
-                Label("Later", systemImage: "clock").font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Capsule().fill(.background))
-                    .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
-            case .row:
-                Label("Later…", systemImage: "clock").foregroundStyle(Theme.accent)
-            case .icon:
-                Image(systemName: "clock")
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel("Later")
+            .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        }
+    }
+
+    @ViewBuilder private var choices: some View {
+        let now = Date()
+        ForEach(model.snoozeChoices) { choice in
+            Button { model.snooze(id, until: choice.at) } label: {
+                Text("\(choice.label)  ·  \(Snooze.describe(choice.at, now: now, timeZone: .current))")
             }
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .accessibilityLabel("Later")
-        .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        Divider()
+        Button { picking = true } label: { Label("Pick a time…", systemImage: "calendar") }
+        let others = model.waitCandidates(for: id)
+        Menu {
+            if others.isEmpty { Text("No other open tasks") }
+            ForEach(others.prefix(12), id: \.id) { other in
+                Button(other.title) { model.waitFor(id, after: other) }
+            }
+        } label: { Label("After another task", systemImage: "link") }
     }
 }
 

@@ -158,43 +158,33 @@ struct TaskDetailContent: View {
         }
     }
 
-    /// Its group, and the tasks it's part of (each opens).
-    private func whereRow(_ item: WorkItem) -> some View {
+    /// Its group, then the tasks it's part of: each on its own row, so tapping one opens just that one.
+    @ViewBuilder private func whereRow(_ item: WorkItem) -> some View {
         let group = model.groups.first { $0.id == item.groupId }
-        return FlowLayout(spacing: 6) {
-            HStack(spacing: 5) {
-                Circle().fill(Color(hex: group?.color ?? "#6366f1")).frame(width: 7, height: 7)
-                Text(group?.name ?? "Group")
-            }
-            ForEach(item.ancestors.reversed()) { parent in
-                Text("›").foregroundStyle(.tertiary)
-                NavigationLink(value: parent.id) { Text(parent.title).lineLimit(1) }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.accent)
-                    .accessibilityHint("Opens it")
-            }
+        HStack(spacing: 5) {
+            Circle().fill(Color(hex: group?.color ?? "#6366f1")).frame(width: 7, height: 7)
+            Text(group?.name ?? "Group")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        if let parent = item.parent {
+            NavigationLink(value: parent.id) {
+                LabeledContent("Part of", value: item.path.dropLast().joined(separator: " › "))
+            }
+            .font(.subheadline)
+        }
     }
 
-    private func waitingBanner(_ waiting: WaitingLine) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(waiting.text, systemImage: "clock").font(.subheadline).foregroundStyle(Theme.color(for: .info))
-                .accessibilityIdentifier("detail-waiting")
-            HStack(spacing: 16) {
-                if waiting.canBringBack {
-                    Button { model.bringBack(itemId) } label: { Label("Do now", systemImage: "arrow.uturn.backward") }
-                        .buttonStyle(.borderless)
-                }
-                if let parent = waiting.heldBy {
-                    NavigationLink(value: parent.id) { Label("Open parent", systemImage: "arrow.up.forward.square") }
-                        .buttonStyle(.borderless)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
+    /// Why it waits, then Do now and Open parent as rows of their own (a row with a link in it is one big link).
+    @ViewBuilder private func waitingBanner(_ waiting: WaitingLine) -> some View {
+        Label(waiting.text, systemImage: "clock").font(.subheadline).foregroundStyle(Theme.color(for: .info))
+            .accessibilityIdentifier("detail-waiting")
+        if waiting.canBringBack {
+            Button { model.bringBack(itemId) } label: { Label("Do now", systemImage: "arrow.uturn.backward") }
         }
-        .padding(.vertical, 4)
+        if let parent = waiting.heldBy {
+            NavigationLink(value: parent.id) { Label("Open parent", systemImage: "arrow.up.forward.square") }
+        }
     }
 
     @ViewBuilder private func actions(_ item: WorkItem, state: ItemState) -> some View {
@@ -250,8 +240,11 @@ struct TaskDetailContent: View {
     @ViewBuilder private func repeatRow(_ item: WorkItem) -> some View {
         let current = item.repeatRule?.description ?? ""
         HStack {
+            Text("Repeat")
             TextField("Repeat", text: Binding(get: { repeatDraft ?? current }, set: { repeatDraft = $0; repeatProblem = nil }),
-                      prompt: Text("Doesn’t repeat (e.g. every weekday)"))
+                      prompt: Text("Doesn’t repeat"))
+                .multilineTextAlignment(.trailing)
+                .autocorrectionDisabled()
                 .onSubmit { saveRepeat(current) }
                 .accessibilityIdentifier("detail-repeat")
             Menu {
