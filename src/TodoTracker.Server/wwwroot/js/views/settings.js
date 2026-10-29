@@ -1,7 +1,8 @@
 // Settings: everything to set up in one place: how it looks (light, dark or the system's), label colors, connected apps (Notion,
-// Microsoft To Do: switch on, sign in, pick what to keep in step), sync, which extras are on, and the keyboard.
+// Microsoft To Do: switch on, sign in, pick what to keep in step), sync, phones, which extras are on, and the keyboard.
 
 import { createConnectorsPanel } from '../plugins/connectors.js';
+import { createPhonesSection } from '../plugins/phones.js';
 import { THEMES, chooseTheme } from '../themes.js';
 import { describeHook } from '../hook-prompt.js';
 import { energyLine } from '../format.js';
@@ -27,6 +28,7 @@ export function createSettingsView(ctx) {
   const { h, icon } = ctx;
   const root = document.getElementById('view-settings');
   let connectors = null;
+  let phones = null;
 
   const section = (id, title, intro, ...body) => h('section', { class: 'settings-section', id: `settings-${id}`, 'aria-labelledby': `settings-${id}-title` },
     h('h2', { id: `settings-${id}-title` }, title),
@@ -58,7 +60,7 @@ export function createSettingsView(ctx) {
           if (result.restartRequired) note.hidden = false;
           // Off (or a live extra on): its buttons, menus and views follow at once.
           await ctx.reloadPlugins?.();
-          if (p.id === 'energy') await load();
+          if (p.id === 'energy' || p.id === 'phones') await load();
         } catch (err) {
           toggle.checked = !toggle.checked;
           ctx.toast(err.message, 'error');
@@ -279,12 +281,16 @@ export function createSettingsView(ctx) {
 
   function render(settings, list, labelList, hookStatus, energyInfo) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
+    phones ??= createPhonesSection(ctx);
+    const phonesOn = list.some((p) => p.id === 'phones' && p.enabled);
+    if (!phonesOn) phones.stop();
     root.replaceChildren(h('div', { class: 'settings' },
       appearance(settings.theme ?? 'system'),
       energyInfo && list.some((p) => p.id === 'energy' && p.enabled) ? energy(energyInfo) : null,
       labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
+      phonesOn ? section('phones', 'Phones', 'Use the Todo Tracker app on your iPhone, iPad or Android phone with the tasks on this computer, at home on Wi-Fi or anywhere with Tailscale.', phones.element) : null,
       hookStatus ? hooks(hookStatus) : null,
       plugins(list),
       section('keys', 'Keyboard', null, h('dl', { class: 'shortcuts' }, ...SHORTCUTS.flatMap(([keys, what]) => [h('dt', null, h('kbd', null, keys)), h('dd', null, what)])))));
@@ -295,8 +301,9 @@ export function createSettingsView(ctx) {
       const [settings, list, labelList, hookStatus, energyInfo] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null), ctx.api('/api/energy').catch(() => null)]);
       render(settings, list, labelList, hookStatus, energyInfo);
       await connectors.load();
-      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here): that section.
-      const part = location.hash.match(/^#\/settings\/(plugins|hooks)/)?.[1];
+      if (list.some((p) => p.id === 'phones' && p.enabled)) await phones.load();
+      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here), #/settings/phones: that section.
+      const part = location.hash.match(/^#\/settings\/(plugins|hooks|phones)/)?.[1];
       if (part) root.querySelector(`#settings-${part}`)?.scrollIntoView();
     } catch (err) {
       ctx.toast(err.message, 'error');
@@ -305,5 +312,5 @@ export function createSettingsView(ctx) {
 
   // Task changes elsewhere (a timer, quick add, the filter) don't touch settings: no reload that would wipe a token
   // being typed. Leaving the view stops a sign-in that's waiting.
-  return { root, show: load, refresh: () => {}, hide: () => connectors?.stop(), poll: () => {}, title: 'Settings' };
+  return { root, show: load, refresh: () => {}, hide: () => { connectors?.stop(); phones?.stop(); }, poll: () => {}, title: 'Settings' };
 }

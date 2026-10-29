@@ -470,8 +470,12 @@ public static class Wire
     public static IReadOnlyList<TimelineDto> Timeline(TaskBoard board, Guid? itemId, int limit) =>
         board.Timeline(itemId)
             .Take(Math.Clamp(limit, 1, 1000))
-            .Select(a => new TimelineDto(a.At, a.ItemId, board.Find(a.ItemId)?.Title, Of(a.Kind), CurrentSummary(board, a), a.Actor.DisplayName, Of(a.Actor.Kind)))
+            .Select(a => new TimelineDto(a.At, a.ItemId, board.Find(a.ItemId)?.Title, Of(a.Kind), CurrentSummary(board, a), Who(a.Actor), Of(a.Actor.Kind)))
             .ToList();
+
+    /// <summary>Who made a change, for the timeline: you, or you on a phone ("You (Shahab's iPhone)").</summary>
+    internal static string Who(Actor actor) =>
+        actor is { Kind: ActorKind.User, Name: { Length: > 0 } device } ? $"You ({device})" : actor.DisplayName;
 
     /// <summary>A note's entry shows the note as it reads now (notes autosave while typed and can be edited).</summary>
     private static string CurrentSummary(TaskBoard board, ActivityEntry entry) =>

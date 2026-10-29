@@ -718,6 +718,11 @@ public partial class MainWindow : Window
             menu.Items.Add(new MenuItem { Header = "Set up the browser extension (Edge, Chrome, Safari)…", Command = _vm.SetUpBrowserExtensionCommand });
         }
 
+        if (On("phones"))
+        {
+            menu.Items.Add(new MenuItem { Header = "Connect a phone (iPhone, iPad, Android)…", Command = _vm.ConnectPhoneCommand });
+        }
+
         menu.Items.Add(new MenuItem { Header = "Copy API token", Command = _vm.CopyApiTokenCommand });
         if (Vault is not null)
         {

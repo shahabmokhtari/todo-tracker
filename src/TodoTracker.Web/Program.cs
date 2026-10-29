@@ -2,7 +2,7 @@ using System.Globalization;
 using TodoTracker.Server;
 
 // Standalone host for the web dashboard, REST API, and MCP endpoint (the Windows sidebar embeds the same server).
-//   dotnet run --project src/TodoTracker.Web -- [--data <dir>] [--port <port>]
+//   dotnet run --project src/TodoTracker.Web -- [--data <dir>] [--port <port>] [--phone-port <port>]
 var options = new TodoTrackerServerOptions
 {
     ApiToken = Environment.GetEnvironmentVariable("TODOTRACKER_TOKEN"),
@@ -16,6 +16,10 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--port" when i + 1 < args.Length:
             options.Port = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--phone-port" when i + 1 < args.Length:
+            // Where phones connect (Settings › Phones), when they may.
+            options.PhonePort = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
         case "--import-legacy":
             // Started by the Mac app: the tasks it kept on its own join the tasks folder, even one that has tasks.

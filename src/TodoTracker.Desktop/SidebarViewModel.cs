@@ -752,6 +752,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
 
+    /// <summary>Opens Settings › Phones (let phones connect, pair one with a QR code) in the app window.</summary>
+    [RelayCommand]
+    private void ConnectPhone() => OpenApp("/#/settings/phones");
+
     [RelayCommand]
     private void CopyMcpConfig()
     {

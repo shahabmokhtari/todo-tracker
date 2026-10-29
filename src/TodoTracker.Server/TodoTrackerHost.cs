@@ -37,6 +37,9 @@ public static class TodoTrackerHost
             ContentRootPath = AppContext.BaseDirectory,
         });
 
+        // Phones get a port of their own (only when they may connect), with their own rules (see Security.Guard).
+        var phones = Plugins.PhoneListener.Prepare(options);
+        builder.Services.AddSingleton(phones);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
             if (options.LocalOnly)
@@ -46,6 +49,16 @@ public static class TodoTrackerHost
             else
             {
                 kestrel.ListenAnyIP(options.Port);
+            }
+
+            if (phones.Certificate is { } certificate)
+            {
+                // Before TLS: only this network and Tailscale, and a few connections at once.
+                kestrel.ListenAnyIP(phones.Port, listen =>
+                {
+                    listen.Use(phones.Gate());
+                    listen.UseHttps(certificate);
+                });
             }
         });
 

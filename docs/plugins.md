@@ -4,10 +4,11 @@ Every optional part of Todo Tracker is a plugin, so you can turn off what you do
 Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
 
 * **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
-  its API answers 404, a paired browser extension loses access, and its background work stops (Teams cards, version
+  its API answers 404, a paired browser extension (or phone) loses access, and its background work stops (Teams cards, version
   saving, sync).
 * **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser
-  extension, Copy for Loop, Energy, and the connectors). The ones with their own background work (Ask AI, Version history, the
+  extension, Phones, Copy for Loop, Energy, and the connectors). Phones' own switch, **Let phones connect**, opens its
+  port at the next start. The ones with their own background work (Ask AI, Version history, the
   sync providers, Teams reminders) come on at the next start if they weren't running; Settings says so, and the
   sidebar offers to restart right away.
 
@@ -21,6 +22,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
 | **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
 | **Browser extension** | Setup guide for the Edge, Chrome and Safari extension, with pairing codes ([`browser-extension.md`](browser-extension.md)) | Yes |
+| **Phones** | The iPhone, iPad and Android apps use the tasks on this computer over Wi-Fi or Tailscale: **Settings › Phones** lets phones connect, pairs each one with a QR code, and disconnects one ([below](#phones)) | No |
 | **OneDrive sync** | Sync with your other computers through OneDrive (work or school account first, then personal) ([`sync.md`](sync.md)) | Yes |
 | **iCloud Drive sync** | Sync with your Macs (and Windows with iCloud for Windows) through iCloud Drive | Yes |
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
@@ -79,6 +81,30 @@ isn't shown twice). Otherwise a new session starts and is given the earlier mess
   home there (without your personal MCP servers and plugins); it still signs in with `gh`. If Copilot answers that it
   isn't signed in that way, the chat switches to your normal Copilot settings and says so.
 * If the agent crashes while starting, Todo Tracker tries again and then says what happened (with the exit code).
+
+## Phones
+
+With **Phones** on, the Todo Tracker app on an iPhone, iPad or Android phone can work on the tasks on this computer (the
+same tasks folder, synced as usual), at home on the same Wi-Fi or anywhere with [Tailscale](https://tailscale.com).
+
+1. **Settings › Phones › Let phones connect** (only in the app on this computer, not in a browser signed in with the
+   token). Restart Todo Tracker: it then also listens on port **5318** (all networks, HTTPS with a certificate it makes
+   once and keeps in its data folder). The loopback port and its rules don't change.
+2. **Connect a phone** shows a QR code (and a link to copy). Scan it in the phone app. The code works once, for 10
+   minutes. The link says where to find this computer (its Wi-Fi and Tailscale addresses), and the certificate's
+   fingerprint, so the phone knows it's talking to this computer and nothing in between.
+3. **Connected phones** lists each phone (when it was paired, when it was last used). **Disconnect** takes one's
+   access back at once.
+
+What a phone can do: everything the phone apps do with tasks (add, change, finish, snooze, notes, steps, reminders,
+order, groups, focus timer and time, energy, the theme). Not settings, the tasks folder, history, hooks, extras,
+AI apps or MCP: the phone port answers 403 to anything else, and the API token, the app's sign-in and the session
+cookie don't work there. Changes say which phone made them ("You (Shahab's iPhone)" in the timeline). Only devices
+on this computer's own network or on Tailscale get an answer; anything from a public address is turned away.
+
+Turning **Let phones connect** or **Phones** off shuts every phone out at once; the port itself closes at the next
+start. On a Mac or Windows firewall, allow Todo Tracker (or port 5318) for private networks. Run the server with
+`--phone-port <port>` to use another port.
 
 ## Adding a plugin (developers)
 
