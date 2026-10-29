@@ -149,6 +149,14 @@ Edge, Chrome and Safari. Open **Browser extension** (puzzle button in the dashbo
 extension** in the sidebar): it walks you through loading it (it isn't in the stores yet) and pairs it with a 6-digit
 code. See [`docs/browser-extension.md`](browser-extension.md).
 
+## Phones
+
+The phone apps (iPhone, iPad, Android) can use the tasks on your computer, at home on Wi-Fi or anywhere with
+Tailscale. Turn on the **Phones** extra (Settings › Extras), then in **Settings › Phones** (or **⋯ › Connect a phone…**
+in the sidebar) turn on **Let phones connect** and restart Todo Tracker. **Connect a phone** shows a QR code: scan it in
+the phone app (it works once, for 10 minutes). **Connected phones** lists them; **Disconnect** takes one's access back.
+A phone only reaches your tasks, never settings, hooks or AI apps. See [`docs/plugins.md`](plugins.md#phones).
+
 ## Teams reminders
 
 Choose sidebar menu **⋯ › Connect Teams reminders…** and paste a Teams Workflows webhook URL.

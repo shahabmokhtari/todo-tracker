@@ -846,6 +846,9 @@ a.embed img { display: block; max-width: min(100%, 360px); max-height: 220px; ob
 .paired { display: flex; gap: 6px; align-items: center; color: var(--ok); font-weight: 600; }
 .paired-browsers { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
 .paired-browsers li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.phone-pairing { display: grid; gap: 10px; justify-items: start; }
+.phone-qr { width: 220px; max-width: 100%; height: auto; border-radius: 12px; background: #fff; padding: 6px; }
+.phone-link { min-width: 0; flex: 1; font-family: ui-monospace, monospace; font-size: 12px; }
 .chat-top .chat-picker { margin-right: auto; max-width: 55%; }
 .chat-notice { padding: 6px 10px; border-radius: 10px; background: rgba(245, 158, 11, .1); }
 .chat-pane { display: grid; gap: 10px; align-content: start; flex: 1; overflow-y: auto; max-height: 60vh; }

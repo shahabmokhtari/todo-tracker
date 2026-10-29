@@ -79,6 +79,12 @@ internal static class Security
         response.Headers.ContentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
         response.Headers.XFrameOptions = "DENY";
 
+        if (context.RequestServices.GetService<Plugins.PhoneListener>() is { } phones && phones.Serves(context))
+        {
+            await GuardPhone(context, next).ConfigureAwait(false);
+            return;
+        }
+
         if (options.LocalOnly && !IsLoopback(context))
         {
             response.StatusCode = StatusCodes.Status400BadRequest;
@@ -153,6 +159,81 @@ internal static class Security
 
         await next(context).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The phone port: reached from the network, so none of the loopback rules apply (host name, cookies, the API token,
+    /// MCP). Only a paired phone's own token gets in, only to what the phone apps do (see <see cref="PhoneRoutes"/>), and
+    /// only while Phones and "Let phones connect" are on; the one thing without a token is trading a pairing code for one.
+    /// </summary>
+    private static async Task GuardPhone(HttpContext context, RequestDelegate next)
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        var services = context.RequestServices;
+        var path = context.Request.Path;
+        var method = context.Request.Method.ToUpperInvariant();
+        if (services.GetService<Plugins.PluginHost>()?.IsSwitchedOff(Plugins.PhonesPlugin.Id) != false || services.GetService<Plugins.PhoneAccess>()?.On != true)
+        {
+            await Refuse(context, StatusCodes.Status403Forbidden, "Phones can’t connect to this computer right now. In Todo Tracker on it, open Settings › Phones and turn on “Let phones connect”.").ConfigureAwait(false);
+            return;
+        }
+
+        if (method == "POST" && path.Equals(Plugins.PhonesPlugin.ClaimPath, StringComparison.OrdinalIgnoreCase))
+        {
+            await next(context).ConfigureAwait(false);
+            return;
+        }
+
+        var authorization = context.Request.Headers.Authorization.ToString();
+        var bearer = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? authorization["Bearer ".Length..].Trim() : null;
+        if (services.GetService<PairedPhones>()?.Match(bearer) is not { } phone)
+        {
+            await Refuse(context, StatusCodes.Status401Unauthorized, "This phone isn’t connected to Todo Tracker. On your computer, open Settings › Phones and connect it.").ConfigureAwait(false);
+            return;
+        }
+
+        var value = path.Value ?? string.Empty;
+        if (!PhoneRoutes.Any(r => r.Method == method && r.Path.IsMatch(value)))
+        {
+            await Refuse(context, StatusCodes.Status403Forbidden, "The phone app can’t do that. Use Todo Tracker on your computer.").ConfigureAwait(false);
+            return;
+        }
+
+        // The person with the phone, said by name ("You (Shahab's iPhone)" in the timeline).
+        context.Items[ActorKey] = new Actor(ActorKind.User, phone.Name);
+        await next(context).ConfigureAwait(false);
+    }
+
+    private static Task Refuse(HttpContext context, int status, string message) =>
+        Results.Problem(message, statusCode: status).ExecuteAsync(context);
+
+    private const string Id = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+    private static System.Text.RegularExpressions.Regex Route(string pattern) =>
+        new($"^{pattern}/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    // An allow-list of what the phone apps do. Anything else (and every route added later) stays closed to phones.
+    private static readonly (string Method, System.Text.RegularExpressions.Regex Path)[] PhoneRoutes =
+    [
+        ("GET", Route("/health")),
+        ("GET", Route("/api/export")),
+        ("GET", Route("/api/settings")),
+        ("PUT", Route("/api/settings/theme")),
+        ("POST", Route("/api/capture")),
+        ("POST", Route("/api/items")),
+        ("PATCH", Route($"/api/items/{Id}")),
+        ("DELETE", Route($"/api/items/{Id}")),
+        ("POST", Route($"/api/items/{Id}/(complete|reopen|notes|schedule|after|steps|reminders|move|reorder)")),
+        ("POST", Route($"/api/items/{Id}/reminders/{Id}/dismiss")),
+        ("POST", Route("/api/now/(order|first)")),
+        ("GET", Route("/api/energy")),
+        ("PUT", Route("/api/energy")),
+        ("POST", Route("/api/groups")),
+        ("PATCH", Route($"/api/groups/{Id}")),
+        ("PUT", Route($"/api/groups/{Id}")),
+        ("DELETE", Route($"/api/groups/{Id}")),
+        ("POST", Route("/api/pomodoro/(start|pause|resume|skip|reset|next)")),
+        ("POST", Route("/api/timer/(start|stop)")),
+    ];
 
     private static bool BrowserMayReach(PathString path, string method)
     {

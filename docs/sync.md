@@ -87,8 +87,10 @@ Windows computer does:
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
   (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need
   `xattr -dr com.apple.quarantine "/Applications/TodoTracker.app"` once.
-* **iPhone and iPad** keep their tasks on the device for now: they can't run the server, and reading the tasks folder
-  directly needs the vault format in Swift (planned).
+* **iPhone and iPad** (and Android) can't run the server, but with the **Phones** extra they use a computer's: turn on
+  **Settings › Phones › Let phones connect** there and scan the QR code in the phone app ([plugins.md](plugins.md#phones)).
+  The phone then works on that computer's tasks folder (over Wi-Fi, or anywhere with Tailscale), so it's in step with
+  everything this page syncs. Without it, a phone keeps its tasks on the device.
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,

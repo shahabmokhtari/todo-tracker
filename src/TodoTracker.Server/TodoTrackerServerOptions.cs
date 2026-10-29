@@ -4,10 +4,18 @@ public sealed class TodoTrackerServerOptions
 {
     public const int DefaultPort = 5317;
 
+    public const int DefaultPhonePort = 5318;
+
     /// <summary>Folder holding <c>board.json</c>, <c>settings.json</c>, and <c>api-token</c>.</summary>
     public string DataDirectory { get; set; } = DefaultDataDirectory();
 
     public int Port { get; set; } = DefaultPort;
+
+    /// <summary>
+    /// The port phones connect to (all network interfaces, HTTPS), open only with the Phones extra and "Let phones
+    /// connect" on. The loopback port and its rules stay as they are.
+    /// </summary>
+    public int PhonePort { get; set; } = DefaultPhonePort;
 
     /// <summary>Bearer/cookie secret. When null, a random token is generated once and stored in the data directory.</summary>
     public string? ApiToken { get; set; }

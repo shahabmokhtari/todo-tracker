@@ -295,6 +295,11 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
 * The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps a board on the device.
 
+### Phones (Settings › Phones)
+* Owner only (the app's own session). **Let phones connect** (restart to open the port), **Connect a phone** (a QR code
+  and a copyable `todotracker://pair` link, valid 10 minutes, once), and **Connected phones** (name, paired, last used,
+  **Disconnect**). The Windows sidebar menu has *Connect a phone…*, which opens this section.
+
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.
 
@@ -405,7 +410,7 @@ by `tt open`.
 
 ## 8. Security (local server)
 
-* Kestrel binds to loopback only. Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.
+* Kestrel binds to loopback only (the phone port, below, is the one exception, with rules of its own). Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.
 * `/api` and `/mcp` require the bearer token (256-bit random, per user; file mode 600 on Unix) or the session cookie
   (`HttpOnly`, `SameSite=Strict`). Tokens are compared in constant time.
 * The API token is never put in a URL. Browsers get the cookie through single-use launch codes, and `return` paths
@@ -421,6 +426,15 @@ by `tt open`.
   removing an attachment only ever deletes (to the trash) files under `_attachments/` that no other task links.
 * Rich HTML is untrusted: it's served with `sandbox; script-src 'none'` and only framed by the app (sandboxed iframe,
   opaque origin, no scripts).
+* **The phone port** (Phones plugin, off by default): a second listener on all interfaces, port 5318, opened at the
+  start only when the plugin and the owner-only *Let phones connect* are both on. HTTPS with a self-signed ECDSA P-256
+  certificate made once (`phone-certificate.pfx` in the data folder, mode 600 on Unix); phones pin its SHA-256
+  fingerprint from the pairing link. On that port none of the loopback rules apply and none of their credentials work
+  (no Host check, no cookie, no API token, no MCP): only `Authorization: Bearer ttp_…` phone tokens (256-bit, stored
+  hashed in `paired-phones.json`, revocable one by one), for an allow-list of task routes; everything else (and every
+  route added later) is 403. Phone tokens are refused on the loopback port. The only anonymous route is
+  `POST /api/phones/claim` (a 144-bit code, single use, 10 minutes, at most 10 claims a minute). Changes are made as
+  the user, named by the phone. Switching either off refuses phones at once.
 
 ## 9. Platforms and build
 
@@ -438,7 +452,8 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 
 * **Next:**
   * Rotate the API token, and compact the activity log.
-  * Sync the Apple apps with the desktop server (optional remote mode, then cloud sync with conflict-free merges).
+  * Phones remote mode in the iPhone, iPad and Android apps (the server side, Settings › Phones and pairing, is in;
+    then cloud sync with conflict-free merges).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Recurring tasks.
   * Keyboard navigation of cards.

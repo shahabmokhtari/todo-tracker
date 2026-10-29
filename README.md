@@ -172,12 +172,15 @@ to tasks, and more.
 | [Sync](docs/sync.md) · [Connectors](docs/connectors.md) | Your computers, Notion, Microsoft To Do, GitHub Issues |
 | [Hooks](docs/hooks.md) · [Plugins](docs/plugins.md) | Automations and the event stream; every extra and its switch |
 | [Browser extension](docs/browser-extension.md) | Install and pair |
+| [Phones](docs/plugins.md#phones) | Let the iPhone, iPad and Android apps use this computer's tasks |
 | [Product spec](docs/product-spec.md) | Design, rules, security, decisions |
 
 ## Privacy and security
 
 Everything runs on your computer. The server only listens on `127.0.0.1`, checks the address it was called on (no DNS
-rebinding) and a 256-bit token, and never puts the token in a URL. There's no account and no telemetry: the app only
+rebinding) and a 256-bit token, and never puts the token in a URL. If you let phones connect (the **Phones** extra,
+off by default), it also listens on port 5318 over HTTPS for phones you paired with a QR code, each with its own
+token that only reaches your tasks. There's no account and no telemetry: the app only
 talks to the services you switch on (sync, connectors, an AI model you add). Details:
 [product spec › Security](docs/product-spec.md#8-security-local-server).
 

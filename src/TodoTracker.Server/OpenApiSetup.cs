@@ -68,7 +68,7 @@ internal static partial class OpenApiSetup
         ["POST api/items/{id}/plan"] = ("planTask", "Plan a block of time to work on a task (start, minutes), or take it off the plan (no start)"),
     };
 
-    // Sign-in plumbing, settings, deletes, binary uploads/downloads and the event stream stay out of the AI surface.
+    // Sign-in plumbing (pairing a phone too), settings, deletes, binary uploads/downloads and the event stream stay out of the AI surface.
     private static readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase)
     {
         "GET api/health", "GET api/auth", "POST api/login", "GET api/connection", "POST api/launch", "GET api/events",
@@ -78,6 +78,7 @@ internal static partial class OpenApiSetup
         "GET api/history", "POST api/history/commit", "GET api/hooks", "POST api/hooks/test", "POST api/hooks", "PUT api/hooks/{id}", "POST api/hooks/{id}/enabled", "POST api/hooks/{id}/approve", "POST api/hooks/{id}/reject", "DELETE api/hooks/{id}", "GET api/plan/settings", "PUT api/plan/settings",
         "POST api/items/{id}/attachments", "GET api/items/{id}/attachments/{attachmentId}", "DELETE api/items/{id}/attachments/{attachmentId}", "GET api/items/{id}/embed/{name}",
         "POST api/archive", "PUT api/items/{id}/time/{entryId}", "DELETE api/items/{id}/time/{entryId}",
+        "POST api/phones/claim",
     };
 
     public static void AddServices(IServiceCollection services)

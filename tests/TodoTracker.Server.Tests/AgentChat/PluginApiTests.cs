@@ -113,7 +113,8 @@ public sealed class PluginApiTests : IAsyncLifetime
         // The GitHub Issues PR added connector-github after Microsoft To Do: the list grew by it because that PR registered
         // it (Plugins.BuiltIn); nothing else changed.
         // The energy PR added "energy" (an extra, switchable like the others) after the plan: the list grew by it.
-        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "plan", "energy", "history", "obsidian", "browser-extension", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "connector-github", "loop", "teams"], ids);
+        // The phones PR added "phones" (off until you switch it on) after the browser extension: the list grew by it.
+        Assert.Equal(["agent-chat", "connect-ai", "focus-timer", "plan", "energy", "history", "obsidian", "browser-extension", "phones", "sync-onedrive", "sync-icloud", "sync-gist", "connector-notion", "connector-mstodo", "connector-github", "loop", "teams"], ids);
     }
 
     [Fact]
