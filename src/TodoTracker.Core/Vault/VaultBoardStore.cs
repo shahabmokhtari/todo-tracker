@@ -375,7 +375,14 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             if (File.Exists(path))
             {
-                File.Move(path, path + ".migrated", overwrite: true);
+                // An earlier .migrated is a backup too: never replaced (this one becomes ".migrated 2", ...).
+                var target = path + ".migrated";
+                for (var n = 2; File.Exists(target); n++)
+                {
+                    target = $"{path}.migrated {n}";
+                }
+
+                File.Move(path, target);
             }
         }
     }
@@ -1272,6 +1279,16 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         return candidate;
     }
 
+    /// <summary>Trash is emptied this many days after it was trashed (the time in the trash entry's name).</summary>
+    internal const int TrashDays = 30;
+
+    /// <summary>When a trash entry was trashed: the UTC time its name starts with (<c>yyyyMMdd-HHmmss </c>), or null.</summary>
+    internal static DateTime? TrashedAt(string name) =>
+        name.Length > 16 && name[15] == ' '
+        && DateTime.TryParseExact(name[..15], "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var at)
+            ? at
+            : null;
+
     private void PurgeOldTrash()
     {
         var trash = Path.Combine(MetaDir, "trash");
@@ -1280,9 +1297,12 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return;
         }
 
+        // An entry's age is the time in its name (when it was trashed, see TrashPath), never its file times: a move keeps
+        // the time it was last written, so a task last edited months ago would be gone at once. No time, no purge.
+        var cutoff = Now.UtcDateTime.AddDays(-TrashDays);
         foreach (var entry in new DirectoryInfo(trash).EnumerateFileSystemInfos())
         {
-            if (entry.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-30) && entry.CreationTimeUtc < DateTime.UtcNow.AddDays(-30))
+            if (TrashedAt(entry.Name) is { } trashed && trashed < cutoff)
             {
                 try
                 {

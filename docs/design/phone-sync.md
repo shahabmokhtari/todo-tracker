@@ -42,8 +42,12 @@ rule as on computers (sync.md: "The tasks folder itself is never moved").
    its files as old, so deletes recorded elsewhere apply: `unpublished = DateTimeOffset.MinValue` in `SyncEngine`.)
 3. Bring the phone's own `board.json` in **beside** what came (port of `VaultBoardStore.ImportBeside`): a top-level
    task whose id (or any of its subtasks' ids) is already there is skipped, never replaced; others go to the tab of
-   the same name, else the first tab. Then set `board.json` aside.
+   the same name, else the first tab, all or nothing. Then set `board.json` aside: an earlier `board.json.migrated`
+   is never replaced (this one becomes `board.json.migrated 2`).
 4. Publish.
+
+If the first pull didn't get everything (a device's file half read, contents that haven't arrived), steps 3 and 4
+wait for a later join: importing against half of the others' tasks would make copies of the rest.
 
 Importing *after* the first pull matters: a phone that used remote mode against a computer holds copies of that
 computer's tasks with the same ids; importing them first would turn every one into a "(from iPhone)" copy.
@@ -94,9 +98,14 @@ Port these exactly; the fixtures say what "exactly" means.
 * **New task**: `<group folder>/<SafeName(title)>.md`, unique against existing `.md` *and* `.html` stems. **Title
   change: the file keeps its name.** **Move to another tab**: the file moves to the other group folder keeping its
   name and subfolder, its `.html` rich page moves with it. **Delete**: the file (and `.html`) goes to the trash.
-* **Trash**: `.todo-tracker/trash/<yyyyMMdd-HHmmss> <name>` (` 2`, ` 3`… on clashes), purged after 30 days. Nothing
-  sync removes is ever deleted outright.
-* **Writes are atomic** (temp file + rename) and a change that fails part way is undone (the C# undo stack). One
+* **Trash**: `.todo-tracker/trash/<yyyyMMdd-HHmmss> <name>` (` 2`, ` 3`… on clashes; the time is UTC, when it was
+  trashed), purged 30 days after that time. **A trash entry's age is the timestamp in its name**, never the file's
+  times: a move keeps the modification time, so a task last edited months ago would otherwise be purged on the next
+  start. An entry whose name doesn't start with such a timestamp is never purged. Nothing sync removes is ever
+  deleted outright.
+* **Writes are atomic** (temp file, flushed to the disk with `fsync`, then renamed) and a change that fails part way
+  is undone (the C# undo stack), whatever the failure (not only I/O errors). A new file or a move never replaces a
+  file that appeared meanwhile (check and fail). One
   writer at a time inside the app (a serial queue/actor); widgets and extensions go through the app or a file
   coordinator — there's no cross-process lock file on phones.
 * **After a sync applied changes**: reload, then `TaskBoard.ReleaseWaiters` (tasks waiting for one that finished or
@@ -125,12 +134,19 @@ SHA-256 of the exact bytes, lowercase hex.
 `config`/`order`/`activity` only at their path; `t/`,`h/` keys parse as 32-hex GUIDs and paths end in `.md`/`.html`;
 `f/` key equals `"f/" + path`; every path passes `IsSyncablePath` (relative, contains `/`, no `\` `:`, no `..`, no
 empty segment, none starting with `.`, ending with `.`, or starting or ending with white space, no control or
-Windows-invalid characters, no `CON`/`PRN`/`AUX`/`NUL`/`COM0-9`/`LPT0-9` names, not `.tmp`, under 400 characters;
+Windows-invalid characters, no `CON`/`PRN`/`AUX`/`NUL`/`COM0-9`/`LPT0-9` names, not `.tmp`, no segment over 255
+UTF-8 bytes (the longest name ext4, APFS and the phones take), under 400 characters;
 fixture: `vault/names.json` `syncablePaths`). A missing `since` means "oldest possible".
 
 **Fetching** (`FetchAsync`): every peer content not held locally (by hash) is downloaded, its SHA-256 checked, and
 kept in the local blob cache; any missing or mismatching content means "merge this device next time" (never a
-partial merge).
+partial merge). A content that doesn't match its hash is reported in the status (so one that keeps failing is seen),
+and a device publishing to a folder writes again any of its contents whose blob there doesn't match its hash.
+
+**A task file that can't be read** (refused by the parser with no earlier good version, or not readable at all)
+stops the snapshot: sync waits until it's fixed. Left out, or listed as a plain `f/` file, it would look deleted to
+the other devices, which would trash their copy. A read that fails is an error, never an empty file a later save
+writes over.
 
 **Planning** (`SyncPlanner.Plan`): port as is. Fixture: `sync/planner.json` (44 cases: new, edits on one or both
 sides, keyed and plain conflicts, an invalid merge kept whole as "Title (from Phone)", made on both before any sync,
@@ -249,10 +265,12 @@ Every one of these changes bytes, which changes hashes, which other devices see 
    *simple* mapping (Kotlin `Character.toUpperCase(int)`; Swift: the scalar's uppercase mapping when it is a single
    scalar, else unchanged — `ß` stays `ß`, never `SS`).
 2. **Unicode case for ids.** `"group|" + folder.ToUpperInvariant()` and the hand-written-step seed's
-   `ToLowerInvariant()` use simple 1:1 mappings: `İ`.lower is `i` (not `i̇`), `ß`.upper is `ß`. Swift's
-   `uppercased()/lowercased()` use full mappings; use per-scalar single mappings with the exception
-   `U+0130 → U+0069`. Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step
-   in `vault/parse.json`.
+   `ToLowerInvariant()` use simple 1:1 mappings (`ß`.upper is `ß`, `ǅ`.upper is `Ǆ`), and .NET's invariant casing
+   leaves the Turkish i's alone: `İ` (U+0130) lower-cased stays `İ` (not `i`, not `i̇`), and `ı` (U+0131)
+   upper-cased stays `ı`. Swift's `uppercased()/lowercased()` use full mappings, and Kotlin's
+   `Character.toLowerCase(0x130)` gives `i`: use per-scalar simple mappings, except that U+0130 and U+0131 are kept
+   as they are. Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step in
+   `vault/parse.json` (its id is derived from `/…/İstanbul trip#1`).
 3. **GUID bytes.** `StableGuid` takes SHA-256's first 16 bytes, sets `bytes[7] = (b & 0x0F) | 0x80` and
    `bytes[8] = (b & 0x3F) | 0x80`, then `new Guid(bytes)` — .NET reads the first three fields **little-endian**:
    the text form is bytes `3 2 1 0 - 5 4 - 7 6 - 8 9 - 10…15`. (So the "version" nibble shown is `bytes[7]`'s high
@@ -324,7 +342,7 @@ fixture and fails if the committed file differs.
 | --- | --- |
 | `vault/render.json` | 3 boards (`minimal`, `everything`, `names`) → every file written, folders, the sync entries (key, path, hash; the virtual order content), the board read back |
 | `vault/parse.json` | 12 hand-made files → task read, needs-write, rewritten text, or refused |
-| `vault/names.json` | 23 titles → file and folder names; 8 stable ids; 6 group ids; 3 block ids; 21 strings in 3 JSON/YAML encodings; 12 typed and 7 shown local times; 32 paths → syncable or not |
+| `vault/names.json` | 23 titles → file and folder names; 8 stable ids; 6 group ids; 3 block ids; 21 strings in 3 JSON/YAML encodings; 12 typed and 7 shown local times; 36 paths → syncable or not |
 | `sync/textmerge.json` | 25 three-way merges; task line keys for 4 files |
 | `sync/planner.json` | 44 plans (ops, conflicts); 5 next-base cases |
 | `sync/manifest.json` | one snapshot as a folder device file + blob paths, and as a gist bundle + marker |

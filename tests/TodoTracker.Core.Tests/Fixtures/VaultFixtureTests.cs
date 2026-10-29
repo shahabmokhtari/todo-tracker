@@ -140,7 +140,8 @@ public sealed class VaultFixtureTests
         }
 
         var paths = new JsonArray();
-        foreach (var path in new[] { "Work/Plan.md", "Work/Sub/Deep/Plan.md", "_attachments/7b0c2f9e/plan v2.pdf", "Plan.md", "AGENTS.md", "Work/../x.md", "../Work/x.md", "/Work/x.md", "Work//x.md", "Work\\x.md", "Work/x:y.md", "Work/.hidden.md", ".todo-tracker/config.json", "Work/.obsidian/app.json", "Work/x.md.tmp", "Work/x.", "Work/ x.md", "Work/x.md ", "Work/CON", "Work/con.md", "Work/COM0.txt", "Work/LPT9", "Work/CONSOLE.md", "Work/a<b.md", "Work/a?b.md", "Work/a*b.md", "Work/a|b.md", "Work/a\"b.md", "Work/tab\there.md", "Été 🌞/Café.md", new string('a', 395) + "/x.md", new string('a', 394) + "/x.md" })
+        foreach (var path in new[] { "Work/Plan.md", "Work/Sub/Deep/Plan.md", "_attachments/7b0c2f9e/plan v2.pdf", "Plan.md", "AGENTS.md", "Work/../x.md", "../Work/x.md", "/Work/x.md", "Work//x.md", "Work\\x.md", "Work/x:y.md", "Work/.hidden.md", ".todo-tracker/config.json", "Work/.obsidian/app.json", "Work/x.md.tmp", "Work/x.", "Work/ x.md", "Work/x.md ", "Work/CON", "Work/con.md", "Work/COM0.txt", "Work/LPT9", "Work/CONSOLE.md", "Work/a<b.md", "Work/a?b.md", "Work/a*b.md", "Work/a|b.md", "Work/a\"b.md", "Work/tab\there.md", "Été 🌞/Café.md", string.Join('/', new string('a', 131), new string('a', 131), new string('a', 131), "x.md"), string.Join('/', new string('a', 130), new string('a', 130), new string('a', 132), "x.md"),
+            "Work/" + new string('n', 252) + ".md", "Work/" + new string('n', 253) + ".md", "Work/" + new string('é', 126) + ".md", "Work/" + new string('é', 127) + ".md" })
         {
             paths.Add(new JsonObject { ["path"] = path, ["syncable"] = VaultBoardStore.IsSyncablePath(path) });
         }

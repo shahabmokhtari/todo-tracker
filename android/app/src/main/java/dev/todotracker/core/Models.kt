@@ -81,13 +81,44 @@ data class ActivityEntry(val at: Instant, val itemId: UUID, val kind: String, va
 
 class TaskGroup(val id: UUID = UUID.randomUUID(), var name: String, var color: String?)
 
+/** Where a top-level task is on the board (subtasks follow their task). Done is [WorkItem.isDone], not a stage. */
+enum class Stage(val wire: String) {
+    INBOX("inbox"), NEXT("next"), DOING("doing");
+
+    companion object {
+        fun of(text: String?): Stage = entries.firstOrNull { it.wire.equals(text, ignoreCase = true) } ?: NEXT
+    }
+}
+
+/** A file kept with a task: [path] is relative to the tasks folder (e.g. `_attachments/7b0c2f9e/plan.pdf`). */
+class Attachment(val id: UUID, val fileName: String, var path: String, val size: Long, val addedAt: Instant, val addedBy: Actor)
+
+/** A label people put on tasks, with its color (#rrggbb). */
+class LabelDefinition(var name: String, var color: String)
+
 class WorkItem(
-    val id: UUID = UUID.randomUUID(),
+    id: UUID = UUID.randomUUID(),
     var title: String,
     var priority: Priority,
     val createdAt: Instant,
     internal var ownGroupId: UUID,
 ) {
+    /** Its id (a store reading the tasks folder may give a copied file's tasks ids of their own). */
+    var id: UUID = id
+        internal set
+
+    /** Free-form tags without the leading # (nested tags use /). */
+    val tags: MutableList<String> = mutableListOf()
+
+    /** Names of the board's [LabelDefinition]s. */
+    val labels: MutableList<String> = mutableListOf()
+
+    /** Files kept with it. */
+    val attachments: MutableList<Attachment> = mutableListOf()
+
+    /** Where a top-level task is on the board (Inbox, Next, Doing). */
+    var stage: Stage = Stage.NEXT
+
     var details: String? = null
     var completedAt: Instant? = null
     /** Put away (a finished top-level task, archived on another device): out of every list. */
