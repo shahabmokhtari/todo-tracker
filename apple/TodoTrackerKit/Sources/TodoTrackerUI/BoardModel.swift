@@ -27,10 +27,20 @@ public final class BoardModel: ObservableObject {
     @Published public var openNotes: Set<UUID> = []
     /// Rows whose notes are shown ("2 notes ▾"): kept here so they stay open when a card moves to another list.
     @Published public var shownNotes: Set<UUID> = []
-    /// The search box: only tasks with these words in their title, details or notes are listed (TaskSearch).
+    /// The search box: the lists show only matching tasks (TaskSearch, the same syntax as the other apps).
     @Published public var searchText = "" {
         didSet { if searchText != oldValue { refresh() } }
     }
+    /// Every task the search finds, done and archived ones included (the lists show only open or done-today ones), in
+    /// tree order; empty when not searching.
+    @Published public private(set) var searchResults: [WorkItem] = []
+    /// Finished tasks put away (found with is:archived).
+    @Published public private(set) var archivedCount = 0
+    /// What's typed in a task's details and not saved yet, by task: kept here so closing the sheet (or a break covering
+    /// it) never loses it. Each remembers the value it started from: only a field changed from that is saved.
+    @Published public private(set) var taskDrafts: [UUID: [DraftField: FieldDraft]] = [:]
+    /// Why a typed repeat rule isn't understood, by task.
+    @Published public private(set) var repeatProblems: [UUID: String] = [:]
     /// A task a deep link asked to open (todotracker://task/<id>): the dashboard shows it, then clears this.
     @Published public var openTaskId: UUID?
     /// True when the saved board could not be read; nothing is written so the user's data is never overwritten.
@@ -267,6 +277,9 @@ public final class BoardModel: ObservableObject {
         lastRefresh = now
         dashboard = Agenda.build(board, now: now, recentNoteCount: 6, groupId: selectedGroupId, query: searchText)
         doneToday = Agenda.doneToday(board, now: now, groupId: selectedGroupId, query: searchText)
+        let search = TaskSearch(searchText)
+        searchResults = search.isEmpty ? [] : search.apply(board).filter { selectedGroupId == nil || $0.groupId == selectedGroupId }
+        archivedCount = board.items.filter { $0.archivedAt != nil }.count
     }
 
     public func select(group: UUID?) {
@@ -384,10 +397,82 @@ public final class BoardModel: ObservableObject {
     }
 
     /// Saves fields changed in a task's details (only those: edits made elsewhere meanwhile stay).
+    /// `onFail`: the change didn't happen (the server said no or didn't answer, or it isn't valid here).
     @discardableResult
-    public func edit(_ id: UUID, _ changes: TaskChanges, message: String? = "Saved") -> Bool {
+    public func edit(_ id: UUID, _ changes: TaskChanges, message: String? = "Saved", onFail: (() -> Void)? = nil) -> Bool {
         guard !changes.isEmpty else { return true }
-        return change(message, server: .edit(id, changes)) { try board.update(id, changes, now: $0) }
+        if waitWhileConnecting() { return false }
+        if server != nil {
+            send(.edit(id, changes), message, onFail: onFail)
+            return true
+        }
+        if mutate(message, { try board.update(id, changes, now: $0) }) { return true }
+        onFail?()
+        return false
+    }
+
+    // MARK: Drafts (what's typed in a task's details)
+
+    /// What's typed in a field and not saved yet (nil: nothing).
+    public func draft(_ id: UUID, _ field: DraftField) -> String? { taskDrafts[id]?[field]?.text }
+
+    /// Typing in a field: the first keystroke remembers the value it started from (`current`). Back to that value,
+    /// there's nothing to save.
+    public func setDraft(_ id: UUID, _ field: DraftField, _ text: String, current: String) {
+        let base = taskDrafts[id]?[field]?.base ?? current
+        var drafts = taskDrafts[id] ?? [:]
+        drafts[field] = text == base ? nil : FieldDraft(text: text, base: base)
+        taskDrafts[id] = drafts.isEmpty ? nil : drafts
+        if field == .repeatRule { repeatProblems[id] = nil }
+    }
+
+    public func hasDrafts(_ id: UUID) -> Bool { taskDrafts[id] != nil }
+
+    /// Saves what's typed for a task: only fields changed from where they started, so a newer change from elsewhere
+    /// is never put back. A blank title or a repeat rule that isn't understood stays typed, with the reason; if the
+    /// server says no, what was typed comes back.
+    public func saveDrafts(_ id: UUID) {
+        guard let drafts = taskDrafts[id], board.find(id) != nil else {
+            taskDrafts[id] = nil
+            return
+        }
+        var keep: [DraftField: FieldDraft] = [:]
+        var changes = TaskChanges()
+        if let title = drafts[.title] {
+            if Self.isBlank(title.text) {
+                keep[.title] = title
+                status = "A task title is required."
+            } else {
+                changes.title = title.text
+            }
+        }
+        if let details = drafts[.details] { changes.details = details.text }
+        if let rule = drafts[.repeatRule] {
+            let text = rule.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            do {
+                if !text.isEmpty { _ = try Recurrence.parse(text) }
+                changes.repeatRule = text
+            } catch {
+                keep[.repeatRule] = rule
+                repeatProblems[id] = Self.describe(error)
+                status = Self.describe(error)
+            }
+        }
+        let sent = drafts.filter { keep[$0.key] == nil }
+        taskDrafts[id] = keep.isEmpty ? nil : keep
+        guard !changes.isEmpty else { return }
+        edit(id, changes, onFail: { [weak self] in
+            // Nothing typed is lost: back in the boxes, unless something new was typed meanwhile.
+            guard let self else { return }
+            var now = self.taskDrafts[id] ?? [:]
+            for (field, draft) in sent where now[field] == nil { now[field] = draft }
+            self.taskDrafts[id] = now.isEmpty ? nil : now
+        })
+    }
+
+    /// Saves everything typed in any task's details (the details sheet went away).
+    public func saveAllDrafts() {
+        for id in Array(taskDrafts.keys) { saveDrafts(id) }
     }
 
     /// Sets the deadline (nil: none).
@@ -682,6 +767,15 @@ public final class BoardModel: ObservableObject {
             now = current
         }
     }
+}
+
+/// A field of a task's details that keeps what's typed until it's saved.
+public enum DraftField: Hashable, Sendable { case title, details, repeatRule }
+
+/// What's typed in a field, and the value it started from.
+public struct FieldDraft: Equatable, Sendable {
+    public let text: String
+    public let base: String
 }
 
 /// Mirrors pending reminders into local notifications (the OS delivers them even when the app is closed).

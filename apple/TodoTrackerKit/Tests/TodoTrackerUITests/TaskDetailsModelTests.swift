@@ -111,6 +111,95 @@ final class TaskDetailsModelTests: XCTestCase {
         XCTAssertTrue(model.shownNotes.contains(other.id), "its notes stay open after it moves to Waiting")
     }
 
+    func testWhatYouTypeIsKeptWhenTheDetailsCloseAndSavedThen() throws {
+        let model = BoardModel(store: nil)
+        let task = try model.board.addTask(NewTask("Old title"), now: Date())
+
+        model.setDraft(task.id, .title, "New title", current: task.title)
+        model.setDraft(task.id, .details, "Call first", current: "")
+        XCTAssertEqual(model.draft(task.id, .title), "New title", "kept in the model: closing the sheet doesn't lose it")
+        XCTAssertTrue(model.hasDrafts(task.id))
+
+        // The sheet goes away (Close, swipe down, Esc, a break): what was typed is saved.
+        model.saveAllDrafts()
+        XCTAssertEqual(task.title, "New title")
+        XCTAssertEqual(task.details, "Call first")
+        XCTAssertNil(model.draft(task.id, .title))
+        XCTAssertFalse(model.hasDrafts(task.id))
+    }
+
+    func testADraftThatChangedNothingNeverOverwritesANewerChange() throws {
+        let model = BoardModel(store: nil)
+        let task = try model.board.addTask(NewTask("Old title", details: "first"), now: Date())
+
+        // Typed and then put back as it was: nothing to save...
+        model.setDraft(task.id, .title, "Old title!", current: task.title)
+        model.setDraft(task.id, .title, "Old title", current: task.title)
+        model.setDraft(task.id, .details, "mine", current: task.details ?? "")
+        // ...while another computer renamed it.
+        try model.board.update(task.id, title: "Renamed on the Mac", now: Date())
+
+        model.saveDrafts(task.id)
+        XCTAssertEqual(task.title, "Renamed on the Mac", "an untouched field never goes back to an old value")
+        XCTAssertEqual(task.details, "mine")
+    }
+
+    func testARepeatRuleThatIsntUnderstoodStaysTypedWithTheReason() throws {
+        let model = BoardModel(store: nil)
+        let task = try model.board.addTask(NewTask("Plants"), now: Date())
+
+        model.setDraft(task.id, .repeatRule, "every blue moon", current: "")
+        model.saveAllDrafts()
+        XCTAssertNil(task.repeatRule)
+        XCTAssertEqual(model.draft(task.id, .repeatRule), "every blue moon", "kept, so it can be fixed")
+        XCTAssertNotNil(model.repeatProblems[task.id])
+
+        model.setDraft(task.id, .repeatRule, "every weekday", current: "")
+        XCTAssertNil(model.repeatProblems[task.id], "typing again clears the reason")
+        model.saveDrafts(task.id)
+        XCTAssertEqual(task.repeatRule?.description, "every weekday")
+    }
+
+    func testWhenTheServerSaysNoWhatYouTypedComesBack() async throws {
+        let remote = TaskBoard()
+        let task = try remote.addTask(NewTask("On the server"), now: Date())
+        FakeServer.board = try BoardCodec.encode(remote)
+        FakeServer.requests = []
+        let patch = "PATCH /api/items/\(task.id.uuidString.lowercased())"
+        FakeServer.refused = [patch]
+        defer { FakeServer.refused = [] }
+        let model = BoardModel(store: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FakeServer.self]
+        model.use(server: ServerClient(baseURL: URL(string: "http://127.0.0.1:5317")!, token: "test", session: URLSession(configuration: configuration)))
+        for _ in 0..<200 where model.board.items.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
+
+        model.setDraft(task.id, .title, "My new title", current: "On the server")
+        model.saveDrafts(task.id)
+        for _ in 0..<200 where model.status != "A task title is required." { try await Task.sleep(nanoseconds: 20_000_000) }
+
+        XCTAssertTrue(FakeServer.requests.contains(patch))
+        XCTAssertEqual(model.status, "A task title is required.", "the server's reason shows")
+        XCTAssertEqual(model.draft(task.id, .title), "My new title", "nothing typed is lost")
+    }
+
+    func testSearchListsEveryMatchEvenDoneAndArchivedOnes() throws {
+        let model = BoardModel(store: nil)
+        let tax = try model.board.addTask(NewTask("Tax return"), now: Date())
+        let old = try model.board.addTask(NewTask("Old tax form"), now: Date())
+        try model.board.complete(tax.id, now: Date().addingTimeInterval(-86_400 * 2))
+        try model.board.complete(old.id, now: Date())
+        try model.board.archive(old.id, now: Date())
+        model.refresh()
+        XCTAssertTrue(model.searchResults.isEmpty, "not searching: no results list")
+
+        model.searchText = "tax"
+        XCTAssertEqual(model.searchResults.map(\.id), [tax.id], "done earlier: not in Done today, but found")
+        model.searchText = "is:archived"
+        XCTAssertEqual(model.searchResults.map(\.id), [old.id], "archived tasks can be reached (and unarchived)")
+        XCTAssertEqual(model.archivedCount, 1)
+    }
+
     func testTheFocusTimersLengthsAreSetHere() {
         let model = BoardModel(store: nil)
         model.setPomodoroSettings(PomodoroSettings(focusMinutes: 45, shortBreakMinutes: 10, longBreakMinutes: 20, focusesBeforeLongBreak: 3))

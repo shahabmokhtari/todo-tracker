@@ -47,11 +47,6 @@ struct TaskDetailContent: View {
     @State private var hoursBetween = 24.0
     @State private var confirmDelete = false
     @State private var confirmComplete = false
-    /// What's being typed (nil: not changed here, so the task's own value shows, also after a refresh from the server).
-    @State private var titleDraft: String?
-    @State private var detailsDraft: String?
-    @State private var repeatDraft: String?
-    @State private var repeatProblem: String?
     @State private var pickingDeadline = false
     @State private var addingReminder = false
 
@@ -101,7 +96,7 @@ struct TaskDetailContent: View {
         return Form {
             Section {
                 whereRow(item)
-                TextField("Title", text: Binding(get: { titleDraft ?? item.title }, set: { titleDraft = $0 }), axis: .vertical)
+                TextField("Title", text: draftBinding(.title, current: item.title), axis: .vertical)
                     .font(.title3.weight(.semibold))
                     .accessibilityIdentifier("detail-title")
                     .onSubmit { save(item) }
@@ -113,12 +108,12 @@ struct TaskDetailContent: View {
             actions(item, state: state)
 
             Section("Details") {
-                TextField("Details, links, context…", text: Binding(get: { detailsDraft ?? item.details ?? "" }, set: { detailsDraft = $0 }), axis: .vertical)
+                TextField("Details, links, context…", text: draftBinding(.details, current: item.details ?? ""), axis: .vertical)
                     .lineLimit(2...8)
                     .accessibilityIdentifier("detail-details")
-                if hasDrafts(item) {
+                if model.draft(itemId, .title) != nil || model.draft(itemId, .details) != nil {
                     Button("Save changes") { save(item) }
-                        .disabled((titleDraft ?? item.title).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled((model.draft(itemId, .title) ?? item.title).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         .accessibilityIdentifier("detail-save")
                 }
                 Picker("Priority", selection: Binding(get: { item.priority }, set: { model.edit(itemId, TaskChanges(priority: $0), message: "Priority: \($0.label)") })) {
@@ -241,7 +236,7 @@ struct TaskDetailContent: View {
         let current = item.repeatRule?.description ?? ""
         HStack {
             Text("Repeat")
-            TextField("Repeat", text: Binding(get: { repeatDraft ?? current }, set: { repeatDraft = $0; repeatProblem = nil }),
+            TextField("Repeat", text: draftBinding(.repeatRule, current: current),
                       prompt: Text("Doesn’t repeat"))
                 .multilineTextAlignment(.trailing)
                 .autocorrectionDisabled()
@@ -250,14 +245,14 @@ struct TaskDetailContent: View {
             Menu {
                 ForEach(repeatChoices, id: \.self) { rule in
                     Button(rule) {
-                        repeatDraft = rule
+                        model.setDraft(itemId, .repeatRule, rule, current: current)
                         saveRepeat(current)
                     }
                 }
                 if !current.isEmpty {
                     Divider()
                     Button("Doesn’t repeat") {
-                        repeatDraft = ""
+                        model.setDraft(itemId, .repeatRule, "", current: current)
                         saveRepeat(current)
                     }
                 }
@@ -267,10 +262,10 @@ struct TaskDetailContent: View {
                 .fixedSize()
                 .accessibilityLabel("Repeat choices")
         }
-        if let draft = repeatDraft, draft.trimmingCharacters(in: .whitespaces) != current {
+        if model.draft(itemId, .repeatRule) != nil {
             Button("Save repeat") { saveRepeat(current) }
         }
-        if let repeatProblem {
+        if let repeatProblem = model.repeatProblems[itemId] {
             Text(repeatProblem).font(.caption).foregroundStyle(Theme.color(for: .danger))
         } else if item.repeatRule != nil {
             Text("Done moves it to its next time (its deadline and when it comes back move along).").font(.caption).foregroundStyle(.secondary)
@@ -371,37 +366,22 @@ struct TaskDetailContent: View {
         steps.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
-    private func hasDrafts(_ item: WorkItem) -> Bool {
-        (titleDraft.map { $0 != item.title } ?? false) || (detailsDraft.map { $0 != (item.details ?? "") } ?? false)
+    /// A box showing what's typed (kept in the model until it's saved), else the task's own value, also after a refresh
+    /// from the server.
+    private func draftBinding(_ field: DraftField, current: String) -> Binding<String> {
+        Binding(get: { model.draft(itemId, field) ?? current }, set: { model.setDraft(itemId, field, $0, current: current) })
     }
 
-    /// Saves the title and details typed here: only what changed, so edits made elsewhere meanwhile stay.
-    private func save(_ item: WorkItem) {
-        var changes = TaskChanges()
-        if let title = titleDraft, title != item.title {
-            guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            changes.title = title
-        }
-        if let details = detailsDraft, details != (item.details ?? "") { changes.details = details }
-        if model.edit(itemId, changes) {
-            titleDraft = nil
-            detailsDraft = nil
-        }
-    }
+    /// Saves what's typed in this task's details (the title and details; a repeat rule, if one is typed, too).
+    private func save(_ item: WorkItem) { model.saveDrafts(itemId) }
 
     private func saveRepeat(_ current: String) {
-        guard let draft = repeatDraft else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text != current else {
-            repeatDraft = nil
+        guard let typed = model.draft(itemId, .repeatRule) else { return }
+        if typed.trimmingCharacters(in: .whitespacesAndNewlines) == current {
+            model.setDraft(itemId, .repeatRule, current, current: current)
             return
         }
-        if let problem = model.setRepeat(itemId, rule: text) {
-            repeatProblem = problem
-        } else {
-            repeatDraft = nil
-            repeatProblem = nil
-        }
+        model.saveDrafts(itemId)
     }
 
     private func addSubtask() {

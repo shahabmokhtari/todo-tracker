@@ -151,7 +151,8 @@ public struct DashboardView: View {
         }
         .padding(14)
         .background(backdrop)
-        .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id })) { wrapped in
+        // However the details go away (Close, swipe down, Esc, a break covering them), what was typed is saved.
+        .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id }), onDismiss: { model.saveAllDrafts() }) { wrapped in
             TaskDetailView(model: model, itemId: wrapped.id)
         }
         // A todotracker://task/<id> link: that task's details (also when the link started the app).
@@ -215,6 +216,39 @@ public struct DashboardView: View {
             Button("Cancel", role: .cancel) { deletingGroup = nil }
         }
         .sheet(isPresented: $showSettings) { SettingsView(model: model) }
+    }
+
+    /// Every task the search finds, done and archived ones too (the lists below show only what's open or done today):
+    /// each opens its details.
+    private var searchResultsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 4) {
+                sectionLabel("Found", count: model.searchResults.count)
+                if model.searchResults.isEmpty { emptyText("No tasks match your search.") }
+                ForEach(model.searchResults.prefix(50)) { item in
+                    Button { detailId = item.id } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: item.isArchived ? "archivebox" : item.isDone ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(item.isDone ? Color.green : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Presentation.titleWithIcon(item)).strikethrough(item.isDone).foregroundStyle(item.isDone ? .secondary : .primary)
+                                if item.parent != nil {
+                                    Text(item.path.dropLast().joined(separator: " › ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens it")
+                }
+                if model.searchResults.count > 50 {
+                    Text("Showing 50 of \(model.searchResults.count): add a word to narrow it down.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     private var searchBar: some View {
@@ -284,6 +318,7 @@ public struct DashboardView: View {
 
     private var sections: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !model.searchText.isEmpty { searchResultsCard }
             focusCard
             Card {
                 DisclosureGroup(isExpanded: $showNow) {
@@ -334,6 +369,18 @@ public struct DashboardView: View {
                                 .accessibilityLabel("Reopen \(item.title)")
                         }
                         .padding(.vertical, 3)
+                    }
+                    if model.archivedCount > 0 && model.searchText.isEmpty {
+                        // Put away, never gone: the search finds them (and their details have Unarchive).
+                        Button {
+                            searching = true
+                            model.searchText = "is:archived"
+                        } label: {
+                            Label("Archived (\(model.archivedCount))", systemImage: "archivebox").font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.accent)
+                        .padding(.top, 4)
                     }
                 } label: { sectionLabel("Done today", count: model.doneToday.count) }
             }

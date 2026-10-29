@@ -19,6 +19,13 @@ final class FakeServer: URLProtocol {
         set { lock.withLock { storedRequests = newValue } }
     }
 
+    private static var storedRefused: Set<String> = []
+    /// Requests ("PATCH /api/items/…") the server says no to (400, with its reason).
+    static var refused: Set<String> {
+        get { lock.withLock { storedRefused } }
+        set { lock.withLock { storedRefused = newValue } }
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -26,6 +33,12 @@ final class FakeServer: URLProtocol {
         let url = request.url!
         let line = "\(request.httpMethod ?? "GET") \(url.path)"
         Self.lock.withLock { Self.storedRequests.append(line) }
+        if Self.refused.contains(line) {
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(#"{"detail":"A task title is required."}"#.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let body: Data
         switch url.path {
         case "/api/export": body = Self.board
