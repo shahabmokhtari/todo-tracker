@@ -106,6 +106,14 @@ class RestartReceiver : BroadcastReceiver() {
         Thread {
             var delivering = false
             try {
+                val connection = PhoneConnection(context)
+                if (connection.load() != null) {
+                    // Connected to a computer: its tasks (the last read), not this phone's own board.
+                    connection.cached()?.let { runCatching { BoardCodec.decode(it.text) }.getOrNull() }?.let { FocusAlarm.schedule(context, Breaks.phaseEnds(it.pomodoro)) }
+                    delivering = true
+                    RemoteAlarm.due(context.applicationContext, connection) { pending.finish() }
+                    return@Thread
+                }
                 val file = File(context.filesDir, "board.json")
                 val board = synchronized(BoardHub.lock) { runCatching { BoardCodec.decode(file.readText()) }.getOrNull() } ?: return@Thread
                 val ends = Breaks.phaseEnds(board.pomodoro)

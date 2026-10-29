@@ -58,5 +58,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // Frontmatter values (YAML nodes only, never typed decoding): the tasks folder format, docs/design/phone-sync.md.
     implementation("org.yaml:snakeyaml:2.3")
+    // Scanning a computer's pairing QR code: on the phone, offline, without Google Play services.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     testImplementation("junit:junit:4.13.2")
 }
