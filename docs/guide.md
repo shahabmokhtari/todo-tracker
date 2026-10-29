@@ -138,47 +138,30 @@ the group you pick, so none are lost.
 **Settings** (⚙): light, dark, or as your phone is; how much energy you have in a day; how long a focus session and its
 breaks last; and whether notifications and on-time alarms are on.
 
-## Where your tasks live
+### Use your computer's tasks on Android
 
-Tasks are markdown files in **Documents/Todo Tracker**: one folder per group (tab), one file per task, with subtasks
-as checkboxes (Obsidian Tasks syntax), notes as callouts, and attachments next to them. Edit them anywhere: in the
-app, in Obsidian, in an editor, or with an AI agent. The app picks the changes up. See
-[`docs/vault-format.md`](vault-format.md).
+On its own, the Android app keeps its tasks on the phone. It can use the tasks on your computer instead, over your
+Wi-Fi at home or anywhere with Tailscale:
 
-- **Use Obsidian:** **⋯ › Tasks folder › Keep tasks in an Obsidian vault** lists your vaults. The app then uses
-  `<vault>/Todo Tracker` (restart to switch). Any task opens in Obsidian from its menu or the web drawer.
-- **Pointing the app at existing notes is safe.** It reads them without rewriting anything until you change a task.
-- **History:** every change is saved as a version (needs `git`). Open a task in the web drawer › *History* to view or
-  restore a version.
-- **Tags, labels, search:** add `#tags` and colored labels to tasks; click one (or press `/`) to filter. The same
-  syntax works everywhere: `#release label:"Deep work" group:work is:done words`.
+1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
+   Tracker. Choose **Connect a phone**: it shows a QR code and a link.
+2. On the phone, open **Settings › Connect to a computer**, check **This phone's name** (the computer lists the phone by
+   it), and tap **Scan the code** (or paste the link; opening the link on the phone works too). The phone asks first.
+   The code works once, for 10 minutes.
 
-## Connect AI apps
+From then on the phone shows the computer's tasks ("On <computer>" under the greeting) and your changes go straight
+there (the timeline says they came from your phone). What changes on the computer shows up within half a minute, and at
+once when you come back to the app. The focus timer's lengths are set on the computer.
 
-Choose **⋯ › Connect an AI app** (or ✨ in the web dashboard), pick Claude Code, Copilot CLI, Claude Desktop, VS Code
-or another app, and copy the one line it shows. For example:
-
-```bash
-claude mcp add todo-tracker --scope user -- tt mcp
-```
-
-`tt mcp` works on your tasks folder directly, so AI apps work even when Todo Tracker isn't running. There is also a
-Claude Desktop extension (`.mcpb`), a plugin with a skill for Claude Code and Copilot CLI
-(`/plugin marketplace add shahabmokhtari/todo-tracker`), and OpenAPI descriptions for cloud tools. See
-[`docs/ai-connectors.md`](ai-connectors.md), including ChatGPT and Copilot Studio.
-
-## Ask AI and plugins
-
-Type in the **Ask AI** box at the bottom of the sidebar (or the chat button in the dashboard): Copilot, Claude Code,
-or a model you add with an API key (OpenAI, Anthropic, Azure, OpenRouter, Ollama, LM Studio…) adds, finds and
-organizes tasks for you, asking before it changes anything. Every chat is kept: **Chats** finds, reopens, renames or
-deletes them. Turn any extra off under **⋯ › Plugins**. See [`docs/plugins.md`](plugins.md).
-
-## Browser extension
-
-Edge, Chrome and Safari. Open **Browser extension** (puzzle button in the dashboard, or **⋯ › Set up the browser
-extension** in the sidebar): it walks you through loading it (it isn't in the stores yet) and pairs it with a 6-digit
-code. See [`docs/browser-extension.md`](browser-extension.md).
+* **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
+  computer, with the time; changes wait until you're back (**Try again** checks now).
+* **Reminders** set on the computer also notify you on the phone, even with the app closed, and **Mark done** / **In an
+  hour** on them change the task on the computer (if it can't be reached, the notification says so).
+* **Disconnect** (Settings › Connect to a computer) takes the phone back to its own tasks, just as you left them: they're
+  never touched while it's connected. To remove the phone on the computer too, use **Disconnect** in Settings › Phones
+  there. If the computer **disconnects the phone**, the app says so, shows its own tasks again, and offers **Reconnect**.
+* The phone only trusts your computer: it checks the computer's certificate against the fingerprint in the code, and
+  keeps its key encrypted with the phone's keystore.
 
 ## Phones
 
