@@ -32,10 +32,10 @@ object BoardCodec {
     fun parseDate(text: String): Instant? =
         runCatching { Instant.parse(text) }.getOrNull() ?: runCatching { OffsetDateTime.parse(text).toInstant() }.getOrNull()
 
-    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder", "nowArrangedAt", "energyPerDay")
+    private val boardKeys = setOf("schemaVersion", "groups", "items", "activity", "pomodoro", "nowOrder", "nowArrangedAt", "energyPerDay", "labels")
     private val itemKeys = setOf(
         "id", "title", "details", "priority", "createdAt", "completedAt", "archivedAt", "icon", "color", "repeat", "repeatUndo", "plannedAt", "plannedMinutes", "energy", "deadline", "nextActionAt", "after", "sequential",
-        "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children",
+        "stepDelayMinutes", "groupId", "reminders", "notes", "time", "children", "tags", "labels", "attachments", "stage",
     )
 
     /** The board in [text]; anything unexpected (not JSON, the wrong shapes) is a [BoardException]. */
@@ -63,6 +63,11 @@ object BoardCodec {
             if (name.isNotEmpty() && board.groups.none { it.id == id }) board.groups.add(TaskGroup(id, name, o.string("color")))
         }
         if (board.groups.isEmpty()) board.seedGroups()
+        for (l in doc.array("labels")) {
+            val o = l as? JsonObject ?: continue
+            val name = o.string("name")?.trim().orEmpty()
+            if (name.isNotEmpty() && board.findLabel(name) == null) board.labels.add(LabelDefinition(name, o.string("color") ?: TaskBoard.LABEL_PALETTE[0]))
+        }
         for (item in doc.array("items")) load(item.jsonObject, board, null)
         for (a in doc.array("activity")) {
             val o = a.jsonObject
@@ -95,6 +100,7 @@ object BoardCodec {
                 g.color?.let { put("color", it) }
             })
         })
+        if (board.labels.isNotEmpty()) put("labels", JsonArray(board.labels.map { l -> buildJsonObject { put("name", l.name); put("color", l.color) } }))
         put("items", JsonArray(board.items.map(::item)))
         put("activity", JsonArray(board.activity.map { a ->
             buildJsonObject {
@@ -110,6 +116,9 @@ object BoardCodec {
         board.nowArrangedAt?.let { put("nowArrangedAt", formatDate(it)) }
         board.energyPerDay?.let { put("energyPerDay", it) }
     })
+
+    /** One task and its subtasks in the export format (as TodoTracker.Core's BoardSerializer writes an item). */
+    internal fun encodeItem(i: WorkItem): JsonObject = item(i)
 
     private fun item(i: WorkItem): JsonObject = buildJsonObject {
         i.extra?.forEach { (key, value) -> put(key, value) }
@@ -159,6 +168,19 @@ object BoardCodec {
                 n.sourceTitle?.let { put("sourceTitle", it) }
             }
         }))
+        if (i.tags.isNotEmpty()) put("tags", JsonArray(i.tags.map(::JsonPrimitive)))
+        if (i.labels.isNotEmpty()) put("labels", JsonArray(i.labels.map(::JsonPrimitive)))
+        if (i.attachments.isNotEmpty()) put("attachments", JsonArray(i.attachments.map { a ->
+            buildJsonObject {
+                put("id", a.id.toString())
+                put("fileName", a.fileName)
+                put("path", a.path)
+                put("size", a.size)
+                put("addedAt", formatDate(a.addedAt))
+                put("addedBy", actorJson(a.addedBy))
+            }
+        }))
+        if (i.parent == null && i.stage != Stage.NEXT) put("stage", i.stage.wire)
         if (i.timeEntries.isNotEmpty()) put("time", JsonArray(i.timeEntries.map { t ->
             buildJsonObject {
                 put("id", t.id.toString())
@@ -209,6 +231,16 @@ object BoardCodec {
             val tid = to.uuid("id") ?: continue
             val start = to.date("start") ?: continue
             item.timeEntries.add(TimeEntry(tid, start, to.date("end"), TimeSource.of(to.string("source")), to.string("device")))
+        }
+        item.stage = Stage.of(o.string("stage"))
+        for (t in o.array("tags")) (t as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotBlank() }?.let { item.tags.add(it.content) }
+        for (l in o.array("labels")) (l as? JsonPrimitive)?.takeIf { it.isString && it.content.isNotBlank() }?.let { item.labels.add(board.ensureLabel(it.content.trim()).name) }
+        for (a in o.array("attachments")) {
+            val ao = a as? JsonObject ?: continue
+            val aid = ao.uuid("id") ?: continue
+            val fileName = ao.string("fileName")?.takeIf { it.isNotBlank() } ?: continue
+            val path = ao.string("path")?.takeIf { it.isNotBlank() } ?: continue
+            item.attachments.add(Attachment(aid, fileName, path, (ao["size"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0, ao.date("addedAt") ?: Instant.EPOCH, actor(ao["addedBy"])))
         }
         board.attach(item, parent)
         for (child in o.array("children")) load(child.jsonObject, board, item)

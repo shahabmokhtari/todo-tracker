@@ -17,6 +17,20 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     val activity: MutableList<ActivityEntry> = mutableListOf()
     val groups: MutableList<TaskGroup> = mutableListOf()
 
+    /** The labels defined on the board (name and color), in the order they were made. */
+    val labels: MutableList<LabelDefinition> = mutableListOf()
+
+    /** The label called [name] (case doesn't matter), or null. */
+    fun findLabel(name: String?): LabelDefinition? = labels.firstOrNull { it.name.equals(name?.trim(), ignoreCase = true) }
+
+    /** The label called [name], made with the next unused color if there's none yet (as TodoTracker.Core does). */
+    internal fun ensureLabel(name: String): LabelDefinition {
+        findLabel(name)?.let { return it }
+        val used = labels.map { it.color.lowercase() }.toSet()
+        val color = LABEL_PALETTE.firstOrNull { it !in used } ?: LABEL_PALETTE[labels.size % LABEL_PALETTE.size]
+        return LabelDefinition(name, color).also { labels.add(it) }
+    }
+
     /** The Do now order the person arranged (tasks not listed slot in by the automatic rules). */
     val nowOrder: MutableList<UUID> = mutableListOf()
 
@@ -733,6 +747,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
         /** This device, as time entries name it. */
         const val THIS_DEVICE = "Android"
+
+        /** Label colors, accessible on light and dark backgrounds; new labels take the next unused one. */
+        val LABEL_PALETTE = listOf("#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6", "#64748b")
 
         /** Activity not tied to a task (group changes) uses the empty id, like Guid.Empty in C#. */
         val BOARD_SCOPE_ID: UUID = UUID(0L, 0L)
