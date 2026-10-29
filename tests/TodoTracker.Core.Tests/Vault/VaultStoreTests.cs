@@ -41,6 +41,38 @@ public sealed class VaultStoreTests : IDisposable
         store.UpdateAsync(b => b.AddTask(new NewTask(title) { ParentId = parent, GroupId = group }, Actor.User, _time.GetUtcNow()));
 
     [Fact]
+    public async Task A_long_title_is_never_cut_in_the_middle_of_an_emoji_in_its_file_name()
+    {
+        var store = Open();
+
+        var task = await Add(store, new string('x', 79) + "🚀 launch");
+
+        // Half an emoji isn't a character any system can name a file with (or sync to a phone).
+        Assert.Equal($"Work/{new string('x', 79)}.md", store.PathOf(task.Id));
+    }
+
+    [Fact]
+    public async Task Settings_are_written_with_the_same_bytes_on_every_system()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+
+        // They sync: a Windows line ending would make them differ from every Mac's and phone's (a change each sync).
+        Assert.DoesNotContain("\r", await File.ReadAllTextAsync(P(".todo-tracker", "config.json")), StringComparison.Ordinal);
+        Assert.DoesNotContain("\r", await File.ReadAllTextAsync(P(".todo-tracker", "state.json")), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Work/tab\there.md")]
+    [InlineData("Work/line\nbreak.md")]
+    [InlineData("Work/bell\u0007.md")]
+    public void A_path_from_another_device_with_a_control_character_is_refused_on_every_system(string path)
+    {
+        // Windows can't name a file like that, so no system takes it (else it would sync everywhere but there).
+        Assert.False(VaultBoardStore.IsSyncablePath(path));
+    }
+
+    [Fact]
     public async Task A_new_vault_has_group_folders_a_config_and_a_guide_for_agents()
     {
         var store = Open();

@@ -1312,9 +1312,11 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     /// <param name="EnergyPerDay">How much energy there is in a day (null: the default); in config.json because it syncs.</param>
     private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null);
 
+    // "\n" on every system (the default is the system's line ending): these files sync, so their bytes must match.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        NewLine = "\n",
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
