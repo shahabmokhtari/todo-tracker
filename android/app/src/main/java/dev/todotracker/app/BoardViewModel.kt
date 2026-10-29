@@ -62,8 +62,6 @@ data class FocusState(
 class BoardViewModel(application: Application) : AndroidViewModel(application), BoardHub.LiveBoard {
     private val store = BoardFileStore(BoardHub.file(application))
     private val prefs = application.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val saving = Dispatchers.IO.limitedParallelism(1)
     private var board: TaskBoard
 
     var dashboard: Dashboard by mutableStateOf(Dashboard(null, emptyList(), emptyList(), emptyMap()))
@@ -156,16 +154,20 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     private var scheduled: List<PhaseEnd>? = null
 
     init {
-        board = try {
-            synchronized(BoardHub.lock) { store.load() }.also { status = store.problem }
-        } catch (e: BoardException) {
-            // Only a board from a newer version of the app: it's never overwritten.
-            readOnly = true
-            status = "${e.message} Changes are off so your board isn't overwritten."
-            TaskBoard()
+        // Read after every save asked for before (a copy of the app just closed may still be saving), and from then on
+        // alarms and notification buttons change this board, not the file behind its back: both under the same lock.
+        board = BoardHub.readNow {
+            val loaded = try {
+                store.load().also { status = store.problem }
+            } catch (e: BoardException) {
+                // Only a board from a newer version of the app: it's never overwritten.
+                readOnly = true
+                status = "${e.message} Changes are off so your board isn't overwritten."
+                TaskBoard()
+            }
+            BoardHub.live = this
+            loaded
         }
-        // While the app runs, alarms and notification buttons change this board (not the file behind its back).
-        BoardHub.live = this
         refresh()
         viewModelScope.launch {
             var seconds = 0
@@ -341,14 +343,24 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
 
-    /** The task a todotracker:// link asked to open (shown over Today until closed). */
+    /** The task whose details are open (shown over Today until closed). */
     var openTaskId: UUID? by mutableStateOf(null)
+
+    /**
+     * Another task a link or a notification asks to open while one is open: the open one saves what's typed first (or
+     * asks), then switches.
+     */
+    var requestedTaskId: UUID? by mutableStateOf(null)
 
     /** A clicked todotracker://task/<id> link: that task opens (anything else is ignored). */
     fun openLink(link: String?) {
         val target = TaskLinks.target(link)
         if (target is TaskLinks.Target.Task) {
-            if (board.find(target.id) == null) status = "That task isn't on this phone" else openTaskId = target.id
+            when {
+                board.find(target.id) == null -> status = "That task isn't on this phone"
+                openTaskId == null || openTaskId == target.id -> openTaskId = target.id
+                else -> requestedTaskId = target.id
+            }
         }
     }
 
@@ -525,9 +537,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         }
     }
 
-    /** Saves off the screen's thread, one at a time and in order (a newer board is never overwritten by an older one). */
+    /**
+     * Saves off the screen's thread, one at a time and in order (a newer board is never overwritten by an older one),
+     * on the app's disk queue: a save asked for just before the app closes (Back) still happens.
+     */
     private fun save(text: String) {
-        viewModelScope.launch(saving) {
+        BoardHub.disk.launch {
             try {
                 synchronized(BoardHub.lock) { store.saveText(text) }
             } catch (e: IOException) {

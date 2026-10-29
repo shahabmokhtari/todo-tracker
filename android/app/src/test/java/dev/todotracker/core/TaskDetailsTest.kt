@@ -90,6 +90,24 @@ class TaskDetailsTest {
     }
 
     @Test
+    fun `a reminder the phone couldn't show stays pending, and is delivered once it can`() {
+        val board = TaskBoard()
+        val item = board.addTask(NewTask("Call the bank"), now = t0)
+        val reminder = board.addReminder(item.id, t0, null, now = t0)
+
+        // Notifications are off: nothing is shown, so nothing is marked delivered (Today still shows it).
+        assertEquals(0, Reminders.deliver(board, t0) { false })
+        assertNull(reminder.notifiedAt)
+        assertEquals(listOf(reminder.id), Reminders.due(board, t0).map { it.reminder.id })
+
+        val shown = mutableListOf<String>()
+        assertEquals(1, Reminders.deliver(board, t0.plusSeconds(60)) { shown.add(it.item.title) })
+        assertEquals(listOf("Call the bank"), shown)
+        assertEquals(t0.plusSeconds(60), reminder.notifiedAt)
+        assertEquals(0, Reminders.deliver(board, t0.plusSeconds(120)) { shown.add(it.item.title) })
+    }
+
+    @Test
     fun `a snooze ending is a reminder to deliver, and not for a task that's done or a snooze that was replaced`() {
         val board = TaskBoard()
         val a = board.addTask(NewTask("A"), now = t0)

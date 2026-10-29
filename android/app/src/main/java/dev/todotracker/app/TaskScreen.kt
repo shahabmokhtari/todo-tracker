@@ -87,9 +87,49 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
         )
         if (changes.title == null && changes.details == null) true else vm.edit(id, changes)
     }
-    val close = { if (saveTyped()) onClose() }
-    val open: (UUID) -> Unit = { other -> if (saveTyped()) vm.openTaskId = other }
+    // Leaving (Close, Back, another task, Archive) saves what's typed first. When it can't be saved (no title, say), it
+    // says why and offers to keep the old title instead, so there's always a way out and nothing is dropped silently.
+    var problem by remember(id) { mutableStateOf<String?>(null) }
+    var afterLeaving by remember(id) { mutableStateOf<(() -> Unit)?>(null) }
+    val leave: (() -> Unit) -> Unit = { then ->
+        if (saveTyped()) {
+            then()
+        } else {
+            problem = vm.status ?: "Your changes couldn't be saved."
+            afterLeaving = then
+        }
+    }
+    val close = { leave(onClose) }
+    val open: (UUID) -> Unit = { other -> leave { vm.openTaskId = other } }
     BackHandler(onBack = close)
+    // A link or a notification for another task: this one's typing is saved (or asked about) first.
+    androidx.compose.runtime.LaunchedEffect(vm.requestedTaskId) {
+        val other = vm.requestedTaskId ?: return@LaunchedEffect
+        vm.requestedTaskId = null
+        if (other != id) open(other)
+    }
+    afterLeaving?.let { then ->
+        val titleChanged = title.trim() != item.title
+        AlertDialog(
+            onDismissRequest = { afterLeaving = null },
+            title = { Text(if (title.isBlank()) "A task needs a title" else "Couldn't save your changes") },
+            text = {
+                Text(
+                    if (title.isBlank()) "Keep the old title (“${item.title}”) and go on, or keep editing."
+                    else if (titleChanged) "${problem.orEmpty()} Keep the old title (“${item.title}”) and go on, or keep editing."
+                    else "${problem.orEmpty()} Leave without these changes, or keep editing.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    afterLeaving = null
+                    if (titleChanged) title = item.title else details = item.details.orEmpty()
+                    leave(then)
+                }) { Text(if (titleChanged) "Keep the old title" else "Leave without them") }
+            },
+            dismissButton = { TextButton(onClick = { afterLeaving = null }) { Text("Keep editing") } },
+        )
+    }
 
     run {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -119,7 +159,7 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                         textStyle = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth(),
                     )
                     StateLine(item, vm)
-                    TaskButtons(item, vm, onClose)
+                    TaskButtons(item, vm, onArchive = { leave { vm.archive(id); onClose() } })
                     OutlinedTextField(
                         value = details, onValueChange = { details = it }, label = { Text("Details") },
                         placeholder = { Text("Links, context, what done looks like…") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
@@ -169,7 +209,7 @@ private fun StateLine(item: WorkItem, vm: BoardViewModel) {
 /** Mark done or Reopen, Later or Do now, Archive (a finished task), Copy link, Delete (asked first). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TaskButtons(item: WorkItem, vm: BoardViewModel, onClose: () -> Unit) {
+private fun TaskButtons(item: WorkItem, vm: BoardViewModel, onArchive: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmDone by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -177,7 +217,7 @@ private fun TaskButtons(item: WorkItem, vm: BoardViewModel, onClose: () -> Unit)
         if (item.isDone) {
             OutlinedButton(onClick = { vm.reopen(item.id) }) { Text("Reopen") }
             if (item.parent == null) {
-                if (item.archivedAt == null) OutlinedButton(onClick = { vm.archive(item.id); onClose() }) { Text("Archive") }
+                if (item.archivedAt == null) OutlinedButton(onClick = onArchive) { Text("Archive") }
                 else OutlinedButton(onClick = { vm.unarchive(item.id) }) { Text("Unarchive") }
             }
         } else {

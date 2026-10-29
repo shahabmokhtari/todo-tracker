@@ -27,6 +27,7 @@ import java.io.File
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 /**
  * The one board on this phone, whoever changes it: the app while it runs (its view model registers as [live]), or,
@@ -36,7 +37,14 @@ object BoardHub {
     /** Held while the board file is read or written. */
     val lock = Any()
 
-    /** The running app's board: changes go through it (so the screen and the file agree). */
+    /**
+     * Where the file is read and written, one thing at a time and in order, for the whole app (not one screen): a save
+     * asked for just before the app closes still happens, and is done before anything reads the file again.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val disk = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1))
+
+    /** The running app's board: changes go through it (so the screen and the file agree). Read and set on the main thread. */
     @Volatile
     var live: LiveBoard? = null
 
@@ -47,31 +55,38 @@ object BoardHub {
 
     fun file(context: Context) = File(context.filesDir, "board.json")
 
+    /** Runs [read] on the disk queue (after every save asked for before it) and waits for it. */
+    fun <T> readNow(read: () -> T): T = kotlinx.coroutines.runBlocking(disk.coroutineContext) { synchronized(lock) { read() } }
+
     /**
-     * Applies [action] to the board: through the running app, or on the saved file (then saved, and the next reminder
-     * set). The result says whether the board took it.
+     * Applies [action] to the board: through the running app, or (the app closed meanwhile, or not running) on the
+     * saved file, then saved and the next reminder set. The result says whether the board took it.
      */
     fun change(context: Context, action: (TaskBoard, Instant) -> Unit, done: (Result<Unit>) -> Unit) {
-        val app = live
-        if (app != null) {
-            Handler(Looper.getMainLooper()).post { done(app.applyOutside(action)) }
-            return
-        }
-        Thread {
-            val result = synchronized(lock) {
-                runCatching {
-                    val store = BoardFileStore(file(context))
-                    // A board this app can't read (a newer version, damaged) is never written over from here.
-                    val board = store.load().also { if (store.problem != null) throw BoardException("Open the app to check your board.") }
-                    val now = Instant.now()
-                    action(board, now)
-                    ReminderAlarm.deliver(context, board, now)
-                    store.save(board)
-                    ReminderAlarm.schedule(context, Reminders.nextAt(board, now))
-                }
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            // Decided on the main thread, where the app's board comes and goes: no change is lost in between.
+            val app = live
+            if (app != null) {
+                done(app.applyOutside(action))
+                return@post
             }
-            Handler(Looper.getMainLooper()).post { done(result) }
-        }.start()
+            disk.launch {
+                val result = synchronized(lock) {
+                    runCatching {
+                        val store = BoardFileStore(file(context))
+                        // A board this app can't read (a newer version, damaged) is never written over from here.
+                        val board = store.load().also { if (store.problem != null) throw BoardException("Open the app to check your board.") }
+                        val now = Instant.now()
+                        action(board, now)
+                        ReminderAlarm.deliver(context, board, now)
+                        store.save(board)
+                        ReminderAlarm.schedule(context, Reminders.nextAt(board, now))
+                    }
+                }
+                main.post { done(result) }
+            }
+        }
     }
 }
 
@@ -104,20 +119,20 @@ object ReminderAlarm {
         }
     }
 
-    /** Delivers what's due on [board] now: marked as delivered, then told. True when something was. */
-    fun deliver(context: Context, board: TaskBoard, now: Instant): Boolean {
-        val due = Reminders.due(board, now)
-        for (d in due) board.markNotified(d.item.id, d.reminder.id, now)
-        for (d in due) notify(context, d)
-        return due.isNotEmpty()
-    }
+    /**
+     * Tells what's due on [board] now. Only what was shown is marked delivered: with notifications off, a reminder
+     * stays pending (Today shows it) and is told once they're on. True when something was delivered.
+     */
+    fun deliver(context: Context, board: TaskBoard, now: Instant): Boolean = Reminders.deliver(board, now) { notify(context, it) } > 0
 
-    private fun notify(context: Context, due: DueReminder) {
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+    /** Shows the reminder; false when the phone won't (notifications off for the app or its reminders). */
+    private fun notify(context: Context, due: DueReminder): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "When a task's reminder is due, or a snooze ends"
         })
+        if (!manager.areNotificationsEnabled() || manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val id = notificationId(due.item.id)
         val open = PendingIntent.getActivity(
             context, id,
@@ -125,7 +140,7 @@ object ReminderAlarm {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val where = due.item.ancestors.reversed().joinToString(" › ") { it.title }
-        val notification = NotificationCompat.Builder(context, CHANNEL)
+        val builder = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(due.item.title)
             .setContentText(due.reminder.message)
@@ -134,10 +149,11 @@ object ReminderAlarm {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(open)
-            .addAction(0, "Mark done", action(context, ACTION_DONE, due.item.id, id))
-            .addAction(0, "In an hour", action(context, ACTION_LATER, due.item.id, id))
-            .build()
-        manager.notify(id, notification)
+        // Mark done would also close its open subtasks without asking: then it's Open (the app asks there).
+        if (due.item.hasOpenChildren) builder.addAction(0, "Open", open) else builder.addAction(0, "Mark done", action(context, ACTION_DONE, due.item.id, id))
+        builder.addAction(0, "In an hour", action(context, ACTION_LATER, due.item.id, id))
+        manager.notify(id, builder.build())
+        return true
     }
 
     /** One notification per task: a newer reminder replaces an older one about the same task. */
@@ -168,7 +184,12 @@ class ReminderActionReceiver : BroadcastReceiver() {
         val pending = goAsync()
         app.getSystemService(NotificationManager::class.java)?.cancel(intent.getIntExtra(ReminderAlarm.EXTRA_NOTIFICATION, 0))
         val action: (TaskBoard, Instant) -> Unit = when (intent.action) {
-            ReminderAlarm.ACTION_DONE -> { board, now -> board.complete(id, Actor.USER, now) }
+            ReminderAlarm.ACTION_DONE -> { board, now ->
+                // An older notification, from before it had subtasks: finishing them all is asked in the app.
+                val item = board.get(id)
+                if (item.hasOpenChildren) throw BoardException("“${item.title}” has open subtasks: open it to finish them.")
+                board.complete(id, Actor.USER, now)
+            }
             ReminderAlarm.ACTION_LATER -> { board, now -> board.scheduleNextAction(id, now.plus(1, ChronoUnit.HOURS), notify = true, actor = Actor.USER, now = now) }
             else -> return pending.finish()
         }
