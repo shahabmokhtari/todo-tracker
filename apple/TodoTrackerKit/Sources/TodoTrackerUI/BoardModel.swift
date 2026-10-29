@@ -25,6 +25,22 @@ public final class BoardModel: ObservableObject {
     /// Note drafts and open note boxes live here (not in row views) so they survive a card moving between lists.
     @Published public var noteDrafts: [UUID: String] = [:]
     @Published public var openNotes: Set<UUID> = []
+    /// Rows whose notes are shown ("2 notes ▾"): kept here so they stay open when a card moves to another list.
+    @Published public var shownNotes: Set<UUID> = []
+    /// The search box: the lists show only matching tasks (TaskSearch, the same syntax as the other apps).
+    @Published public var searchText = "" {
+        didSet { if searchText != oldValue { refresh() } }
+    }
+    /// Every task the search finds, done and archived ones included (the lists show only open or done-today ones), in
+    /// tree order; empty when not searching.
+    @Published public private(set) var searchResults: [WorkItem] = []
+    /// Finished tasks put away (found with is:archived).
+    @Published public private(set) var archivedCount = 0
+    /// What's typed in a task's details and not saved yet, by task: kept here so closing the sheet (or a break covering
+    /// it) never loses it. Each remembers the value it started from: only a field changed from that is saved.
+    @Published public private(set) var taskDrafts: [UUID: [DraftField: FieldDraft]] = [:]
+    /// Why a typed repeat rule isn't understood, by task.
+    @Published public private(set) var repeatProblems: [UUID: String] = [:]
     /// A task a deep link asked to open (todotracker://task/<id>): the dashboard shows it, then clears this.
     @Published public var openTaskId: UUID?
     /// True when the saved board could not be read; nothing is written so the user's data is never overwritten.
@@ -259,8 +275,11 @@ public final class BoardModel: ObservableObject {
         if let g = selectedGroupId, !board.groups.contains(where: { $0.id == g }) { selectedGroupId = nil }
         now = Date()
         lastRefresh = now
-        dashboard = Agenda.build(board, now: now, recentNoteCount: 6, groupId: selectedGroupId)
-        doneToday = Agenda.doneToday(board, now: now, groupId: selectedGroupId)
+        dashboard = Agenda.build(board, now: now, recentNoteCount: 6, groupId: selectedGroupId, query: searchText)
+        doneToday = Agenda.doneToday(board, now: now, groupId: selectedGroupId, query: searchText)
+        let search = TaskSearch(searchText)
+        searchResults = search.isEmpty ? [] : search.apply(board).filter { selectedGroupId == nil || $0.groupId == selectedGroupId }
+        archivedCount = board.items.filter { $0.archivedAt != nil }.count
     }
 
     public func select(group: UUID?) {
@@ -295,10 +314,6 @@ public final class BoardModel: ObservableObject {
     }
 
     public func complete(_ id: UUID) { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }
-
-    public func snooze(_ id: UUID, minutes: Int) {
-        snooze(id, until: Date().addingTimeInterval(TimeInterval(minutes * 60)))
-    }
 
     /// The quick choices right now (the same in every app).
     public var snoozeChoices: [SnoozeChoice] { Snooze.choices(now: Date(), timeZone: .current) }
@@ -350,6 +365,8 @@ public final class BoardModel: ObservableObject {
     }
 
     public func addNote(_ id: UUID, text: String) {
+        // Nothing typed: nothing to save (the box stays as it is).
+        guard !Self.isBlank(text) else { return }
         if waitWhileConnecting() { return }
         if server != nil {
             noteDrafts[id] = nil
@@ -370,23 +387,156 @@ public final class BoardModel: ObservableObject {
         if openNotes.contains(id) { openNotes.remove(id) } else { openNotes.insert(id) }
     }
 
+    /// Shows or hides a row's notes ("2 notes ▾").
+    public func toggleShownNotes(_ id: UUID) {
+        if shownNotes.contains(id) { shownNotes.remove(id) } else { shownNotes.insert(id) }
+    }
+
     public func draftBinding(for id: UUID) -> Binding<String> {
         Binding(get: { self.noteDrafts[id] ?? "" }, set: { self.noteDrafts[id] = $0 })
     }
 
-    public func update(_ id: UUID, title: String, priority: Priority) {
-        change("Saved", server: .update(id, title: title, priority: priority)) { try board.update(id, title: title, priority: priority, now: $0) }
+    /// Saves fields changed in a task's details (only those: edits made elsewhere meanwhile stay).
+    /// `onFail`: the change didn't happen (the server said no or didn't answer, or it isn't valid here).
+    @discardableResult
+    public func edit(_ id: UUID, _ changes: TaskChanges, message: String? = "Saved", onFail: (() -> Void)? = nil) -> Bool {
+        guard !changes.isEmpty else { return true }
+        if waitWhileConnecting() { return false }
+        if server != nil {
+            send(.edit(id, changes), message, onFail: onFail)
+            return true
+        }
+        if mutate(message, { try board.update(id, changes, now: $0) }) { return true }
+        onFail?()
+        return false
     }
 
-    public func snoozeUntilTomorrow(_ id: UUID) {
-        snooze(id, until: QuickCaptureParser.tomorrowMorning(now: Date(), timeZone: .current))
+    // MARK: Drafts (what's typed in a task's details)
+
+    /// What's typed in a field and not saved yet (nil: nothing).
+    public func draft(_ id: UUID, _ field: DraftField) -> String? { taskDrafts[id]?[field]?.text }
+
+    /// Typing in a field: the first keystroke remembers the value it started from (`current`). Back to that value,
+    /// there's nothing to save.
+    public func setDraft(_ id: UUID, _ field: DraftField, _ text: String, current: String) {
+        let base = taskDrafts[id]?[field]?.base ?? current
+        var drafts = taskDrafts[id] ?? [:]
+        drafts[field] = text == base ? nil : FieldDraft(text: text, base: base)
+        taskDrafts[id] = drafts.isEmpty ? nil : drafts
+        if field == .repeatRule { repeatProblems[id] = nil }
     }
+
+    public func hasDrafts(_ id: UUID) -> Bool { taskDrafts[id] != nil }
+
+    /// Saves what's typed for a task: only fields changed from where they started, so a newer change from elsewhere
+    /// is never put back. A blank title or a repeat rule that isn't understood stays typed, with the reason; if the
+    /// server says no, what was typed comes back.
+    public func saveDrafts(_ id: UUID) {
+        guard let drafts = taskDrafts[id], board.find(id) != nil else {
+            taskDrafts[id] = nil
+            return
+        }
+        var keep: [DraftField: FieldDraft] = [:]
+        var changes = TaskChanges()
+        if let title = drafts[.title] {
+            if Self.isBlank(title.text) {
+                keep[.title] = title
+                status = "A task title is required."
+            } else {
+                changes.title = title.text
+            }
+        }
+        if let details = drafts[.details] { changes.details = details.text }
+        if let rule = drafts[.repeatRule] {
+            let text = rule.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            do {
+                if !text.isEmpty { _ = try Recurrence.parse(text) }
+                changes.repeatRule = text
+            } catch {
+                keep[.repeatRule] = rule
+                repeatProblems[id] = Self.describe(error)
+                status = Self.describe(error)
+            }
+        }
+        let sent = drafts.filter { keep[$0.key] == nil }
+        taskDrafts[id] = keep.isEmpty ? nil : keep
+        guard !changes.isEmpty else { return }
+        edit(id, changes, onFail: { [weak self] in
+            // Nothing typed is lost: back in the boxes, unless something new was typed meanwhile.
+            guard let self else { return }
+            var now = self.taskDrafts[id] ?? [:]
+            for (field, draft) in sent where now[field] == nil { now[field] = draft }
+            self.taskDrafts[id] = now.isEmpty ? nil : now
+        })
+    }
+
+    /// Saves everything typed in any task's details (the details sheet went away).
+    public func saveAllDrafts() {
+        for id in Array(taskDrafts.keys) { saveDrafts(id) }
+    }
+
+    /// Sets the deadline (nil: none).
+    public func setDeadline(_ id: UUID, _ at: Date?) {
+        let message = at.map { "Due \(Snooze.describe($0, now: Date(), timeZone: .current))" } ?? "No deadline"
+        edit(id, TaskChanges(deadline: .some(at)), message: message)
+    }
+
+    /// Sets how it repeats, in words ("every weekday"; blank: it doesn't repeat any more). Returns why a rule isn't
+    /// understood (then nothing is sent), or nil.
+    @discardableResult
+    public func setRepeat(_ id: UUID, rule: String) -> String? {
+        let text = rule.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            do {
+                _ = try Recurrence.parse(text)
+            } catch {
+                return Self.describe(error)
+            }
+        }
+        edit(id, TaskChanges(repeatRule: text), message: text.isEmpty ? "Doesn’t repeat any more" : "Repeats \(text)")
+        return nil
+    }
+
+    /// Steps in order: each subtask waits for the one before it.
+    public func setSequential(_ id: UUID, _ on: Bool) {
+        edit(id, TaskChanges(sequential: on), message: on ? "Steps in order" : "Steps in any order")
+    }
+
+    /// Hours between steps (nil or 0: none): the next step comes back that long after the one before is done.
+    public func setStepDelay(_ id: UUID, hours: Double?) {
+        let delay = hours.flatMap { $0 > 0 ? $0 * 3600 : nil }
+        edit(id, TaskChanges(stepDelay: .some(delay)), message: delay == nil ? "No wait between steps" : "\(Presentation.hoursLabel(hours ?? 0)) between steps")
+    }
+
+    /// "Remind me" at a time, with an optional message.
+    public func addReminder(_ id: UUID, at: Date, message: String?) {
+        let text = message.flatMap { Self.isBlank($0) ? nil : $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let when = Snooze.describe(at, now: Date(), timeZone: .current)
+        change("Reminder set for \(when)", server: .addReminder(id, at: at, message: text)) {
+            _ = try board.addReminder(id, dueAt: at, message: text, now: $0)
+        }
+    }
+
+    /// A top-level task to another group (its subtasks go with it).
+    public func moveToGroup(_ id: UUID, groupId: UUID) {
+        let name = board.groups.first { $0.id == groupId }?.name ?? "the group"
+        change("Moved to \(name)", server: .moveToGroup(id, groupId: groupId)) { try board.moveToGroup(id, groupId: groupId, now: $0) }
+    }
+
+    /// Puts a finished task away (out of the lists, kept), or brings it back.
+    public func archive(_ id: UUID) { change("Archived", server: .archive(id)) { try board.archive(id, now: $0) } }
+
+    public func unarchive(_ id: UUID) { change("Back in Done", server: .unarchive(id)) { try board.unarchive(id, now: $0) } }
 
     public func addSubtask(_ parentId: UUID, title: String) {
+        guard !Self.isBlank(title) else { return }
         change("Subtask added", server: .addSubtask(parent: parentId, title: title)) { _ = try board.addTask(NewTask(title, parentId: parentId), now: $0) }
     }
 
     public func addSteps(_ parentId: UUID, titles: [String], hoursBetween: Double) {
+        // Lines with only spaces aren't steps.
+        let titles = titles.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !titles.isEmpty else { return }
         let minutes = hoursBetween > 0 ? Int((hoursBetween * 60).rounded()) : nil
         change("Steps added", server: .addSteps(parent: parentId, titles: titles, stepDelayMinutes: minutes)) {
             _ = try board.addSteps(parentId: parentId, titles: titles, stepDelay: hoursBetween > 0 ? hoursBetween * 3600 : nil, now: $0)
@@ -396,6 +546,10 @@ public final class BoardModel: ObservableObject {
     public func delete(_ id: UUID) { change("Deleted", server: .delete(id)) { try board.delete(id, now: $0) } }
 
     public func addGroup(_ name: String) {
+        guard !Self.isBlank(name) else {
+            status = "Type a name for the group."
+            return
+        }
         if waitWhileConnecting() { return }
         if server != nil {
             send(.addGroup(name: name), nil, onDone: { [weak self] data in
@@ -408,6 +562,49 @@ public final class BoardModel: ObservableObject {
         }
         mutate(nil) { selectedGroupId = try board.addGroup(name: name, now: $0).id }
     }
+
+    /// Renames a group (its color stays).
+    public func renameGroup(_ id: UUID, to name: String) {
+        guard let group = board.groups.first(where: { $0.id == id }) else { return }
+        guard !Self.isBlank(name) else {
+            status = "Type a name for the group."
+            return
+        }
+        let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        change("Renamed to \(clean)", server: .updateGroup(id, name: clean, color: group.color)) {
+            try board.updateGroup(id, name: clean, color: group.color, now: $0)
+        }
+    }
+
+    /// A group's color (#rrggbb; nil: none).
+    public func recolorGroup(_ id: UUID, to color: String?) {
+        guard let group = board.groups.first(where: { $0.id == id }) else { return }
+        change("Color changed", server: .updateGroup(id, name: group.name, color: color)) {
+            try board.updateGroup(id, name: group.name, color: color, now: $0)
+        }
+    }
+
+    /// Deletes a group; its tasks move to `moveTo` (nothing is lost).
+    public func deleteGroup(_ id: UUID, moveTo: UUID) {
+        guard let group = board.groups.first(where: { $0.id == id }), let target = board.groups.first(where: { $0.id == moveTo }) else { return }
+        let wasSelected = selectedGroupId == id
+        if change("Deleted \(group.name): its tasks are in \(target.name)", server: .deleteGroup(id, moveTo: moveTo), local: { try board.deleteGroup(id, moveTasksTo: moveTo, now: $0) }),
+           wasSelected {
+            selectedGroupId = moveTo
+            refresh()
+        }
+    }
+
+    /// The focus timer's lengths. Only for a board on this device: the server's are kept with the tasks folder.
+    public func setPomodoroSettings(_ settings: PomodoroSettings) {
+        guard !usesServer else {
+            status = "The focus timer’s lengths come from your tasks folder."
+            return
+        }
+        mutate("Focus timer saved") { _ in try board.setPomodoroSettings(settings) }
+    }
+
+    private static func isBlank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     public func startFocus(_ id: UUID?) {
         let target = id ?? dashboard.focus?.item.id
@@ -572,6 +769,15 @@ public final class BoardModel: ObservableObject {
     }
 }
 
+/// A field of a task's details that keeps what's typed until it's saved.
+public enum DraftField: Hashable, Sendable { case title, details, repeatRule }
+
+/// What's typed in a field, and the value it started from.
+public struct FieldDraft: Equatable, Sendable {
+    public let text: String
+    public let base: String
+}
+
 /// Mirrors pending reminders into local notifications (the OS delivers them even when the app is closed).
 enum NotificationScheduler {
     static func requestAuthorization() {
@@ -639,7 +845,4 @@ final class ForegroundPresenter: NSObject, UNUserNotificationCenterDelegate {
 }
 #endif
 
-extension WorkItem {
-    var root: WorkItem { ancestors.last ?? self }
-}
 #endif

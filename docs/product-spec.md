@@ -297,6 +297,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
+* Task details edit every field the web drawer has except tags, labels, icon, color, attachments and history (title, details, priority, deadline, repeat, energy, group, steps in order, hours between steps), and offer Later, Remind me, Mark done/Reopen, Time this task, Archive/Unarchive and Delete (asks first). Subtasks open in place at any depth; a waiting task says why. Groups can be renamed, recolored and deleted (tasks move). Search follows `TaskQuery` (shared fixture `tests/fixtures/search.json`; tag, label and stage terms wait for those fields in the Swift model). A Settings screen holds appearance, energy in a day, focus lengths and breaks.
 * The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps a board on the device.
 
 ### Phones (Settings › Phones)

@@ -22,7 +22,66 @@ public struct NoteLine: Identifiable, Equatable, Sendable {
     public let meta: String
 }
 
+/// Why a task waits, at the top of its details (the web app's waiting banner).
+public struct WaitingLine {
+    public let text: String
+    /// Its own snooze or wait: Do now brings it back.
+    public let canBringBack: Bool
+    /// The nearest parent whose snooze or wait also keeps it waiting (open that one to change it).
+    public let heldBy: WorkItem?
+}
+
+/// A subtask in the details' tree, `depth` levels under the task shown (0: its own subtasks).
+public struct SubtaskRow: Identifiable {
+    public var id: UUID { item.id }
+    public let item: WorkItem
+    public let depth: Int
+}
+
 public enum Presentation {
+    /// Why a waiting task waits ("Waits for “Sign-off” and snoozed until Fri 9:00"), or nil when it doesn't.
+    public static func waiting(_ item: WorkItem, now: Date, timeZone: TimeZone = .current) -> WaitingLine? {
+        guard !item.isDone, Agenda.state(of: item, now: now) == .waiting else { return nil }
+        let lineage = [item] + item.ancestors
+        let waitsFor = lineage.lazy.compactMap(\.waitingFor).first
+        let wake = lineage.compactMap(\.nextActionAt).filter { $0 > now }.max()
+        guard waitsFor != nil || wake != nil else { return nil }
+        let why = [waitsFor.map { "waits for “\($0.title)”" }, wake.map { "snoozed until \(Snooze.describe($0, now: now, timeZone: timeZone))" }]
+            .compactMap { $0 }.joined(separator: " and ")
+        let own = item.afterId != nil || (item.nextActionAt.map { $0 > now } ?? false)
+        let heldBy = item.ancestors.first { ($0.nextActionAt.map { $0 > now } ?? false) || $0.waitingFor != nil }
+        let text: String
+        if !own, let heldBy {
+            text = "Its parent “\(heldBy.title)” \(why)"
+        } else {
+            text = why.prefix(1).uppercased() + why.dropFirst() + (heldBy.map { "; its parent “\($0.title)” waits too" } ?? "")
+        }
+        return WaitingLine(text: text, canBringBack: own, heldBy: heldBy)
+    }
+
+    /// A task's subtasks at every depth, in order.
+    public static func subtaskRows(_ item: WorkItem) -> [SubtaskRow] {
+        func rows(_ children: [WorkItem], _ depth: Int) -> [SubtaskRow] {
+            children.flatMap { [SubtaskRow(item: $0, depth: depth)] + rows($0.children, depth + 1) }
+        }
+        return rows(item.children, 0)
+    }
+
+    /// Hours offered between steps (the one set now among them, when it's another).
+    public static func stepDelayChoices(current: TimeInterval?) -> [Double] {
+        var hours: [Double] = [0, 1, 2, 4, 8, 12, 24, 48, 72, 168]
+        if let current, current > 0, !hours.contains(current / 3600) { hours.append(current / 3600) }
+        return hours.sorted()
+    }
+
+    /// "No wait", "1 hour", "1.5 hours", "2 days".
+    public static func hoursLabel(_ hours: Double) -> String {
+        if hours <= 0 { return "No wait" }
+        if hours >= 48, hours.truncatingRemainder(dividingBy: 24) == 0 { return "\(Int(hours / 24)) days" }
+        if hours == 1 { return "1 hour" }
+        return hours == hours.rounded() ? "\(Int(hours)) hours" : String(format: "%.1f hours", hours)
+    }
+
     /// A task's title with its icon (an emoji, set in the other apps) in front.
     public static func titleWithIcon(_ item: WorkItem) -> String {
         let title = item.repeatRule == nil ? item.title : "\(item.title) 🔁"

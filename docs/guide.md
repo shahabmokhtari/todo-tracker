@@ -218,6 +218,26 @@ CI builds `todo-tracker-linux-x64.tar.gz` (artifact **linux-tray**; no .NET need
 `~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the AppIndicator extension. A second start opens
 the running one's window.
 
+## The iPhone, iPad and Mac app
+
+Today works like everywhere else: the Do this now card, Do now, Waiting, Done today (with when each was done),
+Workstreams and Recent notes (tap one to open its task).
+
+* **Task details** (tap a title): change the title, details, priority, deadline (or clear it), repeat rule (type it in
+  words or pick one; if a rule isn't understood, you're told why), energy and group. From there you can also snooze it
+  (*Later…*), set a reminder (*Remind me…*, with an optional message), mark it done or reopen it, time it, and add notes.
+* **Subtasks** show at every depth with done and reopen buttons; tap one to open it, *Back* to return. A subtask shows
+  *Part of …*, which opens its parent. *Steps in order* and *Hours between steps* can be changed any time.
+* **Waiting tasks say why** ("Waits for “X” and snoozed until Fri 9:00"), with *Do now* and *Open parent*.
+* **Archive** a finished task to put it away; *Unarchive* brings it back. *Delete* asks first.
+* **Groups:** long-press a group tab (or ⋯ next to the tabs) to rename it, change its color, or delete it. Its tasks move
+  to the group you pick; they're never deleted.
+* **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
+  quotes).
+* **Settings** (gear): light or dark, energy in a day, focus timer lengths and full-screen breaks.
+* **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
+  reminders come back.
+
 ## The server on its own, and the Apple apps from source
 
 ```bash

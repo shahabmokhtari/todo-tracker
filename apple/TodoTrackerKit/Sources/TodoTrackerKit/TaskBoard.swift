@@ -191,10 +191,17 @@ public final class TaskBoard {
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         guard let completedAt = item.completedAt else {
-            if wasRolledForward(item) { undoRollForward(item, actor: actor, now: now) }
+            if wasRolledForward(item) {
+                undoRollForward(item, actor: actor, now: now)
+            } else if let rolled = rolledBy(item) {
+                // The last step of a repeating task moved the whole task on (and opened the step again): "not done after
+                // all" on that step puts the task back as it was, with this step open.
+                undoRollForward(rolled, actor: actor, now: now, keepOpen: item)
+            }
             return
         }
         item.completedAt = nil
+        item.root.archivedAt = nil
         var reopened = [item]
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         for d in item.selfAndDescendants.dropFirst() where d.completedAt == completedAt { d.completedAt = nil; reopened.append(d) }
@@ -273,7 +280,7 @@ public final class TaskBoard {
         item.repeatRule = rule.countedDown()
         let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        log(now, item.id, "completed", "Completed \"\(item.title)\" (repeats: next \(names[next.weekday - 1]) \(next.day) \(months[next.month - 1]))", actor)
+        log(now, item.id, "completed", "Completed \"\(item.title)\" \(Self.rolledMarker)\(names[next.weekday - 1]) \(next.day) \(months[next.month - 1]))", actor)
         return true
     }
 
@@ -283,9 +290,62 @@ public final class TaskBoard {
         return activity.last(where: { $0.itemId == item.id && ($0.kind == "completed" || $0.kind == "reopened") })?.kind == "completed"
     }
 
-    /// "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now.
-    private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date) {
+    /// The repeating task that completing `step` (its last step) moved on to its next time, or nil.
+    private func rolledBy(_ step: WorkItem) -> WorkItem? {
+        guard let done = activity.last(where: { $0.itemId == step.id && ($0.kind == "completed" || $0.kind == "reopened") }),
+              done.kind == "completed" else { return nil }
+        return step.ancestors.first { wasRolledForward($0) && isNewest($0, done.at) }
+    }
+
+    /// What every app writes in the "completed" entry of a repeating task that moved on (the task stays open).
+    static let rolledMarker = "(repeats: next "
+
+    static func isRolled(_ entry: ActivityEntry) -> Bool { entry.kind == "completed" && entry.summary.contains(rolledMarker) }
+
+    /// Whether moving `item` on (at `at`) is the last thing that happened to it or its subtasks: once its next time has
+    /// begun (a step done, a reminder set…), reopening a step no longer undoes it.
+    private func isNewest(_ item: WorkItem, _ at: Date) -> Bool {
+        let family = Set(item.selfAndDescendants.map(\.id))
+        guard let roll = activity.lastIndex(where: { $0.itemId == item.id && $0.kind == "completed" }), activity[roll].at == at else { return false }
+        return activity.lastIndex(where: { family.contains($0.itemId) }) == roll
+    }
+
+    /// When the task last moved on before its latest time, not counting times that were undone (nil: never).
+    private func previousRoll(_ item: WorkItem) -> Date? {
+        let entries = activity.filter { $0.itemId == item.id && ($0.kind == "completed" || $0.kind == "reopened") }
+        var rolls: [Date] = []
+        for entry in entries.dropLast() {
+            if entry.kind == "completed" { rolls.append(entry.at) } else if !rolls.isEmpty { rolls.removeLast() }
+        }
+        return rolls.last
+    }
+
+    /// "Not done after all" on a repeating task that moved on: its deadline and wait as they were (without that record:
+    /// due a time earlier, back in Do now), and what moving on undid as it was: the subtasks done before (all but
+    /// `keepOpen`) done again, and the reminders it put away pending again. Same rule as C# and Kotlin
+    /// (tests/fixtures/undo.json).
+    private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date, keepOpen: WorkItem? = nil) {
         guard let rule = item.repeatRule else { return }
+        if let rolledAt = activity.last(where: { $0.itemId == item.id && $0.kind == "completed" })?.at {
+            let since = previousRoll(item)
+            let keep = Set(keepOpen?.selfAndDescendants.map(\.id) ?? [])
+            for descendant in item.selfAndDescendants.dropFirst() where !keep.contains(descendant.id) && !descendant.isDone {
+                // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                // A repeating subtask that moved on by itself wasn't finished: that doesn't count.
+                var lineage: Set<UUID> = [descendant.id]
+                for ancestor in descendant.ancestors {
+                    if ancestor === item { break }
+                    lineage.insert(ancestor.id)
+                }
+                let last = activity.last { entry in
+                    lineage.contains(entry.itemId) && (entry.kind == "completed" || entry.kind == "reopened")
+                        && !Self.isRolled(entry) && entry.at <= rolledAt && (since.map { entry.at > $0 } ?? true)
+                }
+                if let last, last.kind == "completed" { descendant.completedAt = last.at }
+            }
+            // Put away when it moved on (not the reminder for its next time, which ends below).
+            for r in item.reminders where r.dismissedAt == rolledAt && r.dueAt < (item.nextActionAt ?? .distantFuture) { r.dismissedAt = nil }
+        }
         for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil && r.dueAt > now { r.dismissedAt = now }
         if let undo = item.repeatUndo {
             item.deadline = undo.deadline
@@ -396,13 +456,66 @@ public final class TaskBoard {
 
     /// Edits fields; `deadline: .some(nil)` clears the deadline, `nil` leaves it unchanged.
     public func update(_ id: UUID, title: String? = nil, details: String? = nil, priority: Priority? = nil, deadline: Date?? = nil, actor: Actor = .user, now: Date) throws {
+        try update(id, TaskChanges(title: title, details: details, priority: priority, deadline: deadline), actor: actor, now: now)
+    }
+
+    /// Edits the fields `changes` names (TaskBoard.Update in C#): all are checked first, so a field that isn't valid
+    /// changes nothing.
+    public func update(_ id: UUID, _ changes: TaskChanges, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        let newTitle = try title.map { try Self.requireText($0, "A task title is required.") } ?? item.title
+        let newTitle = try changes.title.map { try Self.requireText($0, "A task title is required.") } ?? item.title
+        if let details = changes.details, details.utf16.count > Self.maxTextLength {
+            throw BoardError.invalid("Details must be at most \(Self.maxTextLength) characters.")
+        }
+        if let delay = changes.stepDelay { try Self.validate(stepDelay: delay) }
+        var rule: Recurrence?
+        if let text = changes.repeatRule, Self.optionalText(text) != nil {
+            do {
+                rule = try Recurrence.parse(text)
+            } catch {
+                throw BoardError.invalid((error as? LocalizedError)?.errorDescription ?? "That repeat rule isn't understood.")
+            }
+        }
+
         item.title = newTitle
-        if let details { item.details = Self.optionalText(details) }
-        if let priority { item.priority = priority }
-        if let deadline { item.deadline = deadline }
+        if let details = changes.details { item.details = Self.optionalText(details) }
+        if let priority = changes.priority { item.priority = priority }
+        if let deadline = changes.deadline { item.deadline = deadline }
+        if let sequential = changes.sequential { item.sequential = sequential }
+        if let delay = changes.stepDelay { item.stepDelay = delay }
+        if changes.repeatRule != nil { item.repeatRule = rule }
         log(now, id, "updated", "Updated \"\(newTitle)\"", actor)
+    }
+
+    public static let maxTextLength = 10_000
+
+    // MARK: Archive (same rules as TodoTracker.Core.TaskBoard.Archive)
+
+    /// Puts a finished top-level task away: out of every list, kept (never deleted).
+    public func archive(_ id: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        if item.parent != nil { throw BoardError.conflict("Subtasks are archived with their task.") }
+        if !item.isDone { throw BoardError.conflict("Finish \"\(item.title)\" before archiving it.") }
+        if item.archivedAt != nil { return }
+        item.archivedAt = now
+        log(now, id, "archived", "Archived \"\(item.title)\"", actor)
+    }
+
+    /// Brings an archived task back (into Done).
+    public func unarchive(_ id: UUID, actor: Actor = .user, now: Date) throws {
+        let item = try get(id)
+        guard item.archivedAt != nil else { return }
+        item.archivedAt = nil
+        log(now, id, "archived", "Brought \"\(item.title)\" back from the archive", actor)
+    }
+
+    /// The focus timer's lengths (a session, the breaks, and how many sessions before a long break).
+    public func setPomodoroSettings(_ settings: PomodoroSettings) throws {
+        guard (1...180).contains(settings.focusMinutes), (1...60).contains(settings.shortBreakMinutes),
+              (1...120).contains(settings.longBreakMinutes), (1...12).contains(settings.focusesBeforeLongBreak) else {
+            throw BoardError.invalid("Focus is 1 to 180 minutes, a break 1 to 60, a long break 1 to 120, every 1 to 12 sessions.")
+        }
+        pomodoro.settings = settings
     }
 
     // MARK: Groups
@@ -414,6 +527,26 @@ public final class TaskBoard {
         groups.append(group)
         log(now, TaskBoard.boardScopeId, "groupChanged", "Added group \"\(clean)\"", actor)
         return group
+    }
+
+    /// Renames or recolors a group (`color` nil: none).
+    public func updateGroup(_ groupId: UUID, name: String, color: String?, actor: Actor = .user, now: Date) throws {
+        let group = try group(groupId)
+        let clean = try validateGroup(name: name, color: color, except: group)
+        group.name = clean
+        group.color = color
+        log(now, TaskBoard.boardScopeId, "groupChanged", "Updated group \"\(clean)\"", actor)
+    }
+
+    /// Deletes a group; its tasks move to `moveTasksTo` (nothing is lost).
+    public func deleteGroup(_ groupId: UUID, moveTasksTo: UUID, actor: Actor = .user, now: Date) throws {
+        let group = try group(groupId)
+        if groups.count == 1 { throw BoardError.conflict("At least one group is required.") }
+        let target = try self.group(moveTasksTo)
+        if target === group { throw BoardError.conflict("Choose a different group to move the tasks into.") }
+        for root in items where root.ownGroupId == group.id { root.ownGroupId = target.id }
+        groups.removeAll { $0 === group }
+        log(now, TaskBoard.boardScopeId, "groupChanged", "Deleted group \"\(group.name)\"", actor)
     }
 
     public func moveToGroup(_ id: UUID, groupId: UUID, actor: Actor = .user, now: Date) throws {

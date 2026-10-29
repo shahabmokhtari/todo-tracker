@@ -121,6 +121,11 @@ public struct DashboardView: View {
     @State private var showWorkstreams = true
     @State private var newGroupName = ""
     @State private var addingGroup = false
+    @State private var renamingGroup: TaskGroup?
+    @State private var groupName = ""
+    @State private var deletingGroup: TaskGroup?
+    @State private var searching = false
+    @State private var showSettings = false
 
     public init(model: BoardModel, scrollable: Bool = true) {
         self.model = model
@@ -132,6 +137,7 @@ public struct DashboardView: View {
             header
             groupTabs
             captureBar
+            if searching || !model.searchText.isEmpty { searchBar }
             if let status = model.status {
                 Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
             }
@@ -145,7 +151,8 @@ public struct DashboardView: View {
         }
         .padding(14)
         .background(backdrop)
-        .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id })) { wrapped in
+        // However the details go away (Close, swipe down, Esc, a break covering them), what was typed is saved.
+        .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id }), onDismiss: { model.saveAllDrafts() }) { wrapped in
             TaskDetailView(model: model, itemId: wrapped.id)
         }
         // A todotracker://task/<id> link: that task's details (also when the link started the app).
@@ -170,6 +177,9 @@ public struct DashboardView: View {
             if showing {
                 detailId = nil
                 addingGroup = false
+                renamingGroup = nil
+                deletingGroup = nil
+                showSettings = false
             }
         }
         #endif
@@ -179,8 +189,85 @@ public struct DashboardView: View {
                 model.addGroup(newGroupName)
                 newGroupName = ""
             }
-            Button("Cancel", role: .cancel) {}
+            .disabled(newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) { newGroupName = "" }
         }
+        .alert("Rename group", isPresented: Binding(get: { renamingGroup != nil }, set: { if !$0 { renamingGroup = nil } })) {
+            TextField("Name", text: $groupName)
+            Button("Save") {
+                if let group = renamingGroup { model.renameGroup(group.id, to: groupName) }
+                renamingGroup = nil
+            }
+            .disabled(groupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) { renamingGroup = nil }
+        }
+        // Deleting a group never deletes its tasks: they move to the group picked here.
+        .confirmationDialog(deletingGroup.map { "Delete the group “\($0.name)”? Its tasks move to the group you pick." } ?? "",
+                            isPresented: Binding(get: { deletingGroup != nil }, set: { if !$0 { deletingGroup = nil } }),
+                            titleVisibility: .visible) {
+            if let group = deletingGroup {
+                ForEach(model.groups.filter { $0.id != group.id }) { target in
+                    Button("Move its tasks to \(target.name)", role: .destructive) {
+                        model.deleteGroup(group.id, moveTo: target.id)
+                        deletingGroup = nil
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { deletingGroup = nil }
+        }
+        .sheet(isPresented: $showSettings) { SettingsView(model: model) }
+    }
+
+    /// Every task the search finds, done and archived ones too (the lists below show only what's open or done today):
+    /// each opens its details.
+    private var searchResultsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 4) {
+                sectionLabel("Found", count: model.searchResults.count)
+                if model.searchResults.isEmpty { emptyText("No tasks match your search.") }
+                ForEach(model.searchResults.prefix(50)) { item in
+                    Button { detailId = item.id } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: item.isArchived ? "archivebox" : item.isDone ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(item.isDone ? Color.green : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Presentation.titleWithIcon(item)).strikethrough(item.isDone).foregroundStyle(item.isDone ? .secondary : .primary)
+                                if item.parent != nil {
+                                    Text(item.path.dropLast().joined(separator: " › ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens it")
+                }
+                if model.searchResults.count > 50 {
+                    Text("Showing 50 of \(model.searchResults.count): add a word to narrow it down.").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Find in titles and details", text: $model.searchText)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("search-field")
+            if !model.searchText.isEmpty {
+                Button { model.searchText = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear the search")
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(Capsule().fill(.background))
+        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
     }
 
     private var backdrop: some View {
@@ -207,17 +294,36 @@ public struct DashboardView: View {
                 }
             }
             Spacer()
-            ThemeMenu { model.setTheme($0) }
+            Button {
+                withAnimation(.snappy(duration: 0.2)) {
+                    if searching || !model.searchText.isEmpty {
+                        searching = false
+                        model.searchText = ""
+                    } else {
+                        searching = true
+                    }
+                }
+            } label: { Image(systemName: "magnifyingglass") }
+                .buttonStyle(.plain)
+                .foregroundStyle(searching || !model.searchText.isEmpty ? Theme.accent : .secondary)
+                .accessibilityLabel(searching || !model.searchText.isEmpty ? "Close the search" : "Search")
+                .accessibilityIdentifier("search-button")
+            Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Settings")
+                .help("Settings: appearance, energy, focus timer")
         }
     }
 
     private var sections: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !model.searchText.isEmpty { searchResultsCard }
             focusCard
             Card {
                 DisclosureGroup(isExpanded: $showNow) {
                     let rest = model.dashboard.now.filter { $0.item.id != model.dashboard.focus?.item.id }
-                    if rest.isEmpty { emptyText("Nothing else right now. Nice.") }
+                    if rest.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing else right now. Nice." : "Nothing else here matches your search.") }
                     ForEach(rest) { entry in
                         TaskRow(entry: entry, model: model, now: model.now) { detailId = entry.item.id }
                     }
@@ -225,7 +331,7 @@ public struct DashboardView: View {
             }
             Card {
                 DisclosureGroup(isExpanded: $showWaiting) {
-                    if model.dashboard.waiting.isEmpty { emptyText("Nothing is parked.") }
+                    if model.dashboard.waiting.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing is parked." : "Nothing waiting matches your search.") }
                     ForEach(model.dashboard.waiting) { entry in
                         TaskRow(entry: entry, model: model, now: model.now) { detailId = entry.item.id }
                     }
@@ -241,7 +347,7 @@ public struct DashboardView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     } else {
-                        emptyText("Finish something and it shows up here.")
+                        emptyText(model.searchText.isEmpty ? "Finish something and it shows up here." : "Nothing done today matches your search.")
                     }
                     ForEach(model.doneToday) { item in
                         HStack(spacing: 8) {
@@ -254,11 +360,27 @@ public struct DashboardView: View {
                                 }
                             }
                             Spacer()
+                            if let at = Agenda.doneAt(model.board, item) {
+                                Text(at.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                    .accessibilityLabel("done at \(at.formatted(date: .omitted, time: .shortened))")
+                            }
                             Button("Reopen") { model.reopen(item.id) }
                                 .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
                                 .accessibilityLabel("Reopen \(item.title)")
                         }
                         .padding(.vertical, 3)
+                    }
+                    if model.archivedCount > 0 && model.searchText.isEmpty {
+                        // Put away, never gone: the search finds them (and their details have Unarchive).
+                        Button {
+                            searching = true
+                            model.searchText = "is:archived"
+                        } label: {
+                            Label("Archived (\(model.archivedCount))", systemImage: "archivebox").font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(Theme.accent)
+                        .padding(.top, 4)
                     }
                 } label: { sectionLabel("Done today", count: model.doneToday.count) }
             }
@@ -273,17 +395,24 @@ public struct DashboardView: View {
             }
             Card {
                 DisclosureGroup(isExpanded: $showNotes) {
+                    if model.dashboard.recentNotes.isEmpty { emptyText("Notes you and your agents log appear here.") }
                     ForEach(model.dashboard.recentNotes) { n in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(n.note.text)
-                            HStack(spacing: 5) {
-                                Avatar(actor: n.note.author)
-                                Text("\(n.note.author.displayName) · \(n.item.title) · \(RelativeTime.format(n.note.at, now: model.now))")
-                                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        // The note's task opens.
+                        Button { detailId = n.item.id } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(n.note.text).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                                HStack(spacing: 5) {
+                                    Avatar(actor: n.note.author)
+                                    Text("\(n.note.author.displayName) · \(n.item.title) · \(RelativeTime.format(n.note.at, now: model.now))")
+                                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 5)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 5)
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens \(n.item.title)")
                     }
                 } label: { sectionLabel("Recent notes", count: model.dashboard.recentNotes.count) }
             }
@@ -295,7 +424,18 @@ public struct DashboardView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 2) {
                 tab(nil, name: "All", color: nil)
-                ForEach(model.groups) { g in tab(g.id, name: g.name, color: g.color ?? "#6366f1") }
+                ForEach(model.groups) { g in tab(g.id, name: g.name, color: g.color ?? "#6366f1").contextMenu { groupActions(g) } }
+                if let selected = model.groups.first(where: { $0.id == model.selectedGroupId }) {
+                    Menu { groupActions(selected) } label: {
+                        Image(systemName: "ellipsis").font(.caption.weight(.bold)).padding(.horizontal, 8).padding(.vertical, 6)
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Change the group \(selected.name)")
+                }
                 Button { addingGroup = true } label: {
                     Image(systemName: "plus").font(.caption.weight(.bold)).padding(.horizontal, 10).padding(.vertical, 6)
                 }
@@ -306,6 +446,23 @@ public struct DashboardView: View {
             .padding(3)
             .background(Capsule().fill(.quaternary.opacity(0.6)))
         }
+    }
+
+    /// Rename, recolor or delete a group (its tasks move to another one; none are deleted).
+    @ViewBuilder private func groupActions(_ group: TaskGroup) -> some View {
+        Button {
+            groupName = group.name
+            renamingGroup = group
+        } label: { Label("Rename…", systemImage: "pencil") }
+        Menu {
+            ForEach(groupColors, id: \.hex) { color in
+                Button { model.recolorGroup(group.id, to: color.hex) } label: {
+                    if group.color?.lowercased() == color.hex { Label(color.name, systemImage: "checkmark") } else { Text(color.name) }
+                }
+            }
+        } label: { Label("Color", systemImage: "paintpalette") }
+        Button(role: .destructive) { deletingGroup = group } label: { Label("Delete group…", systemImage: "trash") }
+            .disabled(model.groups.count < 2)
     }
 
     private func tab(_ id: UUID?, name: String, color: String?) -> some View {
@@ -470,7 +627,7 @@ struct FocusCard: View {
                     }
                     .buttonStyle(.plain)
                 }
-                SnoozeMenu(model: model, id: entry.item.id, pill: true)
+                SnoozeMenu(model: model, id: entry.item.id, style: .pill)
                 PillButton(title: "Note", systemImage: "note.text") { model.toggleNote(entry.item.id) }
                 PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
                 let timing = model.runningTimer?.item.id == entry.item.id
@@ -530,13 +687,6 @@ struct MoreMenu: View {
                     }
                 }
             } label: { Label("Energy per hour", systemImage: "bolt") }
-            Menu {
-                ForEach([4, 6, 8, 10, 12, 14, 16], id: \.self) { n in
-                    Button { model.setDailyEnergy(n) } label: {
-                        if model.board.dailyEnergy == n { Label("\(n)", systemImage: "checkmark") } else { Text("\(n)") }
-                    }
-                }
-            } label: { Label("Energy in a day: \(model.board.dailyEnergy)", systemImage: "bolt.circle") }
             Button { Clipboard.copy(TaskLinks.forTask(entry.item.id)) } label: { Label("Copy link", systemImage: "link") }
         } label: {
             if pill {
@@ -624,43 +774,55 @@ struct PillButton: View {
 }
 
 struct SnoozeMenu: View {
+    enum Style { case icon, pill, row }
+
     @ObservedObject var model: BoardModel
     let id: UUID
-    var pill = false
+    var style = Style.icon
     @State private var picking = false
 
     var body: some View {
-        Menu {
-            let now = Date()
-            ForEach(model.snoozeChoices) { choice in
-                Button { model.snooze(id, until: choice.at) } label: {
-                    Text("\(choice.label)  ·  \(Snooze.describe(choice.at, now: now, timeZone: .current))")
+        switch style {
+        case .row:
+            // A row of a form: a plain menu (sizing it like a pill breaks the row's layout).
+            Menu { choices } label: { Label("Later…", systemImage: "clock") }
+                .accessibilityLabel("Later")
+                .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        case .pill, .icon:
+            Menu { choices } label: {
+                if style == .pill {
+                    Label("Later", systemImage: "clock").font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Capsule().fill(.background))
+                        .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
+                } else {
+                    Image(systemName: "clock")
                 }
             }
-            Divider()
-            Button { picking = true } label: { Label("Pick a time…", systemImage: "calendar") }
-            let others = model.waitCandidates(for: id)
-            Menu {
-                if others.isEmpty { Text("No other open tasks") }
-                ForEach(others.prefix(12), id: \.id) { other in
-                    Button(other.title) { model.waitFor(id, after: other) }
-                }
-            } label: { Label("After another task", systemImage: "link") }
-        } label: {
-            if pill {
-                Label("Later", systemImage: "clock").font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Capsule().fill(.background))
-                    .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
-            } else {
-                Image(systemName: "clock")
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .fixedSize()
+            .accessibilityLabel("Later")
+            .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        }
+    }
+
+    @ViewBuilder private var choices: some View {
+        let now = Date()
+        ForEach(model.snoozeChoices) { choice in
+            Button { model.snooze(id, until: choice.at) } label: {
+                Text("\(choice.label)  ·  \(Snooze.describe(choice.at, now: now, timeZone: .current))")
             }
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .fixedSize()
-        .accessibilityLabel("Later")
-        .sheet(isPresented: $picking) { SnoozePicker(model: model, id: id) }
+        Divider()
+        Button { picking = true } label: { Label("Pick a time…", systemImage: "calendar") }
+        let others = model.waitCandidates(for: id)
+        Menu {
+            if others.isEmpty { Text("No other open tasks") }
+            ForEach(others.prefix(12), id: \.id) { other in
+                Button(other.title) { model.waitFor(id, after: other) }
+            }
+        } label: { Label("After another task", systemImage: "link") }
     }
 }
 
@@ -720,7 +882,6 @@ struct TaskRow: View {
     @ObservedObject var model: BoardModel
     let now: Date
     let open: () -> Void
-    @State private var notesOpen = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -741,7 +902,8 @@ struct TaskRow: View {
                     Label(reminder.message, systemImage: "alarm").font(.caption.weight(.semibold)).foregroundStyle(Theme.warnText)
                 }
                 if !entry.item.notes.isEmpty {
-                    Button { notesOpen.toggle() } label: {
+                    let notesOpen = model.shownNotes.contains(entry.item.id)
+                    Button { model.toggleShownNotes(entry.item.id) } label: {
                         Text(Presentation.notesToggle(count: entry.item.notes.count, open: notesOpen)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)

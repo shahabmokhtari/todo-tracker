@@ -73,8 +73,10 @@ struct MenuBarGlance: View {
                 Text(focus.item.title).font(.headline)
                 HStack {
                     Button("Mark done") { model.complete(focus.item.id) }
-                    Button("Later (1h)") { model.snooze(focus.item.id, minutes: 60) }
-                    Button("Tomorrow") { model.snoozeUntilTomorrow(focus.item.id) }
+                    // Two of the quick choices every app offers (In an hour, Tomorrow morning).
+                    ForEach(model.snoozeChoices.filter { $0.id == "1h" || $0.id == "tomorrow" }) { choice in
+                        Button(choice.id == "1h" ? "Later (1h)" : "Tomorrow") { model.snooze(focus.item.id, until: choice.at) }
+                    }
                 }
             } else {
                 Text("Nothing is due ✨")
