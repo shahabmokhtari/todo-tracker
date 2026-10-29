@@ -137,8 +137,9 @@ public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
         foreach (var entry in snapshot.Entries)
         {
             var path = BlobPath(entry.Hash);
-            if (!File.Exists(path))
+            if (!File.Exists(path) || SyncHash.Of(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)) != entry.Hash)
             {
+                // Missing, or damaged (a sync client's half download): the other devices would never get it.
                 await WriteAsync(path, read(entry), cancellationToken).ConfigureAwait(false);
             }
             else if (File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-1))

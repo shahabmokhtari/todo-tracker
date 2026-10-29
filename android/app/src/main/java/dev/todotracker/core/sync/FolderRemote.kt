@@ -66,6 +66,9 @@ class FolderRemote(val root: File, private val clock: () -> Long = System::curre
             val file = blobPath(entry.hash)
             if (!file.exists()) {
                 VaultFiles.writeAtomic(file, read(entry))
+            } else if (SyncHash.of(file.readBytes()) != entry.hash) {
+                // Damaged (a sync client's half download, a bad disk): the others would never get it, so it's written again.
+                VaultFiles.writeAtomic(file, read(entry))
             } else if (file.lastModified() < now - DAY) {
                 // Still in use: never "old" to a device cleaning up while it sees an older list of ours.
                 file.setLastModified(now)

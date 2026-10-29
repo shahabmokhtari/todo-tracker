@@ -51,24 +51,28 @@ object VaultFiles {
      * Written atomically (a temp file `.<name>.<8 hex>.tmp` next to it, flushed, then renamed over it), so readers and
      * sync never see half a file.
      */
-    fun writeAtomic(target: File, content: ByteArray) {
+    fun writeAtomic(target: File, content: ByteArray, replace: Boolean = true) {
         target.parentFile?.mkdirs()
         val temp = File(target.parentFile, "." + target.name + "." + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".tmp")
         try {
+            // On the disk (not only in a cache) before it takes the real name: a power cut can't leave it empty.
             FileOutputStream(temp).use { out ->
                 out.write(content)
                 out.flush()
                 out.fd.sync()
             }
-            if (!temp.renameTo(target)) {
-                java.nio.file.Files.move(temp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            if (replace) {
+                java.nio.file.Files.move(temp.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            } else {
+                // A new file: one that appeared meanwhile (another app, a sync client) is never replaced.
+                java.nio.file.Files.move(temp.toPath(), target.toPath())
             }
         } finally {
             if (temp.exists()) temp.delete()
         }
     }
 
-    fun writeAtomic(target: File, text: String) = writeAtomic(target, text.toByteArray(Charsets.UTF_8))
+    fun writeAtomic(target: File, text: String, replace: Boolean = true) = writeAtomic(target, text.toByteArray(Charsets.UTF_8), replace)
 
     /** The text of a file as .NET's File.ReadAllText reads it: UTF-8, a byte order mark left out. */
     fun readText(file: File): String = decode(file.readBytes())
@@ -78,13 +82,31 @@ object VaultFiles {
         return if (bom) String(bytes, 3, bytes.size - 3, Charsets.UTF_8) else String(bytes, Charsets.UTF_8)
     }
 
-    private val reservedName = Net.rx("^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\\..*)?$", ignoreCase = true)
+    /** The longest file or folder name every system takes, in UTF-8 bytes. */
+    const val MAX_NAME_BYTES = 255
+
+    /**
+     * Sets an old board file (and its backups) aside as `<name>.migrated`: kept, never read again. An earlier
+     * `.migrated` is never replaced: this one becomes `.migrated 2`, `.migrated 3`…
+     */
+    fun setAside(file: File) {
+        for (f in listOf(file, File(file.path + ".bak"), File(file.path + ".restoring"))) {
+            if (!f.exists()) continue
+            var target = File(f.path + ".migrated")
+            var n = 2
+            while (target.exists()) target = File(f.path + ".migrated ${n++}")
+            java.nio.file.Files.move(f.toPath(), target.toPath())
+        }
+    }
+
+    private val reservedName =Net.rx("^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\\..*)?$", ignoreCase = true)
 
     /** A path from another device is only ever a file inside the vault's own folders, with a name every system keeps as is. */
     fun isSyncablePath(rel: String): Boolean =
         rel.isNotEmpty() && rel.length < 400 && rel.contains('/') && !rel.contains('\\') && !rel.contains(':') && !Net.endsWithCi(rel, ".tmp") &&
             rel.split('/').all { s ->
                 s.isNotEmpty() && s != ".." && s[0] != '.' && Net.trim(s).length == s.length && !s.endsWith('.') &&
+                    s.toByteArray(Charsets.UTF_8).size <= MAX_NAME_BYTES &&
                     s.none { it.code < 32 || it in "<>:\"|?*/" } && !reservedName.matcher(s).find()
             }
 }

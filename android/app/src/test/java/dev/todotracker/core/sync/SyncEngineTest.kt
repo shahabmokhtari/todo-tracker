@@ -1,6 +1,7 @@
 package dev.todotracker.core.sync
 
 import dev.todotracker.core.Actor
+import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.NewTask
 import dev.todotracker.core.TaskBoard
 import dev.todotracker.core.vault.VaultStore
@@ -124,14 +125,82 @@ class SyncEngineTest {
         val legacy = TaskBoard()
         legacy.items.add(dev.todotracker.core.WorkItem(shared.id, "Shared already", dev.todotracker.core.Priority.NORMAL, now, legacy.groups[0].id))
         legacy.addTask(NewTask("Only on the phone", groupId = legacy.groups[1].id), Actor.USER, now)
+        val boardJson = File(dir, "Phone/board.json")
+        boardJson.parentFile!!.mkdirs()
+        boardJson.writeText(BoardCodec.encode(legacy))
+        File(dir, "Phone/board.json.migrated").writeText("an older backup")
         val b = folderDevice("Phone")
-        b.sync()
-        assertEquals(1, b.store.importBeside(legacy))
+        now = now.plus(Duration.ofSeconds(1))
+        val joined = b.engine.join(boardJson)
+        assertTrue(joined.joined)
+        assertEquals(1, joined.imported)
         assertEquals(listOf("Only on the phone", "Shared already"), b.titles())
         assertFalse(b.tasks().keys.any { it.contains("from") })
-        b.sync()
+        assertFalse(boardJson.exists())
+        assertEquals("an older backup", File(dir, "Phone/board.json.migrated").readText())
+        assertTrue(File(dir, "Phone/board.json.migrated 2").exists())
         a.sync()
         assertEquals(listOf("Only on the phone", "Shared already"), a.titles())
         assertEquals(a.tasks(), b.tasks())
+    }
+
+    @Test
+    fun aJoinThatDidntGetEverythingImportsAndPublishesNothingYet() {
+        val a = folderDevice("Laptop")
+        a.store.update { it.addTask(NewTask("On the laptop", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        // One of the laptop's contents hasn't arrived in the shared folder yet.
+        File(shared, "blobs").walkTopDown().filter { it.isFile }.first { it.readText().contains("# On the laptop") }.delete()
+
+        val boardJson = File(dir, "Phone/board.json")
+        boardJson.parentFile!!.mkdirs()
+        val legacy = TaskBoard()
+        legacy.addTask(NewTask("Only on the phone", groupId = legacy.groups[0].id), Actor.USER, now)
+        boardJson.writeText(BoardCodec.encode(legacy))
+        val b = folderDevice("Phone")
+        val joined = b.engine.join(boardJson)
+        assertFalse(joined.joined)
+        assertEquals(0, joined.imported)
+        assertTrue(boardJson.exists())
+        assertEquals(emptyList<String>(), b.titles())
+        assertEquals(listOf(a.state.deviceId + ".json"), File(shared, "devices").list()!!.toList())
+    }
+
+    @Test
+    fun aDamagedContentIsReportedAndWrittenAgainByTheDeviceThatHasIt() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        a.store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        val blob = File(shared, "blobs").walkTopDown().filter { it.isFile }.first { it.readText().contains("# Plan") }
+        blob.writeText("half a download")
+        val first = b.sync()
+        assertTrue(first.problem!!.contains("doesn't match"))
+        assertEquals(emptyList<String>(), b.titles())
+
+        // The laptop's next publish writes it again; then the phone gets it.
+        a.store.update { it.addTask(NewTask("Another", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        assertTrue(blob.readText().contains("# Plan"))
+        b.sync()
+        assertEquals(listOf("Another", "Plan"), b.titles())
+    }
+
+    @Test
+    fun theTokenNeverFollowsARedirectAwayFromGitHub() {
+        val seen = mutableListOf<HttpRequest>()
+        val http = HttpTransport { r ->
+            seen.add(r)
+            when {
+                r.url.startsWith("https://api.github.com/gists?") -> HttpResponse(200, emptyMap(), "[]".toByteArray())
+                r.url == "https://api.github.com/gists/g1" -> HttpResponse(302, mapOf("Location" to "https://evil.example/steal"), ByteArray(0))
+                else -> HttpResponse(200, emptyMap(), "{\"files\":{}}".toByteArray())
+            }
+        }
+        val gist = GistRemote(http, { "secret" }, { "g1" }, {})
+        gist.read("me", null)
+        val redirected = seen.single { it.url == "https://evil.example/steal" }
+        assertEquals(null, redirected.headers["Authorization"])
+        assertTrue(seen.filter { it.url.startsWith("https://api.github.com/") }.all { it.headers["Authorization"] == "Bearer secret" })
     }
 }

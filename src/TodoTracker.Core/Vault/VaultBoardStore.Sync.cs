@@ -187,7 +187,11 @@ public sealed partial class VaultBoardStore
         rel.Length > 0 && rel.Length < 400 && rel.Contains('/', StringComparison.Ordinal) && !rel.Contains('\\', StringComparison.Ordinal)
         && !rel.Contains(':', StringComparison.Ordinal) && !rel.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
         && rel.Split('/').All(s => s.Length > 0 && s != ".." && s[0] != '.' && s.Trim().Length == s.Length && !s.EndsWith('.')
+            && Encoding.UTF8.GetByteCount(s) <= MaxNameBytes
             && s.IndexOfAny(InvalidNameChars) < 0 && !ReservedName().IsMatch(s));
+
+    /// <summary>The longest file or folder name every system takes, in UTF-8 bytes (ext4, APFS and the phones' file systems allow 255).</summary>
+    internal const int MaxNameBytes = 255;
 
     // Windows' file name rules, on every system (a name another computer can't write would never sync): elsewhere
     // GetInvalidFileNameChars lists only '\0' and '/', so the control characters are spelled out.
@@ -198,6 +202,13 @@ public sealed partial class VaultBoardStore
 
     private SyncSnapshot BuildSyncSnapshot()
     {
+        // A task file that can't be read has no task id to be listed under: left out (or listed as a plain file), the
+        // other devices would take its task as deleted and trash their copy. Sync waits until it's fixed.
+        if (_caches.Files.FirstOrDefault(f => f.Value.Good is null) is { Key: not null } unreadable)
+        {
+            throw new IOException($"\"{unreadable.Key}\" can't be read ({unreadable.Value.Error}). Sync waits until it's fixed, so your other devices keep the task.");
+        }
+
         var entries = new Dictionary<string, SyncEntry>(StringComparer.Ordinal);
         var memory = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

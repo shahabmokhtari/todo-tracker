@@ -175,7 +175,13 @@ internal static partial class VaultFiles
         var temp = Path.Combine(Path.GetDirectoryName(path)!, "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp");
         try
         {
-            File.WriteAllBytes(temp, content);
+            // On the disk (not only in a cache) before it takes the real name: a power cut can't leave it empty.
+            using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(content);
+                stream.Flush(flushToDisk: true);
+            }
+
             File.Move(temp, path, overwrite: true);
         }
         finally

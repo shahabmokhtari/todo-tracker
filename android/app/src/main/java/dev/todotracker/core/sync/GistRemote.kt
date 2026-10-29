@@ -37,7 +37,8 @@ object UrlConnectionTransport : HttpTransport {
             setMethod(connection, request.method)
             connection.connectTimeout = 30_000
             connection.readTimeout = 60_000
-            connection.instanceFollowRedirects = true
+            // Redirects are followed by the caller, which checks every hop's host before sending the token on.
+            connection.instanceFollowRedirects = false
             for ((k, v) in request.headers) connection.setRequestProperty(k, v)
             request.body?.let { body ->
                 connection.doOutput = true
@@ -90,6 +91,9 @@ class GistRemote(
         /** GitHub serves at most 10 MB of a gist file; each device's file stays below this. */
         const val MAX_BUNDLE_BYTES = 9 * 1024 * 1024
         private const val API = "https://api.github.com"
+
+        /** The only hosts the token is ever sent to (over https). */
+        val TOKEN_HOSTS = setOf("api.github.com", "gist.githubusercontent.com")
     }
 
     private val description = DESCRIPTION_PREFIX + library
@@ -190,18 +194,39 @@ class GistRemote(
 
     private fun revision(gist: JsonObject): String? = (gist["history"] as? JsonArray)?.firstOrNull()?.let { NetJson.str((it as? JsonObject)?.get("version")) }
 
-    private fun headers(): Map<String, String> = linkedMapOf(
-        "Authorization" to "Bearer ${token()}",
-        "Accept" to "application/vnd.github+json",
-        "User-Agent" to "TodoTracker-Sync",
-        "X-GitHub-Api-Version" to "2022-11-28",
-    )
+    private fun send(method: String, path: String, body: JsonElement?, extra: Map<String, String> = emptyMap()): HttpResponse =
+        exchange(method, if (path.startsWith("https://")) path else API + path, body?.let { SyncJson.write(it).toByteArray(Charsets.UTF_8) }, extra)
 
-    private fun send(method: String, path: String, body: JsonElement?, extra: Map<String, String> = emptyMap()): HttpResponse {
-        val headers = LinkedHashMap(headers())
-        headers.putAll(extra)
-        if (body != null) headers["Content-Type"] = "application/json; charset=utf-8"
-        return http.send(HttpRequest(method, if (path.startsWith("https://")) path else API + path, headers, body?.let { SyncJson.write(it).toByteArray(Charsets.UTF_8) }))
+    /**
+     * Sends a request and follows redirects by hand (at most 5): the token goes only to [TOKEN_HOSTS] over https, checked
+     * again at every hop, so a redirect can never carry it anywhere else.
+     */
+    private fun exchange(method: String, start: String, body: ByteArray?, extra: Map<String, String>): HttpResponse {
+        var url = start
+        var verb = method
+        var content = body
+        for (hop in 0..5) {
+            val uri = URI(url)
+            val headers = LinkedHashMap<String, String>()
+            if (uri.scheme == "https" && uri.host?.lowercase() in TOKEN_HOSTS) headers["Authorization"] = "Bearer ${token()}"
+            headers["Accept"] = "application/vnd.github+json"
+            headers["User-Agent"] = "TodoTracker-Sync"
+            headers["X-GitHub-Api-Version"] = "2022-11-28"
+            headers.putAll(extra)
+            if (content != null) headers["Content-Type"] = "application/json; charset=utf-8"
+            val response = http.send(HttpRequest(verb, url, headers, content))
+            val location = response.header("Location")
+            if (response.status !in setOf(301, 302, 303, 307, 308) || location == null) return response
+            if (hop == 5) throw GitHubException("GitHub redirected too many times.", response.status)
+            val next = uri.resolve(location)
+            if (next.scheme != "https") throw GitHubException("GitHub redirected to a page that isn't secure: $next", response.status)
+            url = next.toString()
+            if (response.status == 303 || ((response.status == 301 || response.status == 302) && verb == "POST")) {
+                verb = "GET"
+                content = null
+            }
+        }
+        throw GitHubException("GitHub redirected too many times.", 310)
     }
 
     private fun ensure(response: HttpResponse) {
@@ -247,11 +272,8 @@ class GistRemote(
     }
 
     private fun raw(url: String): String {
-        // The token only ever goes to GitHub.
-        val uri = URI(url)
-        val host = uri.host ?: ""
-        val github = uri.scheme == "https" && (host == "gist.githubusercontent.com" || host.endsWith(".githubusercontent.com", ignoreCase = true) || host == "api.github.com")
-        val response = http.send(HttpRequest("GET", url, if (github) headers() else mapOf("User-Agent" to "TodoTracker-Sync")))
+        // The token only ever goes to GitHub's API and gist hosts (exchange checks each hop).
+        val response = exchange("GET", url, null, emptyMap())
         ensure(response)
         if (response.body.size > MAX_BUNDLE_BYTES * 2L) throw IOException("A device's sync file is too big.")
         return response.text

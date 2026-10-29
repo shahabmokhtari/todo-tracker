@@ -1,8 +1,10 @@
 package dev.todotracker.core.sync
 
+import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.vault.Net
 import dev.todotracker.core.vault.VaultFiles
 import dev.todotracker.core.vault.VaultStore
+import java.io.File
 import java.io.IOException
 import java.time.Duration
 import java.time.Instant
@@ -39,7 +41,23 @@ interface SyncRemote {
 }
 
 /** What one sync did. */
-data class SyncResult(val changes: Int, val peers: Int, val conflicts: List<SyncConflictRecord>, val published: Boolean, val skipped: Boolean, val problem: String? = null, val devices: List<SyncDevice>? = null)
+data class SyncResult(
+    val changes: Int,
+    val peers: Int,
+    val conflicts: List<SyncConflictRecord>,
+    val published: Boolean,
+    val skipped: Boolean,
+    val problem: String? = null,
+    val devices: List<SyncDevice>? = null,
+    /** Every other device there was merged (none skipped, half read or waiting for contents). */
+    val complete: Boolean = true,
+)
+
+/** What joining sync did: the pull, how many of this phone's own tasks came in beside what came, and the publish. */
+data class JoinResult(val pulled: SyncResult, val imported: Int, val published: SyncResult?) {
+    /** False: the first pull didn't get everything, so nothing was imported or published yet (join again later). */
+    val joined: Boolean get() = published != null
+}
 
 /** How a place is used: read (others' changes come in), write (this device's tasks go out), or both. */
 enum class SyncMode(val reads: Boolean, val writes: Boolean) { READ(true, false), WRITE(false, true), BOTH(true, true) }
@@ -84,6 +102,30 @@ class SyncEngine(
                 state.remoteVersion = null
             }
         }
+    }
+
+    /**
+     * Joins sync for the first time (docs/design/phone-sync.md, "First join"): pulls what the other devices have
+     * without publishing, then brings this phone's own [legacyBoard] file (its board.json) in beside what came (tasks
+     * already there are skipped), sets that file aside as `.migrated`, and publishes. When the pull didn't get
+     * everything (a device half read, contents not arrived), nothing is imported or published: join again later.
+     */
+    fun join(legacyBoard: File?): JoinResult = synchronized(lock) {
+        val previous = mode
+        mode = SyncMode.READ
+        val pulled = try {
+            syncWithRetries()
+        } finally {
+            mode = previous
+        }
+        if (!pulled.complete) return@synchronized JoinResult(pulled, 0, null)
+        var imported = 0
+        if (legacyBoard != null && legacyBoard.exists()) {
+            // A board that can't be read stays where it is (BoardException): nothing is lost or set aside.
+            imported = store.importBeside(BoardCodec.decode(legacyBoard.readText()))
+            VaultFiles.setAside(legacyBoard)
+        }
+        JoinResult(pulled, imported, syncWithRetries())
     }
 
     /** Stops merging a device (a phone or computer that's gone). */
@@ -155,8 +197,10 @@ class SyncEngine(
         for (peer in peers) {
             try {
                 val entries = valid(peer) ?: continue
-                if (!fetch(peer, entries, local)) {
+                val missing = fetch(peer, entries, local)
+                if (missing != null) {
                     complete = false
+                    missing.takeIf { it.isNotEmpty() }?.let { problems.add("${peer.name}: $it") }
                     continue
                 }
                 val base = state.loadBase(peer.device)
@@ -218,22 +262,26 @@ class SyncEngine(
 
         collectBlobs(conflicts)
         val devices = if (snapshot == null) null else seen.map { SyncDevice(it.device, it.name, it.at) }
-        return SyncResult(changes, peers.size, conflicts, published, skipped = false, problem = problems.takeIf { it.isNotEmpty() }?.joinToString(" "), devices = devices)
+        return SyncResult(changes, peers.size, conflicts, published, skipped = false, problem = problems.takeIf { it.isNotEmpty() }?.joinToString(" "), devices = devices, complete = complete)
     }
 
-    /** Brings the peer's contents not held yet into the local cache. False if some haven't arrived (merged next time). */
-    private fun fetch(peer: DeviceSnapshot, entries: Map<String, SyncEntry>, local: SyncSnapshot): Boolean {
+    /**
+     * Brings the peer's contents not held yet into the local cache. Null when all are here; else why not ("" when one
+     * just hasn't arrived yet): that device is merged next time, never in part.
+     */
+    private fun fetch(peer: DeviceSnapshot, entries: Map<String, SyncEntry>, local: SyncSnapshot): String? {
         for (entry in entries.values) {
             if (local.entries[entry.key]?.hash == entry.hash || state.hasBlob(entry.hash)) continue
             val content = try {
                 remote.readContent(peer, entry)
             } catch (e: IOException) {
-                return false
+                return ""
             }
-            if (SyncHash.of(content) != entry.hash) return false
+            // Damaged, or still being written: said (so a blob that keeps failing is seen), and tried again next time.
+            if (SyncHash.of(content) != entry.hash) return "${entry.path} doesn't match its contents' hash (damaged, or still being written); it's tried again."
             state.writeBlob(entry.hash, content)
         }
-        return true
+        return null
     }
 
     private fun needsBase(key: String) = SyncKeys.kindOf(key).let { it == SyncKind.TASK || it == SyncKind.RICH || it == SyncKind.CONFIG || it == SyncKind.ORDER }

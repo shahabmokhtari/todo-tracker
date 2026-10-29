@@ -117,6 +117,9 @@ class VaultStore(
 
         /** The ids of a new vault's default tabs (and of any folder not in config.json): StableGuid("group|" + FOLDER). */
         fun groupId(folder: String): UUID = Net.stableGuid("group|" + Net.upper(folder))
+
+        /** Trash is emptied this many days after it was trashed (the time in the trash file's name). */
+        const val TRASH_DAYS = 30L
     }
 
     // ---- Startup ----
@@ -155,19 +158,23 @@ class VaultStore(
      * Brings the tasks an older version of the app kept on its own (board.json) in beside what's here, the first time
      * this phone joins sync (after the first pull): a top-level task whose id, or any of its subtasks' ids, is already
      * here is skipped, never replaced; the others go to the tab of the same name, else the first tab. Returns how many came in.
+     * All or nothing, like any change: a failure part way puts every file back. [legacy] itself is left as it is.
      */
-    fun importBeside(legacy: TaskBoard): Int = synchronized(lock) {
-        refreshIfNeeded()
-        var count = 0
-        for (top in legacy.items.toList()) {
-            if (hasAnyId(board, top)) continue
-            val tab = legacy.groups.firstOrNull { it.id == top.groupId }?.name
-            val group = board.groups.firstOrNull { Net.equalsCi(it.name, tab) } ?: board.groups[0]
-            attachLoaded(board, top, group.id)
-            count++
+    fun importBeside(legacy: TaskBoard): Int {
+        val json = BoardCodec.encode(legacy)
+        return update { b ->
+            // A fresh copy each attempt (a change that's retried starts again from the board read from disk).
+            val copy = BoardCodec.decode(json)
+            var count = 0
+            for (top in copy.items.toList()) {
+                if (hasAnyId(b, top)) continue
+                val tab = copy.groups.firstOrNull { it.id == top.groupId }?.name
+                val group = b.groups.firstOrNull { Net.equalsCi(it.name, tab) } ?: b.groups[0]
+                attachLoaded(b, top, group.id)
+                count++
+            }
+            count
         }
-        if (count > 0) persist()
-        count
     }
 
     // ---- Reading and changing ----
@@ -405,7 +412,7 @@ class VaultStore(
             while (undo.isNotEmpty()) {
                 try {
                     undo.removeLast()()
-                } catch (ignored: IOException) {
+                } catch (ignored: Exception) {
                     // Best effort: keep undoing the rest.
                 }
             }
@@ -605,7 +612,7 @@ class VaultStore(
     private fun writeTaskFile(rel: String, text: String, undo: ArrayDeque<() -> Unit>) {
         val file = full(rel)
         val previous = if (file.exists()) file.readBytes() else null
-        VaultFiles.writeAtomic(file, text)
+        VaultFiles.writeAtomic(file, text, replace = previous != null)
         undo.addLast { if (previous == null) file.delete() else VaultFiles.writeAtomic(file, previous) }
         pendingStamps[rel] = stamp(file)
     }
@@ -650,16 +657,34 @@ class VaultStore(
         return candidate
     }
 
+    /**
+     * Empties trash older than 30 days. A file's age is the time in its name (`yyyyMMdd-HHmmss <name>`, UTC: when it was
+     * trashed), never its modification time (a move keeps that: a task last edited long ago would go at once). An
+     * entry whose name has no such time is never purged.
+     */
     private fun purgeOldTrash() {
-        val cutoff = System.currentTimeMillis() - Duration.ofDays(30).toMillis()
+        val cutoff = now.minus(Duration.ofDays(TRASH_DAYS))
         for (entry in File(meta, "trash").listFiles() ?: return) {
-            if (entry.lastModified() < cutoff) {
+            val trashed = trashedAt(entry.name) ?: continue
+            if (trashed.isBefore(cutoff)) {
                 try {
                     entry.deleteRecursively()
                 } catch (ignored: IOException) {
                     // Next start.
                 }
             }
+        }
+    }
+
+    private val trashName = Regex("^([0-9]{8}-[0-9]{6}) ")
+
+    /** When a trash entry was trashed (the time its name starts with), or null when its name doesn't say. */
+    private fun trashedAt(name: String): Instant? {
+        val stamp = trashName.find(name)?.groupValues?.get(1) ?: return null
+        return try {
+            java.time.LocalDateTime.parse(stamp, DateTimeFormatter.ofPattern("uuuuMMdd-HHmmss").withResolverStyle(java.time.format.ResolverStyle.STRICT)).toInstant(ZoneOffset.UTC)
+        } catch (e: java.time.DateTimeException) {
+            null
         }
     }
 
@@ -887,6 +912,11 @@ class VaultStore(
     }
 
     private fun buildSyncSnapshot(): SyncSnapshot {
+        // A task file that can't be read has no task id to list it under: left out (or listed as a plain file), the other
+        // devices would take it as deleted and trash their copy. Sync waits until it's fixed.
+        caches.files.entries.firstOrNull { it.second.good == null }?.let { (rel, state) ->
+            throw IOException("\"$rel\" can't be read (${state.error}). Sync waits until it's fixed, so your other devices keep the task.")
+        }
         val entries = LinkedHashMap<String, SyncEntry>()
         val memory = HashMap<String, ByteArray>()
         val covered = HashSet<String>()
@@ -976,7 +1006,7 @@ class VaultStore(
                     }
                     SyncOpKind.WRITE -> {
                         val before = if (file!!.exists()) file.readBytes() else null
-                        VaultFiles.writeAtomic(file, op.content!!)
+                        VaultFiles.writeAtomic(file, op.content!!, replace = before != null)
                         undo.addLast { if (before == null) file.delete() else VaultFiles.writeAtomic(file, before) }
                     }
                     SyncOpKind.MOVE -> {
@@ -994,16 +1024,17 @@ class VaultStore(
                         val config = File(meta, "config.json")
                         val previous = if (config.exists()) config.readBytes() else null
                         VaultFiles.writeAtomic(config, op.content!!)
-                        undo.addLast { if (previous != null) VaultFiles.writeAtomic(config, previous) }
+                        undo.addLast { if (previous != null) VaultFiles.writeAtomic(config, previous) else config.delete() }
                     }
                     SyncOpKind.SET_ORDER -> order = parseOrder(op.content!!)
                 }
             }
-        } catch (e: IOException) {
+        } catch (e: Exception) {
+            // Whatever went wrong, everything done so far is undone: the vault is never left half synced.
             while (undo.isNotEmpty()) {
                 try {
                     undo.removeLast()()
-                } catch (ignored: IOException) {
+                } catch (ignored: Exception) {
                     // Best effort: the next sync sees whatever is there.
                 }
             }

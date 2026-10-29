@@ -251,6 +251,62 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_task_last_edited_long_ago_stays_in_the_trash_for_30_days_after_it_was_deleted()
+    {
+        var store = Open();
+        var task = await Add(store, "Old plan");
+
+        // Edited two months ago: the move to the trash keeps that time, which must not count as when it was trashed.
+        File.SetLastWriteTimeUtc(P("Work", "Old plan.md"), T0.UtcDateTime.AddDays(-60));
+        await store.UpdateAsync(b => b.Delete(task.Id, Actor.User, T0));
+        var trashed = Assert.Single(Directory.GetFiles(P(".todo-tracker", "trash")));
+        File.SetLastWriteTimeUtc(trashed, T0.UtcDateTime.AddDays(-60));
+        store.Dispose();
+
+        Open();
+        Assert.True(File.Exists(trashed));
+    }
+
+    [Fact]
+    public void Trash_older_than_30_days_by_the_time_in_its_name_is_emptied_and_trash_without_one_is_kept()
+    {
+        Open().Dispose();
+        var trash = P(".todo-tracker", "trash");
+        Directory.CreateDirectory(trash);
+        var old = Path.Combine(trash, T0.UtcDateTime.AddDays(-31).ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture) + " Gone.md");
+        var recent = Path.Combine(trash, T0.UtcDateTime.AddDays(-29).ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture) + " Kept.md");
+        var undated = Path.Combine(trash, "Someone's note.md");
+        foreach (var file in new[] { old, recent, undated })
+        {
+            File.WriteAllText(file, "# x\n");
+            File.SetLastWriteTimeUtc(file, T0.UtcDateTime.AddDays(-90));
+        }
+
+        Open();
+        Assert.False(File.Exists(old));
+        Assert.True(File.Exists(recent));
+        Assert.True(File.Exists(undated));
+    }
+
+    [Fact]
+    public async Task A_task_file_that_cant_be_read_stops_sync_instead_of_looking_deleted()
+    {
+        var store = Open();
+        await Add(store, "Fine");
+        await File.WriteAllTextAsync(P("Work", "Broken.md"), "---\nenergy: 2\nenergy: 3\n---\n# Broken\n");
+
+        var refused = await Assert.ThrowsAsync<IOException>(() => store.ReadSyncAsync());
+        Assert.Contains("Work/Broken.md", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_name_longer_than_255_bytes_is_never_synced()
+    {
+        Assert.True(VaultBoardStore.IsSyncablePath("Work/" + new string('é', 126) + ".md"));
+        Assert.False(VaultBoardStore.IsSyncablePath("Work/" + new string('é', 127) + ".md"));
+    }
+
+    [Fact]
     public async Task A_subtask_promoted_to_the_top_level_gets_its_own_file()
     {
         var store = Open();
