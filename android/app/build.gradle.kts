@@ -35,6 +35,12 @@ android {
     }
 }
 
+// Tasks (WorkItem) change in place: a screen given the same task must redraw when the board changes, so a
+// composable isn't skipped just because its task is the same object (Kotlin 2's strong skipping would).
+composeCompiler {
+    featureFlags = setOf(org.jetbrains.kotlin.compose.compiler.gradle.ComposeFeatureFlag.StrongSkipping.disabled())
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)

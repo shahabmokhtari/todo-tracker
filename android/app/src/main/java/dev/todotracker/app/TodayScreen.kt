@@ -1,5 +1,7 @@
 package dev.todotracker.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,11 +11,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -23,68 +28,81 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import java.util.UUID
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.todotracker.core.Agenda
 import dev.todotracker.core.AgendaEntry
-import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextDecoration
-import dev.todotracker.core.WorkItem
+import dev.todotracker.core.ItemState
+import dev.todotracker.core.OverviewEntry
 import dev.todotracker.core.Priority
+import dev.todotracker.core.WorkItem
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalTime
+import java.time.ZoneId
+import java.util.UUID
 
-/** Today: the one thing to do now (big), then the rest of Do now, then what's waiting. */
+/** Asks (once) for what reminders need: notifications, and alarms on time. Called before a snooze, reminder or focus. */
+val LocalAskToNotify = staticCompositionLocalOf<() -> Unit> { {} }
+
+/** Today: the one thing to do now (big), then the rest of Do now, what's waiting, what got done, workstreams, notes. */
 @Composable
 fun TodayScreen(vm: BoardViewModel = viewModel()) {
     // Kept across rotation and theme changes (as ids and text).
     var noteFor by rememberSaveable { mutableStateOf<String?>(null) }
     var addingGroup by rememberSaveable { mutableStateOf(false) }
+    var editingGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    var settings by rememberSaveable { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
-    // Starting focus is when notifications start to matter (the end of a session or a break, with the app closed).
+    // A snooze, a reminder or a focus session is when notifications start to matter (they tell you with the app closed).
     val context = androidx.compose.ui.platform.LocalContext.current
     val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
     var askExact by rememberSaveable { mutableStateOf(false) }
-    val startFocusOn: (UUID?) -> Unit = { id ->
+    val askToNotify: () -> Unit = {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
-        vm.startFocus(id)
         // On time to the minute needs the person's OK on recent Android: offered once, with why.
         val prefs = context.getSharedPreferences("focus-alarm", android.content.Context.MODE_PRIVATE)
         if (!FocusAlarm.exactAllowed(context) && !prefs.getBoolean("asked-exact", false)) {
             prefs.edit().putBoolean("asked-exact", true).apply()
             askExact = true
         }
+    }
+    val startFocusOn: (UUID?) -> Unit = { id ->
+        askToNotify()
+        vm.startFocus(id)
     }
     val undoable = vm.undoable
     LaunchedEffect(undoable) {
@@ -94,104 +112,107 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             vm.undoable = null
         }
     }
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) },
-        bottomBar = { FocusBar(vm, onStart = { startFocusOn(null) }) },
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { padding ->
-        Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
-            Header(vm)
-            GroupTabs(vm, onAdd = { addingGroup = true })
-            Capture(vm)
-            vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp)) }
-            TimerBar(vm)
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                val focus = vm.dashboard.focus
-                if (focus == null) {
-                    item { Text("Nothing is due. Nice.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp)) }
+    CompositionLocalProvider(LocalAskToNotify provides askToNotify) {
+      // The task's details and Settings are drawn over Today (full screen); Undo shows over either.
+      Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            bottomBar = { FocusBar(vm, onStart = { startFocusOn(null) }) },
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { padding ->
+            Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
+                Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") })
+                GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
+                Capture(vm)
+                if (searching || vm.query.isNotEmpty()) SearchBox(vm, onClose = { searching = false; vm.search("") })
+                vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp)) }
+                TimerBar(vm)
+                val results = vm.searchResults
+                if (results != null) {
+                    SearchResults(results, vm)
                 } else {
-                    item { FocusCard(focus, vm, onNote = { noteFor = focus.item.id.toString() }, onFocus = startFocusOn) }
+                    Lists(vm, onNote = { noteFor = it.toString() }, onFocus = startFocusOn)
                 }
-                val rest = vm.dashboard.now.drop(1)
-                if (rest.isNotEmpty()) {
-                    item { SectionTitle("Do now", rest.size) }
-                    items(rest, key = { it.item.id }) { entry -> TaskRow(entry, vm, onNote = { noteFor = entry.item.id.toString() }, onFocus = startFocusOn) }
-                }
-                if (vm.dashboard.waiting.isNotEmpty()) {
-                    item { SectionTitle("Waiting", vm.dashboard.waiting.size) }
-                    items(vm.dashboard.waiting, key = { "w" + it.item.id }) { WaitingRow(it, vm) }
-                }
-                if (vm.doneToday.isNotEmpty()) {
-                    item { SectionTitle("Done today", vm.doneToday.size) }
-                    Agenda.cheer(vm.doneToday.size)?.let { cheer -> item { CheerLine(cheer) } }
-                    items(vm.doneToday, key = { "d" + it.id }) { DoneRow(it, vm) }
-                }
-                item { Spacer(Modifier.height(24.dp)) }
             }
         }
+        noteFor?.let { id ->
+            val uuid = UUID.fromString(id)
+            TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
+        }
+        if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
+        editingGroup?.let { GroupDialog(UUID.fromString(it), vm, onDismiss = { editingGroup = null }) }
+        // A task's details (from a card, a search, a todotracker://task/<id> link or a reminder's notification).
+        vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
+        if (settings) SettingsScreen(vm, onClose = { settings = false })
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
+      }
+        if (askExact) {
+            AlertDialog(
+                onDismissRequest = { askExact = false },
+                title = { Text("Ring on time?") },
+                text = { Text("So reminders, and the end of a focus session or a break, are told right when they happen (not a few minutes later), allow Todo Tracker to set alarms.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        askExact = false
+                        if (android.os.Build.VERSION.SDK_INT >= 31) {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
+                        }
+                    }) { Text("Allow") }
+                },
+                dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
+            )
+        }
+        BreakScreen(vm)
     }
-    noteFor?.let { id ->
-        val uuid = UUID.fromString(id)
-        TextDialog("Note on “${vm.titleOf(uuid).orEmpty()}”", "What happened, what's next…", onDone = { vm.addNote(uuid, it) }, onDismiss = { noteFor = null })
-    }
-    if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
-    // A todotracker://task/<id> link: the task, with what you can do with it here.
-    vm.openTaskId?.let { id ->
-        val item = vm.itemOf(id)
-        if (item != null) LinkedTaskDialog(item, vm, onNote = { noteFor = id.toString() }) else LaunchedEffect(id) { vm.openTaskId = null }
-    }
-    if (askExact) {
-        AlertDialog(
-            onDismissRequest = { askExact = false },
-            title = { Text("Ring on time?") },
-            text = { Text("So the end of a focus session or a break is told right when it happens (not a few minutes later), allow Todo Tracker to set alarms.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    askExact = false
-                    if (android.os.Build.VERSION.SDK_INT >= 31) {
-                        context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
-                    }
-                }) { Text("Allow") }
-            },
-            dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
-        )
-    }
-    BreakScreen(vm)
 }
 
 @Composable
-private fun LinkedTaskDialog(item: WorkItem, vm: BoardViewModel, onNote: () -> Unit) {
-    val close = { vm.openTaskId = null }
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text(listOfNotNull(item.icon, item.title).joinToString(" ")) },
-        text = {
-            // Scrolls: a task can have many notes (the dialog's text area has a fixed height).
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                if (item.isDone) Text("Done", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.SemiBold)
-                item.details?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                CardNotes(item)
+private fun Lists(vm: BoardViewModel, onNote: (UUID) -> Unit, onFocus: (UUID?) -> Unit) {
+    var showStreams by rememberSaveable { mutableStateOf(true) }
+    var showNotes by rememberSaveable { mutableStateOf(true) }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+        val focus = vm.dashboard.focus
+        if (focus == null) {
+            item { Text("Nothing is due. Nice.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp)) }
+        } else {
+            item { FocusCard(focus, vm, onNote = { onNote(focus.item.id) }, onFocus = onFocus) }
+        }
+        val rest = vm.dashboard.now.drop(1)
+        if (rest.isNotEmpty()) {
+            item { SectionTitle("Do now", rest.size) }
+            items(rest, key = { it.item.id }) { entry -> TaskRow(entry, vm, onNote = { onNote(entry.item.id) }, onFocus = onFocus) }
+        }
+        if (vm.dashboard.waiting.isNotEmpty()) {
+            item { SectionTitle("Waiting", vm.dashboard.waiting.size) }
+            items(vm.dashboard.waiting, key = { "w" + it.item.id }) { WaitingRow(it, vm) }
+        }
+        if (vm.doneToday.isNotEmpty()) {
+            item { SectionTitle("Done today", vm.doneToday.size) }
+            Agenda.cheer(vm.doneToday.size)?.let { cheer -> item { CheerLine(cheer) } }
+            items(vm.doneToday, key = { "d" + it.id }) { DoneRow(it, vm) }
+        }
+        val streams = Agenda.workstreams(vm.dashboard)
+        if (streams.isNotEmpty()) {
+            item { FoldTitle("Workstreams", streams.size, showStreams) { showStreams = !showStreams } }
+            if (showStreams) items(streams, key = { "s" + it.item.id }) { WorkstreamRow(it, vm) }
+        }
+        val notes = vm.dashboard.recentNotes
+        if (notes.isNotEmpty()) {
+            item { FoldTitle("Recent notes", notes.size, showNotes) { showNotes = !showNotes } }
+            if (showNotes) items(notes, key = { "n" + it.note.id }) { n ->
+                Column(Modifier.fillMaxWidth().clickable { vm.openTaskId = n.item.id }.padding(vertical = 4.dp)) {
+                    Text(n.note.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
+                    Text("${n.note.author.displayName} · ${n.item.title} · ${ago(n.note.at, vm.now)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
             }
-        },
-        confirmButton = {
-            if (item.isDone) {
-                TextButton(onClick = { vm.reopen(item.id); close() }) { Text("Not done") }
-            } else {
-                TextButton(onClick = { vm.complete(item.id); close() }) { Text("Mark done") }
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { onNote(); close() }) { Text("Add note") }
-                TextButton(onClick = close) { Text("Close") }
-            }
-        },
-    )
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
 }
 
 @Composable
-private fun Header(vm: BoardViewModel) {
-    val hour = LocalTime.now().hour
+private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> Unit) {
+    // The view model's clock (it moves every second), so the greeting changes when the day part does.
+    val hour = vm.now.atZone(ZoneId.systemDefault()).hour
     val greeting = when {
         hour < 5 -> "Still up?"
         hour < 12 -> "Good morning"
@@ -199,26 +220,37 @@ private fun Header(vm: BoardViewModel) {
         else -> "Good evening"
     }
     val count = vm.dashboard.now.size
-    Column(Modifier.padding(top = 12.dp, bottom = 8.dp)) {
-        Text(greeting, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            if (count == 0) "All clear. Nothing needs you right now." else "$count thing${if (count == 1) "" else "s"} to do now",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        vm.energyToday?.let { energy ->
-            Text(energy, style = MaterialTheme.typography.bodySmall, color = if (energy.contains("too much")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(Modifier.padding(top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
+            Text(greeting, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                if (count == 0) "All clear. Nothing needs you right now." else "$count thing${if (count == 1) "" else "s"} to do now",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            vm.energyToday?.let { energy ->
+                Text(energy, style = MaterialTheme.typography.bodySmall, color = if (vm.energyOver) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
+        TextButton(onClick = onSearch, modifier = Modifier.semantics { contentDescription = "Search" }) { Text("🔍", style = MaterialTheme.typography.titleLarge) }
+        TextButton(onClick = onSettings, modifier = Modifier.semantics { contentDescription = "Settings" }) { Text("⚙", style = MaterialTheme.typography.titleLarge) }
     }
 }
 
 @Composable
-private fun GroupTabs(vm: BoardViewModel, onAdd: () -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun GroupTabs(vm: BoardViewModel, onAdd: () -> Unit, onEdit: (UUID) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         item { FilterChip(selected = vm.selectedGroup == null, onClick = { vm.select(null) }, label = { Text("All ${vm.count(null)}") }) }
         items(vm.groups, key = { it.first }) { (id, name) ->
-            FilterChip(selected = vm.selectedGroup == id, onClick = { vm.select(id) }, label = { Text("$name ${vm.count(id)}") })
+            FilterChip(
+                selected = vm.selectedGroup == id,
+                // Tapping the chosen group again opens it (name, color, delete).
+                onClick = { if (vm.selectedGroup == id) onEdit(id) else vm.select(id) },
+                label = { Text("$name ${vm.count(id)}") },
+                leadingIcon = parseColor(vm.groupColors[id])?.let { c -> { Box(Modifier.size(10.dp).background(c, CircleShape)) } },
+            )
         }
+        vm.selectedGroup?.let { id -> item { TextButton(onClick = { onEdit(id) }) { Text("Edit") } } }
         item { TextButton(onClick = onAdd) { Text("+ Group") } }
     }
 }
@@ -229,11 +261,11 @@ private fun Capture(vm: BoardViewModel) {
     fun add() {
         if (vm.capture(text)) text = ""
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
-            placeholder = { Text("Add a task: @tomorrow !high due:3d") },
+            placeholder = { Text("Add: @tomorrow !high due:3d") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { add() }),
@@ -243,9 +275,68 @@ private fun Capture(vm: BoardViewModel) {
     }
 }
 
+/** Finds any task (done and archived ones too, when asked): words, is:done, is:archived, group:work, #tag. */
+@Composable
+private fun SearchBox(vm: BoardViewModel, onClose: () -> Unit) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    OutlinedTextField(
+        value = vm.query,
+        onValueChange = { vm.search(it) },
+        placeholder = { Text("Find a task (is:done, is:archived)") },
+        singleLine = true,
+        trailingIcon = { TextButton(onClick = onClose) { Text("Close") } },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).focusRequester(focus).semantics { contentDescription = "Search box" },
+    )
+    LaunchedEffect(Unit) { if (vm.query.isEmpty()) focus.requestFocus() }
+}
+
+@Composable
+private fun SearchResults(results: List<WorkItem>, vm: BoardViewModel) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
+        item { SectionTitle("Found", results.size) }
+        if (results.isEmpty()) item { Text("Nothing matches. Done tasks are found with is:done, archived ones with is:archived.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        items(results, key = { "f" + it.id }) { item ->
+            Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = item.id }) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(
+                        titleWithIcon(item),
+                        style = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (item.isDone) TextDecoration.LineThrough else null),
+                    )
+                    val state = Agenda.stateOf(item, vm.now)
+                    val parts = listOfNotNull(
+                        item.ancestors.reversed().takeIf { it.isNotEmpty() }?.joinToString(" › ") { it.title },
+                        vm.groupName(item.groupId),
+                        when {
+                            item.isArchived -> "archived"
+                            state == ItemState.DONE -> "done"
+                            state == ItemState.WAITING -> "waiting"
+                            state == ItemState.LOCKED -> "after an earlier step"
+                            else -> null
+                        },
+                    )
+                    Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
 @Composable
 private fun SectionTitle(title: String, count: Int) {
     Text("$title · $count", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+}
+
+/** A section title that folds its section away (and back). */
+@Composable
+private fun FoldTitle(title: String, count: Int, open: Boolean, onToggle: () -> Unit) {
+    Text(
+        "$title · $count ${if (open) "▴" else "▾"}",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(top = 12.dp, bottom = 4.dp),
+    )
 }
 
 private fun priorityLabel(p: Priority) = when (p) {
@@ -255,8 +346,8 @@ private fun priorityLabel(p: Priority) = when (p) {
     Priority.NORMAL -> null
 }
 
-private fun relative(at: Instant): String {
-    val minutes = Duration.between(Instant.now(), at).toMinutes()
+private fun relative(at: Instant, now: Instant): String {
+    val minutes = Duration.between(now, at).toMinutes()
     return when {
         minutes < 1 -> "now"
         minutes < 60 -> "in ${minutes}m"
@@ -266,12 +357,12 @@ private fun relative(at: Instant): String {
 }
 
 @Composable
-private fun Meta(entry: AgendaEntry) {
+private fun Meta(entry: AgendaEntry, now: Instant) {
     val parts = listOfNotNull(
         entry.breadcrumb.takeIf { it.isNotEmpty() }?.joinToString(" › "),
         entry.stepLabel,
         priorityLabel(entry.effectivePriority),
-        if (entry.isOverdue) "overdue" else entry.item.deadline?.let { "due ${relative(it)}" },
+        if (entry.isOverdue) "overdue" else entry.item.deadline?.let { "due ${relative(it, now)}" },
         entry.dueReminder?.let { "⏰ ${it.message}" },
         entry.item.energy?.let { "⚡".repeat(it) },
     )
@@ -280,7 +371,7 @@ private fun Meta(entry: AgendaEntry) {
 
 /** A card's notes, newest first: the text, then who wrote it and when. */
 @Composable
-private fun CardNotes(item: WorkItem) {
+internal fun CardNotes(item: WorkItem) {
     if (item.notes.isEmpty()) return
     val now = Instant.now()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.semantics { contentDescription = "Notes" }) {
@@ -309,8 +400,9 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Meta(entry)
+            // The title opens the task's details.
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.openTaskId = entry.item.id })
+            Meta(entry, vm.now)
             // The task you're on: every note, newest first.
             CardNotes(entry.item)
             Actions(entry, vm, onNote, onFocus, focus = true)
@@ -322,8 +414,8 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
 private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium)
-            Meta(entry)
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id })
+            Meta(entry, vm.now)
             if (entry.item.notes.isNotEmpty()) {
                 var open by rememberSaveable(entry.item.id) { mutableStateOf(false) }
                 val count = entry.item.notes.size
@@ -355,43 +447,19 @@ private fun Actions(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, 
     }
 }
 
-/** The rarer actions behind ⋯ (dismissing a reminder, copying a link), so the buttons stay few. */
+/** The rarer actions behind ⋯ (opening the details, dismissing a reminder, copying a link), so the buttons stay few. */
 @Composable
 private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
     var open by remember { mutableStateOf(false) }
-    var pickingEnergy by remember { mutableStateOf(false) }
-    if (pickingEnergy) {
-        AlertDialog(
-            onDismissRequest = { pickingEnergy = false },
-            title = { Text("Energy in a day") },
-            text = {
-                Column {
-                    Text("A day's plan takes each block's hours × its task's ⚡ an hour.", style = MaterialTheme.typography.bodySmall)
-                    listOf(4, 6, 8, 10, 12, 14, 16).forEach { n ->
-                        TextButton(onClick = { pickingEnergy = false; vm.setDailyEnergy(n) }) { Text(if (n == vm.dailyEnergy) "✓ $n ⚡" else "$n ⚡") }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { pickingEnergy = false }) { Text("Close") } },
-        )
-    }
     val context = androidx.compose.ui.platform.LocalContext.current
     Box {
         TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            // The task's own card: details, every note, done or not.
+            // The task's details: edit it, its subtasks, reminders, every note.
             DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTaskId = entry.item.id })
             entry.dueReminder?.let { r ->
                 DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
             }
-            // How draining it is, per hour, and how much there is in a day (every app uses the same number).
-            listOf(null to "Energy: not said", 1 to "Energy: ⚡ light", 2 to "Energy: ⚡⚡", 3 to "Energy: ⚡⚡⚡ draining").forEach { (level, label) ->
-                DropdownMenuItem(
-                    text = { Text(if (entry.item.energy == level) "✓ $label" else label) },
-                    onClick = { open = false; vm.setEnergy(entry.item.id, level) },
-                )
-            }
-            DropdownMenuItem(text = { Text("Energy in a day: ${vm.dailyEnergy}…") }, onClick = { open = false; pickingEnergy = true })
             DropdownMenuItem(text = { Text("Copy link") }, onClick = {
                 open = false
                 context.getSystemService(android.content.ClipboardManager::class.java)
@@ -401,12 +469,13 @@ private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
     }
 }
 
-/** Later: the quick choices (each says when), a date and time, or after another task. */
+/** Later: the quick choices (each says when), a date and time, or after another task. Each can be undone. */
 @Composable
-private fun LaterMenu(id: java.util.UUID, vm: BoardViewModel) {
+internal fun LaterMenu(id: UUID, vm: BoardViewModel) {
     var open by remember { mutableStateOf(false) }
     var pickingTask by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
+    var pickingTime by remember { mutableStateOf(false) }
+    val ask = LocalAskToNotify.current
     Box {
         OutlinedButton(onClick = { open = true }) { Text("Later") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -414,13 +483,17 @@ private fun LaterMenu(id: java.util.UUID, vm: BoardViewModel) {
                 DropdownMenuItem(
                     text = { Text(choice.label) },
                     trailingIcon = { Text(vm.describe(choice.at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    onClick = { open = false; vm.snoozeUntil(id, choice.at) },
+                    onClick = { open = false; ask(); vm.snoozeUntil(id, choice.at) },
                 )
             }
             androidx.compose.material3.HorizontalDivider()
-            DropdownMenuItem(text = { Text("Pick a time…") }, onClick = { open = false; pickDateTime(context) { vm.snoozeUntil(id, it) } })
+            DropdownMenuItem(text = { Text("Pick a time…") }, onClick = { open = false; pickingTime = true })
             DropdownMenuItem(text = { Text("After another task…") }, onClick = { open = false; pickingTask = true })
         }
+    }
+    if (pickingTime) {
+        val start = dev.todotracker.core.QuickCaptureParser.tomorrowMorning(Instant.now(), ZoneId.systemDefault())
+        DateTimePicker("Later until", start, future = true, onPicked = { ask(); vm.snoozeUntil(id, it) }, onDismiss = { pickingTime = false })
     }
     if (pickingTask) {
         val others = vm.waitCandidates(id)
@@ -431,10 +504,10 @@ private fun LaterMenu(id: java.util.UUID, vm: BoardViewModel) {
                 if (others.isEmpty()) {
                     Text("No other open tasks.")
                 } else {
-                    androidx.compose.foundation.lazy.LazyColumn {
+                    LazyColumn {
                         items(others.size) { i ->
                             val (otherId, title) = others[i]
-                            TextButton(onClick = { pickingTask = false; vm.waitFor(id, otherId) }, modifier = Modifier.fillMaxWidth()) {
+                            TextButton(onClick = { pickingTask = false; ask(); vm.waitFor(id, otherId) }, modifier = Modifier.fillMaxWidth()) {
                                 Text(title, modifier = Modifier.fillMaxWidth())
                             }
                         }
@@ -447,27 +520,38 @@ private fun LaterMenu(id: java.util.UUID, vm: BoardViewModel) {
     }
 }
 
-/** The phone's own date picker, then its time picker (starting at tomorrow 9:00). */
-private fun pickDateTime(context: android.content.Context, onPicked: (Instant) -> Unit) {
-    val zone = java.time.ZoneId.systemDefault()
-    val start = dev.todotracker.core.QuickCaptureParser.tomorrowMorning(Instant.now(), zone).atZone(zone)
-    android.app.DatePickerDialog(context, { _, year, month, day ->
-        android.app.TimePickerDialog(context, { _, hour, minute ->
-            onPicked(java.time.LocalDateTime.of(year, month + 1, day, hour, minute).atZone(zone).toInstant())
-        }, start.hour, start.minute, android.text.format.DateFormat.is24HourFormat(context)).show()
-    }, start.year, start.monthValue - 1, start.dayOfMonth).apply { datePicker.minDate = System.currentTimeMillis() - 1000 }.show()
-}
-
 @Composable
 private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-        Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).clickable { vm.openTaskId = entry.item.id }) {
                 Text(titleWithIcon(entry.item), style = MaterialTheme.typography.bodyLarge)
-                entry.wakeAt?.let { Text("back ${relative(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                entry.wakeAt?.let { Text("back ${relative(it, vm.now)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 entry.waitingFor?.let { Text("after “${it.title}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             TextButton(onClick = { vm.bringBack(entry.item.id) }) { Text("Do now") }
+        }
+    }
+}
+
+/** A task with subtasks: how far along it is, what's to do now or waiting (tap: its details). */
+@Composable
+private fun WorkstreamRow(entry: OverviewEntry, vm: BoardViewModel) {
+    Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id }) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            LinearProgressIndicator(
+                progress = { if (entry.totalLeaves == 0) 0f else entry.doneLeaves.toFloat() / entry.totalLeaves },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val parts = listOfNotNull(
+                "${entry.doneLeaves}/${entry.totalLeaves} done",
+                entry.actionableCount.takeIf { it > 0 }?.let { "$it now" },
+                entry.waitingCount.takeIf { it > 0 }?.let { "$it waiting" },
+                entry.nextWakeAt?.let { "next ${relative(it, vm.now)}" },
+                priorityLabel(entry.topPriority),
+            )
+            Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -485,14 +569,17 @@ private fun TextDialog(title: String, placeholder: String, onDone: (String) -> B
     )
 }
 
-/** Something finished today, with where it belongs and a way to undo a slip. */
+/** Something finished today, when, where it belongs, and a way to undo a slip. */
 @Composable
 private fun DoneRow(item: WorkItem, vm: BoardViewModel) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("✓", color = Color(0xFF16A34A), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).clickable { vm.openTaskId = item.id }) {
             Text(item.title, style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.LineThrough), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            item.parent?.let { Text(it.title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            val at = vm.doneAt(item)?.let { android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it.toEpochMilli())) }
+            val line = listOfNotNull(at, item.parent?.title).joinToString(" · ")
+            if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         TextButton(onClick = { vm.reopen(item.id) }) { Text("Reopen") }
     }
@@ -506,10 +593,10 @@ private fun CheerLine(text: String) {
         color = Color(0xFF16A34A),
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            .background(Color(0x1F22C55E), androidx.compose.foundation.shape.RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
+            .background(Color(0x1F22C55E), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
 /** A task's title with its icon (an emoji, set in the other apps) in front. */
-private fun titleWithIcon(item: WorkItem): String =
+internal fun titleWithIcon(item: WorkItem): String =
     (item.icon?.takeIf { it.isNotBlank() }?.let { "$it ${item.title}" } ?: item.title) + if (item.repeat != null) " 🔁" else ""
