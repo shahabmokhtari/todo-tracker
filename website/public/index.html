@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Todo Tracker: the to-do list that tells you what to do now</title>
+  <meta name="description" content="An ADHD-friendly task app. It always shows one thing to do now, keeps later work out of sight until it's due, and lets your AI agents read and change the list. Your tasks are markdown files you own.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0d1a" media="(prefers-color-scheme: dark)">
+  <link rel="canonical" href="https://todotracker.awesomehq.app/">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Todo Tracker">
+  <meta property="og:title" content="Todo Tracker: the to-do list that tells you what to do now">
+  <meta property="og:description" content="One thing to do now. Later work stays out of sight until it's due. Your AI agents can help. Your tasks are markdown files you own.">
+  <meta property="og:url" content="https://todotracker.awesomehq.app/">
+  <meta property="og:image" content="https://todotracker.awesomehq.app/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Todo Tracker's Today view: one big card says what to do now, with the rest of the list below.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Todo Tracker: the to-do list that tells you what to do now">
+  <meta name="twitter:description" content="One thing to do now. Later work stays out of sight until it's due. Your AI agents can help. Your tasks are markdown files you own.">
+  <meta name="twitter:image" content="https://todotracker.awesomehq.app/img/og.png">
+  <meta name="twitter:image:alt" content="Todo Tracker's Today view: one big card says what to do now, with the rest of the list below.">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="brand" href="/" aria-label="Todo Tracker, home">
+        <img src="/img/favicon.svg" alt="" width="32" height="32">
+        <span>Todo Tracker</span>
+      </a>
+      <nav aria-label="Main">
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#platforms">Platforms</a></li>
+          <li><a href="#ai">AI</a></li>
+          <li><a href="#privacy">Privacy</a></li>
+          <li><a class="nav-cta" href="#get-it">Get it</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- Hero: one question, one answer -->
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">For ADHD brains and busy weeks</p>
+        <h1 id="hero-title">The to-do list that tells you what to do <em>now</em>.</h1>
+        <p class="lede">Most task apps show you everything, all the time. Todo Tracker shows you one thing to do now,
+          keeps the rest out of sight until it's due, and lets your AI agents help. Your tasks stay plain markdown files
+          in a folder you own.</p>
+        <p class="hero-actions">
+          <a class="btn btn-primary" href="#get-it">Get Todo Tracker</a>
+          <a class="btn" href="https://github.com/shahabmokhtari/todo-tracker">See the code on GitHub</a>
+        </p>
+      </div>
+
+      <div class="hero-demo" aria-label="Try it: a pretend Do this now card">
+        <article class="now-card" id="now-card">
+          <p class="now-kicker"><span class="dot" aria-hidden="true"></span> Do this now</p>
+          <h2 class="now-title" id="now-title" aria-live="polite">Reply to the security review</h2>
+          <p class="now-meta" id="now-meta"><span class="chip chip-warn">due 5 pm</span> <span class="chip">#security</span></p>
+          <p class="now-note" id="now-note">Two findings left. Draft replies in the doc.</p>
+          <div class="now-actions" id="now-actions" hidden>
+            <button type="button" class="btn btn-primary btn-sm" data-act="done">Mark done</button>
+            <button type="button" class="btn btn-sm" data-act="later">Later</button>
+          </div>
+          <p class="now-status" id="now-status" role="status"></p>
+        </article>
+        <p class="demo-hint" id="demo-hint" hidden>Try it: press <strong>Mark done</strong> or <strong>Later</strong>.
+          The next thing takes its place. Nothing else asks for your attention.</p>
+      </div>
+    </section>
+
+    <section class="wrap shot-hero" aria-label="The app">
+      <figure class="frame">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/img/today-dark.webp">
+          <img src="/img/today-light.webp" width="1600" height="1000"
+            alt="The Today view: a big card with the one task to do now, its reminder, notes and buttons (Mark done, Later, Note, Focus, Timer), then the rest of Do now, a workstream's progress and what's done today.">
+        </picture>
+      </figure>
+    </section>
+
+    <!-- Three ideas -->
+    <section class="wrap ideas" aria-labelledby="ideas-title">
+      <h2 id="ideas-title" class="visually-hidden">Why it works</h2>
+      <ul class="idea-list">
+        <li>
+          <h3>One focus, not fifty</h3>
+          <p>A big card says what to do now. The rest waits below, in the order you chose. Something new never takes
+            over your focus.</p>
+        </li>
+        <li>
+          <h3>Later means later</h3>
+          <p>Snooze a task and it leaves the list. It comes back on time, with a reminder. Nothing rots at the top.</p>
+        </li>
+        <li>
+          <h3>Your tasks are your files</h3>
+          <p>One markdown file per task, in a folder you own. Open it in Obsidian, edit it anywhere, keep every
+            version.</p>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section" aria-labelledby="features-title">
+      <div class="wrap">
+        <p class="eyebrow">Features</p>
+        <h2 id="features-title">Everything you need to get through the day. Nothing that shouts.</h2>
+
+        <div class="feature-grid">
+          <article class="feature feature-wide">
+            <span class="f-icon" aria-hidden="true">◎</span>
+            <h3>The Do this now card</h3>
+            <p>One task, big and clear, with its reminder, notes and buttons: Mark done, Later, Note, Focus, Timer.
+              Not the right one? <strong>Skip</strong> moves it down one. Drag the list into your own order and it
+              stays that way.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">☾</span>
+            <h3>Snooze choices that say when</h3>
+            <p>Press <strong>Later</strong> and pick one. Each says when the task comes back.</p>
+            <ul class="chips" aria-label="Snooze choices">
+              <li>15 minutes</li><li>An hour</li><li>3 hours</li><li>This evening</li><li>Tomorrow morning</li>
+              <li>In 2 days</li><li>Next Monday</li><li>In a week</li><li>In a month</li>
+            </ul>
+            <p>Or type it the way you'd say it (<code>fri 14:30</code>, <code>next week</code>), or wait
+              <strong>until another task is done</strong>.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">✎</span>
+            <h3>Notes on every card</h3>
+            <p>Jot down where you got to, right on the card. The task you're on shows every note, newest first, with
+              who wrote it: you, or <em>Agent: claude</em>. The browser extension can attach the page you were on.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">◔</span>
+            <h3>Focus timer and real breaks</h3>
+            <p>Start a focus session on a task and its time counts on that task. When it ends, a full-screen break
+              reminds you to rest: take it, skip it, or start the next focus now. A timer on every task, and reports
+              that show where your week went.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">⚡</span>
+            <h3>Plan for the energy you have</h3>
+            <p>Mark draining tasks ⚡⚡⚡ and easy ones ⚡. Say how much you have in a day. Today tells you
+              "⚡ 4.5 of 10 planned", and the plan turns red before you've planned more than you have.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">↻</span>
+            <h3>Repeat in plain words</h3>
+            <p>Type a rule: <code>every weekday</code>, <code>every 2 weeks on Monday, Thursday</code>,
+              <code>every month on the last Friday</code>, <code>every 3 days when done</code>. Done moves it to
+              its next time.</p>
+          </article>
+
+          <article class="feature">
+            <span class="f-icon" aria-hidden="true">≡</span>
+            <h3>Workstreams: big things get small</h3>
+            <p>Break a project into steps that unlock one at a time. Only the current step shows in Do now. Set a
+              wait between steps ("ring 1 tomorrow") and the next one comes back by itself. A progress bar shows how
+              far along each one is.</p>
+          </article>
+
+          <article class="feature feature-wide">
+            <span class="f-icon" aria-hidden="true">＋</span>
+            <h3>Capture a thought in one line</h3>
+            <p>Type tasks the way you think. On Windows, <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd> opens
+              quick capture from anywhere.</p>
+            <p class="capture" aria-label="Example: Deploy ring 2, two exclamation marks, at 2h, due:tomorrow, hash release">
+              <span class="cap-text">Deploy ring 2</span>
+              <span class="cap-tok tok-prio">!!</span>
+              <span class="cap-tok tok-snooze">@2h</span>
+              <span class="cap-tok tok-due">due:tomorrow</span>
+              <span class="cap-tok tok-tag">#release</span>
+            </p>
+            <dl class="capture-key">
+              <div><dt class="tok-prio">!!</dt><dd>critical</dd></div>
+              <div><dt class="tok-snooze">@2h</dt><dd>back in 2 hours</dd></div>
+              <div><dt class="tok-due">due:tomorrow</dt><dd>due tomorrow</dd></div>
+              <div><dt class="tok-tag">#release</dt><dd>tagged <em>release</em></dd></div>
+            </dl>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tour -->
+    <section class="section section-tint" aria-labelledby="tour-title">
+      <div class="wrap">
+        <p class="eyebrow">A quick look</p>
+        <h2 id="tour-title">When you want the bigger picture</h2>
+        <p class="section-lede">The full app has more views for planning and looking back. Open them when you need
+          them; Today stays the place to start.</p>
+        <div class="tour">
+          <figure>
+            <img src="/img/board.webp" width="1600" height="1000" loading="lazy"
+              alt="The Board: Inbox, Next, Doing and Done columns with cards showing labels, tags, deadlines, progress and time.">
+            <figcaption><strong>Board.</strong> Drag cards along. Doing is kept to three, on purpose.</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/plan.webp" width="1600" height="1000" loading="lazy"
+              alt="Plan: a week as a time grid with blocks of work, and tasks not planned yet on the side.">
+            <figcaption><strong>Plan.</strong> Drag a task onto a time. While its block is on, it's the thing to do now.</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/reports.webp" width="1600" height="1000" loading="lazy"
+              alt="Reports: time tracked, tasks done, time per day, a donut by group, and when you work.">
+            <figcaption><strong>Reports.</strong> See where the time went: by day, group and task.</figcaption>
+          </figure>
+          <figure>
+            <img src="/img/tasks.webp" width="1600" height="1000" loading="lazy"
+              alt="Tasks: an outline of every task with icons, labels, tags and deadlines; a rollout expanded into its steps.">
+            <figcaption><strong>Tasks.</strong> Every task as an outline. Enter for the next one, Tab to nest.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sync -->
+    <section id="sync" class="section" aria-labelledby="sync-title">
+      <div class="wrap split">
+        <div>
+          <p class="eyebrow">Sync</p>
+          <h2 id="sync-title">The same list on every computer</h2>
+          <p>Your tasks folder stays in step with your other computers through <strong>OneDrive</strong>,
+            <strong>iCloud Drive</strong> or a <strong>private GitHub gist</strong>. With OneDrive or iCloud Drive on the
+            computer, there's nothing to set up.</p>
+          <p>Changed the same task on two computers? Both changes are kept. If the same line changed on both, you pick
+            which one to keep, or keep both. Nothing you typed is lost.</p>
+          <p class="small">Want your tasks somewhere else too? Connectors keep a group in step with Notion, Microsoft
+            To Do or a private GitHub repository, and never delete anything on either side.</p>
+        </div>
+        <ul class="sync-list" aria-label="Places to sync through">
+          <li><strong>OneDrive</strong><span>Used first, a work or school account before a personal one.</span></li>
+          <li><strong>iCloud Drive</strong><span>When there's no OneDrive, like on a Mac.</span></li>
+          <li><strong>A private GitHub gist</strong><span>When you pick it. Signs in with the GitHub CLI.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Platforms -->
+    <section id="platforms" class="section section-tint" aria-labelledby="platforms-title">
+      <div class="wrap">
+        <p class="eyebrow">Platforms</p>
+        <h2 id="platforms-title">Where you work, it's there</h2>
+        <p class="section-lede">Every app follows the same rules: the same Do now order, the same snooze choices, the
+          same repeat rules.</p>
+
+        <div class="platform-feature">
+          <figure class="device device-tall">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="/img/windows-sidebar-dark.webp">
+              <img src="/img/windows-sidebar.webp" width="570" height="1140" loading="lazy"
+                alt="The Windows sidebar: the Do this now card, Do now, a focus timer and an Ask AI box.">
+            </picture>
+          </figure>
+          <div>
+            <h3>Windows: a sidebar that's always there</h3>
+            <p>It docks to the edge of your screen, so maximized windows don't cover it. Toasts for reminders,
+              <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Space</kbd> to capture, the whole app in its own window, and
+              full-screen breaks on every monitor. Prefer a window? Float it, and keep it on top if you like.</p>
+          </div>
+        </div>
+
+        <ul class="platforms">
+          <li>
+            <h3>Mac</h3>
+            <p class="status ok">Available</p>
+            <p>A native app with a menu bar glance: the focus task, Done, Later and capture. It runs the same server
+              inside, so it uses the same tasks folder and syncs with your PC. For Apple silicon Macs.</p>
+          </li>
+          <li>
+            <h3>Linux</h3>
+            <p class="status ok">Available</p>
+            <p>A tray app that runs everything. Add a task from the tray, or click it for the full window.</p>
+          </li>
+          <li>
+            <h3>Web</h3>
+            <p class="status ok">Available</p>
+            <p>The whole app in your browser at <code>127.0.0.1:5317</code>, on this computer only. It comes with
+              every desktop app.</p>
+          </li>
+          <li>
+            <h3>Browser extension</h3>
+            <p class="status ok">Available</p>
+            <p>A side panel for Edge, Chrome and Safari: glance, capture, and notes that keep the page you were on.
+              Not in the stores yet; the app walks you through loading it.</p>
+          </li>
+          <li>
+            <h3>iPhone and iPad</h3>
+            <p class="status ok">Available</p>
+            <p>A native app with Today, snooze, notes, energy and the focus timer. For now it keeps its tasks on the
+              device.</p>
+          </li>
+          <li>
+            <h3>Android</h3>
+            <p class="status ok">Available</p>
+            <p>A native app: Today, quick capture, snooze, notes, task timers, and the focus timer with full-screen
+              breaks. For now it keeps its tasks on the device.</p>
+          </li>
+          <li class="soon">
+            <h3>Your phone and your computer, together</h3>
+            <p class="status soon-pill">Coming soon</p>
+            <p>Connect your phone to your computer, and sync your tasks to your phone.</p>
+          </li>
+        </ul>
+
+        <div class="device-row">
+          <figure class="device">
+            <picture>
+              <source media="(prefers-color-scheme: dark)" srcset="/img/macos-ios-dark.webp">
+              <img src="/img/macos-ios-light.webp" width="840" height="2361" loading="lazy"
+                alt="The Mac and iPhone app: the Do this now card, Do now, Waiting, Done today and Workstreams.">
+            </picture>
+            <figcaption>Mac and iPhone</figcaption>
+          </figure>
+          <figure class="device">
+            <img src="/img/browser-extension.webp" width="380" height="929" loading="lazy"
+              alt="The browser side panel: group tabs, the focus card, Do now and quick capture.">
+            <figcaption>Browser side panel</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI -->
+    <section id="ai" class="section" aria-labelledby="ai-title">
+      <div class="wrap">
+        <p class="eyebrow">AI agents</p>
+        <h2 id="ai-title">Your AI can help with your list</h2>
+        <p class="section-lede">Tell Claude or Copilot what you need to do and it lands in your list. Ask what to work on
+          next. Let an agent log progress or break a project into steps.</p>
+
+        <div class="chat" aria-label="An example conversation">
+          <p class="msg you"><span class="who">You</span> what should I work on now?</p>
+          <p class="msg agent"><span class="who">Agent</span> <em>Reply to the security review</em>: it's critical and
+            the review closes at 5 pm. Two findings are left. Want me to draft the replies?</p>
+          <p class="msg you"><span class="who">You</span> add follow-ups from this meeting: send Maya the API notes by
+            Friday, book the offsite</p>
+          <p class="msg agent"><span class="who">Agent</span> Added two tasks to Work: <em>Send Maya the API notes</em>
+            (due Fri) and <em>Book the offsite</em>.</p>
+        </div>
+
+        <ul class="ai-grid">
+          <li>
+            <h3>MCP server</h3>
+            <p><code>tt mcp</code> works with Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor and
+              other MCP apps. It works on your tasks folder directly, even when the app isn't running.</p>
+          </li>
+          <li>
+            <h3>The <code>tt</code> command</h3>
+            <p>For terminals, scripts and agents that run commands: <code>tt</code>, <code>tt add</code>,
+              <code>tt snooze</code>, <code>tt done</code>. Add <code>--json</code> for scripts.</p>
+          </li>
+          <li>
+            <h3>Claude Desktop extension</h3>
+            <p>Open the <code>.mcpb</code> file and Claude shows an install dialog. That's it.</p>
+          </li>
+          <li>
+            <h3>Claude Code and Copilot plugin</h3>
+            <p>The tools plus a skill that teaches your agent to help well: capture, break down, log, defer, never
+              delete.</p>
+          </li>
+        </ul>
+
+        <pre class="code" tabindex="0" aria-label="Commands to connect an AI app"><code><span class="c"># Claude Code</span>
+claude mcp add todo-tracker --scope user -- tt mcp
+
+<span class="c"># The plugin, with the skill (Claude Code)</span>
+/plugin marketplace add shahabmokhtari/todo-tracker
+/plugin install todo-tracker@todo-tracker</code></pre>
+        <p class="small">Or open <strong>⋯ › Connect an AI app</strong> in the app: pick your app and copy one
+          line.</p>
+
+        <ul class="guards" aria-label="How agents are kept safe">
+          <li><strong>Every change says who made it.</strong> You'll see "Agent: claude" in the timeline.</li>
+          <li><strong>Every change is a version,</strong> so you can undo it.</li>
+          <li><strong>There's no delete tool.</strong> Agents can't throw your tasks away.</li>
+          <li><strong>You allow automations first.</strong> Hooks an agent adds wait for your OK.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Files and privacy -->
+    <section id="privacy" class="section section-tint" aria-labelledby="privacy-title">
+      <div class="wrap split">
+        <div>
+          <p class="eyebrow">Your files, your computer</p>
+          <h2 id="privacy-title">Local first. Yours always.</h2>
+          <p>Your tasks are markdown files in <code>Documents/Todo Tracker</code>: one folder per group, one file per
+            task, steps as checkboxes, notes as callouts. Edit them in the app, in Obsidian, in any editor, or with an
+            AI agent. The app picks up the changes.</p>
+          <ul class="checks">
+            <li><strong>Obsidian-friendly.</strong> Keep your tasks in your vault; any task opens in Obsidian.</li>
+            <li><strong>Version history.</strong> Every change is a version you can look at and restore (needs
+              git).</li>
+            <li><strong>No account, no telemetry.</strong> The app only talks to the services you switch on: sync,
+              connectors, an AI model you add.</li>
+            <li><strong>Only on this computer.</strong> The server listens on <code>127.0.0.1</code> only, checks the
+              address it was called on, and asks for a 256-bit token.</li>
+          </ul>
+        </div>
+        <pre class="code tree" tabindex="0" aria-label="An example tasks folder"><code>Documents/Todo Tracker/
+├── Work/
+│   ├── Ship v2.4 release.md
+│   └── Reply to the security review.md
+└── Personal/
+    └── Renew passport.md</code></pre>
+      </div>
+    </section>
+
+    <!-- Get it -->
+    <section id="get-it" class="section get" aria-labelledby="get-title">
+      <div class="wrap narrow">
+        <p class="eyebrow">Get it</p>
+        <h2 id="get-title">Start with one thing</h2>
+        <p>Todo Tracker isn't in the app stores yet. Ready-built apps for every platform are attached to each build on
+          GitHub (sign in to GitHub to download them), or you can build it from the source.</p>
+        <p class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml">Download a build</a>
+          <a class="btn" href="https://github.com/shahabmokhtari/todo-tracker">Source on GitHub</a>
+        </p>
+        <pre class="code" tabindex="0" aria-label="Build and run the Windows app from source"><code><span class="c"># Windows, with the .NET 10 SDK</span>
+git clone https://github.com/shahabmokhtari/todo-tracker
+cd todo-tracker
+dotnet run --project src/TodoTracker.Windows</code></pre>
+        <ul class="doc-links">
+          <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/guide.md">The guide</a></li>
+          <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/ai-connectors.md">Connect an AI app</a></li>
+          <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/sync.md">Sync</a></li>
+          <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/vault-format.md">Task files</a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p><img src="/img/favicon.svg" alt="" width="20" height="20"> Todo Tracker</p>
+      <p><a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a> · <a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/llms.txt">llms.txt</a> · <a href="#main">Back to top</a></p>
+    </div>
+  </footer>
+</body>
+</html>
