@@ -5,11 +5,38 @@ public protocol HTTPTransport: AnyObject {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
-extension URLSession: HTTPTransport {
+/// Talks to GitHub with URLSession, never taking the token anywhere else: a redirect to another host is followed
+/// without the `Authorization` header (and one to GitHub keeps it).
+public final class GitHubSession: NSObject, HTTPTransport, URLSessionTaskDelegate, @unchecked Sendable {
+    public static let shared = GitHubSession()
+
+    /// The only hosts that ever get the token.
+    public static let tokenHosts: Set<String> = ["api.github.com", "gist.githubusercontent.com"]
+
+    private lazy var session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         return (data, http)
+    }
+
+    public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                           newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(Self.redirect(request))
+    }
+
+    /// The request a redirect may go on with: to anywhere but GitHub, without the token.
+    public static func redirect(_ request: URLRequest) -> URLRequest {
+        guard !mayCarryToken(request.url) else { return request }
+        var stripped = request
+        stripped.setValue(nil, forHTTPHeaderField: "Authorization")
+        return stripped
+    }
+
+    static func mayCarryToken(_ url: URL?) -> Bool {
+        guard let url, url.scheme?.lowercased() == "https", let host = url.host?.lowercased() else { return false }
+        return tokenHosts.contains(host)
     }
 }
 
@@ -44,7 +71,7 @@ public final class GistRemote: SyncRemote {
     ///   - loadId: the gist used before (nil the first time: it is looked up, or made on the first publish).
     ///   - saveId: remembers the gist.
     ///   - library: which set of tasks (one gist each, so separate tasks folders never mix).
-    public init(http: HTTPTransport = URLSession.shared, token: @escaping () async throws -> String, loadId: @escaping () -> String?, saveId: @escaping (String) -> Void, library: String = "Todo Tracker") {
+    public init(http: HTTPTransport = GitHubSession.shared, token: @escaping () async throws -> String, loadId: @escaping () -> String?, saveId: @escaping (String) -> Void, library: String = "Todo Tracker") {
         self.http = http
         self.token = token
         self.loadId = loadId
@@ -205,9 +232,7 @@ public final class GistRemote: SyncRemote {
     private func raw(_ url: String) async throws -> String {
         // The token only ever goes to GitHub.
         guard let u = URL(string: url) else { throw SyncDataError("Not a link: \(url)") }
-        let host = u.host?.lowercased() ?? ""
-        let github = u.scheme == "https" && (host == "gist.githubusercontent.com" || host.hasSuffix(".githubusercontent.com") || host == "api.github.com")
-        let request = github ? try await self.request("GET", url) : URLRequest(url: u)
+        let request = GitHubSession.mayCarryToken(u) ? try await self.request("GET", url) : URLRequest(url: u)
         let (data, response) = try await http.send(request)
         try ensure((data, response))
         if data.count > Self.maxBundleBytes * 2 { throw SyncDataError("A device's sync file is too big.") }
@@ -217,7 +242,7 @@ public final class GistRemote: SyncRemote {
     private func request(_ method: String, _ path: String) async throws -> URLRequest {
         var request = URLRequest(url: URL(string: path.hasPrefix("https://") ? path : api + path)!)
         request.httpMethod = method
-        request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
+        if GitHubSession.mayCarryToken(request.url) { request.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization") }
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("TodoTracker-Sync", forHTTPHeaderField: "User-Agent")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")

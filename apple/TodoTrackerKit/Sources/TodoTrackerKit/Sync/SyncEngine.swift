@@ -56,6 +56,8 @@ public struct SyncResult: Sendable {
     public var problem: String?
     /// The other devices seen (nil when the remote didn't change).
     public var devices: [SyncDevice]?
+    /// Every other device was merged whole (nothing was missing or still arriving).
+    public var complete = true
 }
 
 /// Syncs the phone's tasks folder through a remote: merges each other device's latest snapshot into the vault
@@ -85,7 +87,13 @@ public actor SyncEngine {
     /// of that computer's tasks with the same ids; importing them first would turn each into a "(from iPhone)" copy.
     @discardableResult
     public func join(importing legacyBoard: URL?) async throws -> SyncResult {
-        _ = try await run(publish: false)
+        var first = try await run(publish: false)
+        // Not everything came in yet (a device's files still arriving, or one that couldn't be read): importing now
+        // could copy tasks that are on their way. Nothing is imported or published; join again later.
+        guard first.complete else {
+            first.problem = [first.problem, "Not everything from your other devices has arrived yet; your tasks from before are brought in once it has."].compactMap { $0 }.joined(separator: " ")
+            return first
+        }
         if let legacyBoard { try store.importBeside(legacyBoard: legacyBoard) }
         return try await run(publish: true)
     }
@@ -192,7 +200,9 @@ public actor SyncEngine {
         for peer in peers {
             do {
                 guard let entries = Self.valid(peer) else { continue }
-                if !(try await fetch(peer, entries, local)) {
+                let fetched = try await fetch(peer, entries, local)
+                if !fetched.ok {
+                    if let problem = fetched.problem { problems.append(problem) }
                     complete = false
                     continue
                 }
@@ -249,7 +259,8 @@ public actor SyncEngine {
             let gone = state.tombstones.filter { now.seconds(since: $0.at) < Double(SyncLimits.memorySeconds) && local.entries[OrdinalString($0.key)] == nil }
                 + state.publishedEntries.filter { e in
                     let kind = SyncKeys.kind(of: e.key)
-                    return local.entries[OrdinalString(e.key)] == nil && (kind == .task || kind == .rich || kind == .file)
+                    // A file that is still there (unreadable for now, or an iCloud placeholder) wasn't deleted.
+                    return local.entries[OrdinalString(e.key)] == nil && (kind == .task || kind == .rich || kind == .file) && !store.isPresent(e.path)
                 }.map { SyncTombstone(key: $0.key, hash: $0.hash, at: now) }
             for t in gone where seen.insert(TombstoneKey(t.key, t.hash)).inserted { tombstones.append(t) }
             let entriesNow = local.entries.values.map { e -> SyncEntry in
@@ -270,11 +281,11 @@ public actor SyncEngine {
         collectBlobs(conflicts)
         let devices = remoteSnapshot == nil ? nil : peers.map { SyncDevice(device: $0.device, name: $0.name, at: $0.at) }
         return SyncResult(changes: changes, peers: peers.count, conflicts: conflicts, published: published, skipped: false,
-                          problem: problems.isEmpty ? nil : problems.joined(separator: " "), devices: devices)
+                          problem: problems.isEmpty ? nil : problems.joined(separator: " "), devices: devices, complete: complete)
     }
 
     /// Brings the peer's contents we don't have yet into the local cache. False if some haven't arrived.
-    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> Bool {
+    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?) {
         for entry in entries.values {
             if local.entries[OrdinalString(entry.key)]?.hash == entry.hash || state.hasBlob(entry.hash) { continue }
             let content: Data
@@ -284,13 +295,13 @@ public actor SyncEngine {
                 throw CancellationError()
             } catch {
                 // Not there yet, still downloading (iCloud placeholders), or too big: this device is merged later.
-                return false
+                return (false, nil)
             }
-            // Still being written (or damaged): try again next time.
-            if SyncHash.of(content) != entry.hash { return false }
+            // Still being written (or damaged): said, and tried again next time (that device rewrites it when it syncs).
+            if SyncHash.of(content) != entry.hash { return (false, "\(entry.path) from \(peer.name) didn't arrive whole; it's tried again.") }
             try state.writeBlob(entry.hash, content)
         }
-        return true
+        return (true, nil)
     }
 
     /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere).

@@ -121,4 +121,59 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(try laptop.titles().sorted(), ["Only on the phone", "Shared task"])
         XCTAssertEqual(github.gists.count, 1)
     }
+
+    private func blobs(_ shared: URL) -> [URL] {
+        let root = shared.appendingPathComponent("blobs")
+        return (FileManager.default.enumerator(atPath: root.path)?.allObjects as? [String] ?? []).filter { $0.count > 3 }.map { root.appendingPathComponent($0) }
+    }
+
+    func testJoiningWaitsUntilEverythingHasArrived() async throws {
+        let temp = TempDir()
+        let shared = temp.url.appendingPathComponent("shared")
+        let clock = { [unowned self] in self.tick() }
+        let laptop = try Phone(temp, "Laptop", remote: FolderRemote(root: shared), tz: tz, clock: clock)
+        let id = try laptop.store.update { try $0.addTask(NewTask("Shared task"), now: self.now).id }
+        try await laptop.engine.sync()
+        let taskBlob = try XCTUnwrap(blobs(shared).first { (try? String(contentsOf: $0, encoding: .utf8))?.contains("# Shared task") == true })
+        try FileManager.default.removeItem(at: taskBlob)
+
+        let board = TaskBoard()
+        _ = try board.addTask(NewTask("Only on the phone"), now: now)
+        let legacy = temp.url.appendingPathComponent("board.json")
+        try BoardCodec.encode(board).write(to: legacy)
+        let phone = try Phone(temp, "Phone", remote: FolderRemote(root: shared), tz: tz, clock: clock)
+        let first = try await phone.engine.join(importing: legacy)
+        XCTAssertFalse(first.complete)
+        XCTAssertFalse(first.published)
+        XCTAssertNotNil(first.problem)
+        XCTAssertEqual(try phone.titles(), [])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path), "nothing imported yet")
+
+        // The laptop publishes again (the missing content is written again); now the join goes through.
+        try laptop.store.update { try $0.update(id, details: "More", now: self.now) }
+        try await laptop.engine.sync()
+        let second = try await phone.engine.join(importing: legacy)
+        XCTAssertTrue(second.complete)
+        XCTAssertEqual(try phone.titles().sorted(), ["Only on the phone", "Shared task"])
+    }
+
+    func testADamagedContentIsSaidAndWrittenAgainByTheDeviceThatHasIt() async throws {
+        let temp = TempDir()
+        let shared = temp.url.appendingPathComponent("shared")
+        let (a, b) = try pair(temp) { FolderRemote(root: shared) }
+        let id = try a.store.update { try $0.addTask(NewTask("Plan"), now: self.now).id }
+        try await a.engine.sync()
+        let blob = try XCTUnwrap(blobs(shared).first { (try? String(contentsOf: $0, encoding: .utf8))?.contains("# Plan") == true })
+        try Data("cut short".utf8).write(to: blob)
+        let broken = try await b.engine.sync()
+        XCTAssertTrue(broken.problem?.contains("didn't arrive whole") == true, broken.problem ?? "")
+        XCTAssertEqual(try b.titles(), [])
+
+        try a.store.update { try $0.update(id, details: "v2", now: self.now) }
+        try a.store.update { try $0.update(id, details: nil, now: self.now) }
+        try await a.engine.sync()
+        let fixed = try await b.engine.sync()
+        XCTAssertNil(fixed.problem)
+        XCTAssertEqual(try b.titles(), ["Plan"])
+    }
 }

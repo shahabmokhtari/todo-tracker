@@ -104,6 +104,8 @@ public final class FolderRemote: SyncRemote {
     private let access: SyncFolderAccess
     private let clock: () -> Date
     private var lastCollect = Date.distantPast
+    /// Blobs whose content was checked (their time and size then): a damaged one is written again.
+    private var checked: [String: (Date?, Int64?)] = [:]
 
     /// `identity` defaults to the folder's path (a new place publishes everything again).
     public init(root: URL, access: SyncFolderAccess = CoordinatedFolderAccess(), identity: String? = nil, clock: @escaping () -> Date = Date.init) {
@@ -185,11 +187,14 @@ public final class FolderRemote: SyncRemote {
             let now = clock()
             for entry in snapshot.entries {
                 let path = try blobPath(entry.hash)
-                if !access.exists(path) {
+                if !access.exists(path) || !intact(path, entry.hash) {
+                    // Missing, or there but not what its name says (cut short, damaged): written (again).
                     try access.write(try read(entry), to: path)
+                    checked[entry.hash] = (access.modified(path), access.size(path))
                 } else if let modified = access.modified(path), modified < now.addingTimeInterval(-86_400) {
                     // Still in use: never "old" to a device cleaning up while it sees an older list of ours.
                     try? access.setModified(path, now)
+                    checked[entry.hash] = (access.modified(path), access.size(path))
                 }
             }
             try access.write(snapshot.encoded(), to: devicesDir.appendingPathComponent(snapshot.device + ".json"))
@@ -200,6 +205,17 @@ public final class FolderRemote: SyncRemote {
             // Our own file doesn't change the version the other devices' files have.
             return readVersion
         }
+    }
+
+    /// Whether the blob holds what its name (the hash) says; checked once per version of the file.
+    private func intact(_ path: URL, _ hash: String) -> Bool {
+        let stamp = (access.modified(path), access.size(path))
+        if let seen = checked[hash], seen.0 == stamp.0, seen.1 == stamp.1 { return true }
+        // Not downloaded yet (an iCloud placeholder): leave it, it's whole on the device that wrote it.
+        guard let data = try? access.read(path) else { return true }
+        let ok = SyncHash.of(data) == hash
+        if ok { checked[hash] = stamp }
+        return ok
     }
 
     /// Removes contents no device lists any more (only old ones: a device may be between writing contents and its list).

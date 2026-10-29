@@ -119,17 +119,25 @@ public final class VaultStore {
         try withLock {
             guard let legacy = readLegacy(url) else { return 0 }
             if forceContent || diskDiffers() { _ = try reload() }
-            var added = 0
-            for item in legacy.items {
-                if hasAnyId(item) { continue }
-                let tab = legacy.groups.first { $0.id == item.groupId }?.name
-                let group = board.groups.first { Ordinal.equalIgnoreCase($0.name, tab) } ?? board.groups[0]
-                try board.attachLoaded(item, groupId: group.id)
-                added += 1
+            // All or nothing: if saving fails part way, the files are put back (persist) and so is the board here.
+            let snapshot = try BoardCodec.encode(board)
+            do {
+                var added = 0
+                for item in legacy.items {
+                    if hasAnyId(item) { continue }
+                    let tab = legacy.groups.first { $0.id == item.groupId }?.name
+                    let group = board.groups.first { Ordinal.equalIgnoreCase($0.name, tab) } ?? board.groups[0]
+                    try board.attachLoaded(item, groupId: group.id)
+                    added += 1
+                }
+                _ = try persist()
+                try setAside(url)
+                return added
+            } catch {
+                board = try restored(snapshot)
+                markDirty()
+                throw error
             }
-            _ = try persist()
-            try setAside(url)
-            return added
         }
     }
 
@@ -167,11 +175,17 @@ public final class VaultStore {
         try setAside(url)
     }
 
-    /// The old board file and its backups are renamed `.migrated`: kept, and never read again.
+    /// The old board file and its backups are renamed `.migrated`: kept, and never read again. An earlier `.migrated`
+    /// is never replaced: this one gets the next free name (`.migrated 2`, `.migrated 3`…).
     private func setAside(_ url: URL) throws {
         for path in [url.path, url.path + ".bak", url.path + ".restoring"] where fm.fileExists(atPath: path) {
-            try? fm.removeItem(atPath: path + ".migrated")
-            try VaultFiles.move(path, path + ".migrated")
+            var target = path + ".migrated"
+            var n = 2
+            while fm.fileExists(atPath: target) {
+                target = path + ".migrated \(n)"
+                n += 1
+            }
+            try VaultFiles.move(path, target)
         }
     }
 
@@ -181,6 +195,9 @@ public final class VaultStore {
         var time: Date?
         var size: Int64
     }
+
+    /// The stamp of a file that is there but couldn't be read (never equal to a real one, so it's read again).
+    static let unreadableStamp = Stamp(time: nil, size: -2)
 
     /// What we last saw of a file: its text, the last version that parsed, and why it doesn't parse now.
     struct FileState {
@@ -226,8 +243,8 @@ public final class VaultStore {
         }
         if taskFiles.count != caches.files.count { return true }
         if Set(topFolders().map(OIKey.init)) != Set(caches.groupFolders.values.map(OIKey.init)) { return true }
-        return !readOrEmpty(metaPath("config.json")).oEq(configText) || !readOrEmpty(metaPath("state.json")).oEq(stateText)
-            || fileLength(metaPath("activity.jsonl")) != activityLength
+        guard let config = try? readOrEmpty(metaPath("config.json")), let state = try? readOrEmpty(metaPath("state.json")) else { return true }
+        return !config.oEq(configText) || !state.oEq(stateText) || fileLength(metaPath("activity.jsonl")) != activityLength
     }
 
     /// Rebuilds the board from disk. Returns whether anything changed.
@@ -237,7 +254,7 @@ public final class VaultStore {
         let before = try BoardCodec.encode(board)
         let oldBoard = board
         let oldCaches = caches
-        let config = readConfig()
+        let config = try readConfig()
         let folders = topFolders()
 
         // Read every task file (unchanged files come from the cache).
@@ -328,7 +345,7 @@ public final class VaultStore {
         next.items = TaskMarkdown.stableSorted(next.items) { (order[$0.id] ?? Int.max) < (order[$1.id] ?? Int.max) }
 
         loadActivity(next)
-        loadState(next)
+        try loadState(next)
 
         var blocked = Set<UUID>()
         for (rel, state) in files where state.error != nil {
@@ -351,7 +368,13 @@ public final class VaultStore {
         let s = stamp(rel)
         let cached = old.files[OIKey(rel)]
         if let cached, cached.stamp == s, !force { return cached }
-        let text = readText(full(rel))
+        let text: String
+        do {
+            text = try readText(full(rel)) ?? ""
+        } catch {
+            // There but unreadable: shown as a problem; its last good version stays and it is never written over.
+            return FileState(text: cached?.text ?? "", good: cached?.good, stamp: Self.unreadableStamp, error: error.localizedDescription)
+        }
         if var cached, cached.text.oEq(text) {
             cached.stamp = s
             return cached
@@ -406,7 +429,7 @@ public final class VaultStore {
         for rel in plan.touchedOrder {
             let path = full(rel)
             if let known = caches.files[OIKey(rel)] {
-                if !fm.fileExists(atPath: path) || !readText(path).oEq(known.text) { throw VaultConflict(path: rel) }
+                guard let now = try readText(path), now.oEq(known.text) else { throw VaultConflict(path: rel) }
             } else if fm.fileExists(atPath: path) {
                 throw VaultConflict(path: rel)
             }
@@ -629,8 +652,8 @@ public final class VaultStore {
 
     private func writeTaskFile(_ rel: String, _ text: String, _ undo: inout [() throws -> Void]) throws {
         let path = full(rel)
-        let previous = fm.contents(atPath: path)
-        try VaultFiles.writeAtomic(path, text)
+        let previous = try readData(path)
+        try VaultFiles.writeAtomic(path, text, exclusive: previous == nil)
         undo.append {
             if let previous { try VaultFiles.writeAtomic(path, previous) } else { try self.fm.removeItem(atPath: path) }
         }
@@ -674,17 +697,27 @@ public final class VaultStore {
         return candidate
     }
 
+    /// Empties the trash of what was put there more than 30 days ago, dated by the `yyyyMMdd-HHmmss ` its name starts
+    /// with (a file keeps its own time when it's moved to the trash, so that can't say when it was put there). Anything
+    /// without that stamp is left alone.
     private func purgeOldTrash() {
         let trash = metaPath("trash")
         guard let names = try? fm.contentsOfDirectory(atPath: trash) else { return }
         let cutoff = clock().addingTimeInterval(-30 * 86_400)
         for name in names {
-            let path = trash + "/" + name
-            guard let attributes = try? fm.attributesOfItem(atPath: path) else { continue }
-            let modified = attributes[.modificationDate] as? Date ?? .distantFuture
-            let created = attributes[.creationDate] as? Date ?? .distantFuture
-            if modified < cutoff && created < cutoff { try? fm.removeItem(atPath: path) }
+            guard let trashed = Self.trashedAt(name), trashed < cutoff else { continue }
+            try? fm.removeItem(atPath: trash + "/" + name)
         }
+    }
+
+    private static let trashStamp = Rx(#"^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2}) "#)
+
+    /// When a trash entry was put there (UTC, from its name), or nil when its name doesn't say.
+    static func trashedAt(_ name: String) -> Date? {
+        guard let m = trashStamp.match(name) else { return nil }
+        let v = (1...6).map { Int(m.group($0))! }
+        guard (1...12).contains(v[1]), v[2] >= 1, v[2] <= LocalDay.length(v[0], v[1]), v[3] < 24, v[4] < 60, v[5] < 60 else { return nil }
+        return VaultText.date(millis: LocalDateTime(year: v[0], month: v[1], day: v[2], hour: v[3], minute: v[4], second: v[5]).wallMillis)
     }
 
     // ---- Settings, timer state, activity ------------------------------------------------
@@ -696,8 +729,8 @@ public final class VaultStore {
         var energyPerDay: Int?
     }
 
-    private func readConfig() -> Config {
-        let text = readOrEmpty(metaPath("config.json"))
+    private func readConfig() throws -> Config {
+        let text = try readOrEmpty(metaPath("config.json"))
         configText = text
         guard !text.isEmpty, let doc = (try? JSONText.parse(text))?.objectValue else { return Config() }
         var config = Config()
@@ -759,8 +792,8 @@ public final class VaultStore {
         return true
     }
 
-    private func loadState(_ b: TaskBoard) {
-        let text = readOrEmpty(metaPath("state.json"))
+    private func loadState(_ b: TaskBoard) throws {
+        let text = try readOrEmpty(metaPath("state.json"))
         stateText = text
         guard !text.isEmpty, let s = (try? JSONText.parse(text))?.objectValue else { return }
         func instant(_ key: String) -> Date? { s.get(key)?.stringValue.flatMap { Instant(parsing: $0) }?.date }
@@ -867,23 +900,46 @@ public final class VaultStore {
     public func readSync() throws -> SyncSnapshot {
         try withLock {
             if forceContent || diskDiffers() { _ = try reload() }
-            return buildSyncSnapshot()
+            return try buildSyncSnapshot()
         }
     }
 
-    private func buildSyncSnapshot() -> SyncSnapshot {
+    /// Whether the file at `rel` (or an iCloud placeholder of it, `.<name>.icloud`) is there: such a file isn't deleted,
+    /// whatever its content (never say it was deleted).
+    public func isPresent(_ rel: String) -> Bool {
+        let path = full(rel)
+        var st = stat()
+        return lstat(path, &st) == 0 || lstat(full(Self.placeholder(rel)), &st) == 0
+    }
+
+    static func placeholder(_ rel: String) -> String {
+        let dir = VaultFiles.directory(rel)
+        return (dir.isEmpty ? "" : dir + "/") + "." + VaultFiles.fileName(rel) + ".icloud"
+    }
+
+    /// Everything that syncs. A file that is there but can't be read (or an iCloud placeholder) stops the sync: left
+    /// out, it would read as deleted here and be deleted on every other device.
+    private func buildSyncSnapshot() throws -> SyncSnapshot {
+        if let unreadable = caches.files.first(where: { $0.value.stamp == Self.unreadableStamp })?.key.value {
+            throw SyncNotArrived("\"\(VaultFiles.fileName(unreadable))\" can't be read right now (it may not be downloaded yet); sync waits for it.")
+        }
+        if let waiting = placeholders().first {
+            throw SyncNotArrived("\"\(VaultFiles.fileName(waiting))\" isn't downloaded yet; sync waits for it.")
+        }
         var entries: SyncEntries = [:]
         var memory: [OKey: Data] = [:]
         var covered = Set<OIKey>()
         var seen = Set<OIKey>()
-        func add(_ key: String, _ rel: String) {
+        func add(_ key: String, _ rel: String) throws {
             let path = full(rel)
             guard let attributes = try? fm.attributesOfItem(atPath: path), attributes[.type] as? FileAttributeType == .typeRegular,
                   (attributes[.size] as? Int64 ?? 0) <= SyncLimits.maxFileBytes else { return }
             let s = Stamp(time: attributes[.modificationDate] as? Date, size: attributes[.size] as? Int64 ?? 0)
             var known = syncHashes[OIKey(rel)]
             if known == nil || known!.stamp != s {
-                guard let data = fm.contents(atPath: path) else { return }
+                let read: Data?
+                do { read = try readData(path) } catch { throw SyncNotArrived(error.localizedDescription) }
+                guard let data = read else { return }
                 known = (s, SyncHash.of(data))
                 syncHashes[OIKey(rel)] = known
             }
@@ -892,18 +948,18 @@ public final class VaultStore {
             seen.insert(OIKey(rel))
         }
         for (id, rel) in caches.paths.sorted(by: { Ordinal.less($0.value, $1.value) }) {
-            add(SyncKeys.task(id), rel)
-            add(SyncKeys.rich(id), VaultFiles.changeExtension(rel, ".html"))
+            try add(SyncKeys.task(id), rel)
+            try add(SyncKeys.rich(id), VaultFiles.changeExtension(rel, ".html"))
         }
-        for rel in syncableFiles() where !covered.contains(OIKey(rel)) { add(SyncKeys.file(rel), rel) }
+        for rel in syncableFiles() where !covered.contains(OIKey(rel)) { try add(SyncKeys.file(rel), rel) }
 
         func remember(_ key: String, _ path: String, _ bytes: Data) {
             entries[OKey(key)] = SyncEntry(key: key, path: path, hash: SyncHash.of(bytes))
             memory[OKey(key)] = bytes
         }
-        if let config = fm.contents(atPath: metaPath("config.json")) { remember(SyncKeys.config, SyncKeys.configPath, config) }
+        if let config = try readData(metaPath("config.json")) { remember(SyncKeys.config, SyncKeys.configPath, config) }
         remember(SyncKeys.order, SyncKeys.orderPath, Self.orderBytes(board.nowOrder))
-        if let log = fm.contents(atPath: metaPath("activity.jsonl")) { remember(SyncKeys.activity, SyncKeys.activityPath, log) }
+        if let log = try readData(metaPath("activity.jsonl")) { remember(SyncKeys.activity, SyncKeys.activityPath, log) }
         for key in syncHashes.keys where !seen.contains(key) { syncHashes[key] = nil }
 
         return SyncSnapshot(entries: entries) { [weak self] e in
@@ -925,6 +981,23 @@ public final class VaultStore {
     private static func parseOrder(_ content: Data) -> [UUID] {
         guard let array = (try? JSONText.parse(content))?.arrayValue else { return [] }
         return array.compactMap { parseGuid($0.stringValue) }.filter { $0 != emptyGuid }
+    }
+
+    /// iCloud placeholders (`.<name>.icloud`: a file not downloaded yet) in the vault's folders.
+    private func placeholders() -> [String] {
+        var result: [String] = []
+        var pending: [String] = plainEntries("").filter { isPlainDirectory($0) }
+        while let dir = pending.popLast() {
+            for name in (try? fm.contentsOfDirectory(atPath: full(dir))) ?? [] {
+                let rel = dir + "/" + name
+                if name.oStarts(".") && name.oEnds(".icloud") && name.u16 > 8 {
+                    result.append(dir + "/" + name.sub(1, name.u16 - 7))
+                } else if !name.oStarts(".") && isPlainDirectory(rel) {
+                    pending.append(rel)
+                }
+            }
+        }
+        return result
     }
 
     /// Files in the vault's folders (never root-level files, hidden ones, or links that lead elsewhere).
@@ -965,8 +1038,8 @@ public final class VaultStore {
                         undo.append { try self.truncate(path, to: length) }
                     case .write:
                         let path = full(op.path)
-                        let before = fm.contents(atPath: path)
-                        try VaultFiles.writeAtomic(path, op.content!)
+                        let before = try readData(path)
+                        try VaultFiles.writeAtomic(path, op.content!, exclusive: op.expected == nil)
                         undo.append {
                             if let before { try VaultFiles.writeAtomic(path, before) } else { try self.fm.removeItem(atPath: path) }
                         }
@@ -982,9 +1055,9 @@ public final class VaultStore {
                         undo.append { try VaultFiles.move(trash, source) }
                     case .setConfig:
                         let path = metaPath("config.json")
-                        let previous = fm.contents(atPath: path)
+                        let previous = try readData(path)
                         try VaultFiles.writeAtomic(path, op.content!)
-                        undo.append { if let previous { try VaultFiles.writeAtomic(path, previous) } }
+                        undo.append { if let previous { try VaultFiles.writeAtomic(path, previous) } else { try self.fm.removeItem(atPath: path) } }
                     case .setOrder:
                         order = Self.parseOrder(op.content!)
                     }
@@ -1008,14 +1081,28 @@ public final class VaultStore {
     /// Checks the plan against the files as they are now (moves and writes in order); nothing is written yet.
     private func verify(_ ops: [SyncOp]) throws {
         var known: [OIKey: String?] = [:]
-        func current(_ rel: String) -> String? {
+        func current(_ rel: String) throws -> String? {
             if let hash = known[OIKey(rel)] { return hash }
-            let hash = fm.contents(atPath: full(rel)).map(SyncHash.of)
+            let hash = try readData(full(rel)).map(SyncHash.of)
             known[OIKey(rel)] = .some(hash)
             return hash
         }
         func expect(_ rel: String, _ expected: String?) throws {
-            if current(rel) != expected { throw SyncStaleError("\(rel) changed while syncing.") }
+            if try current(rel) != expected { throw SyncStaleError("\(rel) changed while syncing.") }
+        }
+        // APFS treats names that differ only in Unicode normalization (Café NFC / NFD) or letter case as one file: two
+        // such names in one plan would write over each other.
+        var claimed: [String: String] = [:]
+        func claim(_ rel: String) throws {
+            let key = VaultFiles.fileSystemKey(rel)
+            if let other = claimed[key], !other.oEq(rel) {
+                throw SyncDataError("\"\(rel)\" and \"\(other)\" would be the same file here; one of them needs another name.")
+            }
+            claimed[key] = rel
+        }
+        func release(_ rel: String) {
+            let key = VaultFiles.fileSystemKey(rel)
+            if claimed[key]?.oEq(rel) == true { claimed[key] = nil }
         }
         for op in ops {
             if [.write, .move, .delete].contains(op.kind) {
@@ -1026,18 +1113,22 @@ public final class VaultStore {
             switch op.kind {
             case .write:
                 try expect(op.path, op.expected)
+                try claim(op.path)
                 known[OIKey(op.path)] = .some(SyncHash.of(op.content!))
             case .move:
                 guard let to = op.to, VaultFiles.isSyncablePath(to) else { throw SyncDataError("Sync refused an unsafe path: \(op.to ?? "")") }
                 try expect(op.path, op.expected)
                 if !Ordinal.equalIgnoreCase(to, op.path) { try expect(to, nil) }
+                release(op.path)
+                try claim(to)
                 known[OIKey(to)] = .some(op.expected)
                 known[OIKey(op.path)] = .some(nil)
             case .delete:
                 try expect(op.path, op.expected)
+                release(op.path)
                 known[OIKey(op.path)] = .some(nil)
             case .setConfig:
-                if fm.contents(atPath: metaPath("config.json")).map(SyncHash.of) != op.expected { throw SyncStaleError("The settings changed while syncing.") }
+                if try readData(metaPath("config.json")).map(SyncHash.of) != op.expected { throw SyncStaleError("The settings changed while syncing.") }
             case .setOrder:
                 if let expected = op.expected, SyncHash.of(Self.orderBytes(board.nowOrder)) != expected { throw SyncStaleError("The Now order changed while syncing.") }
             case .appendActivity:
@@ -1116,14 +1207,28 @@ public final class VaultStore {
 
     private func fileLength(_ path: String) -> Int64 { ((try? fm.attributesOfItem(atPath: path))?[.size] as? Int64) ?? 0 }
 
-    /// The file's text as .NET's `File.ReadAllText` gives it (UTF-8, a leading BOM dropped).
-    private func readText(_ path: String) -> String {
-        guard var data = fm.contents(atPath: path) else { return "" }
+    /// A file that is there but can't be read (not downloaded yet, no permission, a disk error). It is never written over.
+    public struct VaultUnreadable: Error, LocalizedError {
+        public let path: String
+        public var errorDescription: String? { "\"\((path as NSString).lastPathComponent)\" can't be read right now (it may not be downloaded yet). Sync tries again later." }
+    }
+
+    /// The file's bytes; nil when there is no file. A file that is there but can't be read throws.
+    private func readData(_ path: String) throws -> Data? {
+        if let data = fm.contents(atPath: path) { return data }
+        var st = stat()
+        if lstat(path, &st) != 0 && errno == ENOENT { return nil }
+        throw VaultUnreadable(path: path)
+    }
+
+    /// The file's text as .NET's `File.ReadAllText` gives it (UTF-8, a leading BOM dropped); nil when there is none.
+    private func readText(_ path: String) throws -> String? {
+        guard var data = try readData(path) else { return nil }
         if data.starts(with: [0xEF, 0xBB, 0xBF]) { data.removeFirst(3) }
         return String(decoding: data, as: UTF8.self)
     }
 
-    private func readOrEmpty(_ path: String) -> String { fm.fileExists(atPath: path) ? readText(path) : "" }
+    private func readOrEmpty(_ path: String) throws -> String { try readText(path) ?? "" }
 
     private func lastByte(_ path: String) -> UInt8? {
         guard let handle = FileHandle(forReadingAtPath: path) else { return nil }

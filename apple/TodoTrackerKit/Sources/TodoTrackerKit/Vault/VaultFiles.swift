@@ -95,8 +95,10 @@ public enum VaultFiles {
         }
     }
 
-    static func writeFile(_ path: String, _ data: Data) throws {
-        let fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+    /// Writes a file and flushes it to the disk itself (`F_FULLFSYNC`), so a rename after it never publishes a file
+    /// whose bytes are still only in a cache when the phone loses power.
+    static func writeFile(_ path: String, _ data: Data, exclusive: Bool = false) throws {
+        let fd = open(path, O_WRONLY | O_CREAT | (exclusive ? O_EXCL : O_TRUNC), 0o644)
         if fd < 0 { throw posixError(path) }
         defer { close(fd) }
         try data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
@@ -107,15 +109,20 @@ public enum VaultFiles {
                 offset += n
             }
         }
+        if fcntl(fd, F_FULLFSYNC) != 0 && fsync(fd) != 0 { throw posixError(path) }
     }
 
-    /// Moves a file or folder; the target must be free (or the same file in other letter case).
+    /// Moves a file or folder. The target must be free: a file that appeared there meanwhile is never replaced
+    /// (`RENAME_EXCL`), except the same file in other letter case (a case-only rename).
     static func move(_ from: String, _ to: String) throws {
         var a = stat(), b = stat()
-        if lstat(to, &b) == 0 && !(lstat(from, &a) == 0 && a.st_ino == b.st_ino && a.st_dev == b.st_dev) {
-            throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: to])
+        let sameFile = lstat(to, &b) == 0 && lstat(from, &a) == 0 && a.st_ino == b.st_ino && a.st_dev == b.st_dev
+        if sameFile {
+            if rename(from, to) != 0 { throw posixError(from) }
+        } else if renamex_np(from, to, UInt32(RENAME_EXCL)) != 0 {
+            if errno == EEXIST { throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: to]) }
+            throw posixError(from)
         }
-        if rename(from, to) != 0 { throw posixError(from) }
     }
 
     static func posixError(_ path: String) -> Error {
@@ -123,19 +130,31 @@ public enum VaultFiles {
         return NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSFilePathErrorKey: path, NSLocalizedDescriptionKey: String(cString: strerror(code)) + ": " + path])
     }
 
-    /// Writes atomically (temp file + rename) so readers and sync clients never see half a file.
-    static func writeAtomic(_ path: String, _ data: Data) throws {
+    /// Writes atomically (temp file + rename) so readers and sync clients never see half a file. `exclusive`: the file
+    /// is new, and one that appeared there meanwhile is never replaced (the write fails instead).
+    static func writeAtomic(_ path: String, _ data: Data, exclusive: Bool = false) throws {
         let dir = (path as NSString).deletingLastPathComponent
         try makeDirectories(dir)
         let temp = dir + "/." + (path as NSString).lastPathComponent + "." + String(guidN(UUID()).prefix(8)) + ".tmp"
         do {
             try writeFile(temp, data)
-            if rename(temp, path) != 0 { throw posixError(path) }
+            if exclusive {
+                if renamex_np(temp, path, UInt32(RENAME_EXCL)) != 0 {
+                    if errno == EEXIST { throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: path]) }
+                    throw posixError(path)
+                }
+            } else if rename(temp, path) != 0 {
+                throw posixError(path)
+            }
         } catch {
             unlink(temp)
             throw error
         }
     }
 
-    static func writeAtomic(_ path: String, _ text: String) throws { try writeAtomic(path, Data(text.utf8)) }
+    static func writeAtomic(_ path: String, _ text: String, exclusive: Bool = false) throws { try writeAtomic(path, Data(text.utf8), exclusive: exclusive) }
+
+    /// The key two names share when an Apple file system (APFS, HFS+) treats them as one file: the same letters in
+    /// another Unicode normalization or letter case.
+    static func fileSystemKey(_ path: String) -> String { Ordinal.upper(path.precomposedStringWithCanonicalMapping) }
 }

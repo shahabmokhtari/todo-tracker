@@ -148,4 +148,41 @@ final class SyncRemoteTests: XCTestCase {
         }
         XCTAssertTrue(github.gists.isEmpty)
     }
+
+    func testTheTokenOnlyEverGoesToGitHub() async throws {
+        // A redirect elsewhere goes on without the token; one to GitHub keeps it.
+        var request = URLRequest(url: URL(string: "https://evil.example.com/x")!)
+        request.setValue("Bearer secret", forHTTPHeaderField: "Authorization")
+        XCTAssertNil(GitHubSession.redirect(request).value(forHTTPHeaderField: "Authorization"))
+        request.url = URL(string: "https://gist.githubusercontent.com/raw/x")!
+        XCTAssertEqual(GitHubSession.redirect(request).value(forHTTPHeaderField: "Authorization"), "Bearer secret")
+        request.url = URL(string: "http://api.github.com/x")!
+        XCTAssertNil(GitHubSession.redirect(request).value(forHTTPHeaderField: "Authorization"))
+        request.url = URL(string: "https://raw.githubusercontent.com.evil.example/x")!
+        XCTAssertNil(GitHubSession.redirect(request).value(forHTTPHeaderField: "Authorization"))
+
+        // A big device file is fetched from its raw_url: with the token only if that is GitHub's.
+        let github = TruncatingGitHub()
+        let remote = GistRemote(http: github, token: { "secret" }, loadId: { "g1" }, saveId: { _ in })
+        _ = try await remote.read(self: "ffffffffffffffffffffffffffffffff", knownVersion: nil)
+        let raw = try XCTUnwrap(github.requests.first { $0.url?.host == "evil.example.com" })
+        XCTAssertNil(raw.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertTrue(github.requests.filter { $0.url?.host == "api.github.com" }.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer secret" })
+    }
+}
+
+/// A gist whose device file is "too big" and points somewhere that isn't GitHub.
+final class TruncatingGitHub: HTTPTransport {
+    var requests: [URLRequest] = []
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        requests.append(request)
+        let ok = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["ETag": "\"e\""])!
+        if request.url?.host == "evil.example.com" { return (Data("{}".utf8), ok) }
+        if request.url?.path == "/gists" { return (Data("[]".utf8), ok) }
+        let file = JSONObject([("truncated", .bool(true)), ("raw_url", .string("https://evil.example.com/device.json"))])
+        let gist = JSONObject([("id", .string("g1")), ("files", .object(JSONObject([("device-0a1b2c3d4e5f60718293a4b5c6d7e8f9.json", .object(file))]))),
+                               ("history", .array([.object(JSONObject([("version", .string("r1"))]))]))])
+        return (Data(JSONText.write(.object(gist)).utf8), ok)
+    }
 }
