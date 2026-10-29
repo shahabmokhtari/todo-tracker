@@ -51,6 +51,16 @@ public sealed class VaultStoreTests : IDisposable
         Assert.Equal($"Work/{new string('x', 79)}.md", store.PathOf(task.Id));
     }
 
+    [Theory]
+    [InlineData("Work/tab\there.md")]
+    [InlineData("Work/line\nbreak.md")]
+    [InlineData("Work/bell\u0007.md")]
+    public void A_path_from_another_device_with_a_control_character_is_refused_on_every_system(string path)
+    {
+        // Windows can't name a file like that, so no system takes it (else it would sync everywhere but there).
+        Assert.False(VaultBoardStore.IsSyncablePath(path));
+    }
+
     [Fact]
     public async Task A_new_vault_has_group_folders_a_config_and_a_guide_for_agents()
     {

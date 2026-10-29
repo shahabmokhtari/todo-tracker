@@ -189,8 +189,9 @@ public sealed partial class VaultBoardStore
         && rel.Split('/').All(s => s.Length > 0 && s != ".." && s[0] != '.' && s.Trim().Length == s.Length && !s.EndsWith('.')
             && s.IndexOfAny(InvalidNameChars) < 0 && !ReservedName().IsMatch(s));
 
-    // Windows' file name rules, on every system (a name another computer can't write would never sync).
-    private static readonly char[] InvalidNameChars = [.. Path.GetInvalidFileNameChars(), '<', '>', ':', '"', '|', '?', '*'];
+    // Windows' file name rules, on every system (a name another computer can't write would never sync): elsewhere
+    // GetInvalidFileNameChars lists only '\0' and '/', so the control characters are spelled out.
+    private static readonly char[] InvalidNameChars = [.. Path.GetInvalidFileNameChars(), .. Enumerable.Range(0, 32).Select(c => (char)c), '<', '>', ':', '"', '|', '?', '*'];
 
     [System.Text.RegularExpressions.GeneratedRegex(@"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
     private static partial System.Text.RegularExpressions.Regex ReservedName();
