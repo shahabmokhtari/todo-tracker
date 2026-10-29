@@ -26,7 +26,8 @@ public final class VaultStore {
 
     private var board = TaskBoard(seedDefaultGroups: false)
     private var caches = Caches()
-    private var dormantGroups: [ConfigGroup] = []
+    /// Tabs in config.json without a folder here, each with the ids of the config tabs before it (nearest first).
+    private var dormantGroups: [(group: ConfigGroup, before: [UUID])] = []
     private var configText = ""
     private var stateText = ""
     private var activity: [ActivityEntry] = []
@@ -275,8 +276,8 @@ public final class VaultStore {
         // Config groups whose folder is missing stay dormant (a sync may deliver the folder later).
         var groups: [(id: UUID, folder: String, color: String?)] = []
         var claimed = Set<OIKey>()
-        var dormant: [ConfigGroup] = []
-        for g in config.groups {
+        var dormant: [(group: ConfigGroup, before: [UUID])] = []
+        for (index, g) in config.groups.enumerated() {
             let known = groups.contains { $0.id == g.id }
             var folder = folders.first { Ordinal.equalIgnoreCase($0, g.folder) && !claimed.contains(OIKey($0)) }
             if folder == nil && !known {
@@ -286,7 +287,8 @@ public final class VaultStore {
                 }
             }
             guard let found = folder, !known else {
-                if folder == nil && !known { dormant.append(g) }
+                // It keeps its place: after the config tabs before it (nearest first), see `groupsInOrder`.
+                if folder == nil && !known { dormant.append((g, config.groups[..<index].map(\.id).reversed())) }
                 continue
             }
             claimed.insert(OIKey(found))
@@ -764,9 +766,33 @@ public final class VaultStore {
         return JSONText.write(.object(doc), indented: true) + "\n"
     }
 
+    /// The tabs as config.json lists them: the ones with a folder in tab order, and each dormant one (in config,
+    /// without a folder here yet) right after the nearest tab that came before it in config, or first when none did. A
+    /// folder that's empty doesn't sync, so another device has this tab dormant: both must still write the same
+    /// config.json, or they never agree on it. Same as C#'s `GroupsInOrder`.
+    static func groupsInOrder(_ live: [ConfigGroup], _ dormant: [(group: ConfigGroup, before: [UUID])]) -> [ConfigGroup] {
+        let ids = Set(live.map(\.id))
+        var front: [ConfigGroup] = []
+        var after: [UUID: [ConfigGroup]] = [:]
+        for (group, before) in dormant {
+            if let anchor = before.first(where: ids.contains) {
+                after[anchor, default: []].append(group)
+            } else {
+                front.append(group)
+            }
+        }
+        var result = front
+        for group in live {
+            result.append(group)
+            result += after[group.id] ?? []
+        }
+        return result
+    }
+
     private func currentConfigText() -> String {
         let folders = caches.groupFolders
-        let groups = board.groups.compactMap { g in folders[g.id].map { ConfigGroup(id: g.id, folder: $0, color: g.color) } } + dormantGroups
+        let live = board.groups.compactMap { g in folders[g.id].map { ConfigGroup(id: g.id, folder: $0, color: g.color) } }
+        let groups = Self.groupsInOrder(live, dormantGroups)
         return Self.configText(groups: groups, labels: board.labels.map { ($0.name, $0.color) }, order: board.items.map(\.id), energyPerDay: board.energyPerDay)
     }
 
