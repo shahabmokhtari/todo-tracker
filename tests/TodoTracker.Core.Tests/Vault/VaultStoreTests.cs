@@ -41,6 +41,17 @@ public sealed class VaultStoreTests : IDisposable
         store.UpdateAsync(b => b.AddTask(new NewTask(title) { ParentId = parent, GroupId = group }, Actor.User, _time.GetUtcNow()));
 
     [Fact]
+    public async Task A_long_title_is_never_cut_in_the_middle_of_an_emoji_in_its_file_name()
+    {
+        var store = Open();
+
+        var task = await Add(store, new string('x', 79) + "🚀 launch");
+
+        // Half an emoji isn't a character any system can name a file with (or sync to a phone).
+        Assert.Equal($"Work/{new string('x', 79)}.md", store.PathOf(task.Id));
+    }
+
+    [Fact]
     public async Task A_new_vault_has_group_folders_a_config_and_a_guide_for_agents()
     {
         var store = Open();

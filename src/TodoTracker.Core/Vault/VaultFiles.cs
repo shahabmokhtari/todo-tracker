@@ -68,7 +68,8 @@ internal static partial class VaultFiles
         cleaned = Spaces().Replace(cleaned, " ").Trim().TrimEnd('.', ' ').TrimStart('.', ' ');
         if (cleaned.Length > maxLength)
         {
-            cleaned = cleaned[..maxLength].TrimEnd('.', ' ');
+            // Cut by UTF-16 units, but never between the two halves of an emoji (or other character beyond U+FFFF).
+            cleaned = cleaned[..(char.IsHighSurrogate(cleaned[maxLength - 1]) ? maxLength - 1 : maxLength)].TrimEnd('.', ' ');
         }
 
         if (cleaned.Length == 0)
