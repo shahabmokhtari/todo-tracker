@@ -433,8 +433,13 @@ by `tt open`.
   (no Host check, no cookie, no API token, no MCP): only `Authorization: Bearer ttp_…` phone tokens (256-bit, stored
   hashed in `paired-phones.json`, revocable one by one), for an allow-list of task routes; everything else (and every
   route added later) is 403. Phone tokens are refused on the loopback port. The only anonymous route is
-  `POST /api/phones/claim` (a 144-bit code, single use, 10 minutes, at most 10 claims a minute). Changes are made as
-  the user, named by the phone. Switching either off refuses phones at once.
+  `POST /api/phones/claim` (a 144-bit code, single use, 10 minutes; 10 wrong codes a minute per address, 100 claims a
+  minute in all; used up only once the phone is saved). Changes are made as the user, named by the phone. Switching
+  either off refuses phones at once.
+* The phone port only serves this computer, its local networks (RFC 1918, link-local, IPv6 unique-local and
+  link-local) and Tailscale (100.64/10): other addresses are dropped before TLS (and refused with 403 if one gets
+  through). At most 32 connections at once; request bodies at most 4 KB for the claim and 1 MB otherwise; Kestrel's
+  own header and body timeouts apply (they're server-wide, not per port).
 
 ## 9. Platforms and build
 

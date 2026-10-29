@@ -99,7 +99,8 @@ same tasks folder, synced as usual), at home on the same Wi-Fi or anywhere with 
 What a phone can do: everything the phone apps do with tasks (add, change, finish, snooze, notes, steps, reminders,
 order, groups, focus timer and time, energy, the theme). Not settings, the tasks folder, history, hooks, extras,
 AI apps or MCP: the phone port answers 403 to anything else, and the API token, the app's sign-in and the session
-cookie don't work there. Changes say which phone made them ("You (Shahab's iPhone)" in the timeline).
+cookie don't work there. Changes say which phone made them ("You (Shahab's iPhone)" in the timeline). Only devices
+on this computer's own network or on Tailscale get an answer; anything from a public address is turned away.
 
 Turning **Let phones connect** or **Phones** off shuts every phone out at once; the port itself closes at the next
 start. On a Mac or Windows firewall, allow Todo Tracker (or port 5318) for private networks. Run the server with

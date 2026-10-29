@@ -112,6 +112,73 @@ public sealed class PhoneListener
 
     public static PhoneListener Closed(int port, string? problem = null) => new(port, null, problem);
 
+    /// <summary>Connections the phone port takes at once (a household of phones needs a handful).</summary>
+    public const int MaxConnections = 32;
+
+    private int _connections;
+
+    /// <summary>
+    /// Whether a device at that address may use the phone port: this computer, its local network (10.x, 172.16–31.x,
+    /// 192.168.x, link-local, IPv6 private and link-local) and Tailscale (100.64–127.x). The port listens on every
+    /// network, so anything else (a public address, say on a café's or a hotel's network) is turned away.
+    /// </summary>
+    public static bool MayConnect(IPAddress? address)
+    {
+        if (address is null)
+        {
+            return false;
+        }
+
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (IPAddress.IsLoopback(address))
+        {
+            return true;
+        }
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            var b = address.GetAddressBytes();
+            return b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+                || (b[0] == 169 && b[1] == 254) || (b[0] == 100 && b[1] >= 64 && b[1] <= 127);
+        }
+
+        // fc00::/7 (unique local, Tailscale's IPv6 too) and fe80::/10 (link-local).
+        return address.AddressFamily == AddressFamily.InterNetworkV6 && (address.IsIPv6UniqueLocal || address.IsIPv6LinkLocal);
+    }
+
+    /// <summary>
+    /// Kestrel connection middleware for the phone port: drops a connection from outside this network and Tailscale
+    /// before TLS starts, and holds the port to <see cref="MaxConnections"/> at once.
+    /// </summary>
+    public Func<Microsoft.AspNetCore.Connections.ConnectionDelegate, Microsoft.AspNetCore.Connections.ConnectionDelegate> Gate() => next => async connection =>
+    {
+        if (!MayConnect((connection.RemoteEndPoint as IPEndPoint)?.Address))
+        {
+            connection.Abort();
+            return;
+        }
+
+        if (Interlocked.Increment(ref _connections) > MaxConnections)
+        {
+            Interlocked.Decrement(ref _connections);
+            connection.Abort();
+            return;
+        }
+
+        try
+        {
+            await next(connection).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _connections);
+        }
+    };
+
     /// <summary>Whether this request came in on the phone port.</summary>
     public bool Serves(HttpContext context)
     {
@@ -171,7 +238,7 @@ public static class PhoneCertificate
         {
             try
             {
-                return X509CertificateLoader.LoadPkcs12FromFile(path, password: null);
+                return X509CertificateLoader.LoadPkcs12FromFile(path, password: null, KeyFlags);
             }
             catch (CryptographicException)
             {
@@ -204,8 +271,17 @@ public static class PhoneCertificate
         }
 
         File.Move(temp, path, overwrite: true);
-        return X509CertificateLoader.LoadPkcs12(bytes, password: null);
+        return X509CertificateLoader.LoadPkcs12(bytes, password: null, KeyFlags);
     }
+
+    /// <summary>
+    /// How the private key is loaded for HTTPS: Windows (SChannel) needs a key it can use outside this process's memory,
+    /// so not an ephemeral one; Linux keeps it in memory only; macOS can't load ephemeral keys, so it uses its default.
+    /// </summary>
+    private static X509KeyStorageFlags KeyFlags =>
+        OperatingSystem.IsWindows() ? X509KeyStorageFlags.Exportable
+        : OperatingSystem.IsLinux() ? X509KeyStorageFlags.EphemeralKeySet
+        : X509KeyStorageFlags.DefaultKeySet;
 
     /// <summary>The certificate's fingerprint as phones check it: SHA-256 of its DER bytes, base64url without padding.</summary>
     public static string Fingerprint(X509Certificate2 certificate)
@@ -313,17 +389,26 @@ public static class PhoneLink
 
 /// <summary>
 /// Codes that pair a phone: one at a time, single use, 10 minutes. They're long and random (they travel in the QR code,
-/// nobody types them), and claims are limited to a few a minute so guessing gets nowhere.
+/// nobody types them). Wrong codes slow down the address that sent them (10 a minute), and all claims together have a
+/// loose limit (100 a minute), so guessing gets nowhere and another device on the network can't keep your phone out.
 /// </summary>
 public sealed class PhonePairingCodes(TimeProvider time)
 {
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
 
-    /// <summary>Claims allowed in a minute, right or wrong.</summary>
-    public const int ClaimsPerMinute = 10;
+    /// <summary>Wrong codes one address may send in a minute.</summary>
+    public const int FailuresPerMinute = 10;
 
+    /// <summary>Claims from everywhere together in a minute, right or wrong.</summary>
+    public const int ClaimsPerMinute = 100;
+
+    /// <summary>Longer than any code: refused without a look.</summary>
+    public const int MaxCodeLength = 64;
+
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
     private readonly Lock _lock = new();
     private readonly Queue<DateTimeOffset> _claims = new();
+    private readonly Dictionary<IPAddress, Queue<DateTimeOffset>> _failures = [];
     private (string Code, DateTimeOffset Expires, string Id)? _current;
     private (string Id, string Phone)? _paired;
 
@@ -332,6 +417,9 @@ public sealed class PhonePairingCodes(TimeProvider time)
         Paired,
         Wrong,
         TooMany,
+
+        /// <summary>The code was right but the phone couldn't be saved: the code still works.</summary>
+        NotSaved,
     }
 
     public (string Code, DateTimeOffset Expires, string Id) Create()
@@ -359,47 +447,73 @@ public sealed class PhonePairingCodes(TimeProvider time)
         }
     }
 
-    /// <summary>Uses the code up when it's the one shown and still fresh; <paramref name="codeId"/> is its id.</summary>
-    public Claim TryRedeem(string? code, out string? codeId)
+    /// <summary>
+    /// Pairs with <paramref name="pair"/> when the code is the one shown and still fresh, all at once: the code is used up
+    /// only once the phone is saved (two claims at once pair one phone; one that couldn't be saved can try again).
+    /// </summary>
+    public Claim TryRedeem(string? code, IPAddress? from, Func<(string Token, string Name)> pair, out string? token)
     {
-        codeId = null;
+        ArgumentNullException.ThrowIfNull(pair);
+        token = null;
+        var who = from is null ? IPAddress.None : from.IsIPv4MappedToIPv6 ? from.MapToIPv4() : from;
         lock (_lock)
         {
             var now = time.GetUtcNow();
-            while (_claims.Count > 0 && now - _claims.Peek() >= TimeSpan.FromMinutes(1))
+            Trim(_claims, now);
+            foreach (var (address, failures) in _failures.ToList())
             {
-                _claims.Dequeue();
+                if (Trim(failures, now) == 0)
+                {
+                    _failures.Remove(address);
+                }
             }
 
-            if (_claims.Count >= ClaimsPerMinute)
+            if (_claims.Count >= ClaimsPerMinute || (_failures.TryGetValue(who, out var mine) && mine.Count >= FailuresPerMinute))
             {
                 return Claim.TooMany;
             }
 
             _claims.Enqueue(now);
-            if (_current is not { } current || current.Expires <= now)
+            if (_current is { } stale && stale.Expires <= now)
             {
                 _current = null;
-                return Claim.Wrong;
             }
 
-            if (code is null || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(code), Encoding.ASCII.GetBytes(current.Code)))
+            if (_current is not { } current || code is not { Length: > 0 and <= MaxCodeLength }
+                || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(code), Encoding.ASCII.GetBytes(current.Code)))
             {
+                if (!_failures.TryGetValue(who, out var failed))
+                {
+                    _failures[who] = failed = new Queue<DateTimeOffset>();
+                }
+
+                failed.Enqueue(now);
                 return Claim.Wrong;
             }
 
-            _current = null;
-            codeId = current.Id;
-            return Claim.Paired;
+            try
+            {
+                var (made, name) = pair();
+                token = made;
+                _current = null;
+                _paired = (current.Id, name);
+                return Claim.Paired;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return Claim.NotSaved;
+            }
         }
     }
 
-    public void Paired(string codeId, string phone)
+    private static int Trim(Queue<DateTimeOffset> times, DateTimeOffset now)
     {
-        lock (_lock)
+        while (times.Count > 0 && now - times.Peek() >= Window)
         {
-            _paired = (codeId, phone);
+            times.Dequeue();
         }
+
+        return times.Count;
     }
 }
 
@@ -413,6 +527,9 @@ public sealed class PhonesPlugin : ITodoPlugin
 
     /// <summary>Where a phone trades its pairing code for its own token (on the phone port only, without a token).</summary>
     public const string ClaimPath = "/api/phones/claim";
+
+    /// <summary>A phone's name, as kept (longer names are cut).</summary>
+    public const int MaxNameLength = 60;
 
     public PluginInfo Info { get; } = new(Id, "Phones", "Use the iPhone, iPad and Android apps with the tasks on this computer, over your Wi-Fi or Tailscale.", DefaultEnabled: false, Live: true);
 
@@ -479,17 +596,19 @@ public sealed class PhonesPlugin : ITodoPlugin
                 return Results.NotFound();
             }
 
-            switch (codes.TryRedeem(claim.Code?.Trim(), out var codeId))
+            var name = claim.Name is { Length: > MaxNameLength } longName ? longName[..MaxNameLength] : claim.Name;
+            var result = codes.TryRedeem(claim.Code?.Trim(), http.Connection.RemoteIpAddress, () =>
             {
-                case PhonePairingCodes.Claim.TooMany:
-                    return Results.Problem("Too many tries. Wait a minute, then scan the code again.", statusCode: StatusCodes.Status429TooManyRequests);
-                case PhonePairingCodes.Claim.Wrong:
-                    return Results.Problem("That code didn’t work (codes last 10 minutes and work once). On your computer, open Settings › Phones and connect again.", statusCode: StatusCodes.Status403Forbidden);
-            }
-
-            var (token, phone) = phones.Pair(claim.Name);
-            codes.Paired(codeId!, phone.Name);
-            return Results.Ok(new { token, computer = PhoneLink.ComputerName() });
+                var (made, phone) = phones.Pair(name);
+                return (made, phone.Name);
+            }, out var token);
+            return result switch
+            {
+                PhonePairingCodes.Claim.Paired => Results.Ok(new { token, computer = PhoneLink.ComputerName() }),
+                PhonePairingCodes.Claim.TooMany => Results.Problem("Too many tries. Wait a minute, then scan the code again.", statusCode: StatusCodes.Status429TooManyRequests),
+                PhonePairingCodes.Claim.NotSaved => Results.Problem("Couldn’t save this phone on the computer just now. Try again in a moment (the code still works).", statusCode: StatusCodes.Status503ServiceUnavailable),
+                _ => Results.Problem("That code didn’t work (codes last 10 minutes and work once). On your computer, open Settings › Phones and connect again.", statusCode: StatusCodes.Status403Forbidden),
+            };
         });
     }
 

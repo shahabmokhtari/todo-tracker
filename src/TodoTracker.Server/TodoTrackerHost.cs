@@ -53,7 +53,12 @@ public static class TodoTrackerHost
 
             if (phones.Certificate is { } certificate)
             {
-                kestrel.ListenAnyIP(phones.Port, listen => listen.UseHttps(certificate));
+                // Before TLS: only this network and Tailscale, and a few connections at once.
+                kestrel.ListenAnyIP(phones.Port, listen =>
+                {
+                    listen.Use(phones.Gate());
+                    listen.UseHttps(certificate);
+                });
             }
         });
 

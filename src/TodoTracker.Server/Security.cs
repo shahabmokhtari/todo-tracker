@@ -171,13 +171,34 @@ internal static class Security
         var services = context.RequestServices;
         var path = context.Request.Path;
         var method = context.Request.Method.ToUpperInvariant();
+
+        // The port listens on every network: only this one and Tailscale get anywhere (also dropped before TLS).
+        if (!Plugins.PhoneListener.MayConnect(context.Connection.RemoteIpAddress))
+        {
+            await Refuse(context, StatusCodes.Status403Forbidden, "Phones connect from the same network as this computer, or over Tailscale.").ConfigureAwait(false);
+            return;
+        }
+
+        var claiming = method == "POST" && path.Equals(Plugins.PhonesPlugin.ClaimPath, StringComparison.OrdinalIgnoreCase);
+        if (context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } body)
+        {
+            // The claim is a code and a name; a task with its notes fits in far less than this.
+            body.MaxRequestBodySize = claiming ? MaxPhoneClaimBytes : MaxPhoneRequestBytes;
+        }
+
+        if (context.Request.ContentLength > (claiming ? MaxPhoneClaimBytes : MaxPhoneRequestBytes))
+        {
+            await Refuse(context, StatusCodes.Status413PayloadTooLarge, "That's more than a phone sends.").ConfigureAwait(false);
+            return;
+        }
+
         if (services.GetService<Plugins.PluginHost>()?.IsSwitchedOff(Plugins.PhonesPlugin.Id) != false || services.GetService<Plugins.PhoneAccess>()?.On != true)
         {
             await Refuse(context, StatusCodes.Status403Forbidden, "Phones can’t connect to this computer right now. In Todo Tracker on it, open Settings › Phones and turn on “Let phones connect”.").ConfigureAwait(false);
             return;
         }
 
-        if (method == "POST" && path.Equals(Plugins.PhonesPlugin.ClaimPath, StringComparison.OrdinalIgnoreCase))
+        if (claiming)
         {
             await next(context).ConfigureAwait(false);
             return;
@@ -206,10 +227,14 @@ internal static class Security
     private static Task Refuse(HttpContext context, int status, string message) =>
         Results.Problem(message, statusCode: status).ExecuteAsync(context);
 
+    private const long MaxPhoneClaimBytes = 4 * 1024;
+    private const long MaxPhoneRequestBytes = 1024 * 1024;
+
     private const string Id = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 
+    // \A…\z: the whole path, nothing after it (not even a line break, which $ would let through).
     private static System.Text.RegularExpressions.Regex Route(string pattern) =>
-        new($"^{pattern}/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        new($"\\A{pattern}/?\\z", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     // An allow-list of what the phone apps do. Anything else (and every route added later) stays closed to phones.
     private static readonly (string Method, System.Text.RegularExpressions.Regex Path)[] PhoneRoutes =
@@ -245,9 +270,9 @@ internal static class Security
 
     private static readonly (string Method, System.Text.RegularExpressions.Regex Path)[] BrowserRoutes =
     [
-        ("GET", new("^/api/dashboard/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
-        ("POST", new("^/api/capture/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
-        ("POST", new("^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(complete|notes|schedule)/?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+        ("GET", new("^/api/dashboard/?\\z", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+        ("POST", new("^/api/capture/?\\z", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
+        ("POST", new("^/api/items/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/(complete|notes|schedule)/?\\z", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant)),
     ];
 
     public static void SetSessionCookie(HttpResponse response, string secret) =>

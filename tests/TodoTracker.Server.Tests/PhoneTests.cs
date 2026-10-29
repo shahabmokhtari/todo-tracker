@@ -127,6 +127,25 @@ internal sealed class PhoneServer : IAsyncDisposable
         return client;
     }
 
+    /// <summary>
+    /// A request sent exactly as written (no client tidying the path), over TLS to the phone port; returns the status.
+    /// </summary>
+    public async Task<int> Raw(string method, string path, params string[] headers)
+    {
+        var pinned = App.Services.GetRequiredService<PhoneListener>().Fingerprint;
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(IPAddress.Loopback, Options.PhonePort);
+        await using var tls = new System.Net.Security.SslStream(tcp.GetStream(), false, (_, certificate, _, _) =>
+            certificate is not null && PhoneCertificate.Base64Url(SHA256.HashData(certificate.GetRawCertData())) == pinned);
+        await tls.AuthenticateAsClientAsync("todotracker");
+        var host = headers.Any(h => h.StartsWith("Host:", StringComparison.OrdinalIgnoreCase)) ? string.Empty : $"Host: 192.168.1.20:{Options.PhonePort}\r\n";
+        var request = $"{method} {path} HTTP/1.1\r\n{host}{string.Concat(headers.Select(h => h + "\r\n"))}Content-Length: 0\r\nConnection: close\r\n\r\n";
+        await tls.WriteAsync(System.Text.Encoding.ASCII.GetBytes(request));
+        using var reader = new StreamReader(tls);
+        var status = await reader.ReadLineAsync() ?? string.Empty;
+        return int.Parse(status.Split(' ')[1], System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     public async Task<JsonNode> Pair()
     {
         using var owner = await Owner();
@@ -409,11 +428,172 @@ public sealed class PhoneTests
             Assert.Equal(HttpStatusCode.Forbidden, (await phone.PostAsJsonAsync("/api/phones/claim", new { code = $"guess-{i}" }, Cancel)).StatusCode);
         }
 
-        // Ten tries in a minute (two above, eight here): even the right code waits, and still works once the minute is over.
+        // Ten wrong tries from this address in a minute (two above, eight here): this address waits a minute, even with
+        // the right code (another address isn't held up: see PhonePairingTests), and the code still works after.
         var limited = await phone.PostAsJsonAsync("/api/phones/claim", new { code }, Cancel);
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
         time.Advance(TimeSpan.FromMinutes(1));
         Assert.StartsWith("ttp_", (await phone.PostJson("/api/phones/claim", new { code, name = "On time" }))["token"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("GET", "/API/EXPORT", 200)]
+    [InlineData("GET", "/api/export/", 200)]
+    [InlineData("GET", "/API/HISTORY", 403)]
+    [InlineData("GET", "/api/history/", 403)]
+    [InlineData("GET", "//api/export", 403)]
+    [InlineData("GET", "/api//export", 403)]
+    [InlineData("PUT", "/api/settings%2Fvault", 403)]
+    [InlineData("PUT", "/api/settings%2ftheme", 403)]
+    [InlineData("GET", "/api/items/../history", 403)]
+    [InlineData("GET", "/api/export/../history", 403)]
+    [InlineData("GET", "/api/export%0A", 403)]
+    [InlineData("GET", "/api/settings%0A", 403)]
+    public async Task Odd_paths_reach_only_what_they_would_reach_written_plainly(string method, string path, int status)
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var token = await server.PairPhone();
+
+        Assert.Equal(status, await server.Raw(method, path, $"Authorization: Bearer {token}"));
+    }
+
+    [Fact]
+    public async Task Other_credentials_and_tricks_dont_work_on_the_phone_port()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var token = await server.PairPhone();
+        var bearer = $"Authorization: Bearer {token}";
+
+        // Asking for another method doesn't change the one checked.
+        Assert.Equal(403, await server.Raw("POST", "/api/history", bearer, "X-HTTP-Method-Override: GET"));
+        Assert.Equal(403, await server.Raw("POST", "/api/settings/vault", bearer, "X-HTTP-Method-Override: PUT"));
+        Assert.Equal(403, await server.Raw("GET", $"/api/items/{Guid.NewGuid()}", bearer, "X-HTTP-Method-Override: PATCH"));
+
+        // "localhost" as the host name doesn't make it the loopback port: the main token still doesn't work.
+        Assert.Equal(401, await server.Raw("GET", "/api/export", $"Authorization: Bearer {ServerFixture.Token}", "Host: localhost"));
+        Assert.Equal(200, await server.Raw("GET", "/api/export", bearer, "Host: localhost"));
+
+        // A paired browser extension's token is for the loopback port.
+        using var app = server.Local();
+        var browserCode = (await app.PostJson("/api/plugins/browser-extension/pair"))["code"]!.GetValue<string>();
+        using var extension = server.Local(bearer: null);
+        extension.DefaultRequestHeaders.Add("X-TodoTracker-Client", "browser-extension");
+        var browserToken = (await extension.PostJson("/api/plugins/browser-extension/claim", new { code = browserCode }))["token"]!.GetValue<string>();
+        Assert.StartsWith("ttb_", browserToken, StringComparison.Ordinal);
+        Assert.Equal(401, await server.Raw("POST", "/api/capture", $"Authorization: Bearer {browserToken}"));
+    }
+
+    [Fact]
+    public async Task The_owners_phone_routes_need_the_apps_own_header_with_the_cookie()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        using var owner = await server.Owner();
+        using var forged = server.Local(bearer: null);
+        forged.DefaultRequestHeaders.Add("Cookie", owner.DefaultRequestHeaders.GetValues("Cookie").Single());
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await forged.PostAsync(new Uri("/api/plugins/phones/pair", UriKind.Relative), null, Cancel)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await forged.PutAsJsonAsync("/api/plugins/phones/access", new { on = false }, Cancel)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await forged.DeleteAsync(new Uri("/api/plugins/phones/devices/x", UriKind.Relative), Cancel)).StatusCode);
+        Assert.True((await owner.GetJson("/api/plugins/phones"))["letPhonesConnect"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task The_right_code_claimed_twice_at_once_pairs_one_phone()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var code = (await server.Pair())["code"]!.GetValue<string>();
+        var phones = Enumerable.Range(0, 4).Select(_ => server.Phone()).ToList();
+
+        var answers = await Task.WhenAll(phones.Select((p, i) => p.PostAsJsonAsync("/api/phones/claim", new { code, name = $"Phone {i}" }, Cancel)));
+
+        Assert.Single(answers, a => a.StatusCode == HttpStatusCode.OK);
+        Assert.All(answers.Where(a => a.StatusCode != HttpStatusCode.OK), a => Assert.Equal(HttpStatusCode.Forbidden, a.StatusCode));
+        using var owner = await server.Owner();
+        Assert.Single((await owner.GetJson("/api/plugins/phones/devices")).AsArray());
+        phones.ForEach(p => p.Dispose());
+    }
+
+    [Fact]
+    public async Task A_claim_while_phones_are_off_is_refused()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var code = (await server.Pair())["code"]!.GetValue<string>();
+        using var owner = await server.Owner();
+        using var phone = server.Phone();
+
+        (await owner.PutAsJsonAsync("/api/plugins/phones/access", new { on = false }, Cancel)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Forbidden, (await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = "x" }, Cancel)).StatusCode);
+        (await owner.PutAsJsonAsync("/api/plugins/phones/access", new { on = true }, Cancel)).EnsureSuccessStatusCode();
+        (await owner.PutAsJsonAsync("/api/plugins/phones", new { enabled = false }, Cancel)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Forbidden, (await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = "x" }, Cancel)).StatusCode);
+
+        // Neither used the code up.
+        (await owner.PutAsJsonAsync("/api/plugins/phones", new { enabled = true }, Cancel)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.OK, (await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = "x" }, Cancel)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_phone_that_couldnt_be_saved_hears_try_again_and_the_code_still_works()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var code = (await server.Pair())["code"]!.GetValue<string>();
+        using var phone = server.Phone();
+
+        // Something in the way of saving the list of phones (here: a folder where its temporary file goes).
+        var blocker = Path.Combine(server.Options.DataDirectory, "paired-phones.json.tmp");
+        Directory.CreateDirectory(blocker);
+        var failed = await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = "iPad" }, Cancel);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+        Assert.Contains("try again", await failed.Content.ReadAsStringAsync(Cancel), StringComparison.OrdinalIgnoreCase);
+
+        Directory.Delete(blocker);
+        Assert.StartsWith("ttp_", (await phone.PostJson("/api/phones/claim", new { code, name = "iPad" }))["token"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Big_requests_are_refused_and_long_names_are_cut()
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var code = (await server.Pair())["code"]!.GetValue<string>();
+        using var phone = server.Phone();
+
+        var huge = await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = new string('x', 8 * 1024) }, Cancel);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, huge.StatusCode);
+
+        var token = (await phone.PostJson("/api/phones/claim", new { code, name = new string('n', 200) }))["token"]!.GetValue<string>();
+        using var owner = await server.Owner();
+        Assert.Equal(60, (await owner.GetJson("/api/plugins/phones/devices")).AsArray()[0]!["name"]!.GetValue<string>().Length);
+
+        using var paired = server.Phone(token);
+        var tooBig = await paired.PostAsJsonAsync("/api/capture", new { text = new string('t', 2 * 1024 * 1024) }, Cancel);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooBig.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("8.8.8.8", 403)]
+    [InlineData("2001:4860:4860::8888", 403)]
+    [InlineData("::ffff:8.8.8.8", 403)]
+    [InlineData("192.168.1.30", 401)]
+    [InlineData("::ffff:192.168.1.30", 401)]
+    [InlineData("100.100.1.2", 401)]
+    public async Task A_request_from_outside_this_network_and_tailscale_is_refused(string remote, int status)
+    {
+        await using var server = await PhoneServer.StartAsync(PhoneServer.DataFolder(plugin: true, letPhonesConnect: true));
+        var listener = server.App.Services.GetRequiredService<PhoneListener>();
+        using var scope = server.App.Services.CreateScope();
+        var context = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        context.Connection.LocalPort = listener.Port;
+        context.Connection.RemoteIpAddress = IPAddress.Parse(remote);
+        context.Request.Method = "GET";
+        context.Request.Path = "/api/export";
+        context.Response.Body = new MemoryStream();
+        var reached = false;
+
+        await Security.Guard(context, _ => { reached = true; return Task.CompletedTask; }, server.Options, new ApiToken(ServerFixture.Token));
+
+        // Outside: refused before anything else; on the network: it gets as far as asking for a phone's token.
+        Assert.Equal(status, context.Response.StatusCode);
+        Assert.False(reached);
     }
 
     [Fact]
