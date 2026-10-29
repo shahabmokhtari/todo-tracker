@@ -33,7 +33,55 @@ internal static partial class FixtureFile
         }
 
         var committed = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", relative.Replace('/', Path.DirectorySeparatorChar))).ReplaceLineEndings("\n");
-        Assert.True(committed == text, $"tests/fixtures/{relative} is not what this version generates. Regenerate it (TT_WRITE_FIXTURES=1) and review the diff.");
+        Assert.True(committed == text, $"tests/fixtures/{relative} is not what this version generates. Regenerate it (TT_WRITE_FIXTURES=1) and review the diff. {FirstDifference(JsonNode.Parse(committed), generated, "$")}");
+    }
+
+    /// <summary>Where two JSON documents first differ, with both values (so a failure on another OS says why).</summary>
+    private static string FirstDifference(JsonNode? committed, JsonNode? generated, string path)
+    {
+        switch (committed, generated)
+        {
+            case (JsonObject c, JsonObject g):
+                foreach (var key in c.Select(p => p.Key).Union(g.Select(p => p.Key)))
+                {
+                    if (!c.ContainsKey(key) || !g.ContainsKey(key))
+                    {
+                        return $"At {path}.{key}: only in {(c.ContainsKey(key) ? "the committed file" : "what this run generated")}.";
+                    }
+
+                    if (!JsonNode.DeepEquals(c[key], g[key]))
+                    {
+                        return FirstDifference(c[key], g[key], $"{path}[{JsonSerializer.Serialize(key)}]");
+                    }
+                }
+
+                return $"At {path}: property order differs.";
+            case (JsonArray c, JsonArray g):
+                for (var i = 0; i < Math.Max(c.Count, g.Count); i++)
+                {
+                    if (i >= c.Count || i >= g.Count)
+                    {
+                        return $"At {path}: {c.Count} items committed, {g.Count} generated.";
+                    }
+
+                    if (!JsonNode.DeepEquals(c[i], g[i]))
+                    {
+                        return FirstDifference(c[i], g[i], $"{path}[{i}]");
+                    }
+                }
+
+                return $"At {path}: no difference found.";
+            default:
+                var (a, b) = (committed?.ToJsonString() ?? "null", generated?.ToJsonString() ?? "null");
+                var at = 0;
+                while (at < a.Length && at < b.Length && a[at] == b[at])
+                {
+                    at++;
+                }
+
+                var from = Math.Max(0, at - 60);
+                return $"At {path} (character {at}): committed …{a[from..Math.Min(a.Length, at + 60)]}… generated …{b[from..Math.Min(b.Length, at + 60)]}…";
+        }
     }
 
     /// <summary>Reads a committed fixture (as the ports do).</summary>

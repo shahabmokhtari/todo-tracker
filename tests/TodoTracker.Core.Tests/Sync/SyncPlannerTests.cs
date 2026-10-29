@@ -250,6 +250,9 @@ public class SyncPlannerTests
         Assert.Equal(["Job:#222", "Home:", "Kids:"], doc["groups"]!.AsArray().Select(g => $"{g!["folder"]}:{g["color"]}"));
         Assert.Equal(["later"], doc["labels"]!.AsArray().Select(l => (string)l!["name"]!));
         Assert.Equal(["1", "2", "3"], doc["order"]!.AsArray().Select(i => (string)i!));
+
+        // The same bytes on every system (Windows' line ending would make each device's merge a different file).
+        Assert.DoesNotContain("\r", Text(onA), StringComparison.Ordinal);
     }
 
     [Fact]

@@ -51,6 +51,17 @@ public sealed class VaultStoreTests : IDisposable
         Assert.Equal($"Work/{new string('x', 79)}.md", store.PathOf(task.Id));
     }
 
+    [Fact]
+    public async Task Settings_are_written_with_the_same_bytes_on_every_system()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+
+        // They sync: a Windows line ending would make them differ from every Mac's and phone's (a change each sync).
+        Assert.DoesNotContain("\r", await File.ReadAllTextAsync(P(".todo-tracker", "config.json")), StringComparison.Ordinal);
+        Assert.DoesNotContain("\r", await File.ReadAllTextAsync(P(".todo-tracker", "state.json")), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Work/tab\there.md")]
     [InlineData("Work/line\nbreak.md")]
