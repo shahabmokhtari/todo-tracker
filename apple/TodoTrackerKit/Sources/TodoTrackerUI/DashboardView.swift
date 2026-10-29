@@ -138,11 +138,14 @@ public struct DashboardView: View {
             groupTabs
             captureBar
             if searching || !model.searchText.isEmpty { searchBar }
-            if let status = model.status {
+            if model.remoteBanner != nil { RemoteBanner(model: model, reconnect: { showSettings = true }) }
+            if let status = model.status, status != model.remoteBanner {
                 Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
             }
             if scrollable {
                 ScrollView { sections.padding(.bottom, 8) }.scrollIndicators(.hidden)
+                    // Pull down: read again from the computer (or look for it again).
+                    .refreshable { await model.pullToRefresh() }
             } else {
                 sections
             }
@@ -670,7 +673,7 @@ struct MoreMenu: View {
             if let openDetails {
                 Button(action: openDetails) { Label("Open details", systemImage: "arrow.up.left.and.arrow.down.right") }
             }
-            if model.usesServer {
+            if model.canOpenInBrowser {
                 // The full app in the browser, on this task (signed in for you).
                 Button {
                     let id = entry.item.id.uuidString.lowercased()

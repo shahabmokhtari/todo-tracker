@@ -35,10 +35,16 @@ targets:
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-    # todotracker://task/<id> links open the task (TaskLinks).
+    # todotracker://task/<id> links open the task (TaskLinks); todotracker://pair links connect to a computer. A
+    # connected phone talks HTTPS to the computer's address on the local network or Tailscale (an IP address, with
+    # the computer's own certificate, trusted by its fingerprint only): local networking is allowed, nothing else.
     info:
       path: Support/Info-iOS.plist
       properties:
+        NSCameraUsageDescription: Todo Tracker uses the camera to scan the code your computer shows when you connect this phone to it.
+        NSLocalNetworkUsageDescription: Todo Tracker connects to Todo Tracker on your computer, over your Wi-Fi, to use the tasks there.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         CFBundleURLTypes:
           - CFBundleURLName: com.todotracker.task-link
             CFBundleURLSchemes: [todotracker]

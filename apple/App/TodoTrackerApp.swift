@@ -10,6 +10,7 @@ import Combine
 struct TodoTrackerApp: App {
     @StateObject private var model = BoardModel.live()
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
     @State private var breakWindows: BreakWindows?
     #endif
@@ -35,6 +36,8 @@ struct TodoTrackerApp: App {
         #else
         WindowGroup("Todo Tracker") {
             dashboard
+                // Back in the app: a computer that wasn't answering is tried again at once.
+                .onChange(of: scenePhase) { _, phase in if phase == .active { model.becameActive() } }
         }
         #endif
     }
@@ -51,7 +54,8 @@ struct TodoTrackerApp: App {
         DashboardView(model: model)
             .followsAppTheme(theme)
             .onAppear { BoardModel.requestNotificationPermission() }
-            // todotracker://task/<id> (Info.plist registers the scheme): the task opens here.
+            // todotracker://task/<id> (Info.plist registers the scheme): the task opens here; a todotracker://pair link
+            // from a computer's Settings › Phones connects this phone to it.
             .onOpenURL { model.open(link: $0) }
             #if os(macOS)
             // Links go to the open window instead of opening another one.

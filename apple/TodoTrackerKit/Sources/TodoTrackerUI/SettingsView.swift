@@ -2,7 +2,7 @@
 import SwiftUI
 import TodoTrackerKit
 
-/// Settings: appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
+/// Settings: the computer a phone uses, appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
 /// Appearance and Energy sections; the focus timer's lengths are kept with the board.
 struct SettingsView: View {
     @ObservedObject var model: BoardModel
@@ -12,6 +12,9 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // iPhone and iPad: use a computer's tasks (the Mac has its own).
+                if model.phone != nil { ComputerSection(model: model) }
+
                 Section {
                     Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
                         theme = chosen
