@@ -88,6 +88,15 @@ Port these exactly; the fixtures say what "exactly" means.
   `energyPerDay`. Written with .NET's indented JSON (2 spaces, `"key": value`, nulls left out, default escaping) and a
   final `\n`. Folders not in config get `StableGuid("group|" + FOLDER.ToUpperInvariant())`; a renamed folder keeps its
   group when it holds that group's tasks; no folders at all → `Inbox`.
+* **Dormant tabs keep their place.** Sync carries files, not folders: a tab whose folder is empty on one device has
+  no folder on the others, where it is dormant. config.json lists the tabs with a folder in tab order, and puts each
+  dormant tab right after the nearest tab that came before it in the config.json that was read and is still there
+  (first when none is). So a device that has the folder and one that doesn't write the same bytes (`[Work, Home,
+  Personal]` on both), they agree on config.json, and later settings changes merge against a base. (Appending dormant
+  tabs at the end gave `[Work, Personal, Home]` on the phone: the two never agreed, no base was kept, and a tab or
+  label removed later could come back. Making the folders of config tabs on every device would also agree, but it
+  would bring back folders someone removed by hand, and still differ until it ran.) Fixture: `vault/render.json`
+  `dormantTabs`.
 * **`.todo-tracker/state.json`** (not synced): focus timer, `nowOrder`, `nowArrangedAt`.
 * **The Now order** syncs as `.todo-tracker/order.json`, which is *not a file*: its content is the compact JSON array of
   `nowOrder` ids (`["…","…"]`); a `setOrder` op replaces `nowOrder` (ids not on the board dropped) and rewrites
@@ -348,7 +357,7 @@ fixture and fails if the committed file differs.
 
 | File | Holds |
 | --- | --- |
-| `vault/render.json` | 3 boards (`minimal`, `everything`, `names`) → every file written, folders, the sync entries (key, path, hash; the virtual order content), the board read back |
+| `vault/render.json` | 3 boards (`minimal`, `everything`, `names`) → every file written, folders, the sync entries (key, path, hash; the virtual order content), the board read back; 5 `dormantTabs` cases (config.json with tabs that have no folder, before and after a rename or delete) |
 | `vault/parse.json` | 12 hand-made files → task read, needs-write, rewritten text, or refused |
 | `vault/names.json` | 23 titles → file and folder names; 8 stable ids; 6 group ids; 3 block ids; 21 strings in 3 JSON/YAML encodings; 12 typed and 7 shown local times; 36 paths → syncable or not |
 | `sync/textmerge.json` | 25 three-way merges; task line keys for 4 files |

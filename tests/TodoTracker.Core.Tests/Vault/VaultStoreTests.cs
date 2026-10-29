@@ -342,6 +342,25 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_tab_without_a_folder_here_keeps_its_place_in_the_settings()
+    {
+        // Another device has a "Home" tab whose folder is empty (an empty folder doesn't sync): here it's dormant, and
+        // config.json must stay byte for byte the same, or the two devices never agree on it.
+        var store = Open();
+        var config = await File.ReadAllTextAsync(P(".todo-tracker", "config.json"));
+        var withHome = config.Replace("\"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },", "\"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },", StringComparison.Ordinal);
+        Assert.NotEqual(config, withHome);
+        store.Dispose();
+        await File.WriteAllTextAsync(P(".todo-tracker", "config.json"), withHome);
+
+        var reopened = Open();
+        await Add(reopened, "Something");
+
+        var groups = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(P(".todo-tracker", "config.json")))!["groups"]!.AsArray().Select(g => g!["folder"]!.GetValue<string>());
+        Assert.Equal(["Work", "Home", "Personal"], groups);
+    }
+
+    [Fact]
     public void A_name_longer_than_255_bytes_is_never_synced()
     {
         Assert.True(VaultBoardStore.IsSyncablePath("Work/" + new string('é', 126) + ".md"));
