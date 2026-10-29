@@ -165,11 +165,15 @@ internal static partial class VaultFiles
     }
 
     /// <summary>Writes atomically (temp file + replace) so readers and sync clients never see half a file.</summary>
-    public static void WriteAtomic(string path, string text) =>
-        WriteAtomic(path, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text));
+    public static void WriteAtomic(string path, string text, bool replace = true) =>
+        WriteAtomic(path, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text), replace);
 
-    /// <summary>Writes atomically (temp file + replace) so readers and sync clients never see half a file.</summary>
-    public static void WriteAtomic(string path, byte[] content)
+    /// <summary>
+    /// Writes atomically (temp file + replace) so readers and sync clients never see half a file. With
+    /// <paramref name="replace"/> false the file must be new: one that appeared meanwhile (another app, a sync client)
+    /// is never replaced (an <see cref="IOException"/>, and nothing is written).
+    /// </summary>
+    public static void WriteAtomic(string path, byte[] content, bool replace = true)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = Path.Combine(Path.GetDirectoryName(path)!, "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp");
@@ -182,7 +186,7 @@ internal static partial class VaultFiles
                 stream.Flush(flushToDisk: true);
             }
 
-            File.Move(temp, path, overwrite: true);
+            File.Move(temp, path, overwrite: replace);
         }
         finally
         {

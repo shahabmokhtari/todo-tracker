@@ -364,4 +364,74 @@ public sealed class GistRemoteTests : IDisposable
 
         Assert.Contains("gh auth login", error.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>Answers with a function of the request, and remembers what was sent where (with or without the token).</summary>
+    private sealed class Recording(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler
+    {
+        public List<(Uri Uri, string? Token)> Sent { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Sent.Add((request.RequestUri!, request.Headers.Authorization?.Parameter));
+            return Task.FromResult(answer(request));
+        }
+    }
+
+    private static HttpResponseMessage Redirect(string to) => new(HttpStatusCode.Found) { Headers = { Location = new Uri(to) } };
+
+    private static HttpResponseMessage Ok(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json) };
+
+    [Fact]
+    public async Task The_token_never_follows_a_redirect_away_from_GitHub()
+    {
+        using var handler = new Recording(r => r.RequestUri!.AbsolutePath switch
+        {
+            "/gists" => Ok("[]"),
+            "/gists/g1" => Redirect("https://evil.example/steal"),
+            _ => Ok("{\"files\":{}}"),
+        });
+        using var http = new HttpClient(handler);
+        var remote = new GistRemote(http, _ => Task.FromResult("secret"), () => "g1", _ => { });
+
+        await remote.ReadAsync("me", null, TestContext.Current.CancellationToken);
+
+        Assert.Contains(handler.Sent, s => s.Uri.Host == "evil.example" && s.Token is null);
+        Assert.All(handler.Sent.Where(s => s.Uri.Host == "api.github.com"), s => Assert.Equal("secret", s.Token));
+    }
+
+    [Fact]
+    public async Task A_redirect_that_isnt_https_or_never_ends_is_refused()
+    {
+        using var insecure = new Recording(r => r.RequestUri!.AbsolutePath == "/gists" ? Ok("[]") : Redirect("http://api.github.com/gists/g2"));
+        using var http1 = new HttpClient(insecure);
+        await Assert.ThrowsAsync<HttpRequestException>(() => new GistRemote(http1, _ => Task.FromResult("secret"), () => "g1", _ => { }).ReadAsync("me", null, TestContext.Current.CancellationToken));
+        Assert.DoesNotContain(insecure.Sent, s => s.Uri.Scheme == "http");
+
+        using var loop = new Recording(r => r.RequestUri!.AbsolutePath == "/gists" ? Ok("[]") : Redirect("https://api.github.com/gists/g1"));
+        using var http2 = new HttpClient(loop);
+        await Assert.ThrowsAsync<HttpRequestException>(() => new GistRemote(http2, _ => Task.FromResult("secret"), () => "g1", _ => { }).ReadAsync("me", null, TestContext.Current.CancellationToken));
+        Assert.True(loop.Sent.Count(s => s.Uri.AbsolutePath == "/gists/g1") <= 6);
+    }
+
+    [Fact]
+    public async Task A_big_file_is_fetched_with_the_token_only_from_GitHubs_gist_host()
+    {
+        var bundle = "{\"snapshot\":{\"device\":\"other1\",\"name\":\"Other\",\"at\":\"2026-01-05T09:00:00+00:00\",\"entries\":[],\"schema\":1},\"contents\":{}}";
+        foreach (var (host, token) in new[] { ("gist.githubusercontent.com", "secret"), ("objects.githubusercontent.com", (string?)null) })
+        {
+            using var handler = new Recording(r => r.RequestUri!.AbsolutePath switch
+            {
+                "/gists" => Ok("[]"),
+                "/gists/g1" => Ok("{\"files\":{\"device-other1.json\":{\"truncated\":true,\"raw_url\":\"https://" + host + "/raw/device-other1.json\"}}}"),
+                _ => Ok(bundle),
+            });
+            using var http = new HttpClient(handler);
+            var remote = new GistRemote(http, _ => Task.FromResult("secret"), () => "g1", _ => { });
+
+            var read = await remote.ReadAsync("me", null, TestContext.Current.CancellationToken);
+
+            Assert.Equal("other1", Assert.Single(read!.Devices).Device);
+            Assert.Equal(token, handler.Sent.Single(s => s.Uri.Host == host).Token);
+        }
+    }
 }

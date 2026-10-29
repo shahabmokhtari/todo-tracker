@@ -300,6 +300,48 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_new_task_never_replaces_a_file_that_appeared_while_it_was_saved()
+    {
+        var written = false;
+        var store = VaultBoardStore.Open(new VaultOptions(_root)
+        {
+            TimeZone = TimeZoneInfo.Utc,
+            Time = _time,
+            LockDirectory = _locks,
+            Watch = false,
+            EditSettleTime = TimeSpan.Zero,
+            BeforeWrite = p =>
+            {
+                // Another app (or a sync client) puts a file at that name between the check and the write.
+                if (p == "Work/Plan.md" && !written)
+                {
+                    written = true;
+                    File.WriteAllText(P("Work", "Plan.md"), "# Someone else's plan\n");
+                }
+            },
+        });
+        _stores.Add(store);
+
+        var task = await Add(store, "Plan");
+
+        Assert.Equal("# Someone else's plan\n", await File.ReadAllTextAsync(P("Work", "Plan.md")));
+        Assert.Equal("Work/Plan 2.md", store.PathOf(task.Id));
+        Assert.Contains("# Plan\n", await File.ReadAllTextAsync(P("Work", "Plan 2.md")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_file_written_as_new_never_replaces_one_that_is_there()
+    {
+        Directory.CreateDirectory(_root);
+        var path = P("New.md");
+        File.WriteAllText(path, "theirs");
+
+        Assert.ThrowsAny<IOException>(() => VaultFiles.WriteAtomic(path, "mine"u8.ToArray(), replace: false));
+        Assert.Equal("theirs", File.ReadAllText(path));
+        Assert.Equal(["New.md"], Directory.GetFiles(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
     public void A_name_longer_than_255_bytes_is_never_synced()
     {
         Assert.True(VaultBoardStore.IsSyncablePath("Work/" + new string('é', 126) + ".md"));
