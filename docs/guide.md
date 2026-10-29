@@ -215,8 +215,9 @@ Choose sidebar menu **⋯ › Connect Teams reminders…** and paste a Teams Wor
 
 Your tasks folder stays in step with your other computers through **OneDrive**, **iCloud Drive** or a **private GitHub
 gist**: changes made on both are merged, and a conflict never loses either side. Turn it on in Settings › Sync. An
-Android phone can join through the gist on its own ([Sync Android with your other devices](#sync-android-with-your-other-devices)).
-See [sync.md](sync.md).
+Android phone can join through the gist on its own ([Sync Android with your other devices](#sync-android-with-your-other-devices)),
+and an iPhone or iPad joins the same sync on its own ([below](#sync-an-iphone-or-ipad-with-your-other-devices)). See
+[sync.md](sync.md).
 
 ## Connectors: Notion, Microsoft To Do, GitHub Issues
 
@@ -254,14 +255,45 @@ Workstreams and Recent notes (tap one to open its task).
   to the group you pick; they're never deleted.
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
-* **Settings** (gear): light or dark, energy in a day, focus timer lengths and full-screen breaks.
+* **Settings** (gear): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
+  also where your tasks are, **Computer** and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
 
+### Sync an iPhone or iPad with your other devices
+
+The iPhone and iPad app keeps its tasks in a tasks folder on the device, the same files your computers keep. It can
+sync them with your computers and other phones on its own, with no computer running: open **Settings › Sync › Sync with
+your other devices** and pick one place.
+
+* **iCloud Drive:** choose **Choose the folder in iCloud Drive…** and pick **iCloud Drive › Apps › TodoTrackerSync**,
+  the folder your Mac and Windows computers sync through. If it isn't there yet (your computers use OneDrive, or none
+  synced yet), pick iCloud Drive and choose **Create it here**. To meet a Windows computer, it needs iCloud for Windows.
+* **A private GitHub gist:** choose **Make a token on GitHub…**, make a token with the **gist** scope, copy it, paste
+  it and choose **Sync through a gist**. The token stays in the device's Keychain. Turn on GitHub gist sync on your
+  computers too.
+* **Library:** devices with the same name sync together. It's **Todo Tracker** unless you changed it, the same as your
+  computers' tasks folder.
+
+The first sync brings everything from your other devices in before anything of this device goes out, so your tasks
+from before are added to theirs, never copied twice. Then it syncs when you open the app, a few seconds after a change,
+every minute while it's open, and now and then in the background. The Sync screen shows when it last synced (and
+**Sync now**), your **other devices** (**Forget** one you no longer use), problems (say, changes iCloud hasn't
+downloaded yet: they come in on a later sync), and tasks **changed on both** (both versions stay in the task; open it
+on a computer to choose one). **Turn sync off** keeps your tasks on the device as they are. More in
+[sync.md](sync.md#iphone-and-ipad).
+
+A device works one way at a time, and Settings › Your tasks says which: **connected to a computer** (below),
+**syncing on its own**, or **only on this device**. Connecting to a computer turns syncing off; nothing is deleted
+either way.
+
+When you update from an earlier version, the tasks the app kept move into the tasks folder by themselves (the old file
+stays, as `board.json.migrated`).
+
 ### Use your computer's tasks on an iPhone or iPad
 
-On its own, the iPhone and iPad app keeps its tasks on the device. It can use the tasks on your computer instead, over
-your Wi-Fi at home or anywhere with Tailscale:
+Instead of syncing on its own, the iPhone and iPad app can use the tasks on your computer, over your Wi-Fi at home or
+anywhere with Tailscale:
 
 1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
    Tracker. Choose **Connect a phone**: it shows a QR code and a link.
