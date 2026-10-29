@@ -101,6 +101,14 @@ final class VaultSafetyTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), planText)
     }
 
+    func testATaskFileThatCantBeUnderstoodStopsTheSyncNamingIt() throws {
+        let temp = TempDir()
+        let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+        try Data("---\ntags: [unclosed\n---\n# Broken\n".utf8).write(to: temp.url.appendingPathComponent("Work/Broken.md"))
+        store.markDirty()
+        XCTAssertThrowsError(try store.readSync()) { XCTAssertTrue($0.localizedDescription.contains("\"Work/Broken.md\" can't be read"), $0.localizedDescription) }
+    }
+
     func testAnICloudPlaceholderStopsTheSyncAndCountsAsThere() throws {
         let temp = TempDir()
         let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })

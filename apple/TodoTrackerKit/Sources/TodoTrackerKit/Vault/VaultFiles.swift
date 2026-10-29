@@ -42,11 +42,11 @@ public enum VaultFiles {
     private static let reservedName = Rx(#"^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$"#, ignoreCase: true)
 
     /// A path from another device is only ever a file inside the vault's own folders, with a name every system keeps
-    /// as is (Windows' rules everywhere).
+    /// as is (Windows' rules everywhere, and at most 255 UTF-8 bytes per name, what APFS and most others hold).
     public static func isSyncablePath(_ rel: String) -> Bool {
         guard rel.u16 > 0, rel.u16 < 400, rel.oContains("/"), !rel.oContains("\\"), !rel.oContains(":"), !rel.oEndsIgnoreCase(".tmp") else { return false }
         return rel.oSplit("/").allSatisfy { s in
-            s.u16 > 0 && s != ".." && !s.oStarts(".") && s.oTrim().u16 == s.u16 && !s.oEnds(".")
+            s.u16 > 0 && s.utf8.count <= 255 && s != ".." && !s.oStarts(".") && s.oTrim().u16 == s.u16 && !s.oEnds(".")
                 && !s.utf16.contains(where: invalidNameUnits.contains) && !reservedName.isMatch(s)
         }
     }

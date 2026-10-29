@@ -920,6 +920,11 @@ public final class VaultStore {
     /// Everything that syncs. A file that is there but can't be read (or an iCloud placeholder) stops the sync: left
     /// out, it would read as deleted here and be deleted on every other device.
     private func buildSyncSnapshot() throws -> SyncSnapshot {
+        // A task file that can't be understood has no task id to be listed under: left out (or listed as a plain
+        // file), the other devices would take its task as deleted and trash their copy. Sync waits until it's fixed.
+        if let broken = caches.files.sorted(by: { Ordinal.less($0.key.value, $1.key.value) }).first(where: { $0.value.good == nil }) {
+            throw VaultRefusal(message: "\"\(broken.key.value)\" can't be read (\(broken.value.error ?? "")). Sync waits until it's fixed, so your other devices keep the task.")
+        }
         if let unreadable = caches.files.first(where: { $0.value.stamp == Self.unreadableStamp })?.key.value {
             throw SyncNotArrived("\"\(VaultFiles.fileName(unreadable))\" can't be read right now (it may not be downloaded yet); sync waits for it.")
         }
