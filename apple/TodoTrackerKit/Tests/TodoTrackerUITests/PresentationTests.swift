@@ -48,6 +48,48 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.notesToggle(count: 2, open: true), "Hide notes ▴")
     }
 
+    func testAWaitingTaskSaysWhyLikeTheWebApp() throws {
+        let board = TaskBoard()
+        let utc = TimeZone(identifier: "UTC")!
+        let release = try board.addTask(NewTask("Release"), now: t0)
+        let review = try board.addTask(NewTask("Review", parentId: release.id), now: t0)
+        let other = try board.addTask(NewTask("Sign-off"), now: t0)
+        XCTAssertNil(Presentation.waiting(review, now: t0, timeZone: utc), "not waiting: nothing to say")
+
+        try board.scheduleNextAction(review.id, at: t0.addingTimeInterval(3 * 3600), now: t0)
+        let own = try XCTUnwrap(Presentation.waiting(review, now: t0, timeZone: utc))
+        XCTAssertEqual(own.text, "Snoozed until today 12:00")
+        XCTAssertTrue(own.canBringBack)
+        XCTAssertNil(own.heldBy)
+
+        try board.clearNextAction(review.id, now: t0)
+        try board.waitFor(release.id, after: other.id, now: t0)
+        let parents = try XCTUnwrap(Presentation.waiting(review, now: t0, timeZone: utc))
+        XCTAssertEqual(parents.text, "Its parent “Release” waits for “Sign-off”")
+        XCTAssertFalse(parents.canBringBack, "Do now on the subtask alone wouldn't bring it back")
+        XCTAssertTrue(parents.heldBy === release)
+
+        try board.scheduleNextAction(review.id, at: t0.addingTimeInterval(3 * 3600), now: t0)
+        XCTAssertEqual(Presentation.waiting(review, now: t0, timeZone: utc)?.text,
+                       "Waits for “Sign-off” and snoozed until today 12:00; its parent “Release” waits too")
+    }
+
+    func testSubtasksAreListedAtEveryDepthAndStepWaitsAreOffered() throws {
+        let board = TaskBoard()
+        let x = try board.addTask(NewTask("X"), now: t0)
+        let a = try board.addTask(NewTask("A", parentId: x.id), now: t0)
+        try board.addTask(NewTask("A1", parentId: a.id), now: t0)
+        try board.addTask(NewTask("B", parentId: x.id), now: t0)
+        XCTAssertEqual(Presentation.subtaskRows(x).map { "\($0.depth)\($0.item.title)" }, ["0A", "1A1", "0B"])
+
+        XCTAssertEqual(Presentation.stepDelayChoices(current: nil), [0, 1, 2, 4, 8, 12, 24, 48, 72, 168])
+        XCTAssertEqual(Presentation.stepDelayChoices(current: 1.5 * 3600).prefix(3), [0, 1, 1.5], "an hour and a half set elsewhere is offered too")
+        XCTAssertEqual(Presentation.hoursLabel(0), "No wait")
+        XCTAssertEqual(Presentation.hoursLabel(1), "1 hour")
+        XCTAssertEqual(Presentation.hoursLabel(48), "2 days")
+        XCTAssertEqual(Presentation.hoursLabel(1.5), "1.5 hours")
+    }
+
     func testSummaryAndGreeting() throws {
         let board = TaskBoard()
         XCTAssertEqual(Presentation.summary(Agenda.build(board, now: t0)), "All clear. Nothing needs you right now.")
