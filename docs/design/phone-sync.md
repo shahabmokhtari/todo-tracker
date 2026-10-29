@@ -270,7 +270,7 @@ Every one of these changes bytes, which changes hashes, which other devices see 
    leaves the Turkish i's alone: `İ` (U+0130) lower-cased stays `İ` (not `i`, not `i̇`), and `ı` (U+0131)
    upper-cased stays `ı`. Swift's `uppercased()/lowercased()` use full mappings, and Kotlin's
    `Character.toLowerCase(0x130)` gives `i`: use per-scalar simple mappings, except that U+0130 and U+0131 are kept
-   as they are. Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step in
+   as they are (also for `OrdinalIgnoreCase` above). Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step in
    `vault/parse.json` (its id is derived from `/…/İstanbul trip#1`).
 3. **GUID bytes.** `StableGuid` takes SHA-256's first 16 bytes, sets `bytes[7] = (b & 0x0F) | 0x80` and
    `bytes[8] = (b & 0x3F) | 0x80`, then `new Guid(bytes)` — .NET reads the first three fields **little-endian**:
@@ -316,6 +316,13 @@ Every one of these changes bytes, which changes hashes, which other devices see 
 12. **File names on disk.** Paths in manifests are exactly what the other device sent; never normalize them (APFS
     keeps the spelling it's given; iCloud may hand back NFD names from old HFS+ Macs — compare against the manifest's
     spelling, not a normalized one). Names the phone makes come from `SafeName`, which normalizes the title to NFC.
+    **Foundation decomposes file names on Apple systems:** `FileManager` (`createFile`, `createDirectory`, `moveItem`),
+    `Data.write(to:)` and `String.write(toFile:)` pass a path through its "file system representation", which is NFD,
+    so `Café.md` is written as `Cafe\u{301}.md` and every other device sees a different path (and hash key). Create
+    folders, write files and rename with POSIX calls (`mkdir`, `open`/`write`, `rename` with the Swift string's UTF-8
+    bytes) to keep the exact bytes; reading and listing (`contentsOfDirectory`, `readdir`) return what is stored, and
+    APFS looks names up normalization-insensitively. The Swift store does this in `VaultFiles` (`makeDirectories`,
+    `writeFile`, `writeAtomic`, `move`).
 13. **Ordering in general.** Wherever C# orders (`OrderBy(... Ordinal)`, `Union`/`Concat` order, dictionary
     insertion order for `files` in the planner), the port must produce the same order: op order and copy names
     depend on it. Use insertion-ordered maps (`LinkedHashMap`, Swift arrays of pairs).

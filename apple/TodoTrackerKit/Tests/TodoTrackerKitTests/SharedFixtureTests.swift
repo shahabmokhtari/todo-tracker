@@ -63,9 +63,7 @@ final class SharedFixtureTests: XCTestCase {
         }
     }
 
-    /// The Swift model has no tags, labels or board columns (Inbox/Next/Doing): queries using them are skipped here (a
-    /// term like that finds nothing in this app, since no task has one). Every other query must match C#'s TaskQuery.
-    static let unsupported = ["#", "label:", "stage:", "is:inbox", "is:next", "is:doing"]
+    /// Every query (tags, labels and board columns included) finds exactly what C#'s TaskQuery finds.
 
     func testSearchFindsWhatTheOtherAppsFind() throws {
         let json = try fixture("search.json")
@@ -79,20 +77,21 @@ final class SharedFixtureTests: XCTestCase {
             tasks[spec["key"] as! String] = try board.addTask(NewTask(spec["title"] as! String, parentId: (spec["parent"] as? String).flatMap { tasks[$0]?.id },
                                                                        groupId: group, details: spec["details"] as? String), now: now)
         }
+        for spec in specs {
+            let item = tasks[spec["key"] as! String]!
+            item.tags = spec["tags"] as? [String] ?? []
+            item.labels = spec["labels"] as? [String] ?? []
+            item.stage = (spec["stage"] as? String).flatMap(Stage.init(rawValue:)) ?? .next
+        }
         for spec in specs where spec["done"] as? Bool == true { try board.complete(tasks[spec["key"] as! String]!.id, now: now) }
         for spec in specs where spec["archived"] as? Bool == true { try board.archive(tasks[spec["key"] as! String]!.id, now: now) }
         let keyOf = Dictionary(uniqueKeysWithValues: tasks.map { ($0.value.id, $0.key) })
 
-        var skipped: [String] = []
-        for query in json["queries"] as? [[String: Any]] ?? [] {
+        let queries = json["queries"] as? [[String: Any]] ?? []
+        XCTAssertEqual(queries.count, 25)
+        for query in queries {
             let q = query["q"] as! String
-            if Self.unsupported.contains(where: { q.lowercased().contains($0) }) {
-                skipped.append(q)
-                continue
-            }
             XCTAssertEqual(TaskSearch(q).apply(board).map { keyOf[$0.id] ?? "?" }, query["expect"] as? [String], "search \(q)")
         }
-        XCTAssertEqual(skipped, ["#finance", "#finance/q3", "#fin", "#release report", "label:urgent", "label:\"deep work\"", "is:doing", "stage:inbox", "is:next"],
-                       "only the tag, label and board-column queries are skipped")
     }
 }

@@ -2,43 +2,51 @@ import Foundation
 
 /// The search box: the same syntax and rules as TodoTracker.Core.TaskQuery (tests/fixtures/search.json). Words match
 /// the title or details (any case); double quotes keep words together ("call the"); group:name, is:open / is:done and
-/// is:archived (archived tasks are found only then) narrow it down; every term must match. This board has no tags,
-/// labels or board columns, so #tag, label:name, stage:x and is:inbox / is:next / is:doing find nothing here.
+/// is:archived (archived tasks are found only then), #tag (nested tags too: #finance finds finance/q3), label:name and
+/// the board column (is:inbox / is:next / is:doing, or stage:doing) narrow it down; tags and labels count for subtasks
+/// too. Every term must match.
 public struct TaskSearch: Equatable, Sendable {
     public private(set) var words: [String] = []
     public private(set) var groups: [String] = []
     /// is:done (true) or is:open (false); nil: either.
     public private(set) var done: Bool?
     public private(set) var archived = false
-    /// A tag, label or board-column term: nothing on this board has one.
-    public private(set) var unmatchable = false
+    public private(set) var tags: [String] = []
+    public private(set) var labels: [String] = []
+    /// The board column of the task's top-level task (an open one).
+    public private(set) var stage: Stage?
 
     public init(_ text: String?) {
         for token in Self.tokenize(text ?? "") {
             let lower = token.lowercased()
-            if (token.hasPrefix("#") && token.count > 1) || Self.value(token, "label:") != nil {
-                unmatchable = true
+            if token.hasPrefix("#") && token.count > 1 {
+                tags.append(String(token.dropFirst()))
+            } else if let value = Self.value(token, "label:") {
+                labels.append(value)
             } else if let value = Self.value(token, "group:") {
                 groups.append(value)
             } else if lower == "is:open" || lower == "is:done" {
                 done = lower == "is:done"
             } else if lower == "is:archived" {
                 archived = true
-            } else if ["is:inbox", "is:next", "is:doing", "stage:inbox", "stage:next", "stage:doing"].contains(lower) {
-                unmatchable = true
+            } else if let value = Self.value(token, "is:") ?? Self.value(token, "stage:"), let parsed = Stage(rawValue: value.lowercased()) {
+                stage = parsed
             } else {
                 words.append(token)
             }
         }
     }
 
-    public var isEmpty: Bool { words.isEmpty && groups.isEmpty && done == nil && !archived && !unmatchable }
+    public var isEmpty: Bool { words.isEmpty && tags.isEmpty && labels.isEmpty && groups.isEmpty && done == nil && !archived && stage == nil }
 
     public func matches(_ item: WorkItem, in board: TaskBoard) -> Bool {
-        if unmatchable { return false }
         if let done, item.isDone != done { return false }
         // Archived tasks are put away: found only when asked for (and then only they are).
         if item.isArchived != archived { return false }
+        if let stage, item.root.stage != stage || item.root.isDone { return false }
+        let lineage = [item] + item.ancestors
+        guard tags.allSatisfy({ t in lineage.contains { $0.tags.contains { Self.isTagMatch($0, t) } } }),
+              labels.allSatisfy({ l in lineage.contains { $0.labels.contains { $0.caseInsensitiveCompare(l) == .orderedSame } } }) else { return false }
         let groupId = item.groupId
         guard groups.allSatisfy({ name in
             board.groups.contains { $0.id == groupId && ($0.name.caseInsensitiveCompare(name) == .orderedSame || $0.id.uuidString.lowercased() == name.lowercased()) }
@@ -49,6 +57,11 @@ public struct TaskSearch: Equatable, Sendable {
     /// The tasks found, in tree order (a task, then its subtasks).
     public func apply(_ board: TaskBoard) -> [WorkItem] {
         board.allItems.filter { matches($0, in: board) }
+    }
+
+    /// The tag, or a tag nested under it (#finance finds finance/q3, not financial).
+    private static func isTagMatch(_ tag: String, _ query: String) -> Bool {
+        tag.caseInsensitiveCompare(query) == .orderedSame || tag.lowercased().hasPrefix(query.lowercased() + "/")
     }
 
     private static func contains(_ text: String?, _ word: String) -> Bool {

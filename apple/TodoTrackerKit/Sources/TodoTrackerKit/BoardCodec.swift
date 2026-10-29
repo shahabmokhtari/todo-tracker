@@ -66,6 +66,7 @@ public enum BoardCodec {
 struct BoardDocument: Codable {
     var schemaVersion: Int = 1
     var groups: [GroupDocument]?
+    var labels: [LabelDocument]?
     var items: [ItemDocument]?
     var activity: [ActivityDocument]?
     var pomodoro: PomodoroDocument?
@@ -76,6 +77,7 @@ struct BoardDocument: Codable {
     init(_ board: TaskBoard) {
         schemaVersion = TaskBoard.currentSchemaVersion
         groups = board.groups.map { GroupDocument(id: $0.id, name: $0.name, color: $0.color) }
+        labels = board.labels.isEmpty ? nil : board.labels.map { LabelDocument(name: $0.name, color: $0.color) }
         items = board.items.map(ItemDocument.init)
         activity = board.activity.map { ActivityDocument(at: $0.at, itemId: $0.itemId, kind: $0.kind, summary: $0.summary, actor: $0.actor) }
         nowOrder = board.nowOrder.isEmpty ? nil : board.nowOrder
@@ -98,6 +100,9 @@ struct BoardDocument: Codable {
             board.appendLoaded(group: TaskGroup(id: g.id, name: g.name.trimmingCharacters(in: .whitespaces), color: g.color))
         }
         if board.groups.isEmpty { board.seedGroups() }
+        for l in labels ?? [] where !l.name.trimmingCharacters(in: .whitespaces).isEmpty && !board.labels.contains(where: { Ordinal.equalIgnoreCase($0.name, l.name) }) {
+            board.labels.append(LabelDefinition(name: l.name.trimmingCharacters(in: .whitespaces), color: l.color ?? "#64748b"))
+        }
         for item in items ?? [] { try load(item, into: board, parent: nil) }
         for a in activity ?? [] {
             board.appendLoaded(activity: ActivityEntry(at: a.at, itemId: a.itemId, kind: a.kind, summary: a.summary ?? "", actor: a.actor ?? .user))
@@ -140,6 +145,12 @@ struct BoardDocument: Codable {
             Note(id: $0.id, at: $0.at, text: $0.text ?? "", author: $0.author ?? .user, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
         }
         item.timeEntries = (doc.time ?? []).map { TimeEntry(id: $0.id, start: $0.start, end: $0.end, source: $0.source ?? .manual, device: $0.device) }
+        item.tags = doc.tags ?? []
+        item.labels = doc.labels ?? []
+        item.attachments = (doc.attachments ?? []).map {
+            Attachment(id: $0.id, fileName: $0.fileName, path: $0.path, size: $0.size ?? 0, addedAt: $0.addedAt, addedBy: $0.addedBy ?? .user)
+        }
+        item.stage = parent == nil ? (doc.stage ?? .next) : .next
         try board.attach(item, to: parent)
         for child in doc.children ?? [] { try load(child, into: board, parent: item) }
     }
@@ -175,6 +186,10 @@ struct ItemDocument: Codable {
     var reminders: [ReminderDocument]?
     var notes: [NoteDocument]?
     var time: [TimeEntryDocument]?
+    var tags: [String]?
+    var labels: [String]?
+    var attachments: [AttachmentDocument]?
+    var stage: Stage?
     var children: [ItemDocument]?
 
     init(_ item: WorkItem) {
@@ -205,8 +220,28 @@ struct ItemDocument: Codable {
             NoteDocument(id: $0.id, at: $0.at, text: $0.text, author: $0.author, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
         }
         time = item.timeEntries.isEmpty ? nil : item.timeEntries.map { TimeEntryDocument(id: $0.id, start: $0.start, end: $0.end, source: $0.source, device: $0.device) }
+        tags = item.tags.isEmpty ? nil : item.tags
+        labels = item.labels.isEmpty ? nil : item.labels
+        attachments = item.attachments.isEmpty ? nil : item.attachments.map {
+            AttachmentDocument(id: $0.id, fileName: $0.fileName, path: $0.path, size: $0.size, addedAt: $0.addedAt, addedBy: $0.addedBy)
+        }
+        stage = item.parent == nil && item.stage != .next ? item.stage : nil
         children = item.children.isEmpty ? nil : item.children.map(ItemDocument.init)
     }
+}
+
+struct LabelDocument: Codable {
+    var name: String
+    var color: String?
+}
+
+struct AttachmentDocument: Codable {
+    var id: UUID
+    var fileName: String
+    var path: String
+    var size: Int64?
+    var addedAt: Date
+    var addedBy: Actor?
 }
 
 struct TimeEntryDocument: Codable {

@@ -155,7 +155,8 @@ public final class TaskGroup: Identifiable {
 }
 
 public final class WorkItem: Identifiable {
-    public let id: UUID
+    /// Changes only while a task file is read (a copied file's ids are made its own), before it's on a board.
+    public internal(set) var id: UUID
     public internal(set) var title: String
     public internal(set) var details: String?
     public internal(set) var priority: Priority
@@ -198,6 +199,14 @@ public final class WorkItem: Identifiable {
     public internal(set) var notes: [Note] = []
     /// Time spent on it (TimeTracking.swift).
     public internal(set) var timeEntries: [TimeEntry] = []
+    /// Free-form tags without the leading `#` (nested tags use `/`), as the other apps keep them.
+    public internal(set) var tags: [String] = []
+    /// Names of the board's labels on it.
+    public internal(set) var labels: [String] = []
+    /// Files attached to it (in the tasks folder).
+    public internal(set) var attachments: [Attachment] = []
+    /// Where a top-level task is on the board (subtasks follow their task).
+    public internal(set) var stage: Stage = .next
 
     init(id: UUID = UUID(), title: String, priority: Priority, createdAt: Date, groupId: UUID) {
         self.id = id
@@ -236,6 +245,47 @@ public final class WorkItem: Identifiable {
 
     /// Titles from the root down to and including this item.
     public var path: [String] { ancestors.reversed().map(\.title) + [title] }
+}
+
+/// Where a top-level task is on the board (Inbox, Next, Doing). Done is `isDone`, not a stage.
+public enum Stage: String, Codable, Sendable {
+    case inbox, next, doing
+
+    /// A stage from a newer version reads as Next rather than failing the whole board.
+    public init(from decoder: Decoder) throws {
+        self = Stage(rawValue: (try? decoder.singleValueContainer().decode(String.self)) ?? "") ?? .next
+    }
+}
+
+/// A file attached to a task; `path` is relative to the tasks folder, with forward slashes.
+public final class Attachment: Identifiable {
+    public let id: UUID
+    public let fileName: String
+    public internal(set) var path: String
+    public let size: Int64
+    public let addedAt: Date
+    public let addedBy: Actor
+
+    init(id: UUID, fileName: String, path: String, size: Int64, addedAt: Date, addedBy: Actor) {
+        self.id = id
+        self.fileName = fileName
+        self.path = path
+        self.size = size
+        self.addedAt = addedAt
+        self.addedBy = addedBy
+    }
+}
+
+/// A curated, colored label (tags are free-form; labels are the few picked from the board's list).
+public final class LabelDefinition {
+    public internal(set) var name: String
+    /// `#rrggbb`.
+    public internal(set) var color: String
+
+    init(name: String, color: String) {
+        self.name = name
+        self.color = color
+    }
 }
 
 /// A repeating task's deadline and wait before it moved on (see `WorkItem.repeatUndo`).
