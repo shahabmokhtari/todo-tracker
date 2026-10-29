@@ -98,6 +98,9 @@ public actor SyncEngine {
         return try await run(publish: true)
     }
 
+    /// How the last sync went (for the Sync screen).
+    public var status: SyncStatus { state.status }
+
     /// Forgets a conflict once it's been settled.
     public func dismiss(_ key: String) {
         var status = state.status

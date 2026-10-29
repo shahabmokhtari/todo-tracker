@@ -48,6 +48,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.todotracker.task-link
             CFBundleURLSchemes: [todotracker]
+        # Syncing on its own (Settings › Sync): iOS wakes the app now and then to sync in the background.
+        BGTaskSchedulerPermittedIdentifiers: [com.todotracker.ios.sync]
+        UIBackgroundModes: [fetch]
   TodoTracker-macOS:
     type: application
     platform: macOS

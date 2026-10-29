@@ -12,8 +12,17 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // iPhone and iPad: use a computer's tasks (the Mac has its own).
-                if model.phone != nil { ComputerSection(model: model) }
+                // iPhone and iPad: one of three — a computer's tasks, syncing on its own, or only on this device (the Mac
+                // has its own server).
+                if model.phone != nil {
+                    Section {
+                        Text(model.modeDescription).font(.footnote).accessibilityIdentifier("settings-mode")
+                    } header: {
+                        Text("Your tasks")
+                    }
+                    ComputerSection(model: model)
+                    if let sync = model.sync { SyncSection(model: model, sync: sync) }
+                }
 
                 Section {
                     Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in

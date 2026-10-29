@@ -55,7 +55,9 @@ public final class BoardModel: ObservableObject {
     @Published public private(set) var isConnecting = false
 
     public private(set) var board: TaskBoard
-    private let store: BoardFileStore?
+    private let store: DeviceBoardStore?
+    /// Syncing on its own with the other devices (iPhone and iPad; nil on the Mac, whose server syncs).
+    public let sync: SyncModel?
     private var timer: Timer?
     private var lastRefresh = Date.distantPast
     private var server: ServerClient?
@@ -88,10 +90,11 @@ public final class BoardModel: ObservableObject {
     private var findingComputer = false
     private var lastFind = Date.distantPast
 
-    public init(store: BoardFileStore?, phone: PhoneSetup? = nil) {
+    public init(store: DeviceBoardStore?, phone: PhoneSetup? = nil, sync: SyncModel? = nil, openError: String? = nil) {
         self.store = store
         self.phone = phone
-        var loadError: String?
+        self.sync = sync
+        var loadError = openError
         let loaded: TaskBoard
         do {
             loaded = try store?.load() ?? TaskBoard()
@@ -109,12 +112,38 @@ public final class BoardModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
+        if let sync {
+            // Connected to a computer, the phone uses its tasks: nothing syncs on its own meanwhile.
+            sync.isPaused = { [weak self] in self?.isRemote ?? true }
+            sync.onSynced = { [weak self] _ in self?.reloadFromStore() }
+        }
     }
 
     public static func live() -> BoardModel {
         #if os(iOS)
-        let model = BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()), phone: .live())
+        let phone = PhoneSetup.live()
+        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
+        var store: VaultBoardStore?
+        var sync: SyncModel?
+        var openError: String?
+        if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("TodoTracker", isDirectory: true) {
+            // Joining a sync for the first time brings a leftover board.json in after what came (never before).
+            let joining = settings.load().map { !$0.joined } ?? false
+            do {
+                let opened = try VaultBoardStore.open(base: base, importLeftover: !joining)
+                store = opened
+                let syncer = PhoneSyncer(store: opened.vault, directory: base.appendingPathComponent("sync", isDirectory: true), settings: settings,
+                                         deviceName: phone.pairings.phoneName ?? phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
+                sync = SyncModel(syncer: syncer, settings: settings)
+            } catch {
+                openError = describe(error)
+            }
+        }
+        let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError)
         model.connectToPairedComputer()
+        // At launch: a sync now, then every minute while the app is open.
+        if !model.isRemote { sync?.start() }
         return model
         #else
         return BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()))
@@ -798,8 +827,33 @@ public final class BoardModel: ObservableObject {
 
     /// The app is in front again: a computer that wasn't answering is tried right away.
     public func becameActive() {
+        if !isRemote { sync?.start() }
         guard isRemote, remote?.canChange != true, !findingComputer else { return }
         findComputer()
+    }
+
+    /// The app went to the background: syncing waits for iOS to wake the app.
+    public func wentToBackground() { sync?.stop() }
+
+    /// The tasks folder changed (a sync brought something): the board is read again, reminders set up again.
+    public func reloadFromStore() {
+        guard !isRemote, let store, !isReadOnly else { return }
+        do {
+            board = try store.load()
+        } catch {
+            status = Self.describe(error)
+            return
+        }
+        NotificationScheduler.sync(board)
+        refresh()
+    }
+
+    /// Where this phone's tasks are, in words, for Settings: connected to a computer, syncing on its own, or only here.
+    public var modeDescription: String {
+        let device = phone?.deviceKind ?? "device"
+        if isRemote { return "Connected to \(remoteComputer ?? "your computer"): you’re using its tasks. The tasks kept on this \(device) wait, untouched." }
+        if sync?.isOn == true { return "Your tasks are on this \(device) and sync on their own with your other devices." }
+        return "Your tasks are only on this \(device)."
     }
 
     /// The name the computer shows for this phone ("Shahab's iPad"): the one typed last time, else the device's own
@@ -837,6 +891,8 @@ public final class BoardModel: ObservableObject {
                 }
                 phone.pairings.lastRead = nil
                 if let cache = phone.cacheURL { try? FileManager.default.removeItem(at: cache) }
+                // One or the other: using a computer's tasks turns syncing on its own off (the tasks here stay).
+                sync?.turnOff()
                 paired = saved
                 remoteComputer = made.computer
                 remoteLastRead = nil
@@ -967,23 +1023,41 @@ public final class BoardModel: ObservableObject {
             return false
         }
         var ok = true
+        let at = Date()
         do {
-            try change(Date())
+            if let store {
+                // The change is made to the store's board (`board` points at it meanwhile), then the board shown is
+                // what was saved.
+                board = try store.apply(board) { target in
+                    board = target
+                    try change(at)
+                }
+            } else {
+                try change(at)
+            }
             status = message
-            persist()
+            NotificationScheduler.sync(board)
+            sync?.changed()
         } catch {
             ok = false
             status = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            // Nothing was saved: the board shown is the one kept.
+            if let store, store.keepsOwnBoard, let kept = try? store.load() { board = kept }
         }
         refresh()
         return ok
     }
 
-    private func persist() {
+    /// Saves a change the clock made (the focus timer, reminders that went off, a forgotten timer). With a store that
+    /// keeps its own board, `redo` makes it there too.
+    private func persist(redo: (TaskBoard) -> Void) {
         // The computer's tasks are never written to the board on this phone.
         guard !isReadOnly, !isRemote else { return }
         do {
-            try store?.save(board)
+            if let store {
+                board = try store.apply(board) { target in if store.keepsOwnBoard { redo(target) } }
+            }
+            sync?.changed()
         } catch {
             status = "Could not save: \(error.localizedDescription)"
         }
@@ -1015,14 +1089,21 @@ public final class BoardModel: ObservableObject {
             }
             return
         }
-        let events = board.tickPomodoro(now: current)
-        let dueUnnotified = board.allItems.filter { !$0.isDone }.flatMap { item in
-            item.reminders.filter { $0.isDue(current) && $0.notifiedAt == nil }.map { (item.id, $0.id) }
+        let readOnly = isReadOnly
+        var events: [PomodoroEvent] = []
+        var dueUnnotified: [(UUID, UUID)] = []
+        var closed = 0
+        let clockWork: (TaskBoard) -> Void = { board in
+            events = board.tickPomodoro(now: current)
+            dueUnnotified = board.allItems.filter { !$0.isDone }.flatMap { item in
+                item.reminders.filter { $0.isDue(current) && $0.notifiedAt == nil }.map { (item.id, $0.id) }
+            }
+            for (itemId, reminderId) in dueUnnotified { board.markNotified(itemId, reminderId: reminderId, now: current) }
+            // A timer left running for half a day was forgotten: it ends (at 12 hours), so the task can be timed again.
+            closed = readOnly ? 0 : board.closeForgottenTimers(now: current)
         }
-        for (itemId, reminderId) in dueUnnotified { board.markNotified(itemId, reminderId: reminderId, now: current) }
-        // A timer left running for half a day was forgotten: it ends (at 12 hours), so the task can be timed again.
-        let closed = isReadOnly ? 0 : board.closeForgottenTimers(now: current)
-        if !events.isEmpty || !dueUnnotified.isEmpty || closed > 0 { persist() }
+        clockWork(board)
+        if !events.isEmpty || !dueUnnotified.isEmpty || closed > 0 { persist(redo: clockWork) }
         // Refresh the lists every 30 s (waiting items wake up); the timer text updates every second.
         if !events.isEmpty || !dueUnnotified.isEmpty || closed > 0 || current.timeIntervalSince(lastRefresh) >= 30 {
             refresh()
@@ -1048,8 +1129,11 @@ public struct PhoneSetup {
     public let cacheURL: URL?
     public let makeSession: (_ fingerprint: String) -> URLSession
     public let phoneName: String
+    /// "iPhone" or "iPad", in sentences ("Your tasks are only on this iPad").
+    public let deviceKind: String
 
-    public init(pairings: PairingStore, cacheURL: URL?, phoneName: String, makeSession: @escaping (_ fingerprint: String) -> URLSession = { PinnedTrust.session(fingerprint: $0) }) {
+    public init(pairings: PairingStore, cacheURL: URL?, phoneName: String, deviceKind: String = "iPhone", makeSession: @escaping (_ fingerprint: String) -> URLSession = { PinnedTrust.session(fingerprint: $0) }) {
+        self.deviceKind = deviceKind
         self.pairings = pairings
         self.cacheURL = cacheURL
         self.makeSession = makeSession
@@ -1062,7 +1146,7 @@ public struct PhoneSetup {
         let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         return PhoneSetup(pairings: PairingStore(secrets: KeychainSecretStore()),
                           cacheURL: base?.appendingPathComponent("TodoTracker", isDirectory: true).appendingPathComponent("computer-board.json"),
-                          phoneName: UIDevice.current.name)
+                          phoneName: UIDevice.current.name, deviceKind: UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone")
     }
     #endif
 }
