@@ -85,7 +85,9 @@ dotnet run --project src/TodoTracker.Cli -- now --data "$DATA" --vault "$DATA/va
   system); the timeline and hooks show it. Use the `X-TodoTracker-Actor` header / `--as` / the MCP client name.
 - **The same rules on every platform.** Agenda, snooze choices, repeat rules, energy, deep links and the export format
   are implemented in C#, Swift and Kotlin with shared cases in `tests/fixtures` (`scenarios/`, `snooze.json`,
-  `breaks.json`, `repeat.json`, `energy.json`, `export.json`). Change one, change all three and the fixture.
+  `breaks.json`, `repeat.json`, `energy.json`, `export.json`). Change one, change all three and the fixture. The tasks
+  folder format and sync have generated fixtures too (`vault/`, `sync/`) for the phones that sync on their own
+  ([docs/design/phone-sync.md](docs/design/phone-sync.md)).
 - **Every feature on every platform, docs in the same PR.** A user-facing change lands in the web app, the Windows
   sidebar, Mac/iPhone (SwiftUI) and Android where it applies (the Linux tray is quick add only), and the docs it touches
   (`docs/guide.md`, `docs/product-spec.md`, `docs/plugins.md`, the README, the skill) change with it. An optional
@@ -106,6 +108,7 @@ dotnet run --project src/TodoTracker.Cli -- now --data "$DATA" --vault "$DATA/va
 | a `tt` command (`CliCommands.cs`) | its usage/details text; the skill; then regenerate `docs/cli.md` |
 | a REST endpoint (`ApiEndpoints.cs`) | the published list in `OpenApiSetup.cs` if agents should see it |
 | the task model (`WorkItem`, `TaskBoard`) | `BoardSerializer`, `Vault/TaskMarkdown.cs` (+ `docs/vault-format.md`), the Swift and Kotlin codecs, `tests/fixtures/export.json` |
+| the vault format or sync (`Core/Vault`, `Core/Sync`) | regenerate `tests/fixtures/vault/` and `tests/fixtures/sync/` and review the diff; the Swift and Kotlin vault and sync code ([docs/design/phone-sync.md](docs/design/phone-sync.md)) |
 | the web app's `format.js` or `icons.js` | copy them to `extension/lib/` (a test checks they're identical) |
 | anything a user sees | the docs in `docs/` and the README; screenshots if it shows (`node tests/e2e/screenshots.mjs`) |
 
@@ -114,6 +117,7 @@ Generated files (commit them after regenerating):
 ```bash
 TT_WRITE_DOCS=1 dotnet test tests/TodoTracker.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
 TT_WRITE_FIXTURES=1 dotnet test tests/TodoTracker.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
+TT_WRITE_FIXTURES=1 dotnet test --project tests/TodoTracker.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, from a made-up demo board (quit the app first on Windows)
 ```
 
