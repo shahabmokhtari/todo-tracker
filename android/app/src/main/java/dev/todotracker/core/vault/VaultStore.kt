@@ -100,7 +100,11 @@ class VaultStore(
     private val meta: File get() = File(root, VaultFiles.META_FOLDER)
 
     /** Files that couldn't be read (their last good version stays and they are never overwritten). */
-    val problems: List<VaultProblem> get() = synchronized(lock) { problemList.toList() }
+    val problems: List<VaultProblem>
+        get() = synchronized(lock) {
+            refreshIfNeeded()
+            problemList.toList()
+        }
 
     companion object {
         /**
