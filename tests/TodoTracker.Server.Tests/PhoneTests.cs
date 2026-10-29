@@ -139,7 +139,8 @@ internal sealed class PhoneServer : IAsyncDisposable
             certificate is not null && PhoneCertificate.Base64Url(SHA256.HashData(certificate.GetRawCertData())) == pinned);
         await tls.AuthenticateAsClientAsync("todotracker");
         var host = headers.Any(h => h.StartsWith("Host:", StringComparison.OrdinalIgnoreCase)) ? string.Empty : $"Host: 192.168.1.20:{Options.PhonePort}\r\n";
-        var request = $"{method} {path} HTTP/1.1\r\n{host}{string.Concat(headers.Select(h => h + "\r\n"))}Content-Length: 0\r\nConnection: close\r\n\r\n";
+        var length = headers.Any(h => h.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)) ? string.Empty : "Content-Length: 0\r\n";
+        var request = $"{method} {path} HTTP/1.1\r\n{host}{string.Concat(headers.Select(h => h + "\r\n"))}{length}Connection: close\r\n\r\n";
         await tls.WriteAsync(System.Text.Encoding.ASCII.GetBytes(request));
         using var reader = new StreamReader(tls);
         var status = await reader.ReadLineAsync() ?? string.Empty;
@@ -557,16 +558,16 @@ public sealed class PhoneTests
         var code = (await server.Pair())["code"]!.GetValue<string>();
         using var phone = server.Phone();
 
-        var huge = await phone.PostAsJsonAsync("/api/phones/claim", new { code, name = new string('x', 8 * 1024) }, Cancel);
-        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, huge.StatusCode);
+        // Only the headers go out: the size said up front is refused before any of the body is read. (Sending the body
+        // too races the server closing the connection, which Windows reports as a reset rather than the 413.)
+        Assert.Equal(413, await server.Raw("POST", "/api/phones/claim", "Content-Type: application/json", $"Content-Length: {8 * 1024}"));
 
         var token = (await phone.PostJson("/api/phones/claim", new { code, name = new string('n', 200) }))["token"]!.GetValue<string>();
         using var owner = await server.Owner();
         Assert.Equal(60, (await owner.GetJson("/api/plugins/phones/devices")).AsArray()[0]!["name"]!.GetValue<string>().Length);
 
-        using var paired = server.Phone(token);
-        var tooBig = await paired.PostAsJsonAsync("/api/capture", new { text = new string('t', 2 * 1024 * 1024) }, Cancel);
-        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, tooBig.StatusCode);
+        var bearer = $"Authorization: Bearer {token}";
+        Assert.Equal(413, await server.Raw("POST", "/api/capture", bearer, "Content-Type: application/json", $"Content-Length: {2 * 1024 * 1024}"));
     }
 
     [Theory]
