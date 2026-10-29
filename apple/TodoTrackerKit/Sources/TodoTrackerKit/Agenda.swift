@@ -75,7 +75,7 @@ public enum Agenda {
             .compactMap { offset, item -> (offset: Int, item: WorkItem, at: Date)? in
                 if item.isArchived { return nil }
                 if let groupId, item.groupId != groupId { return nil }
-                if !search.isEmpty && !search.matches(item) { return nil }
+                if !search.isEmpty && !search.matches(item, in: board) { return nil }
                 if let at = item.completedAt {
                     guard at >= start, at <= now else { return nil }
                     return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)") ? (offset: offset, item: item, at: at) : nil
@@ -130,7 +130,7 @@ public enum Agenda {
                 attention: nowAll.filter { $0.entry.item.groupId == g.id && $0.entry.needsAttention }.count)
         }
 
-        func inScope(_ item: WorkItem) -> Bool { (groupId == nil || item.groupId == groupId) && (search.isEmpty || search.matches(item)) }
+        func inScope(_ item: WorkItem) -> Bool { (groupId == nil || item.groupId == groupId) && (search.isEmpty || search.matches(item, in: board)) }
 
         // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
         // (priority, overdue, deadline, age). Same rules as TodoTracker.Core.Agenda.

@@ -97,8 +97,8 @@ final class TaskDetailsModelTests: XCTestCase {
     func testSearchNarrowsTheListsAndRowNotesStayOpenInTheModel() throws {
         let model = BoardModel(store: nil)
         let report = try model.board.addTask(NewTask("Send the RU report"), now: Date())
-        let other = try model.board.addTask(NewTask("Groceries"), now: Date())
-        try model.board.addNote(other.id, text: "milk, eggs", now: Date())
+        let other = try model.board.addTask(NewTask("Groceries", details: "milk, eggs"), now: Date())
+        try model.board.addNote(other.id, text: "from the market", now: Date())
         model.refresh()
 
         model.searchText = "eggs"

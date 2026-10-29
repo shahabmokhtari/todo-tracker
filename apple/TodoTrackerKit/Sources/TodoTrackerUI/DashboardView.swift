@@ -220,7 +220,7 @@ public struct DashboardView: View {
     private var searchBar: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Find in titles, details and notes", text: $model.searchText)
+            TextField("Find in titles and details", text: $model.searchText)
                 .textFieldStyle(.plain)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("search-field")

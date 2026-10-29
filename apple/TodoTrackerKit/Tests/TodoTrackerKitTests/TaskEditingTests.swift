@@ -114,7 +114,7 @@ final class TaskEditingTests: XCTestCase {
         XCTAssertThrowsError(try board.setPomodoroSettings(PomodoroSettings(focusMinutes: 500)))
     }
 
-    func testSearchFindsWordsInTheTitleDetailsOrNotesAndKeepsTheGroupTotals() throws {
+    func testSearchFindsWordsInTheTitleOrDetailsAndKeepsTheGroupTotals() throws {
         let board = TaskBoard()
         let report = try board.addTask(NewTask("Send the RU report"), now: t0)
         let call = try board.addTask(NewTask("Call the dentist", details: "Ask about the report too"), now: t0)
@@ -123,7 +123,7 @@ final class TaskEditingTests: XCTestCase {
         _ = try board.addTask(NewTask("Groceries"), now: t0)
 
         let found = Agenda.build(board, now: t0, query: "REPORT")
-        XCTAssertEqual(Set(found.now.map(\.item.id)), [report.id, call.id, plants.id])
+        XCTAssertEqual(Set(found.now.map(\.item.id)), [report.id, call.id], "notes aren't searched (the same as the other apps)")
         XCTAssertEqual(found.groupCounts[board.defaultGroupId]?.now, 4, "the group tabs keep their totals")
 
         XCTAssertEqual(Agenda.build(board, now: t0, query: "report dentist").now.map(\.item.id), [call.id], "every word must match")

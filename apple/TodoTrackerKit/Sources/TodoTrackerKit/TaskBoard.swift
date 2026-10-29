@@ -191,7 +191,13 @@ public final class TaskBoard {
     public func reopen(_ id: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         guard let completedAt = item.completedAt else {
-            if wasRolledForward(item) { undoRollForward(item, actor: actor, now: now) }
+            if wasRolledForward(item) {
+                undoRollForward(item, actor: actor, now: now)
+            } else if let rolled = rolledBy(item) {
+                // The last step of a repeating task moved the whole task on (and opened the step again): "not done after
+                // all" on that step puts the task back as it was, with this step open.
+                undoRollForward(rolled, actor: actor, now: now, keepOpen: item)
+            }
             return
         }
         item.completedAt = nil
@@ -284,9 +290,41 @@ public final class TaskBoard {
         return activity.last(where: { $0.itemId == item.id && ($0.kind == "completed" || $0.kind == "reopened") })?.kind == "completed"
     }
 
-    /// "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now.
-    private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date) {
+    /// The repeating task that completing `step` (its last step) moved on to its next time, or nil.
+    private func rolledBy(_ step: WorkItem) -> WorkItem? {
+        guard let done = activity.last(where: { $0.itemId == step.id && ($0.kind == "completed" || $0.kind == "reopened") }),
+              done.kind == "completed" else { return nil }
+        return step.ancestors.first { ancestor in
+            wasRolledForward(ancestor) && activity.last(where: { $0.itemId == ancestor.id && $0.kind == "completed" })?.at == done.at
+        }
+    }
+
+    /// "Not done after all" on a repeating task that moved on: its deadline and wait as they were (without that record:
+    /// due a time earlier, back in Do now), and what moving on undid as it was: the subtasks done before (all but
+    /// `keepOpen`) done again, and the reminders it put away pending again. Same rule as C# and Kotlin
+    /// (tests/fixtures/undo.json).
+    private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date, keepOpen: WorkItem? = nil) {
         guard let rule = item.repeatRule else { return }
+        let rolls = activity.filter { $0.itemId == item.id && $0.kind == "completed" }
+        if let rolledAt = rolls.last?.at {
+            let since = rolls.count > 1 ? rolls[rolls.count - 2].at : nil
+            let keep = Set(keepOpen?.selfAndDescendants.map(\.id) ?? [])
+            for descendant in item.selfAndDescendants.dropFirst() where !keep.contains(descendant.id) && !descendant.isDone {
+                // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                var lineage: Set<UUID> = [descendant.id]
+                for ancestor in descendant.ancestors {
+                    if ancestor === item { break }
+                    lineage.insert(ancestor.id)
+                }
+                let last = activity.last { entry in
+                    lineage.contains(entry.itemId) && (entry.kind == "completed" || entry.kind == "reopened")
+                        && entry.at <= rolledAt && (since.map { entry.at > $0 } ?? true)
+                }
+                if let last, last.kind == "completed" { descendant.completedAt = last.at }
+            }
+            // Put away when it moved on (not the reminder for its next time, which ends below).
+            for r in item.reminders where r.dismissedAt == rolledAt && r.dueAt < (item.nextActionAt ?? .distantFuture) { r.dismissedAt = nil }
+        }
         for r in item.reminders where r.kind == .nextAction && r.dismissedAt == nil && r.dueAt > now { r.dismissedAt = now }
         if let undo = item.repeatUndo {
             item.deadline = undo.deadline
