@@ -185,6 +185,9 @@ class VaultStore(
         read(board)
     }
 
+    /** A copy of the board as the files are now, for a screen to show (it never changes underneath, and changing it saves nothing). */
+    fun snapshot(): TaskBoard = read { decode(BoardCodec.encode(it)) }
+
     /**
      * Applies a change and saves the files it touched (all or nothing). The change must say who made it (the board's
      * methods take an Actor). A file changed underneath in between is re-read and the change applied again.
