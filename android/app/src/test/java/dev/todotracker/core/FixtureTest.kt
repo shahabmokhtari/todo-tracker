@@ -92,13 +92,9 @@ class FixtureTest {
             val group = t.text("group")?.let { g -> board.groups.single { it.name == g }.id }
             val item = board.addTask(NewTask(t.text("title")!!, parentId = t.text("parent")?.let { tasks[it]!!.id }, groupId = group, details = t.text("details")), now = t0)
             tasks[t.text("key")!!] = item
-            // Tags, labels and the board column are kept as the other apps write them (this app only reads them).
-            val extra = buildMap<String, JsonElement> {
-                if (t.strings("tags").isNotEmpty()) put("tags", JsonArray(t.strings("tags").map(::JsonPrimitive)))
-                if (t.strings("labels").isNotEmpty()) put("labels", JsonArray(t.strings("labels").map(::JsonPrimitive)))
-                t.text("stage")?.let { put("stage", JsonPrimitive(it)) }
-            }
-            if (extra.isNotEmpty()) item.extra = JsonObject(extra)
+            item.tags.addAll(t.strings("tags"))
+            item.labels.addAll(t.strings("labels"))
+            t.text("stage")?.let { item.stage = Stage.of(it) }
             if (t.flag("done")) board.complete(item.id, now = t0)
             if (t.flag("archived")) board.archive(item.id, now = t0)
         }

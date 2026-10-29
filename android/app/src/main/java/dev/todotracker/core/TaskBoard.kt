@@ -470,11 +470,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         stopTimers(allItems, now)
         val entry = TimeEntry(start = now, source = source, device = THIS_DEVICE)
         item.timeEntries.add(entry)
-        // Starting work on a card moves it to Doing (the board column other apps show; kept as they wrote it).
+        // Starting work on a card moves it to Doing (the board column).
         val root = item.ancestors.lastOrNull() ?: item
-        if (!root.isDone && (root.extra?.get("stage") as? kotlinx.serialization.json.JsonPrimitive)?.content != "doing") {
-            root.extra = kotlinx.serialization.json.JsonObject((root.extra ?: emptyMap()) + ("stage" to kotlinx.serialization.json.JsonPrimitive("doing")))
-        }
+        if (!root.isDone) root.stage = Stage.DOING
         return entry
     }
 
@@ -645,10 +643,8 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         if (reminded && back.isAfter(now)) item.reminders.add(Reminder(dueAt = back, message = defaultReminderMessage(item), kind = ReminderKind.NEXT_ACTION))
         for (d in item.selfAndDescendants.drop(1)) d.completedAt = null
         stopTimers(item.selfAndDescendants, now)
-        // Doing ends with this time of it (the board column other apps show; kept as they wrote it).
-        if (item.parent == null && (item.extra?.get("stage") as? kotlinx.serialization.json.JsonPrimitive)?.content == "doing") {
-            item.extra = kotlinx.serialization.json.JsonObject(item.extra!! - "stage")
-        }
+        // Doing ends with this time of it (the board column).
+        if (item.parent == null && item.stage == Stage.DOING) item.stage = Stage.NEXT
         item.repeat = rule.countedDown()
         log(now, item.id, "completed", "Completed \"${item.title}\" $ROLLED_MARKER${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
         return true

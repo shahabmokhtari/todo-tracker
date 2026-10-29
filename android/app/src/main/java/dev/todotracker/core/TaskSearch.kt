@@ -1,8 +1,5 @@
 package dev.todotracker.core
 
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonPrimitive
-
 /**
  * The search box (TaskQuery in C#, same syntax): words match the title or details; `#tag` (nested tags included),
  * `label:name`, `group:name`, `is:open`/`is:done`, `is:archived` (archived tasks are found only then) and the board
@@ -60,12 +57,11 @@ class TaskSearch private constructor(
             return TaskSearch(words, tags, labels, groups, done, archived, stage)
         }
 
-        /** The board column other apps keep (a task that doesn't say is in Next). */
-        private fun stageOf(item: WorkItem): String = (item.extra?.get("stage") as? JsonPrimitive)?.content?.lowercase() ?: "next"
+        /** The board column (Inbox, Next, Doing). */
+        private fun stageOf(item: WorkItem): String = item.stage.wire
 
-        /** Tags or labels other apps keep on a task (this one keeps them as they were). */
-        private fun strings(item: WorkItem, name: String): List<String> =
-            (item.extra?.get(name) as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: emptyList()
+        /** A task's tags or labels. */
+        private fun strings(item: WorkItem, name: String): List<String> = if (name == "tags") item.tags else item.labels
 
         private fun value(token: String, prefix: String): String? =
             if (token.length > prefix.length && token.startsWith(prefix, ignoreCase = true)) token.substring(prefix.length) else null

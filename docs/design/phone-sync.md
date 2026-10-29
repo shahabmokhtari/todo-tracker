@@ -249,10 +249,12 @@ Every one of these changes bytes, which changes hashes, which other devices see 
    *simple* mapping (Kotlin `Character.toUpperCase(int)`; Swift: the scalar's uppercase mapping when it is a single
    scalar, else unchanged — `ß` stays `ß`, never `SS`).
 2. **Unicode case for ids.** `"group|" + folder.ToUpperInvariant()` and the hand-written-step seed's
-   `ToLowerInvariant()` use simple 1:1 mappings: `İ`.lower is `i` (not `i̇`), `ß`.upper is `ß`. Swift's
-   `uppercased()/lowercased()` use full mappings; use per-scalar single mappings with the exception
-   `U+0130 → U+0069`. Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step
-   in `vault/parse.json`.
+   `ToLowerInvariant()` use simple 1:1 mappings (`ß`.upper is `ß`, `ǅ`.upper is `Ǆ`), and .NET's invariant casing
+   leaves the Turkish i's alone: `İ` (U+0130) lower-cased stays `İ` (not `i`, not `i̇`), and `ı` (U+0131)
+   upper-cased stays `ı`. Swift's `uppercased()/lowercased()` use full mappings, and Kotlin's
+   `Character.toLowerCase(0x130)` gives `i`: use per-scalar simple mappings, except that U+0130 and U+0131 are kept
+   as they are. Fixture: `vault/names.json` `groupIds` (`Straße`, `İstanbul`, `ǅemal`) and the `İstanbul` step in
+   `vault/parse.json` (its id is derived from `/…/İstanbul trip#1`).
 3. **GUID bytes.** `StableGuid` takes SHA-256's first 16 bytes, sets `bytes[7] = (b & 0x0F) | 0x80` and
    `bytes[8] = (b & 0x3F) | 0x80`, then `new Guid(bytes)` — .NET reads the first three fields **little-endian**:
    the text form is bytes `3 2 1 0 - 5 4 - 7 6 - 8 9 - 10…15`. (So the "version" nibble shown is `bytes[7]`'s high
