@@ -839,7 +839,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
                         is PhoneException.Revoked -> null
                         else -> "Not changed: couldn't reach $name."
                     }
-                    failed(e)
+                    // A change the computer refused (that route, that task) says nothing about the connection.
+                    if (e !is PhoneException.Refused) failed(e)
                     refresh()
                 },
             )
