@@ -156,7 +156,8 @@ once when you come back to the app. The focus timer's lengths are set on the com
 * **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
   computer, with the time; changes wait until you're back (**Try again** checks now).
 * **Reminders** set on the computer also notify you on the phone, even with the app closed, and **Mark done** / **In an
-  hour** on them change the task on the computer (if it can't be reached, the notification says so).
+  hour** on them change the task on the computer (if it can't be reached, the notification says so). With the app
+  closed, the phone checks the computer every 15 minutes or so, so a reminder added there meanwhile still rings.
 * **Disconnect** (Settings › Connect to a computer) takes the phone back to its own tasks, just as you left them: they're
   never touched while it's connected. To remove the phone on the computer too, use **Disconnect** in Settings › Phones
   there. If the computer **disconnects the phone**, the app says so, shows its own tasks again, and offers **Reconnect**.

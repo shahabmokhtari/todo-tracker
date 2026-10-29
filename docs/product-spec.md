@@ -350,7 +350,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   board that comes due after it last looked (once each, whatever `notifiedAt` says; not dismissed, task open), from the
   export it read (with the app closed, the alarm reads it again briefly, else uses the kept one). *Mark done* / *In an
   hour* call the API; if the computer can't be reached the notification says so and opens the task. Nothing is
-  written back. A reminder added on the computer while the app is closed is learnt the next time the app runs.
+  written back. With the app closed, a WorkManager check (every 15 minutes or so, network required, only while
+  connected) reads the computer again, so a reminder added there meanwhile still rings.
 
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.

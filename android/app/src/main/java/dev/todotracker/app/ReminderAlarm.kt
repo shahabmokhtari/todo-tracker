@@ -278,28 +278,39 @@ object RemoteAlarm {
         }
         Thread {
             try {
-                val pairing = connection.load() ?: return@Thread
-                val now = Instant.now()
-                val text = try {
-                    val client = connection.client(pairing, connectMillis = 3_000, readMillis = 5_000)
-                    val export = client.export(connection.cached()?.etag)
-                    connection.answered(client)
-                    if (export == null) {
-                        connection.stillCurrent(now)
-                        connection.cached()?.text
-                    } else {
-                        connection.cache(export.text, export.etag, now)
-                        export.text
-                    }
-                } catch (e: PhoneException) {
-                    connection.cached()?.text
-                }
-                val board = text?.let { runCatching { BoardCodec.decode(it) }.getOrNull() } ?: return@Thread
-                ReminderAlarm.schedule(context, ReminderAlarm.deliverRemote(context, connection, board, now))
+                readAndDeliver(context, connection)
             } finally {
                 done()
             }
         }.start()
+    }
+
+    /**
+     * Off the screen's thread: reads the computer's board (briefly; the kept one when it can't be reached), tells what
+     * came due, and sets the alarm for the next reminder. False when it couldn't reach the computer.
+     */
+    fun readAndDeliver(context: Context, connection: PhoneConnection): Boolean {
+        val pairing = connection.load() ?: return true
+        val now = Instant.now()
+        var reached = true
+        val text = try {
+            val client = connection.client(pairing, connectMillis = 3_000, readMillis = 5_000)
+            val export = client.export(connection.cached()?.etag)
+            connection.answered(client)
+            if (export == null) {
+                connection.stillCurrent(now)
+                connection.cached()?.text
+            } else {
+                connection.cache(export.text, export.etag, now)
+                export.text
+            }
+        } catch (e: PhoneException) {
+            reached = false
+            connection.cached()?.text
+        }
+        val board = text?.let { runCatching { BoardCodec.decode(it) }.getOrNull() } ?: return reached
+        ReminderAlarm.schedule(context, ReminderAlarm.deliverRemote(context, connection, board, now))
+        return reached
     }
 
     /** Mark done / In an hour, sent to the computer; [done] gets why it didn't happen (null: it did). */
