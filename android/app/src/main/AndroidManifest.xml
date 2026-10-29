@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- When a focus session or a break ends with the app closed (asked for when focus first starts). -->
+    <!-- Reminders, and when a focus session or a break ends with the app closed (asked for at the first snooze or focus). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- On time to the minute when the phone allows it (else the alarm may come a little late). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- To set the focus timer's alarms again after a restart. -->
+    <!-- To set the reminders and the focus timer's alarms again after a restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
@@ -33,6 +33,9 @@
             </intent-filter>
         </activity>
         <receiver android:name=".app.FocusAlarmReceiver" android:exported="false" />
+        <!-- A reminder is due (or a snooze ends), and Mark done / In an hour on its notification. -->
+        <receiver android:name=".app.ReminderAlarmReceiver" android:exported="false" />
+        <receiver android:name=".app.ReminderActionReceiver" android:exported="false" />
         <!-- The phone forgets alarms when it restarts (or the app is updated): they're set again. -->
         <receiver android:name=".app.RestartReceiver" android:exported="false">
             <intent-filter>

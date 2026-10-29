@@ -50,4 +50,9 @@ object Energy {
         val planned = plannedOn(board, now.atZone(zone).toLocalDate(), zone)
         return if (planned > 0) line(planned, board.dailyEnergy) else null
     }
+
+    /** Whether today's plan takes more than there is in a day (the line shows as a warning then). */
+    fun overToday(board: TaskBoard, now: Instant, zone: ZoneId): Boolean =
+        plannedOn(board, now.atZone(zone).toLocalDate(), zone) > board.dailyEnergy
+
 }

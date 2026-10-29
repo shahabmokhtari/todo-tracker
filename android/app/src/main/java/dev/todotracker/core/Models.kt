@@ -176,3 +176,22 @@ data class NewTask(
     val sequential: Boolean = false,
     val stepDelay: Duration? = null,
 )
+
+/**
+ * What a task's details change (TaskChanges in C#): a null field stays as it is; the clear flags empty one. An empty
+ * [details] removes the details, an empty [repeat] stops it repeating.
+ */
+data class TaskChanges(
+    val title: String? = null,
+    val details: String? = null,
+    val priority: Priority? = null,
+    val deadline: Instant? = null,
+    val clearDeadline: Boolean = false,
+    val sequential: Boolean? = null,
+    val stepDelay: Duration? = null,
+    val clearStepDelay: Boolean = false,
+    val repeat: String? = null,
+    val clearRepeat: Boolean = false,
+    val energy: Int? = null,
+    val clearEnergy: Boolean = false,
+)

@@ -383,6 +383,12 @@ public sealed partial class TaskBoard
             {
                 UndoRollForward(item, actor, now);
             }
+            else if (RolledBy(item) is { } rolled)
+            {
+                // The last step of a repeating task moved the whole task on (and opened the step again): "not done
+                // after all" on that step puts the task back as it was, with this step open.
+                UndoRollForward(rolled, actor, now, keepOpen: item);
+            }
 
             return;
         }

@@ -23,7 +23,14 @@ class MainActivity : ComponentActivity() {
         vm.onPhaseEnds = { ends -> FocusAlarm.schedule(applicationContext, ends) }
         vm.onPhaseEnded = { end -> FocusAlarm.notify(applicationContext, end) }
         setContent {
-            TodoTrackerTheme {
+            // The status bar's icons follow the chosen theme (dark icons on the light one).
+            val dark = vm.theme == "dark" || (vm.theme == "system" && isSystemInDarkTheme())
+            androidx.compose.runtime.LaunchedEffect(dark) {
+                val clear = android.graphics.Color.TRANSPARENT
+                val style = if (dark) androidx.activity.SystemBarStyle.dark(clear) else androidx.activity.SystemBarStyle.light(clear, clear)
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+            }
+            TodoTrackerTheme(vm.theme) {
                 TodayScreen(vm)
             }
         }
@@ -57,10 +64,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** The brand colors, light or dark as the phone is. */
+/** The brand colors, light or dark as chosen in Settings ("system": as the phone is). */
 @Composable
-fun TodoTrackerTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) {
+fun TodoTrackerTheme(theme: String = "system", content: @Composable () -> Unit) {
+    val dark = when (theme) {
+        "light" -> false
+        "dark" -> true
+        else -> isSystemInDarkTheme()
+    }
+    val colors = if (dark) {
         darkColorScheme(primary = Color(0xFF8B8DF8), secondary = Color(0xFFF472B6), tertiary = Color(0xFF34D399))
     } else {
         lightColorScheme(primary = Color(0xFF6366F1), secondary = Color(0xFFEC4899), tertiary = Color(0xFF10B981))

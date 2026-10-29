@@ -15,6 +15,7 @@ import dev.todotracker.R
 import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.Breaks
 import dev.todotracker.core.PhaseEnd
+import dev.todotracker.core.Reminders
 import java.io.File
 import java.time.Instant
 
@@ -95,21 +96,28 @@ object FocusAlarm {
 
 /**
  * The phone forgets every app's alarms when it restarts (and when the app is updated): set them again from the saved
- * board, and say so right away if a session or a break ended while the phone was off. Only reads the board.
+ * board, and say so right away if a session or a break ended while the phone was off. Reminders that came due while
+ * it was off are delivered now (and marked so); otherwise the board is only read.
  */
 class RestartReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val pending = goAsync()
         Thread {
+            var delivering = false
             try {
                 val file = File(context.filesDir, "board.json")
-                val board = runCatching { BoardCodec.decode(file.readText()) }.getOrNull() ?: return@Thread
+                val board = synchronized(BoardHub.lock) { runCatching { BoardCodec.decode(file.readText()) }.getOrNull() } ?: return@Thread
                 val ends = Breaks.phaseEnds(board.pomodoro)
                 FocusAlarm.schedule(context, ends)
                 Breaks.missed(ends, Instant.now())?.let { FocusAlarm.notify(context, it) }
+                ReminderAlarm.schedule(context, Reminders.nextAt(board, Instant.now()))
+                if (Reminders.due(board, Instant.now()).isNotEmpty()) {
+                    delivering = true
+                    BoardHub.change(context.applicationContext, { _, _ -> }) { pending.finish() }
+                }
             } finally {
-                pending.finish()
+                if (!delivering) pending.finish()
             }
         }.start()
     }

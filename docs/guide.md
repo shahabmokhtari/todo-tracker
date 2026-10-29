@@ -37,7 +37,7 @@ other card says **2 notes ▾**: click it to read them right there, **Hide notes
 
 **Open a task.** Click its title (in the sidebar it opens full size in the app window), or **⋯ › Open in the app** /
 **Open in the browser** in the sidebar, **⋯ › Open full size** / **Open in a new tab** on the web, **⋯ › Open details** /
-**Open in the browser** on a Mac, and **⋯ › Open** on Android.
+**Open in the browser** on a Mac, and on Android tap its title (or **⋯ › Open**).
 
 Type a task in the box at the top and press Enter:
 
@@ -54,7 +54,8 @@ the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other t
 
 **Again and again?** Type a rule in a task's **Repeat** box: `every weekday`, `every 2 weeks on Monday, Thursday`,
 `every month on the last Friday`, `every 3 days when done`. Done moves it to its next time (deadline and all) instead
-of finishing it; it still counts as done today.
+of finishing it; it still counts as done today. Done by mistake? **Reopen** it (or **Undo**) and it's back as it was,
+with the subtasks you'd already done still done.
 
 **Your own automations.** Hooks run a script or call a webhook when a task is done, a reminder goes off, a break
 starts… Add them in Settings › Hooks, with `tt hooks add`, or ask your AI agent (the app asks you to allow its hooks: Allow once and they just run).
@@ -81,7 +82,7 @@ The web app (and the app window on Windows) has six views; switch with the side 
   week, work hours or the whole day). An extra: switch it off in Settings.
 
 **How much energy do you have?** (the Energy extra) Say how draining a task is: ⚡ (light), ⚡⚡ or ⚡⚡⚡ (draining) an
-hour, in its details or ⋯ › Energy on any card (not said counts as ⚡). Say how much you have in a day in Settings ›
+hour, in its details (or ⋯ › Energy on a card in the sidebar, on a Mac or an iPhone; not said counts as ⚡). Say how much you have in a day in Settings ›
 Energy (10 unless you change it; every app uses the same number). Today then says "⚡ 4.5 of 10 planned today", and
 each day in the Plan view has a meter: its blocks' hours times their ⚡. Past what you have, it turns red, so you can
 move something to another day before you run out. `tt energy 8` and `tt edit <task> --energy 3` do it from a terminal,
@@ -102,10 +103,40 @@ waits 24 hours and then comes back with a reminder.
 **Links to a task.** The link button in a task's header (or **⋯ › Copy link** on any card) copies
 `todotracker://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
 named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
-starts if it wasn't running), on macOS and iPhone the task's details open, on Android a card with Mark done and Add note,
+starts if it wasn't running), on macOS, iPhone and Android the task's details open,
 and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
 it with every task (`link`). The app registers the link for you when it starts (Windows: per user, no admin rights;
 Linux: `install.sh`).
+
+## The Android app
+
+Today on your phone: the one thing to do now, the rest of Do now, what's waiting, what you did today (and when),
+**Workstreams** (tasks with subtasks, with how far along each is) and **Recent notes**. Tap a title, a workstream or a
+note to open that task.
+
+**A task's details** fill the screen. Change the title and details (saved when you close it), the priority, the
+deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,
+put it off with **Later**, archive it once it's done, copy its link, or delete it (it asks first: deleting can't be
+undone, archiving keeps it). Below: its subtasks (tick them off, tap one to open it; the path at the top takes you
+back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, and notes.
+
+**Reminders tell you, even with the app closed.** When a reminder is due, or something you snoozed comes back, your
+phone shows a notification: **Mark done** (or **Open**, when it has subtasks still to do), **In an hour**, or tap it to
+open the task. With notifications off, it waits on Today and tells you once they're on. The first time you snooze or
+set a reminder, the app asks to send notifications, and once whether it may set alarms so they come right on time.
+After your phone restarts, reminders you missed show up.
+
+**Later** offers the same quick choices as everywhere, **Pick a time…** (a day, then a time; times already past can't
+be picked) and **After another task…**. Changed your mind? Tap **Undo** on the message, like after **Mark done**.
+
+**Find a task:** tap 🔍 and type. Words match the title or details; `is:done`, `is:archived` and `group:work` work as
+on the web.
+
+**Groups:** tap the group you're in again (or **Edit**) to rename it, give it a color, or delete it. Its tasks move to
+the group you pick, so none are lost.
+
+**Settings** (⚙): light, dark, or as your phone is; how much energy you have in a day; how long a focus session and its
+breaks last; and whether notifications and on-time alarms are on.
 
 ## Where your tasks live
 

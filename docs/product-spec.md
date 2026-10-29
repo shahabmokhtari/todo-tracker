@@ -218,7 +218,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   restart. It runs in Windows CI.
 
 ### Web dashboard and report (`http://127.0.0.1:5317`)
-* The dashboard has the same sections as the sidebar, plus a filter box (`/`) with the search syntax. Tag and label
+* The dashboard has the same sections as the sidebar, plus a filter box (`/`) with the search syntax (`TaskQuery`; the
+  Android search box uses the same syntax, shared fixture `tests/fixtures/search.json`). Tag and label
   chips on cards filter on click. Files that need fixing are shown in a banner, and the footer shows where the
   markdown lives with an *Open in Obsidian* link.
 * **Nothing needs a Save button.** The task drawer saves as you type (debounced; edits made during a save are saved
@@ -244,8 +245,11 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   skipped (the next time is after today); done early, the next time is the one after the current. A rule that has ended
   (*until*, the last of *for N times*) completes it for good. Its day is fixed at its first time (*every month* due on
   the 31st becomes *every month on the 31st*: after February's 28th it's back on the 31st, and a snooze doesn't move it).
-  *Reopen* right after puts back the deadline and wait it had (kept as `repeat-undo:`). Finishing the last step of a
+  *Reopen* right after puts back the deadline and wait it had (kept as `repeat-undo:`), the subtasks done since its
+  time before (they're done again), and the reminders moving on put away (pending again). Finishing the last step of a
   repeating in-order task moves the task on (its steps open again); a step of an in-order task doesn't repeat on its own.
+  Reopening that step (Undo on "Done: <step>") puts the task back to this time with the other steps still done (shared
+  fixture `tests/fixtures/undo.json`, C#, Swift and Kotlin).
   Checking it in Obsidian (`status: done`) moves it on the same way, each time. Cards, board, tree and phones show 🔁.
   Same rules in C#, Swift and Kotlin (`Recurrence`; shared fixture `tests/fixtures/repeat.json`), in the user's time
   zone (calendar days, so clock changes keep the time of day).
@@ -264,8 +268,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   done ones included, archived ones not, a block over midnight counting on both days (`Energy.PlannedOn`; same rule in
   Swift and Kotlin, shared fixture `tests/fixtures/energy.json`). Cards show `⚡⚡`; Today's summary says
   "⚡ 4.5 of 10 planned today" (in red, with by how much, past it); each Plan day head has a meter that turns red past it.
-  Set a task's energy in its details (web), ⋯ › Energy (sidebar, Mac/iPhone, Android), `tt edit --energy`, or MCP
-  `update_task`; the day's in Settings › Energy, the sidebar menu, ⋯ on Mac/iPhone/Android, `tt energy 8`, `PUT
+  Set a task's energy in its details (web, Android), ⋯ › Energy (sidebar, Mac/iPhone), `tt edit --energy`, or MCP
+  `update_task`; the day's in Settings › Energy (web, Android), the sidebar menu, ⋯ on Mac/iPhone, `tt energy 8`, `PUT
   /api/energy` or MCP `set_daily_energy`. Frontmatter `energy: 2`; GitHub label `energy:2`. Today's line shows once
   something is planned today (every app).
 * **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only; edited in Settings ›
@@ -299,6 +303,34 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Owner only (the app's own session). **Let phones connect** (restart to open the port), **Connect a phone** (a QR code
   and a copyable `todotracker://pair` link, valid 10 minutes, once), and **Connected phones** (name, paired, last used,
   **Disconnect**). The Windows sidebar menu has *Connect a phone…*, which opens this section.
+
+### Android (Jetpack Compose)
+* Today: the focus card, Do now, Waiting, Done today (with the time each was done), Workstreams (tasks with subtasks:
+  a progress bar, how many are done, to do now and waiting, when the next comes back) and Recent notes (the last five;
+  tap one to open its task). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
+  after asking which group gets its tasks. 🔍 opens a search box with the shared syntax (`TaskSearch`, same as
+  `TaskQuery`); results list open tasks first and open on tap.
+* **Task details**, full screen (tap a title, a result, a workstream, a note, a link or a reminder's notification):
+  title and details (saved on Close, Back, or Save), priority, deadline (date and time pickers, Clear), energy, repeat
+  rule (typed, or picked from the web app's list; a rule it doesn't understand says why), group, Mark done (asks
+  before closing open subtasks) or Reopen, Later, Do now, Archive / Unarchive (finished top-level tasks), Copy link,
+  Delete (asks first, and says it can't be undone and that archiving keeps it). Subtasks with check boxes (a step that
+  must wait is greyed), each opens; the breadcrumb opens the parent. *Steps in order & rollout steps*: the in-order
+  switch, hours between steps, and steps added one per line. Reminders: the pending ones (Dismiss) and *Remind me…*
+  with an optional message. Notes: add, and every note newest first.
+* **Reminders notify.** The next pending reminder (a snooze with a reminder is one) has an alarm, exact when the phone
+  allows exact alarms. When it rings, each reminder due is shown as a notification with *Mark done* (*Open* when the
+  task has open subtasks) and *In an hour*; tapping it opens the task. It's marked delivered (`notifiedAt`, once, like
+  `ReminderDispatcher`) only when shown: with notifications off it stays pending on Today and is told once they're on.
+  While the app runs, its board does this; with it closed, the alarm and the buttons change the saved board under one
+  lock. After a restart or an update, the alarm is set again and reminders missed meanwhile are delivered. The app asks
+  for notifications (and, once, for on-time alarms) at the first snooze, reminder or focus session.
+* *Later* offers the quick choices, *Pick a time…* (a date picker where past days are off, then a time picker that
+  won't save a time already past) and *After another task…*. A snooze or wait can be undone from its message, like
+  *Mark done*.
+* **Settings** (⚙): theme (System, Light, Dark; kept on the phone), energy in a day, the focus timer's lengths (focus,
+  break, long break; 1–180 minutes, kept with the board), and whether notifications and on-time alarms are allowed.
+* The board is a JSON file on the phone (using a computer's tasks over the phone port is on the roadmap).
 
 ### Browser extension (Edge/Chrome side panel)
 * Group tabs, the focus card, Do now, Waiting, and quick capture. A note can attach the current page's URL and title.
@@ -405,7 +437,7 @@ by `tt open`.
   pipe (`PipeOptions.CurrentUserOnly`, ≤2 KB, validated again on arrival) and exits; the app window opens on the
   task. A link clicked inside the app window opens there.
 * **macOS / iOS**: `CFBundleURLTypes` + `onOpenURL` open the task's details. **Android**: a `VIEW`/`BROWSABLE`
-  intent filter (`singleTask`, so a link never starts a second copy of the board) shows the task with Done and Add note. **Linux**: the `.desktop` file handles
+  intent filter (`singleTask`, so a link never starts a second copy of the board) opens the task's details. **Linux**: the `.desktop` file handles
   `x-scheme-handler/todotracker`; a running tray opens its window on the task through `/api/launch`.
 
 ## 8. Security (local server)
@@ -449,6 +481,7 @@ by `tt open`.
 | Web and extension | Vanilla ES modules (no build step), `node --test`, Playwright e2e | Linux |
 | Windows | WPF (.NET 10, Fluent theme), Win32 AppBar, toast notifications | Windows: build, tests, publish, and a real-app `--smoke-test` with a screenshot artifact |
 | macOS and iOS | Swift 5.9, SwiftUI, XcodeGen | macOS: `swift test` (shared scenarios), iOS simulator build, macOS build and zip |
+| Android | Kotlin, Jetpack Compose (min SDK 26, target 35), AlarmManager and notifications for reminders and the focus timer | Linux: `gradle testDebugUnitTest` (shared fixtures) and `assembleDebug` |
 
 The **shared scenarios** in `tests/fixtures/scenarios/*.json` hold a board, a time, and the expected Now, Waiting,
 focus, attention, and states. Both the C# and Swift test suites run them.

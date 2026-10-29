@@ -2,6 +2,7 @@ package dev.todotracker.app
 
 import android.app.Application
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -19,12 +20,18 @@ import dev.todotracker.core.PhaseEnd
 import dev.todotracker.core.PomodoroEventKind
 import dev.todotracker.core.PomodoroPhase
 import dev.todotracker.core.QuickCaptureParser
+import dev.todotracker.core.Priority
+import dev.todotracker.core.PomodoroSettings
+import dev.todotracker.core.Reminders
 import dev.todotracker.core.RunningTimer
 import dev.todotracker.core.Snooze
 import dev.todotracker.core.SnoozeChoice
 import dev.todotracker.core.TaskBoard
+import dev.todotracker.core.TaskChanges
 import dev.todotracker.core.TaskLinks
+import dev.todotracker.core.TaskSearch
 import dev.todotracker.core.WorkItem
+import java.time.Duration
 import java.io.File
 import java.io.IOException
 import java.time.Instant
@@ -52,10 +59,9 @@ data class FocusState(
  * The board on this phone: every change is saved right away (written off the screen's thread, one at a time); the
  * lists follow the clock (waiting tasks come back).
  */
-class BoardViewModel(application: Application) : AndroidViewModel(application) {
-    private val store = BoardFileStore(File(application.filesDir, "board.json"))
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val saving = Dispatchers.IO.limitedParallelism(1)
+class BoardViewModel(application: Application) : AndroidViewModel(application), BoardHub.LiveBoard {
+    private val store = BoardFileStore(BoardHub.file(application))
+    private val prefs = application.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
     private var board: TaskBoard
 
     var dashboard: Dashboard by mutableStateOf(Dashboard(null, emptyList(), emptyList(), emptyMap()))
@@ -65,9 +71,40 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     var energyToday: String? by mutableStateOf(null)
         private set
 
+    /** Today's plan takes more energy than there is in a day (the line is a warning then). */
+    var energyOver: Boolean by mutableStateOf(false)
+        private set
+
     /** How much energy there is in a day. */
     var dailyEnergy: Int by mutableStateOf(Energy.DEFAULT_PER_DAY)
         private set
+
+    /** Goes up with every redraw of the lists, so what shows a task (its details) redraws too. */
+    var version: Int by mutableIntStateOf(0)
+        private set
+
+    /** What's typed in the search box ("" shows the lists as usual). */
+    var query: String by mutableStateOf("")
+        private set
+
+    /** The tasks the search finds: open ones first, then done ones (null: not searching). */
+    var searchResults: List<WorkItem>? by mutableStateOf(null)
+        private set
+
+    /** Light, dark, or as the phone is ("system"); kept on this phone. */
+    var theme: String by mutableStateOf(prefs.getString("theme", "system") ?: "system")
+        private set
+
+    /** How long focus sessions and breaks last. */
+    val focusSettings: PomodoroSettings get() = board.pomodoro.settings
+
+    /** Each group's color (#rrggbb), or null. */
+    var groupColors: Map<UUID, String?> by mutableStateOf(emptyMap())
+        private set
+
+    // The reminder alarm set last (set again when it changes, and back in the app).
+    private var scheduledReminder: Instant? = null
+    private var reminderSet = false
 
     /** What got done today (newest first): something to look back on. */
     var doneToday: List<WorkItem> by mutableStateOf(emptyList())
@@ -117,13 +154,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     private var scheduled: List<PhaseEnd>? = null
 
     init {
-        board = try {
-            store.load().also { status = store.problem }
-        } catch (e: BoardException) {
-            // Only a board from a newer version of the app: it's never overwritten.
-            readOnly = true
-            status = "${e.message} Changes are off so your board isn't overwritten."
-            TaskBoard()
+        // Read after every save asked for before (a copy of the app just closed may still be saving), and from then on
+        // alarms and notification buttons change this board, not the file behind its back: both under the same lock.
+        board = BoardHub.readNow {
+            val loaded = try {
+                store.load().also { status = store.problem }
+            } catch (e: BoardException) {
+                // Only a board from a newer version of the app: it's never overwritten.
+                readOnly = true
+                status = "${e.message} Changes are off so your board isn't overwritten."
+                TaskBoard()
+            }
+            BoardHub.live = this
+            loaded
         }
         refresh()
         viewModelScope.launch {
@@ -138,18 +181,58 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     /** Back in the app: the alarms are set again (allowing exact alarms meanwhile makes them ring on time). */
     fun resume() {
         scheduled = null
+        reminderSet = false
         refresh()
     }
 
+    override fun onCleared() {
+        if (BoardHub.live === this) BoardHub.live = null
+        super.onCleared()
+    }
+
     fun refresh() {
+        now = Instant.now()
+        // Reminders due now are told (once): with the app open, closed, or the phone locked.
+        if (!readOnly && ReminderAlarm.deliver(getApplication(), board, now)) save(BoardCodec.encode(board))
         if (selectedGroup != null && board.groups.none { it.id == selectedGroup }) selectedGroup = null
         groups = board.groups.map { it.id to it.name }
-        now = Instant.now()
+        groupColors = board.groups.associate { it.id to it.color }
         dashboard = Agenda.build(board, now, selectedGroup)
         doneToday = Agenda.doneToday(board, now, ZoneId.systemDefault(), selectedGroup)
         energyToday = Energy.today(board, now, ZoneId.systemDefault())
+        energyOver = Energy.overToday(board, now, ZoneId.systemDefault())
         dailyEnergy = board.dailyEnergy
+        searchResults = TaskSearch.parse(query).takeIf { !it.isEmpty }?.let { search ->
+            search.apply(board).filter { selectedGroup == null || it.groupId == selectedGroup }.sortedBy { it.isDone }
+        }
+        val nextReminder = if (readOnly) null else Reminders.nextAt(board, now)
+        if (nextReminder != scheduledReminder || !reminderSet) {
+            scheduledReminder = nextReminder
+            reminderSet = true
+            ReminderAlarm.schedule(getApplication(), nextReminder)
+        }
+        version++
         showTimers()
+    }
+
+    /** Searches as you type: words in the title or details, is:done, is:archived, group:work, #tag… */
+    fun search(text: String) {
+        query = text
+        refresh()
+    }
+
+    /** An alarm or a notification button changed the board while the app runs. */
+    override fun applyOutside(action: (TaskBoard, Instant) -> Unit): Result<Unit> {
+        if (readOnly) return Result.failure(BoardException("Your board is from a newer version of the app, so changes are off to protect it."))
+        return try {
+            action(board, Instant.now())
+            save(BoardCodec.encode(board))
+            Result.success(Unit)
+        } catch (e: BoardException) {
+            Result.failure(e)
+        } finally {
+            refresh()
+        }
     }
 
     /** How much energy a task takes per hour (1 to 3; null: not said). */
@@ -260,18 +343,31 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
 
-    /** The task a todotracker:// link asked to open (shown over Today until closed). */
+    /** The task whose details are open (shown over Today until closed). */
     var openTaskId: UUID? by mutableStateOf(null)
+
+    /**
+     * Another task a link or a notification asks to open while one is open: the open one saves what's typed first (or
+     * asks), then switches.
+     */
+    var requestedTaskId: UUID? by mutableStateOf(null)
 
     /** A clicked todotracker://task/<id> link: that task opens (anything else is ignored). */
     fun openLink(link: String?) {
         val target = TaskLinks.target(link)
         if (target is TaskLinks.Target.Task) {
-            if (board.find(target.id) == null) status = "That task isn't on this phone" else openTaskId = target.id
+            when {
+                board.find(target.id) == null -> status = "That task isn't on this phone"
+                openTaskId == null || openTaskId == target.id -> openTaskId = target.id
+                else -> requestedTaskId = target.id
+            }
         }
     }
 
     fun itemOf(id: UUID): WorkItem? = board.find(id)
+
+    /** When it was done (a repeating task that moved on: when its last time was). */
+    fun doneAt(item: WorkItem): Instant? = Agenda.doneAt(board, item)
 
     /** Quick capture: "Call mum @tomorrow !high due:3d". True when it was added. */
     fun capture(text: String): Boolean = change("Added") { now ->
@@ -295,13 +391,111 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
     fun describe(at: Instant): String = Snooze.describe(at, Instant.now(), ZoneId.systemDefault())
 
     /** Snoozes until a time: a quick choice or one picked on the calendar (refused when it's already past). */
-    fun snoozeUntil(id: UUID, at: Instant) = change("Snoozed until ${describe(at)}") {
-        if (!at.isAfter(it)) throw BoardException("That time has passed. Pick a later one.")
-        board.scheduleNextAction(id, at, notify = true, now = it)
+    fun snoozeUntil(id: UUID, at: Instant) {
+        val undo = snoozeUndo(id)
+        if (change(null) {
+                if (!at.isAfter(it)) throw BoardException("That time has passed. Pick a later one.")
+                board.scheduleNextAction(id, at, notify = true, now = it)
+            }
+        ) {
+            undoable = Undoable("Snoozed until ${describe(at)}", undo)
+        }
     }
 
     /** Snoozes until another task is done; it comes back with a reminder then. */
-    fun waitFor(id: UUID, afterId: UUID) = change("Waiting for “${titleOf(afterId)}”") { board.waitFor(id, afterId, now = it) }
+    fun waitFor(id: UUID, afterId: UUID) {
+        val undo = snoozeUndo(id)
+        if (change(null) { board.waitFor(id, afterId, now = it) }) undoable = Undoable("Waiting for “${titleOf(afterId)}”", undo)
+    }
+
+    /** Puts the task's snooze back as it was before (Undo on "Snoozed until…"): its wait, or back in Do now. */
+    private fun snoozeUndo(id: UUID): () -> Unit {
+        val item = board.find(id)
+        val before = item?.nextActionAt
+        val after = item?.afterId
+        val reminded = before != null && item.reminders.any { it.kind == dev.todotracker.core.ReminderKind.NEXT_ACTION && it.dueAt == before && it.dismissedAt == null }
+        return {
+            change(null) { now ->
+                when {
+                    after != null && board.canWaitFor(id, after) -> board.waitFor(id, after, now = now)
+                    before != null && before.isAfter(now) -> board.scheduleNextAction(id, before, notify = reminded, now = now)
+                    else -> board.clearNextAction(id, now = now)
+                }
+            }
+        }
+    }
+
+    // ---- A task's details ----
+
+    /** Saves what the details changed (a bad value is refused with why, and nothing changes). */
+    fun edit(id: UUID, changes: TaskChanges, message: String? = "Saved"): Boolean = change(message) { board.update(id, changes, now = it) }
+
+    fun setPriority(id: UUID, priority: Priority) = edit(id, TaskChanges(priority = priority), "Priority: ${priority.wire}")
+
+    fun setDeadline(id: UUID, at: Instant?) = edit(id, if (at == null) TaskChanges(clearDeadline = true) else TaskChanges(deadline = at), if (at == null) "No deadline" else "Due ${describe(at)}")
+
+    /** A repeat rule in words ("every weekday"); empty stops it repeating. */
+    fun setRepeat(id: UUID, rule: String) = edit(id, TaskChanges(repeat = rule.trim()), if (rule.isBlank()) "Doesn't repeat any more" else "Repeats ${rule.trim()}")
+
+    fun setSequential(id: UUID, inOrder: Boolean) = edit(id, TaskChanges(sequential = inOrder), if (inOrder) "Steps in order" else "Steps in any order")
+
+    /** Hours between steps (null or 0: none). */
+    fun setStepDelay(id: UUID, hours: Double?) =
+        edit(id, if (hours == null || hours <= 0) TaskChanges(clearStepDelay = true) else TaskChanges(stepDelay = Duration.ofMinutes(Math.round(hours * 60))), "Saved")
+
+    fun addSubtask(parentId: UUID, title: String) = change("Added") { board.addTask(NewTask(title, parentId = parentId), now = it) }
+
+    /** Steps done one after another, [hours] apart (one per line). */
+    fun addSteps(parentId: UUID, lines: String, hours: Double?): Boolean {
+        val titles = lines.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val delay = hours?.takeIf { it > 0 }?.let { Duration.ofMinutes(Math.round(it * 60)) }
+        return change("Added ${titles.size} step${if (titles.size == 1) "" else "s"}") { board.addSteps(parentId, titles, delay, now = it) }
+    }
+
+    /** A reminder at a time (the task stays where it is). */
+    fun addReminder(id: UUID, at: Instant, message: String?) = change("Reminder set for ${describe(at)}") {
+        if (!at.isAfter(it)) throw BoardException("That time has passed. Pick a later one.")
+        board.addReminder(id, at, message, now = it)
+    }
+
+    fun archive(id: UUID) {
+        val title = titleOf(id) ?: return
+        if (change(null) { board.archive(id, now = it) }) undoable = Undoable("Archived: $title") { change(null) { board.unarchive(id, now = it) } }
+    }
+
+    fun unarchive(id: UUID) = change("Back in Done") { board.unarchive(id, now = it) }
+
+    /** Deletes the task and its subtasks for good (asked first, on screen). */
+    fun delete(id: UUID) {
+        val title = titleOf(id) ?: return
+        if (openTaskId == id) openTaskId = board.find(id)?.parent?.id
+        change("Deleted “$title”") { board.delete(id, now = it) }
+    }
+
+    fun moveToGroup(id: UUID, groupId: UUID) = change("Moved to ${board.groups.firstOrNull { it.id == groupId }?.name}") { board.moveToGroup(id, groupId, now = it) }
+
+    fun groupOf(id: UUID): UUID? = board.find(id)?.groupId
+
+    fun groupName(id: UUID): String? = board.groups.firstOrNull { it.id == id }?.name
+
+    // ---- Groups ----
+
+    fun updateGroup(id: UUID, name: String, color: String?) = change("Saved") { board.updateGroup(id, name, color, now = it) }
+
+    /** Deletes a group; its tasks move to [moveTo] (none are lost). */
+    fun deleteGroup(id: UUID, moveTo: UUID): Boolean {
+        val name = groupName(id)
+        return change("Deleted “$name”; its tasks are in ${groupName(moveTo)}") { board.deleteGroup(id, moveTo, now = it) }
+    }
+
+    // ---- Settings ----
+
+    fun chooseTheme(value: String) {
+        theme = if (value == "light" || value == "dark") value else "system"
+        prefs.edit().putString("theme", theme).apply()
+    }
+
+    fun setFocusLengths(focus: Int, shortBreak: Int, longBreak: Int) = change("Saved") { board.setFocusLengths(focus, shortBreak, longBreak) }
 
     /** Tasks it can wait for: the open ones shown (to do now, then waiting), not itself, its subtasks or parents, or what waits for it. */
     fun waitCandidates(id: UUID): List<Pair<UUID, String>> =
@@ -343,11 +537,14 @@ class BoardViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Saves off the screen's thread, one at a time and in order (a newer board is never overwritten by an older one). */
+    /**
+     * Saves off the screen's thread, one at a time and in order (a newer board is never overwritten by an older one),
+     * on the app's disk queue: a save asked for just before the app closes (Back) still happens.
+     */
     private fun save(text: String) {
-        viewModelScope.launch(saving) {
+        BoardHub.disk.launch {
             try {
-                store.saveText(text)
+                synchronized(BoardHub.lock) { store.saveText(text) }
             } catch (e: IOException) {
                 withContext(Dispatchers.Main) { status = "Couldn't save (${e.message}). Your change is kept on screen; it's saved with the next one." }
             } catch (e: BoardException) {

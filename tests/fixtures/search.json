@@ -1,0 +1,45 @@
+{
+  "about": "Search (the search box, tt, MCP): one syntax in every app. Words match the title or details; #tag (nested tags too), label:name, group:name, is:open / is:done, is:archived (archived tasks are found only then) and the board column (is:inbox, is:next, is:doing, stage:doing) narrow it down. Tags and labels count for subtasks too. All terms must match, in any case. Checked by the C# core (SearchFixtureTests, TaskQuery), Swift and Kotlin (SearchFixtureTest, TaskSearch).",
+  "shape": {
+    "groups": "the board's groups, in order (a new board has Work and Personal)",
+    "tasks": "{ key, title, group?: name (default the first), parent?: key, details?, tags?: [], labels?: [], stage?: inbox|next|doing, done?: true, archived?: true }, added in order; a task that doesn't say its stage is in Next",
+    "queries": "{ q, expect: [keys] }: the tasks found, in tree order (a task, then its subtasks, in the order added)"
+  },
+  "groups": ["Work", "Personal"],
+  "tasks": [
+    { "key": "bank", "title": "Call the bank", "group": "Personal", "details": "About the mortgage" },
+    { "key": "report", "title": "Quarterly report", "group": "Work", "tags": ["finance/q3"], "labels": ["Urgent"], "stage": "doing" },
+    { "key": "charts", "title": "Charts for the report", "parent": "report" },
+    { "key": "release", "title": "Release v2", "group": "Work", "tags": ["release"], "stage": "inbox" },
+    { "key": "notes", "title": "Release notes", "parent": "release", "done": true },
+    { "key": "form", "title": "Old bank form", "group": "Personal", "done": true, "archived": true },
+    { "key": "gym", "title": "Gym", "group": "Personal", "details": "Deep work on legs", "labels": ["Deep work"] }
+  ],
+  "queries": [
+    { "q": "bank", "expect": ["bank"] },
+    { "q": "BANK", "expect": ["bank"] },
+    { "q": "mortgage", "expect": ["bank"] },
+    { "q": "\"call the\"", "expect": ["bank"] },
+    { "q": "report", "expect": ["report", "charts"] },
+    { "q": "report charts", "expect": ["charts"] },
+    { "q": "release", "expect": ["release", "notes"] },
+    { "q": "release is:open", "expect": ["release"] },
+    { "q": "is:done", "expect": ["notes"] },
+    { "q": "bank is:archived", "expect": ["form"] },
+    { "q": "is:archived", "expect": ["form"] },
+    { "q": "bank is:done", "expect": [] },
+    { "q": "group:work", "expect": ["report", "charts", "release", "notes"] },
+    { "q": "group:Personal is:open", "expect": ["bank", "gym"] },
+    { "q": "#finance", "expect": ["report", "charts"] },
+    { "q": "#finance/q3", "expect": ["report", "charts"] },
+    { "q": "#fin", "expect": [] },
+    { "q": "#release report", "expect": [] },
+    { "q": "label:urgent", "expect": ["report", "charts"] },
+    { "q": "label:\"deep work\"", "expect": ["gym"] },
+    { "q": "\"deep work\"", "expect": ["gym"] },
+    { "q": "is:doing", "expect": ["report", "charts"] },
+    { "q": "stage:inbox", "expect": ["release", "notes"] },
+    { "q": "is:next", "expect": ["bank", "gym"] },
+    { "q": "nothing-like-this", "expect": [] }
+  ]
+}

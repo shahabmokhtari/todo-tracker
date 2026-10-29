@@ -184,10 +184,17 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         val item = get(id)
         val completedAt = item.completedAt
         if (completedAt == null) {
-            if (wasRolledForward(item)) undoRollForward(item, actor, now)
+            if (wasRolledForward(item)) {
+                undoRollForward(item, actor, now)
+            } else {
+                // The last step of a repeating task moved the whole task on (and opened the step again): "not done
+                // after all" on that step puts the task back as it was, with this step open.
+                rolledBy(item)?.let { undoRollForward(it, actor, now, keepOpen = item) }
+            }
             return
         }
         item.completedAt = null
+        item.root.archivedAt = null
         val reopened = mutableListOf(item)
         // Undo the cascade from completing a parent: children finished by that same action reopen too.
         for (d in item.selfAndDescendants.drop(1)) if (d.completedAt == completedAt) { d.completedAt = null; reopened.add(d) }
@@ -273,22 +280,124 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         log(now, itemId, "reminderFired", "Reminder: ${reminder.message}", Actor.SYSTEM)
     }
 
-    fun update(id: UUID, title: String? = null, priority: Priority? = null, actor: Actor = Actor.USER, now: Instant) {
+    fun update(id: UUID, title: String? = null, priority: Priority? = null, actor: Actor = Actor.USER, now: Instant) =
+        update(id, TaskChanges(title = title, priority = priority), actor, now)
+
+    /**
+     * Changes what [changes] says (fields left null stay as they are). Everything is checked first, so a bad value
+     * changes nothing. Same rules as TodoTracker.Core.TaskBoard.Update.
+     */
+    fun update(id: UUID, changes: TaskChanges, actor: Actor = Actor.USER, now: Instant) {
         val item = get(id)
-        val newTitle = title?.let { requireText(it, "A task title is required.") } ?: item.title
-        item.title = newTitle
-        if (priority != null) item.priority = priority
-        log(now, id, "updated", "Updated \"$newTitle\"", actor)
+        val title = changes.title?.let { requireText(it, "A task title is required.") } ?: item.title
+        val details = changes.details?.let {
+            if (it.trim().length > MAX_TEXT_LENGTH) throw BoardException("Details must be at most $MAX_TEXT_LENGTH characters.")
+            optionalText(it)
+        }
+        validateStepDelay(changes.stepDelay)
+        val repeat = changes.repeat?.takeIf { it.isNotBlank() }?.let {
+            try {
+                Recurrence.parse(it)
+            } catch (e: Recurrence.RuleException) {
+                throw BoardException(e.message ?: "That repeat rule isn't understood.")
+            }
+        }
+        if (changes.energy != null && changes.energy !in Energy.LEVELS) throw BoardException("Energy is 1 to 3 (⚡ to ⚡⚡⚡ an hour).")
+
+        item.title = title
+        if (changes.details != null) item.details = details
+        item.priority = changes.priority ?: item.priority
+        item.deadline = if (changes.clearDeadline) null else changes.deadline ?: item.deadline
+        item.sequential = changes.sequential ?: item.sequential
+        item.stepDelay = if (changes.clearStepDelay) null else changes.stepDelay ?: item.stepDelay
+        // An empty rule stops it repeating (like the repeat box in the other apps).
+        item.repeat = if (changes.clearRepeat || changes.repeat?.isBlank() == true) null else repeat ?: item.repeat
+        item.energy = if (changes.clearEnergy) null else changes.energy ?: item.energy
+        log(now, id, "updated", "Updated \"$title\"", actor)
     }
 
+    /** A reminder at [dueAt] (the task stays where it is; when it's due, the task comes to the top of Do now). */
+    fun addReminder(id: UUID, dueAt: Instant, message: String?, actor: Actor = Actor.USER, now: Instant): Reminder {
+        val item = get(id)
+        val clean = optionalText(message)
+        if (clean != null && clean.length > MAX_TITLE_LENGTH) throw BoardException("Must be at most $MAX_TITLE_LENGTH characters.")
+        val reminder = Reminder(dueAt = dueAt, message = clean ?: defaultReminderMessage(item), kind = ReminderKind.MANUAL)
+        item.reminders.add(reminder)
+        log(now, id, "reminderAdded", "Reminder at $dueAt: ${reminder.message}", actor)
+        return reminder
+    }
+
+    // ---- Archive (TaskBoard.Time.cs in C#) ----------------------------------------------------------------------
+
+    /** Puts a finished top-level task away: out of every list, kept (search finds it with is:archived). */
+    fun archive(id: UUID, actor: Actor = Actor.USER, now: Instant) {
+        val item = get(id)
+        if (item.parent != null) throw BoardException("Subtasks are archived with their task.")
+        if (!item.isDone) throw BoardException("Finish \"${item.title}\" before archiving it.")
+        if (item.archivedAt != null) return
+        item.archivedAt = now
+        log(now, id, "archived", "Archived \"${item.title}\"", actor)
+    }
+
+    fun unarchive(id: UUID, actor: Actor = Actor.USER, now: Instant) {
+        val item = get(id)
+        if (item.archivedAt == null) return
+        item.archivedAt = null
+        log(now, id, "archived", "Brought \"${item.title}\" back from the archive", actor)
+    }
+
+    // ---- Groups ---------------------------------------------------------------------------------------------------
+
     fun addGroup(name: String, color: String? = null, actor: Actor = Actor.USER, now: Instant): TaskGroup {
-        val clean = requireText(name, "A group name is required.", maxLength = 60)
-        if (color != null && !Regex("^#[0-9a-fA-F]{6}$").matches(color)) throw BoardException("Group colors must be #rrggbb.")
-        if (groups.any { it.name.equals(clean, ignoreCase = true) }) throw BoardException("A group named \"$clean\" already exists.")
+        val clean = validateGroup(name, color, except = null)
         val group = TaskGroup(name = clean, color = color)
         groups.add(group)
         log(now, BOARD_SCOPE_ID, "groupChanged", "Added group \"$clean\"", actor)
         return group
+    }
+
+    /** A new name and color for a group (null color: none). */
+    fun updateGroup(groupId: UUID, name: String, color: String?, actor: Actor = Actor.USER, now: Instant) {
+        val group = group(groupId)
+        val clean = validateGroup(name, color, except = group)
+        group.name = clean
+        group.color = color
+        log(now, BOARD_SCOPE_ID, "groupChanged", "Updated group \"$clean\"", actor)
+    }
+
+    /** Deletes a group; its tasks move to [moveTasksTo] (nothing is lost). */
+    fun deleteGroup(groupId: UUID, moveTasksTo: UUID, actor: Actor = Actor.USER, now: Instant) {
+        val group = group(groupId)
+        if (groups.size == 1) throw BoardException("At least one group is required.")
+        val target = group(moveTasksTo)
+        if (target === group) throw BoardException("Choose a different group to move the tasks into.")
+        for (root in items) if (root.ownGroupId == group.id) root.ownGroupId = target.id
+        groups.remove(group)
+        log(now, BOARD_SCOPE_ID, "groupChanged", "Deleted group \"${group.name}\"", actor)
+    }
+
+    /** Moves a top-level task (with its subtasks) to another group. */
+    fun moveToGroup(id: UUID, groupId: UUID, actor: Actor = Actor.USER, now: Instant) {
+        val item = get(id)
+        val group = group(groupId)
+        if (item.parent != null) throw BoardException("Only top-level tasks can change group; subtasks follow their parent.")
+        item.ownGroupId = group.id
+        log(now, id, "moved", "Moved \"${item.title}\" to ${group.name}", actor)
+    }
+
+    private fun validateGroup(name: String, color: String?, except: TaskGroup?): String {
+        val clean = requireText(name, "A group name is required.", maxLength = 60)
+        if (color != null && !Regex("^#[0-9a-fA-F]{6}$").matches(color)) throw BoardException("Group colors must be #rrggbb.")
+        if (groups.any { it !== except && it.name.equals(clean, ignoreCase = true) }) throw BoardException("A group named \"$clean\" already exists.")
+        return clean
+    }
+
+    /** How long a focus session and its breaks last, in minutes (1 to [MAX_FOCUS_MINUTES]). */
+    fun setFocusLengths(focusMinutes: Int, shortBreakMinutes: Int, longBreakMinutes: Int) {
+        for (m in listOf(focusMinutes, shortBreakMinutes, longBreakMinutes)) {
+            if (m !in 1..MAX_FOCUS_MINUTES) throw BoardException("Focus and break lengths are 1 to $MAX_FOCUS_MINUTES minutes.")
+        }
+        pomodoro.settings = pomodoro.settings.copy(focusMinutes = focusMinutes, shortBreakMinutes = shortBreakMinutes, longBreakMinutes = longBreakMinutes)
     }
 
     // ---- Time: one timer runs at a time; a focus session on a task times it (TaskBoard.Time.cs) ----------------
@@ -527,7 +636,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
             item.extra = kotlinx.serialization.json.JsonObject(item.extra!! - "stage")
         }
         item.repeat = rule.countedDown()
-        log(now, item.id, "completed", "Completed \"${item.title}\" (repeats: next ${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
+        log(now, item.id, "completed", "Completed \"${item.title}\" $ROLLED_MARKER${next.format(DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH))})", actor)
         return true
     }
 
@@ -536,9 +645,61 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         item.repeat != null && !item.isDone &&
             activity.lastOrNull { it.itemId == item.id && (it.kind == "completed" || it.kind == "reopened") }?.kind == "completed"
 
-    /** "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now. */
-    private fun undoRollForward(item: WorkItem, actor: Actor, now: Instant) {
+    /** The repeating task that completing [step] (its last step) moved on to its next time, or null. */
+    private fun rolledBy(step: WorkItem): WorkItem? {
+        val doneAt = activity.lastOrNull { it.itemId == step.id && (it.kind == "completed" || it.kind == "reopened") }
+            ?.takeIf { it.kind == "completed" }?.at ?: return null
+        return step.ancestors.firstOrNull { a -> wasRolledForward(a) && isNewest(a, doneAt) }
+    }
+
+    /**
+     * Whether moving [item] on (at [at]) is the last thing that happened to it or its subtasks: once its next time has
+     * begun (a step done, a reminder set…), reopening a step no longer undoes it.
+     */
+    private fun isNewest(item: WorkItem, at: Instant): Boolean {
+        val family = item.selfAndDescendants.map { it.id }.toSet()
+        val roll = activity.indexOfLast { it.itemId == item.id && it.kind == "completed" }
+        return roll >= 0 && activity[roll].at == at && activity.indexOfLast { it.itemId in family } == roll
+    }
+
+    /** When the task last moved on before its latest time, not counting times that were undone (null: never). */
+    private fun previousRoll(item: WorkItem): Instant? {
+        val entries = activity.filter { it.itemId == item.id && (it.kind == "completed" || it.kind == "reopened") }
+        val rolls = ArrayDeque<Instant>()
+        for (entry in entries.dropLast(1)) {
+            if (entry.kind == "completed") rolls.addLast(entry.at) else rolls.removeLastOrNull()
+        }
+        return rolls.lastOrNull()
+    }
+
+    /** A "completed" entry of a repeating task that moved on (it stayed open): every app writes this marker. */
+    private fun isRolled(entry: ActivityEntry) = entry.kind == "completed" && entry.summary.contains(ROLLED_MARKER)
+
+    /**
+     * "Not done after all" on a repeating task that moved on: due a time earlier, back in Do now, with what moving on
+     * undid as it was: the subtasks done before (all but [keepOpen]) done again, and the reminders it put away pending
+     * again.
+     */
+    private fun undoRollForward(item: WorkItem, actor: Actor, now: Instant, keepOpen: WorkItem? = null) {
         val rule = item.repeat ?: return
+        val rolledAt = activity.lastOrNull { it.itemId == item.id && it.kind == "completed" }?.at
+        if (rolledAt != null) {
+            val since = previousRoll(item)
+            val keep = keepOpen?.selfAndDescendants?.map { it.id }?.toSet() ?: emptySet()
+            for (d in item.selfAndDescendants.drop(1)) {
+                if (d.id in keep || d.isDone) continue
+                // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                // A repeating subtask that moved on by itself wasn't finished: that doesn't count.
+                val lineage = (listOf(d) + d.ancestors.takeWhile { it !== item }).map { it.id }.toSet()
+                val last = activity.lastOrNull {
+                    it.itemId in lineage && (it.kind == "completed" || it.kind == "reopened") && !isRolled(it) &&
+                        !it.at.isAfter(rolledAt) && (since == null || it.at.isAfter(since))
+                }
+                if (last?.kind == "completed") d.completedAt = last.at
+            }
+            // Put away when it moved on (not the reminder for its next time, which ends below).
+            for (r in item.reminders) if (r.dismissedAt == rolledAt && r.dueAt.isBefore(item.nextActionAt ?: Instant.MAX)) r.dismissedAt = null
+        }
         for (r in item.reminders) if (r.kind == ReminderKind.NEXT_ACTION && r.dismissedAt == null && r.dueAt.isAfter(now)) r.dismissedAt = now
         val undo = item.repeatUndo
         if (undo != null) {
@@ -561,6 +722,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     companion object {
         const val CURRENT_SCHEMA_VERSION = 1
         const val MAX_TITLE_LENGTH = 300
+        const val MAX_TEXT_LENGTH = 10_000
+        const val MAX_FOCUS_MINUTES = 180
+
+        /** What every app writes in the "completed" entry of a repeating task that moved on (it stays open). */
+        const val ROLLED_MARKER = "(repeats: next "
 
         /** A timer running longer than this was forgotten (or its device is gone): it counts this long at most. */
         val FORGOTTEN_AFTER: Duration = Duration.ofHours(12)

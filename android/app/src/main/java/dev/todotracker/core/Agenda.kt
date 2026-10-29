@@ -27,11 +27,26 @@ data class AgendaEntry(
 
 data class GroupCount(val now: Int, val waiting: Int, val attention: Int)
 
+/** A top-level task summed up: how many of its leaves are done, how many to do now or waiting, when the next is back. */
+data class OverviewEntry(
+    val item: WorkItem,
+    val doneLeaves: Int,
+    val totalLeaves: Int,
+    val actionableCount: Int,
+    val waitingCount: Int,
+    val nextWakeAt: Instant?,
+    val topPriority: Priority,
+)
+
+data class RecentNote(val item: WorkItem, val note: Note)
+
 data class Dashboard(
     val focus: AgendaEntry?,
     val now: List<AgendaEntry>,
     val waiting: List<AgendaEntry>,
     val groupCounts: Map<UUID, GroupCount>,
+    val overview: List<OverviewEntry> = emptyList(),
+    val recentNotes: List<RecentNote> = emptyList(),
 )
 
 /** Time-aware projection of the board. Must match TodoTracker.Core.Agenda and the Swift one (see shared scenarios). */
@@ -84,8 +99,8 @@ object Agenda {
     fun effectivePriority(item: WorkItem): Priority =
         (item.ancestors.map { it.priority } + item.priority).maxBy { it.rank }
 
-    fun build(board: TaskBoard, now: Instant, groupId: UUID? = null): Dashboard {
-        val open = board.allItems.filter { !it.isDone }.mapIndexed { offset, item -> offset to describe(item, now) }
+    fun build(board: TaskBoard, now: Instant, groupId: UUID? = null, recentNoteCount: Int = 5): Dashboard {
+        val open = board.allItems.filter { !it.isDone && !it.isArchived }.mapIndexed { offset, item -> offset to describe(item, now) }
         val nowAll = open.filter { (_, e) ->
             e.state == ItemState.ACTIONABLE || (e.needsAttention && (e.state == ItemState.WAITING || e.state == ItemState.CONTAINER))
         }
@@ -133,7 +148,31 @@ object Agenda {
             }
         }.map { it.second }
 
-        return Dashboard(nowList.firstOrNull(), nowList, waitingList, counts)
+        val overview = board.items.filter { !it.isDone && inScope(it) }.map { summarize(it, nowList, waitingList) }
+        val notes = if (recentNoteCount <= 0) emptyList() else board.allItems.filter { !it.isArchived && inScope(it) }
+            .flatMap { item -> item.notes.map { RecentNote(item, it) } }
+            .sortedByDescending { it.note.at }
+            .take(recentNoteCount)
+
+        return Dashboard(nowList.firstOrNull(), nowList, waitingList, counts, overview, notes)
+    }
+
+    /** Workstreams are tasks with subtasks; single tasks already show in Do now and Waiting. */
+    fun workstreams(dashboard: Dashboard): List<OverviewEntry> = dashboard.overview.filter { it.item.children.isNotEmpty() }
+
+    private fun summarize(root: WorkItem, now: List<AgendaEntry>, waiting: List<AgendaEntry>): OverviewEntry {
+        val subtree = root.selfAndDescendants
+        val ids = subtree.map { it.id }.toSet()
+        val leaves = subtree.filter { it.children.isEmpty() }
+        return OverviewEntry(
+            item = root,
+            doneLeaves = leaves.count { it.isDone },
+            totalLeaves = leaves.size,
+            actionableCount = now.count { it.item.id in ids },
+            waitingCount = waiting.count { it.item.id in ids },
+            nextWakeAt = waiting.filter { it.item.id in ids }.mapNotNull { it.wakeAt }.minOrNull(),
+            topPriority = subtree.filter { !it.isDone }.map { effectivePriority(it) }.maxByOrNull { it.rank } ?: root.priority,
+        )
     }
 
     /** Negative when x comes first by the automatic rules, zero when they tie. */

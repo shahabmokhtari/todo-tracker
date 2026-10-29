@@ -1,0 +1,192 @@
+{
+  "about": "Not done after all: reopening a repeating task that moved on to its next time puts back what moving on undid (its deadline and wait, the subtasks done before, the reminders it put away), and reopening the last step of a repeating checklist puts the checklist back. Each case runs its steps in order; a step's 'at' is the clock for it. Checked by the C# core (UndoFixtureTests), Swift and Kotlin (UndoFixtureTest).",
+  "shape": {
+    "zone": "the time zone repeating tasks use",
+    "steps": [
+      "{ do: add, key, title, at, parent?: key, due?: time, repeat?: rule, inOrder?: true }  (a task; with parent, a subtask added last)",
+      "{ do: complete | reopen | archive, task: key, at }",
+      "{ do: remind, task: key, key, due: time, message, at }  (a reminder set by hand)",
+      "{ do: check, at, tasks?: { key: expected }, reminders?: { key: { pending } }, doNow?: [keys] }",
+      "expected task fields (only those given are checked; null means none): done, doneAt, due, scheduled, rule, archived",
+      "doNow: the whole Do now list (all groups) at 'at', in order"
+    ]
+  },
+  "cases": [
+    {
+      "name": "The last step of a repeating checklist moves it on; undoing that step puts the checklist back with the other steps still done",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "review", "title": "Weekly review", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every week", "inOrder": true },
+        { "do": "add", "key": "inbox", "title": "Inbox zero", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "add", "key": "plan", "title": "Plan the week", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "inbox", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "plan", "at": "2026-01-05T10:01:00Z" },
+        { "do": "check", "at": "2026-01-05T10:01:00Z",
+          "tasks": {
+            "review": { "done": false, "due": "2026-01-12T17:00:00Z", "scheduled": "2026-01-12T00:00:00Z", "rule": "every week on Monday" },
+            "inbox": { "done": false },
+            "plan": { "done": false }
+          },
+          "doNow": [] },
+        { "do": "reopen", "task": "plan", "at": "2026-01-05T10:02:00Z" },
+        { "do": "check", "at": "2026-01-05T10:02:00Z",
+          "tasks": {
+            "review": { "done": false, "due": "2026-01-05T17:00:00Z", "scheduled": null, "rule": "every week on Monday" },
+            "inbox": { "done": true, "doneAt": "2026-01-05T10:00:00Z" },
+            "plan": { "done": false }
+          },
+          "doNow": ["plan"] }
+      ]
+    },
+    {
+      "name": "Undoing a repeating task puts back the subtasks done before and the reminders moving on put away",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "chores", "title": "Chores", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every day" },
+        { "do": "add", "key": "dishes", "title": "Dishes", "parent": "chores", "at": "2026-01-05T10:00:00Z" },
+        { "do": "add", "key": "laundry", "title": "Laundry", "parent": "chores", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "dishes", "at": "2026-01-05T10:00:00Z" },
+        { "do": "remind", "task": "chores", "key": "dinner", "due": "2026-01-05T16:00:00Z", "message": "Before dinner", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "chores", "at": "2026-01-05T10:01:00Z" },
+        { "do": "check", "at": "2026-01-05T10:01:00Z",
+          "tasks": {
+            "chores": { "done": false, "due": "2026-01-06T17:00:00Z", "scheduled": "2026-01-06T00:00:00Z" },
+            "dishes": { "done": false },
+            "laundry": { "done": false }
+          },
+          "reminders": { "dinner": { "pending": false } } },
+        { "do": "reopen", "task": "chores", "at": "2026-01-05T10:02:00Z" },
+        { "do": "check", "at": "2026-01-05T10:02:00Z",
+          "tasks": {
+            "chores": { "done": false, "due": "2026-01-05T17:00:00Z", "scheduled": null, "rule": "every day" },
+            "dishes": { "done": true, "doneAt": "2026-01-05T10:00:00Z" },
+            "laundry": { "done": false }
+          },
+          "reminders": { "dinner": { "pending": true } },
+          "doNow": ["laundry"] }
+      ]
+    },
+    {
+      "name": "A subtask done for an earlier time stays open when the latest time is undone",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "chores", "title": "Chores", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every day" },
+        { "do": "add", "key": "dishes", "title": "Dishes", "parent": "chores", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "dishes", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "chores", "at": "2026-01-05T10:01:00Z" },
+        { "do": "complete", "task": "chores", "at": "2026-01-06T10:00:00Z" },
+        { "do": "reopen", "task": "chores", "at": "2026-01-06T10:01:00Z" },
+        { "do": "check", "at": "2026-01-06T10:01:00Z",
+          "tasks": {
+            "chores": { "done": false, "due": "2026-01-06T17:00:00Z", "scheduled": "2026-01-06T00:00:00Z" },
+            "dishes": { "done": false }
+          },
+          "doNow": ["dishes"] }
+      ]
+    },
+    {
+      "name": "A plain repeating task: undo puts its deadline back and it's in Do now again",
+      "zone": "America/New_York",
+      "steps": [
+        { "do": "add", "key": "standup", "title": "Stand-up notes", "at": "2026-01-05T14:00:00Z", "due": "2026-01-05T22:00:00Z", "repeat": "every weekday" },
+        { "do": "complete", "task": "standup", "at": "2026-01-05T15:00:00Z" },
+        { "do": "check", "at": "2026-01-05T15:00:00Z",
+          "tasks": { "standup": { "done": false, "due": "2026-01-06T22:00:00Z", "scheduled": "2026-01-06T05:00:00Z", "rule": "every weekday" } },
+          "doNow": [] },
+        { "do": "reopen", "task": "standup", "at": "2026-01-05T15:01:00Z" },
+        { "do": "check", "at": "2026-01-05T15:01:00Z",
+          "tasks": { "standup": { "done": false, "due": "2026-01-05T22:00:00Z", "scheduled": null } },
+          "doNow": ["standup"] }
+      ]
+    },
+    {
+      "name": "Reopening an archived task brings it back from the archive",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "ship", "title": "Ship it", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "ship", "at": "2026-01-05T10:00:00Z" },
+        { "do": "archive", "task": "ship", "at": "2026-01-05T10:01:00Z" },
+        { "do": "check", "at": "2026-01-05T10:01:00Z", "tasks": { "ship": { "done": true, "archived": true } }, "doNow": [] },
+        { "do": "reopen", "task": "ship", "at": "2026-01-05T10:02:00Z" },
+        { "do": "check", "at": "2026-01-05T10:02:00Z", "tasks": { "ship": { "done": false, "archived": false } }, "doNow": ["ship"] }
+      ]
+    },
+    {
+      "name": "Once the next time has begun, reopening the open last step leaves the checklist where it is",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "review", "title": "Weekly review", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every week", "inOrder": true },
+        { "do": "add", "key": "inbox", "title": "Inbox zero", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "add", "key": "plan", "title": "Plan the week", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "inbox", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "plan", "at": "2026-01-05T10:01:00Z" },
+        { "do": "complete", "task": "inbox", "at": "2026-01-05T10:05:00Z" },
+        { "do": "reopen", "task": "plan", "at": "2026-01-05T10:06:00Z" },
+        { "do": "check", "at": "2026-01-05T10:06:00Z",
+          "tasks": {
+            "review": { "done": false, "due": "2026-01-12T17:00:00Z", "scheduled": "2026-01-12T00:00:00Z" },
+            "inbox": { "done": true, "doneAt": "2026-01-05T10:05:00Z" },
+            "plan": { "done": false }
+          } }
+      ]
+    },
+    {
+      "name": "After a reminder was set on the checklist, reopening its open last step leaves it where it is",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "review", "title": "Weekly review", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every week", "inOrder": true },
+        { "do": "add", "key": "inbox", "title": "Inbox zero", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "add", "key": "plan", "title": "Plan the week", "parent": "review", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "inbox", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "plan", "at": "2026-01-05T10:01:00Z" },
+        { "do": "remind", "task": "review", "key": "prep", "due": "2026-01-12T09:00:00Z", "message": "Prep", "at": "2026-01-05T10:05:00Z" },
+        { "do": "reopen", "task": "plan", "at": "2026-01-05T10:06:00Z" },
+        { "do": "check", "at": "2026-01-05T10:06:00Z",
+          "tasks": {
+            "review": { "done": false, "due": "2026-01-12T17:00:00Z", "scheduled": "2026-01-12T00:00:00Z" },
+            "inbox": { "done": false },
+            "plan": { "done": false }
+          },
+          "reminders": { "prep": { "pending": true } } }
+      ]
+    },
+    {
+      "name": "Undo, done again, undo again: the subtasks done before still come back done",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "chores", "title": "Chores", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every day" },
+        { "do": "add", "key": "dishes", "title": "Dishes", "parent": "chores", "at": "2026-01-05T10:00:00Z" },
+        { "do": "add", "key": "laundry", "title": "Laundry", "parent": "chores", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "dishes", "at": "2026-01-05T10:00:00Z" },
+        { "do": "complete", "task": "chores", "at": "2026-01-05T10:01:00Z" },
+        { "do": "reopen", "task": "chores", "at": "2026-01-05T10:02:00Z" },
+        { "do": "check", "at": "2026-01-05T10:02:00Z", "tasks": { "dishes": { "done": true, "doneAt": "2026-01-05T10:00:00Z" } } },
+        { "do": "complete", "task": "chores", "at": "2026-01-05T10:03:00Z" },
+        { "do": "reopen", "task": "chores", "at": "2026-01-05T10:04:00Z" },
+        { "do": "check", "at": "2026-01-05T10:04:00Z",
+          "tasks": {
+            "chores": { "done": false, "due": "2026-01-05T17:00:00Z", "scheduled": null },
+            "dishes": { "done": true, "doneAt": "2026-01-05T10:00:00Z" },
+            "laundry": { "done": false }
+          } }
+      ]
+    },
+    {
+      "name": "A repeating subtask that moved on by itself stays open when its parent's time is undone",
+      "zone": "UTC",
+      "steps": [
+        { "do": "add", "key": "home", "title": "Home", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every day" },
+        { "do": "add", "key": "plants", "title": "Water the plants", "parent": "home", "at": "2026-01-05T10:00:00Z", "due": "2026-01-05T17:00:00Z", "repeat": "every day" },
+        { "do": "complete", "task": "plants", "at": "2026-01-05T10:00:00Z" },
+        { "do": "check", "at": "2026-01-05T10:00:00Z", "tasks": { "plants": { "done": false, "due": "2026-01-06T17:00:00Z" } } },
+        { "do": "complete", "task": "home", "at": "2026-01-05T10:01:00Z" },
+        { "do": "reopen", "task": "home", "at": "2026-01-05T10:02:00Z" },
+        { "do": "check", "at": "2026-01-05T10:02:00Z",
+          "tasks": {
+            "home": { "done": false, "due": "2026-01-05T17:00:00Z", "scheduled": null },
+            "plants": { "done": false, "due": "2026-01-06T17:00:00Z" }
+          } }
+      ]
+    }
+  ]
+}

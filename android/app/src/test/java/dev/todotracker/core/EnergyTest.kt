@@ -11,7 +11,9 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -65,5 +67,8 @@ class EnergyTest {
         assertEquals("⚡ 3 of 10 planned today.", Energy.today(board, t0, utc))
         assertEquals("⚡ 6 of 4 planned today: 2 too much.", Energy.line(6.0, 4))
         assertEquals("⚡ 4.5 of 10 planned today.", Energy.line(4.5, 10))
+        assertFalse(Energy.overToday(board, t0, utc))
+        board.setEnergyPerDay(2)
+        assertTrue(Energy.overToday(board, t0, utc))
     }
 }
