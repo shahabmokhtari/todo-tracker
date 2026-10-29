@@ -135,13 +135,45 @@ on the web.
 **Groups:** tap the group you're in again (or **Edit**) to rename it, give it a color, or delete it. Its tasks move to
 the group you pick, so none are lost.
 
-**Settings** (⚙): light, dark, or as your phone is; how much energy you have in a day; how long a focus session and its
-breaks last; and whether notifications and on-time alarms are on.
+**Settings** (⚙): sync, or a connected computer; light, dark, or as your phone is; how much energy you have in a day;
+how long a focus session and its breaks last; and whether notifications and on-time alarms are on.
+
+**Where your tasks are.** The phone is in one of three modes, and Settings says which: **only on this phone** (the
+start), **syncing on its own** with your other devices (below), or **using a computer's tasks** (the section after).
+Switching never deletes tasks: the ones on the phone stay as they are.
+
+### Sync Android with your other devices
+
+The Android app keeps its tasks in a tasks folder on the phone, the same kind as on your computers (an older version
+kept them in one file; the first start moves them in and keeps the old file as `board.json.migrated`). It can keep
+that folder in step with your computers and other phones through a **private GitHub gist**, with no computer running:
+
+1. Open **Settings › Sync with your other devices › Set up sync…**.
+2. Tap **Open GitHub**: GitHub's page for a new token opens with only the **gist** scope chosen. Pick when it expires,
+   **Generate token**, and copy it. Paste it in **GitHub token** (it's kept encrypted with the phone's keystore and sent
+   only to GitHub).
+3. Check **Library**: devices with the same library name sync together. Your computers use the name of their tasks
+   folder, *Todo Tracker* unless you changed it. On each computer, choose **GitHub gist** in its Sync panel.
+4. Tap **Turn on sync**. The first sync brings in everything your other devices have, then adds the phone's own tasks
+   beside them (nothing is replaced, and tabs with the same name meet). Until everything has come in, the phone's
+   tasks wait to go out.
+
+It syncs when you open the app, a few seconds after a change, every minute while it's open, and every 15 minutes or so
+with the app closed (when there's a network). Reminders that came from elsewhere ring like your own.
+
+The Sync screen shows when it last synced, **Sync now**, your **other devices** (with **Forget** for one you don't use
+any more), problems (a token GitHub doesn't accept: paste a new one there; changes from another device that haven't
+arrived yet), and **Changed on both**: the same line changed on the phone and elsewhere. Both versions are kept in the
+task; to choose one, open it on a computer (Keep mine / Keep theirs aren't on the phone yet). **Turn sync off** keeps
+your tasks on the phone and forgets the token.
+
+A phone either syncs on its own or uses a computer's tasks: connecting to a computer turns sync off (the computer syncs
+then), and to sync on its own again, disconnect first.
 
 ### Use your computer's tasks on Android
 
-On its own, the Android app keeps its tasks on the phone. It can use the tasks on your computer instead, over your
-Wi-Fi at home or anywhere with Tailscale:
+On its own, the Android app keeps its tasks on the phone (and can sync them, above). It can use the tasks on your
+computer instead, over your Wi-Fi at home or anywhere with Tailscale:
 
 1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
    Tracker. Choose **Connect a phone**: it shows a QR code and a link.
@@ -179,8 +211,9 @@ Choose sidebar menu **⋯ › Connect Teams reminders…** and paste a Teams Wor
 ## Sync your computers
 
 Your tasks folder stays in step with your other computers through **OneDrive**, **iCloud Drive** or a **private GitHub
-gist**: changes made on both are merged, and a conflict never loses either side. Turn it on in Settings › Sync. See
-[sync.md](sync.md).
+gist**: changes made on both are merged, and a conflict never loses either side. Turn it on in Settings › Sync. An
+Android phone can join through the gist on its own ([Sync Android with your other devices](#sync-android-with-your-other-devices)).
+See [sync.md](sync.md).
 
 ## Connectors: Notion, Microsoft To Do, GitHub Issues
 
