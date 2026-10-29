@@ -280,7 +280,7 @@ public final class TaskBoard {
         item.repeatRule = rule.countedDown()
         let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-        log(now, item.id, "completed", "Completed \"\(item.title)\" (repeats: next \(names[next.weekday - 1]) \(next.day) \(months[next.month - 1]))", actor)
+        log(now, item.id, "completed", "Completed \"\(item.title)\" \(Self.rolledMarker)\(names[next.weekday - 1]) \(next.day) \(months[next.month - 1]))", actor)
         return true
     }
 
@@ -294,9 +294,30 @@ public final class TaskBoard {
     private func rolledBy(_ step: WorkItem) -> WorkItem? {
         guard let done = activity.last(where: { $0.itemId == step.id && ($0.kind == "completed" || $0.kind == "reopened") }),
               done.kind == "completed" else { return nil }
-        return step.ancestors.first { ancestor in
-            wasRolledForward(ancestor) && activity.last(where: { $0.itemId == ancestor.id && $0.kind == "completed" })?.at == done.at
+        return step.ancestors.first { wasRolledForward($0) && isNewest($0, done.at) }
+    }
+
+    /// What every app writes in the "completed" entry of a repeating task that moved on (the task stays open).
+    static let rolledMarker = "(repeats: next "
+
+    static func isRolled(_ entry: ActivityEntry) -> Bool { entry.kind == "completed" && entry.summary.contains(rolledMarker) }
+
+    /// Whether moving `item` on (at `at`) is the last thing that happened to it or its subtasks: once its next time has
+    /// begun (a step done, a reminder set…), reopening a step no longer undoes it.
+    private func isNewest(_ item: WorkItem, _ at: Date) -> Bool {
+        let family = Set(item.selfAndDescendants.map(\.id))
+        guard let roll = activity.lastIndex(where: { $0.itemId == item.id && $0.kind == "completed" }), activity[roll].at == at else { return false }
+        return activity.lastIndex(where: { family.contains($0.itemId) }) == roll
+    }
+
+    /// When the task last moved on before its latest time, not counting times that were undone (nil: never).
+    private func previousRoll(_ item: WorkItem) -> Date? {
+        let entries = activity.filter { $0.itemId == item.id && ($0.kind == "completed" || $0.kind == "reopened") }
+        var rolls: [Date] = []
+        for entry in entries.dropLast() {
+            if entry.kind == "completed" { rolls.append(entry.at) } else if !rolls.isEmpty { rolls.removeLast() }
         }
+        return rolls.last
     }
 
     /// "Not done after all" on a repeating task that moved on: its deadline and wait as they were (without that record:
@@ -305,12 +326,12 @@ public final class TaskBoard {
     /// (tests/fixtures/undo.json).
     private func undoRollForward(_ item: WorkItem, actor: Actor, now: Date, keepOpen: WorkItem? = nil) {
         guard let rule = item.repeatRule else { return }
-        let rolls = activity.filter { $0.itemId == item.id && $0.kind == "completed" }
-        if let rolledAt = rolls.last?.at {
-            let since = rolls.count > 1 ? rolls[rolls.count - 2].at : nil
+        if let rolledAt = activity.last(where: { $0.itemId == item.id && $0.kind == "completed" })?.at {
+            let since = previousRoll(item)
             let keep = Set(keepOpen?.selfAndDescendants.map(\.id) ?? [])
             for descendant in item.selfAndDescendants.dropFirst() where !keep.contains(descendant.id) && !descendant.isDone {
                 // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                // A repeating subtask that moved on by itself wasn't finished: that doesn't count.
                 var lineage: Set<UUID> = [descendant.id]
                 for ancestor in descendant.ancestors {
                     if ancestor === item { break }
@@ -318,7 +339,7 @@ public final class TaskBoard {
                 }
                 let last = activity.last { entry in
                     lineage.contains(entry.itemId) && (entry.kind == "completed" || entry.kind == "reopened")
-                        && entry.at <= rolledAt && (since.map { entry.at > $0 } ?? true)
+                        && !Self.isRolled(entry) && entry.at <= rolledAt && (since.map { entry.at > $0 } ?? true)
                 }
                 if let last, last.kind == "completed" { descendant.completedAt = last.at }
             }
