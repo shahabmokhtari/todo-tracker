@@ -87,6 +87,10 @@ Windows computer does:
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
   (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need
   `xattr -dr com.apple.quarantine "/Applications/TodoTracker.app"` once.
+* **Android** syncs on its own, no computer needed: in the app, **Settings › Sync with your other devices** with a
+  GitHub token (gist scope) and the same library name; on the computers, choose **GitHub gist** here. The phone is a
+  device like any other in the gist (its own `device-<id>.json`) and is listed under the other devices
+  ([guide](guide.md#sync-android-with-your-other-devices)).
 * **iPhone and iPad** (and Android) can't run the server, but with the **Phones** extra they use a computer's: turn on
   **Settings › Phones › Let phones connect** there, choose **Connect a phone**, and scan the QR code in the phone app
   (on iPhone and iPad: **Settings › Computer › Connect to a computer…**; on Android: **Settings › Connect to a

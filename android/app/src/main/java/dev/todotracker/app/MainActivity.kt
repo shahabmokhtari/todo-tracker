@@ -12,6 +12,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
     private val vm: BoardViewModel by viewModels()
@@ -31,7 +34,8 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             TodoTrackerTheme(vm.theme) {
-                TodayScreen(vm)
+                val moving = vm.moving
+                if (moving != null) MovingTasks(moving) else TodayScreen(vm)
             }
         }
         // Started by a todotracker://task/<id> link (not again after rotation, nor when reopened from Recents, which
@@ -61,6 +65,16 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         vm.appVisible = false
+    }
+}
+
+/** The first start of this version, while the old board file moves into the tasks folder (a moment). */
+@Composable
+private fun MovingTasks(text: String) {
+    androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        androidx.compose.foundation.layout.Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.compose.material3.Text(text, style = MaterialTheme.typography.bodyLarge, modifier = androidx.compose.ui.Modifier.padding(24.dp))
+        }
     }
 }
 

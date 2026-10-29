@@ -324,15 +324,49 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   allows exact alarms. When it rings, each reminder due is shown as a notification with *Mark done* (*Open* when the
   task has open subtasks) and *In an hour*; tapping it opens the task. It's marked delivered (`notifiedAt`, once, like
   `ReminderDispatcher`) only when shown: with notifications off it stays pending on Today and is told once they're on.
-  While the app runs, its board does this; with it closed, the alarm and the buttons change the saved board under one
-  lock. After a restart or an update, the alarm is set again and reminders missed meanwhile are delivered. The app asks
+  While the app runs, its board does this; with it closed, the alarm and the buttons change the tasks folder through
+  the same store. After a restart or an update, the alarm is set again and reminders missed meanwhile are delivered. The app asks
   for notifications (and, once, for on-time alarms) at the first snooze, reminder or focus session.
 * *Later* offers the quick choices, *Pick a time…* (a date picker where past days are off, then a time picker that
   won't save a time already past) and *After another task…*. A snooze or wait can be undone from its message, like
   *Mark done*.
-* **Settings** (⚙): theme (System, Light, Dark; kept on the phone), energy in a day, the focus timer's lengths (focus,
-  break, long break; 1–180 minutes, kept with the board), and whether notifications and on-time alarms are allowed.
-* The board is a JSON file on the phone, unless it's connected to a computer (below).
+* **Settings** (⚙): sync with your other devices (or a connected computer), theme (System, Light, Dark; kept on the
+  phone), energy in a day, the focus timer's lengths (focus, break, long break; 1–180 minutes, kept with the board), and
+  whether notifications and on-time alarms are allowed.
+* **The board is a tasks folder** on the phone (`filesDir/vault`, the vault format of `docs/vault-format.md`, a port of
+  `VaultBoardStore`; [design](design/phone-sync.md)), unless it's connected to a computer (below). One `VaultStore`
+  serves the whole app: the screens, the reminder alarm and notification buttons, the restart receiver and sync. A
+  change runs on it (only the touched task files are written, all or nothing) and the screen shows a copy. On the first
+  start of this version, `board.json` (and its `.bak`) is moved in once when the folder is new, then set aside as
+  `board.json.migrated` (never deleted); one left behind by an interrupted move is imported beside (tasks already there
+  are skipped). A `board.json` from a newer app version is neither moved nor changed (changes are off).
+* **Three modes, one at a time** (Settings says which): only on this phone, syncing on its own, or a connected
+  computer's tasks. Connecting turns sync off; sync can't be turned on while connected (disconnect first). Switching
+  never deletes tasks.
+* **Sync on its own** (Settings › Sync with your other devices; phase 2 of the [phone sync design](design/phone-sync.md)):
+  the phone is a sync device of its own through a GitHub gist (`GistRemote`, the same `device-<id>.json` bundles as the
+  computers), merging three-way like `SyncPlanner`. Sign-in: a pasted classic token with the `gist` scope (a button opens
+  `github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker`; no OAuth device flow, as there's no OAuth
+  app), kept sealed with an Android Keystore AES-GCM key; the gist id in the app's settings; `SyncState` in
+  `filesDir/sync`. The library defaults to *Todo Tracker* (the computers' default) and can be changed (a new library is
+  joined afresh). The first sync with a place is `SyncEngine.join`: pull only, then import `board.json` if still there,
+  then publish; an incomplete pull publishes nothing (*Waiting for everything from your other devices…*). Syncs: on
+  launch and resume, 5 s after the last change (debounced), every minute while open (`SyncSchedule`), and a WorkManager
+  periodic job (15 minutes, network) with the app closed, plus one 5 s after a change made from a notification; all on
+  one background thread. After a sync that changed something, the board is shown again from the same store and the
+  reminder alarm set again. The Sync screen: last synced, *Sync now*, problems (incl. contents not arrived yet, a token
+  GitHub refused, with a field for a new one), other devices with *Forget*, conflicts listed read-only (*open it on a
+  computer to choose*; *Got it* hides one), the library, *Turn sync off* (tasks stay; the token is forgotten). Debug
+  builds can also sync through a folder in the app's external files (`TodoTrackerSync/<library>`), to try it against a
+  computer's `Apps/TodoTrackerSync` folder without GitHub.
+* **Sync identity:** `SyncState` is kept per place and library (`filesDir/sync/<place>-<hash of library>`; the device id
+  in `filesDir/sync/device.json` is shared), so another library starts with nothing agreed, published or deleted. Backups
+  and device transfers (`dataExtractionRules`, `fullBackupContent`) leave out `sync.xml`, `files/sync/`, `phone.xml`
+  and the computer's cached board, and keep `files/vault/`. If sync state still arrives from another install (its id is
+  kept in no-backup storage), it's set aside as `sync.copied` and the phone joins as a new device.
+* **Opening:** the tasks folder opens off the main thread (*Moving your tasks into a tasks folder on this phone…* the
+  first time). The move builds the folder in `vault.moving` and renames it into place; any failure leaves `board.json`
+  untouched and turns changes off with why, never a crash.
 * **Connect to a computer** (Settings, or a `todotracker://pair` link: opened, scanned with the camera via ZXing, or
   pasted; asked first). The code is traded for a phone token (`POST /api/phones/claim` with *This phone's name*: prefilled
   from the device name, else the model, and kept on the phone), kept
@@ -511,8 +545,8 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 
 * **Next:**
   * Rotate the API token, and compact the activity log.
-  * Phones away from the computer: cloud sync with conflict-free merges (remote mode over the phone port is in on
-    iPhone, iPad and Android).
+  * Phones away from the computer: cloud sync with conflict-free merges (in on Android through a gist; remote mode over
+    the phone port is in on iPhone, iPad and Android). Next: iPhone and iPad, Keep mine / Keep theirs on phones, OneDrive.
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Recurring tasks.
   * Keyboard navigation of cards.

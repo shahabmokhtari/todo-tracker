@@ -44,10 +44,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.UUID
 
-/** Settings on this phone: the theme, energy in a day, the focus timer's lengths, and what may notify you. */
+/** Settings on this phone: sync or a connected computer, the theme, energy in a day, the focus timer's lengths, and what may notify you. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
+    var syncOpen by rememberSaveable { mutableStateOf(false) }
+    if (syncOpen) {
+        SyncScreen(vm) { syncOpen = false }
+        return
+    }
     BackHandler(onBack = onClose)
     val context = LocalContext.current
     run {
@@ -59,6 +64,8 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
                 }
                 vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
                 Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SyncSection(vm) { syncOpen = true }
+                    HorizontalDivider()
                     ConnectToComputer(vm)
                     HorizontalDivider()
                     Setting("Theme", "Light, dark, or as your phone is.") {
