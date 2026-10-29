@@ -8,7 +8,7 @@ final class SyncFixtureTests: XCTestCase {
     func testTextMerges() throws {
         let fixture = try Fixtures.json("sync/textmerge.json")
         let cases = fixture["cases"] as! [[String: Any]]
-        XCTAssertEqual(cases.count, 25)
+        XCTAssertGreaterThanOrEqual(cases.count, 37)
         for c in cases {
             let policy: ConflictPolicy = ["first": .first, "second": .second][c["policy"] as! String] ?? .both
             let keys = (c["lineKeys"] as? String) == "task" ? SyncPlanner.taskLineKeys : nil

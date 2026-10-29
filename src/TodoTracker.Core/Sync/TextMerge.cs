@@ -32,7 +32,7 @@ public static class TextMerge
         var ka = lineKeys?.Invoke(a);
         var kb = lineKeys?.Invoke(b);
         var ma = Match(o, a);
-        var mb = Match(o, b);
+        var mb = MatchAgreeing(o, b, ma, Match(a, b));
         var output = new List<string>();
         var conflicted = false;
         int io = 0, ia = 0, ib = 0;
@@ -76,21 +76,48 @@ public static class TextMerge
                 output.AddRange(keyed.Lines);
                 conflicted |= keyed.Conflicted;
             }
-            else if (ko is not null && co.Length == 0 && DistinctKeyed(ka![ia..ea], kb![ib..eb]))
-            {
-                // Both added lines that each carry their own identity (say, time logged on two devices): both stay.
-                output.AddRange(ca);
-                output.AddRange(cb);
-            }
             else
             {
-                conflicted = true;
-                output.AddRange(policy switch
+                // Lines both sides have at the start or the end of the stretch are the same change made on both
+                // (say, a note one device added and the other merged before editing next to it): kept once, and
+                // only what's left between them is merged.
+                var p = 0;
+                while (p < ca.Length && p < cb.Length && ca[p] == cb[p])
                 {
-                    ConflictPolicy.First => ca,
-                    ConflictPolicy.Second => cb,
-                    _ => [.. ca, .. cb.Where(line => !ca.Contains(line))],
-                });
+                    p++;
+                }
+
+                var s = 0;
+                while (s < ca.Length - p && s < cb.Length - p && ca[^(s + 1)] == cb[^(s + 1)])
+                {
+                    s++;
+                }
+
+                // Base lines there that both kept are trimmed with them.
+                var po = 0;
+                while (po < p && po < co.Length && co[po] == ca[po])
+                {
+                    po++;
+                }
+
+                var so = 0;
+                while (so < s && so < co.Length - po && co[^(so + 1)] == ca[^(so + 1)])
+                {
+                    so++;
+                }
+
+                output.AddRange(ca[..p]);
+                var (lines, clash) = Resolve(
+                    co[po..^so],
+                    ca[p..^s],
+                    cb[p..^s],
+                    ko?[(io + po)..(next - so)],
+                    ka?[(ia + p)..(ea - s)],
+                    kb?[(ib + p)..(eb - s)],
+                    policy);
+                output.AddRange(lines);
+                output.AddRange(ca[^s..]);
+                conflicted |= clash;
             }
 
             io = next;
@@ -99,6 +126,38 @@ public static class TextMerge
         }
 
         return new TextMergeResult(Join(output), conflicted);
+    }
+
+    /// <summary>A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict.</summary>
+    private static (IReadOnlyList<string> Lines, bool Conflicted) Resolve(string[] co, string[] ca, string[] cb, string?[]? ko, string?[]? ka, string?[]? kb, ConflictPolicy policy)
+    {
+        if (co.SequenceEqual(ca))
+        {
+            return (cb, false);
+        }
+
+        if (co.SequenceEqual(cb) || ca.SequenceEqual(cb))
+        {
+            return (ca, false);
+        }
+
+        if (ko is not null && MergeByKey(co, ca, cb, ko, ka!, kb!, policy) is { } keyed)
+        {
+            return keyed;
+        }
+
+        if (ko is not null && co.Length == 0 && DistinctKeyed(ka!, kb!))
+        {
+            // Both added lines that each carry their own identity (say, time logged on two devices): both stay.
+            return ([.. ca, .. cb], false);
+        }
+
+        return (policy switch
+        {
+            ConflictPolicy.First => ca,
+            ConflictPolicy.Second => cb,
+            _ => [.. ca, .. cb.Where(line => !ca.Contains(line))],
+        }, true);
     }
 
     /// <summary>
@@ -183,6 +242,60 @@ public static class TextMerge
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// For each base line, the index of the line it matches in <paramref name="other"/> (a longest common
+    /// subsequence), or -1. Equal lines can pair up more than one way ("b" added after "b": the old "b" is the first
+    /// or the second), and the two sides' diffs must agree on which, or a line both sides added (or removed) is
+    /// counted twice. So among the longest ones, this takes the pairing that agrees most with the first side's:
+    /// base line i pairs with the line of <paramref name="other"/> that the first side's line for i pairs with
+    /// (<paramref name="firstToOther"/>, the first side against <paramref name="other"/>).
+    /// </summary>
+    private static int[] MatchAgreeing(string[] o, string[] other, int[] baseToFirst, int[] firstToOther)
+    {
+        var n = o.Length;
+        var m = other.Length;
+        var map = Enumerable.Repeat(-1, n).ToArray();
+        if (n == 0 || m == 0)
+        {
+            return map;
+        }
+
+        // A pair is worth more than every agreement together, so the pairing stays a longest one.
+        var pair = Math.Min(n, m) + 1;
+        int Worth(int i, int j) => o[i] != other[j] ? 0 : pair + (baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j ? 1 : 0);
+        var best = new int[n + 1, m + 1];
+        for (var i = n - 1; i >= 0; i--)
+        {
+            for (var j = m - 1; j >= 0; j--)
+            {
+                var skip = Math.Max(best[i + 1, j], best[i, j + 1]);
+                var worth = Worth(i, j);
+                best[i, j] = worth > 0 ? Math.Max(worth + best[i + 1, j + 1], skip) : skip;
+            }
+        }
+
+        for (int i = 0, j = 0; i < n && j < m;)
+        {
+            var worth = Worth(i, j);
+            if (worth > 0 && best[i, j] == worth + best[i + 1, j + 1])
+            {
+                map[i] = j;
+                i++;
+                j++;
+            }
+            else if (best[i + 1, j] >= best[i, j + 1])
+            {
+                i++;
+            }
+            else
+            {
+                j++;
+            }
+        }
+
+        return map;
     }
 
     /// <summary>For each base line, the index of the line it matches in <paramref name="other"/> (longest common subsequence), or -1.</summary>
