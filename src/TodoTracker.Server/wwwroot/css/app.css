@@ -848,7 +848,10 @@ a.embed img { display: block; max-width: min(100%, 360px); max-height: 220px; ob
 .paired-browsers li { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .phone-pairing { display: grid; gap: 10px; justify-items: start; }
 .phone-qr { width: 220px; max-width: 100%; height: auto; border-radius: 12px; background: #fff; padding: 6px; }
-.phone-link { min-width: 0; flex: 1; font-family: ui-monospace, monospace; font-size: 12px; }
+.phone-pairing .row { justify-self: stretch; max-width: 640px; align-items: center; }
+.phone-pairing .row > .btn { flex: none; }
+.phone-pairing p:empty { display: none; }
+.phone-link { min-width: 0; flex: 1 1 240px; font-family: ui-monospace, monospace; font-size: 12px; }
 .chat-top .chat-picker { margin-right: auto; max-width: 55%; }
 .chat-notice { padding: 6px 10px; border-radius: 10px; background: rgba(245, 158, 11, .1); }
 .chat-pane { display: grid; gap: 10px; align-content: start; flex: 1; overflow-y: auto; max-height: 60vh; }

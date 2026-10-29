@@ -107,7 +107,8 @@ export function createPhonesSection(ctx) {
       said.textContent = '';
       // The QR code is an SVG the server makes; shown as an image, so nothing in it runs.
       const qr = h('img', { class: 'phone-qr', alt: 'QR code to connect a phone', src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(code.qrSvg)}` });
-      out.replaceChildren(
+      // Native replaceChildren/append would show a null as the text "null": leave it out.
+      out.replaceChildren(...[
         h('p', null, 'In Todo Tracker on your phone, choose “Connect to a computer” and scan this code (or open the link on the phone).'),
         qr,
         h('div', { class: 'row' },
@@ -115,13 +116,15 @@ export function createPhonesSection(ctx) {
           h('button', { class: 'btn', type: 'button', onclick: () => copy(code.link) }, icon('note', { size: 16 }), 'Copy link')),
         code.addresses.length ? null : h('p', { class: 'muted small' }, 'This computer isn’t on a network a phone can reach. Connect it to Wi-Fi (or Tailscale), then get a new code.'),
         left, said,
-        h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'New code'));
+        h('button', { class: 'btn ghost', type: 'button', onclick: show }, 'New code')].filter(Boolean));
     };
     const can = status.letPhonesConnect && status.listening;
     out.append(
       h('button', { class: 'btn primary', type: 'button', disabled: !can, onclick: show }, icon('plus', { size: 16 }), 'Connect a phone'),
-      can ? null : h('p', { class: 'muted small' }, status.letPhonesConnect ? 'Restart Todo Tracker first.' : 'Turn on “Let phones connect” first.'),
-      said);
+      ...[
+        // Waiting for a restart is already said in the status line above.
+        can || status.letPhonesConnect ? null : h('p', { class: 'muted small' }, 'Turn on “Let phones connect” first.'),
+        said].filter(Boolean));
     return out;
   }
 
