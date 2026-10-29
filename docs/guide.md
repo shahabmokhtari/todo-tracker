@@ -121,7 +121,8 @@ undone, archiving keeps it). Below: its subtasks (tick them off, tap one to open
 back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, and notes.
 
 **Reminders tell you, even with the app closed.** When a reminder is due, or something you snoozed comes back, your
-phone shows a notification: **Mark done**, **In an hour**, or tap it to open the task. The first time you snooze or
+phone shows a notification: **Mark done** (or **Open**, when it has subtasks still to do), **In an hour**, or tap it to
+open the task. With notifications off, it waits on Today and tells you once they're on. The first time you snooze or
 set a reminder, the app asks to send notifications, and once whether it may set alarms so they come right on time.
 After your phone restarts, reminders you missed show up.
 

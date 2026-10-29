@@ -319,8 +319,9 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   switch, hours between steps, and steps added one per line. Reminders: the pending ones (Dismiss) and *Remind me…*
   with an optional message. Notes: add, and every note newest first.
 * **Reminders notify.** The next pending reminder (a snooze with a reminder is one) has an alarm, exact when the phone
-  allows exact alarms. When it rings, each reminder due is marked delivered (`notifiedAt`, once, like
-  `ReminderDispatcher`) and shown as a notification with *Mark done* and *In an hour*; tapping it opens the task.
+  allows exact alarms. When it rings, each reminder due is shown as a notification with *Mark done* (*Open* when the
+  task has open subtasks) and *In an hour*; tapping it opens the task. It's marked delivered (`notifiedAt`, once, like
+  `ReminderDispatcher`) only when shown: with notifications off it stays pending on Today and is told once they're on.
   While the app runs, its board does this; with it closed, the alarm and the buttons change the saved board under one
   lock. After a restart or an update, the alarm is set again and reminders missed meanwhile are delivered. The app asks
   for notifications (and, once, for on-time alarms) at the first snooze, reminder or focus session.
