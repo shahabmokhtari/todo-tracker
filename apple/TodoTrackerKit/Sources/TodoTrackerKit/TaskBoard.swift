@@ -11,6 +11,8 @@ public final class TaskBoard {
     public internal(set) var items: [WorkItem] = []
     public internal(set) var activity: [ActivityEntry] = []
     public internal(set) var groups: [TaskGroup] = []
+    /// The labels to pick from (kept with the board so every app shows them).
+    public internal(set) var labels: [LabelDefinition] = []
     public internal(set) var pomodoro = PomodoroTimer()
     /// The Do now order the person arranged (tasks not listed slot in by the automatic rules).
     public internal(set) var nowOrder: [UUID] = []
