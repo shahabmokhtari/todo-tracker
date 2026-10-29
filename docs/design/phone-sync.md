@@ -307,6 +307,9 @@ Every one of these changes bytes, which changes hashes, which other devices see 
   no file system or phone can hold).
 * `IsSyncablePath` refuses control characters on every system (on macOS and Linux it accepted a tab or newline in a
   path that Windows refuses, so devices disagreed on what syncs).
+* `config.json`, `state.json` and merged settings are written with `\n` on every system. .NET's indented JSON uses
+  the system's line ending (`JsonSerializerOptions.NewLine`), so Windows wrote them with CRLF: different bytes from
+  every Mac (and phone) for the same settings, so the devices never agreed on them. Ports: always `\n`.
 * Those are the only behavior changes; everything else is fixtures and tests.
 * No API was refactored: the generators drive the real store (`VaultBoardStore` with a board to import, `ReadSyncAsync`),
   `TaskMarkdown.Parse/Render`, `SyncPlanner`, `TextMerge`, `FolderRemote` and `GistRemote` (with the fake GitHub).

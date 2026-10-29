@@ -407,7 +407,8 @@ public static partial class SyncPlanner
         static IEnumerable<string> Lines(byte[] bytes) => Encoding.UTF8.GetString(bytes).Split('\n').Select(s => s.TrimEnd('\r')).Where(s => s.Length > 0);
     }
 
-    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+    // "\n" on every system (the default is the system's line ending): every device must merge to the same bytes.
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, NewLine = "\n" };
 
     private static void MergeJson(Context ctx, SyncOpKind kind, SyncEntry? l, SyncEntry p, SyncEntry? b, bool indented)
     {
