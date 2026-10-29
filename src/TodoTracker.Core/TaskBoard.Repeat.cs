@@ -91,12 +91,50 @@ public sealed partial class TaskBoard
         item is { Repeat: not null, IsDone: false }
         && ActivityList.FindLast(a => a.ItemId == item.Id && a.Kind is ActivityKind.Completed or ActivityKind.Reopened) is { Kind: ActivityKind.Completed };
 
+    /// <summary>The repeating task that completing <paramref name="step"/> (its last step) moved on to its next time, or null.</summary>
+    private WorkItem? RolledBy(WorkItem step)
+    {
+        if (ActivityList.FindLast(a => a.ItemId == step.Id && a.Kind is ActivityKind.Completed or ActivityKind.Reopened) is not { Kind: ActivityKind.Completed } done)
+        {
+            return null;
+        }
+
+        return step.Ancestors().FirstOrDefault(a => WasRolledForward(a) && ActivityList.FindLast(e => e.ItemId == a.Id && e.Kind == ActivityKind.Completed)?.At == done.At);
+    }
+
     /// <summary>
     /// "Not done after all" on a repeating task that moved on: its deadline and wait as they were before (without that
-    /// record, e.g. written by an older app: due a time earlier and back in Do now).
+    /// record, e.g. written by an older app: due a time earlier and back in Do now), and what moving on undid as it
+    /// was: the subtasks done before (all but <paramref name="keepOpen"/>) done again, and the reminders it put away
+    /// pending again. Same rule as the Swift and Kotlin cores (tests/fixtures/undo.json).
     /// </summary>
-    private void UndoRollForward(WorkItem item, Actor actor, DateTimeOffset now)
+    private void UndoRollForward(WorkItem item, Actor actor, DateTimeOffset now, WorkItem? keepOpen = null)
     {
+        var rolls = ActivityList.Where(a => a.ItemId == item.Id && a.Kind == ActivityKind.Completed).ToList();
+        if (rolls.Count > 0)
+        {
+            var rolledAt = rolls[^1].At;
+            DateTimeOffset? since = rolls.Count > 1 ? rolls[^2].At : null;
+            var keep = keepOpen?.SelfAndDescendants().Select(i => i.Id).ToHashSet() ?? [];
+            foreach (var descendant in item.SelfAndDescendants().Skip(1).Where(d => !keep.Contains(d.Id) && !d.IsDone))
+            {
+                // Done by itself (or with a parent below this task) since the time before it moved on, and not reopened.
+                var lineage = descendant.Ancestors().TakeWhile(a => a != item).Select(a => a.Id).Prepend(descendant.Id).ToHashSet();
+                var last = ActivityList.FindLast(a => lineage.Contains(a.ItemId) && a.Kind is ActivityKind.Completed or ActivityKind.Reopened
+                    && a.At <= rolledAt && (since is null || a.At > since));
+                if (last is { Kind: ActivityKind.Completed })
+                {
+                    descendant.CompletedAt = last.At;
+                }
+            }
+
+            // Put away when it moved on (not the reminder for its next time, which ends below).
+            foreach (var reminder in item.ReminderList.Where(r => r.DismissedAt == rolledAt && r.DueAt < (item.NextActionAt ?? DateTimeOffset.MaxValue)))
+            {
+                reminder.DismissedAt = null;
+            }
+        }
+
         foreach (var reminder in item.ReminderList.Where(r => r.Kind == ReminderKind.NextAction && r.DismissedAt is null && r.DueAt > now))
         {
             reminder.DismissedAt = now;
