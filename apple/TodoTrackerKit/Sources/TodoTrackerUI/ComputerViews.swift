@@ -64,7 +64,9 @@ struct ComputerSection: View {
         } footer: {
             Text(model.isRemote
                  ? "You’re using the tasks on \(model.remoteComputer ?? "your computer"), over your Wi-Fi or Tailscale. The tasks kept on this phone wait, untouched, until you disconnect."
-                 : "Use the tasks on your computer from this phone, over your Wi-Fi or Tailscale. On the computer, open Settings › Phones and connect a phone.")
+                 : model.sync?.isOn == true
+                    ? "Use the tasks on your computer from this phone, over your Wi-Fi or Tailscale, instead of syncing on its own (connecting turns sync off; your tasks here stay). On the computer, open Settings › Phones and connect a phone."
+                    : "Use the tasks on your computer from this phone, over your Wi-Fi or Tailscale. On the computer, open Settings › Phones and connect a phone.")
         }
         .sheet(isPresented: $connecting) { ConnectComputerView(model: model) }
     }

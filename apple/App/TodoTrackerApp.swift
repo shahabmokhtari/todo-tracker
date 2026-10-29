@@ -36,9 +36,14 @@ struct TodoTrackerApp: App {
         #else
         WindowGroup("Todo Tracker") {
             dashboard
-                // Back in the app: a computer that wasn't answering is tried again at once.
-                .onChange(of: scenePhase) { _, phase in if phase == .active { model.becameActive() } }
+                // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { model.becameActive() }
+                    if phase == .background { model.wentToBackground() }
+                }
         }
+        // Now and then iOS wakes the app to sync in the background (BGTaskSchedulerPermittedIdentifiers in project.yml).
+        .backgroundTask(.appRefresh(SyncModel.backgroundTaskId)) { await SyncModel.backgroundRefresh() }
         #endif
     }
 

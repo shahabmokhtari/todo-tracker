@@ -49,13 +49,18 @@ public final class KeychainSecretStore: SecretStore {
         return String(data: data, encoding: .utf8)
     }
 
+    /// Kept on this device only: never in a backup restored onto another device (a token there would be a second
+    /// device posing as this one), readable after the first unlock (background syncs).
+    public static let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+
     @discardableResult public func write(_ key: String, _ value: String) -> Bool {
         let data = Data(value.utf8)
-        let update = SecItemUpdate(query(key) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        // An update sets how it's kept too (an item from an older version is moved to this device only).
+        let update = SecItemUpdate(query(key) as CFDictionary, [kSecValueData as String: data, kSecAttrAccessible as String: Self.accessibility] as CFDictionary)
         if update == errSecSuccess { return true }
         var add = query(key)
         add[kSecValueData as String] = data
-        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        add[kSecAttrAccessible as String] = Self.accessibility
         return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 

@@ -91,7 +91,7 @@ Windows computer does:
   GitHub token (gist scope) and the same library name; on the computers, choose **GitHub gist** here. The phone is a
   device like any other in the gist (its own `device-<id>.json`) and is listed under the other devices
   ([guide](guide.md#sync-android-with-your-other-devices)).
-* **iPhone and iPad** (and Android) can't run the server, but with the **Phones** extra they use a computer's: turn on
+* **iPhone and iPad** sync on their own too ([below](#iphone-and-ipad)). Or (and Android) with the **Phones** extra they use a computer's: turn on
   **Settings › Phones › Let phones connect** there, choose **Connect a phone**, and scan the QR code in the phone app
   (on iPhone and iPad: **Settings › Computer › Connect to a computer…**; on Android: **Settings › Connect to a
   computer**; [plugins.md](plugins.md#phones)). The phone then works on that computer's tasks folder (over Wi-Fi, or
@@ -99,6 +99,35 @@ Windows computer does:
   as last read and changes wait ([iPhone and iPad](guide.md#use-your-computers-tasks-on-an-iphone-or-ipad),
   [Android](guide.md#use-your-computers-tasks-on-android)). Without it, a phone keeps its tasks on the device (and keeps them, untouched,
   while it's connected).
+
+## iPhone and iPad
+
+An iPhone or iPad is a device like any computer here: it keeps a tasks folder of its own (inside the app, in
+`Application Support/TodoTracker/vault`), and syncs it with no computer running. Turn it on in **Settings › Sync ›
+Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-your-other-devices)):
+
+* **iCloud Drive:** you pick **iCloud Drive › Apps › TodoTrackerSync** once (or a folder holding it, or **Create it
+  here**); the app keeps access to it and meets the others in `TodoTrackerSync/<library>`, writing only its own
+  `devices/<id>.json` and `blobs/`. Files iCloud hasn't downloaded yet are asked for, and merged on a later sync.
+  (OneDrive's folder in the Files app may work the same way; it isn't tried yet.)
+* **A gist:** a pasted GitHub token with the `gist` scope (kept in the Keychain), the same gist per library as the
+  computers.
+* **The first time** it joins: everything the other devices have comes in first, then the tasks the app kept before
+  are brought in beside them (a task already there is never copied), and only then does it publish. If something
+  hasn't arrived yet, it waits and joins on a later sync.
+* **When:** at launch and back in front, a few seconds after a change, every minute while open, and in the background
+  when iOS allows.
+* Changed on both shows on the Sync screen; choosing a side (**Keep mine**, **Keep both**, a merge tool) happens on a
+  computer.
+* **One way at a time:** a device connected to a computer (above) doesn't sync on its own; connecting turns it off.
+  Turning sync off keeps the tasks on the device.
+* The first launch of this version moves the tasks the app kept (`board.json`, or its backup) into the tasks folder and
+  sets the file aside as `board.json.migrated` (never deleted). If they can't be read, nothing is made over them: the
+  app says so and keeps changes off.
+* **Backups:** the tasks folder is in your iPhone's backups; what sync remembers (this device's id, what it agreed on)
+  and the tokens in the Keychain aren't. A new iPhone restored from a backup is a new device: it joins again (pulling
+  first) and, for a gist, asks for a token.
+
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,

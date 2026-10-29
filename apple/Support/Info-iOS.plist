@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+<key>BGTaskSchedulerPermittedIdentifiers</key>
+<array>
+<string>com.todotracker.ios.sync</string>
+</array>
 <key>CFBundleURLTypes</key>
 <array>
 <dict>
@@ -22,5 +26,9 @@
 <string>Todo Tracker uses the camera to scan the code your computer shows when you connect this phone to it.</string>
 <key>NSLocalNetworkUsageDescription</key>
 <string>Todo Tracker connects to Todo Tracker on your computer, over your Wi-Fi, to use the tasks there.</string>
+<key>UIBackgroundModes</key>
+<array>
+<string>fetch</string>
+</array>
 </dict>
 </plist>

@@ -94,9 +94,14 @@ public actor SyncEngine {
             first.problem = [first.problem, "Not everything from your other devices has arrived yet; your tasks from before are brought in once it has."].compactMap { $0 }.joined(separator: " ")
             return first
         }
+        // Sync turned off (or another place chosen) meanwhile: nothing is brought in or published.
+        try Task.checkCancellation()
         if let legacyBoard { try store.importBeside(legacyBoard: legacyBoard) }
         return try await run(publish: true)
     }
+
+    /// How the last sync went (for the Sync screen).
+    public var status: SyncStatus { state.status }
 
     /// Forgets a conflict once it's been settled.
     public func dismiss(_ key: String) {
@@ -269,6 +274,8 @@ public actor SyncEngine {
                 return copy
             }.sorted { Ordinal.less($0.key, $1.key) }
             let mine = DeviceSnapshot(device: state.deviceId, name: state.deviceName, at: now, entries: entriesNow, deleted: tombstones)
+            // Sync turned off meanwhile: what came in stays, nothing goes out.
+            try Task.checkCancellation()
             let version = try await remote.publish(mine, read: local.read, readVersion: state.remoteVersion)
             state.tombstones = tombstones
             state.publishedEntries = entriesNow
