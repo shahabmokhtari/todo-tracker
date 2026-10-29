@@ -134,6 +134,15 @@ class PhoneConnection(context: Context) {
             runCatching { Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) }.getOrNull()?.trim()?.ifEmpty { null }
                 ?: listOf(Build.MANUFACTURER, Build.MODEL).filterNotNull().joinToString(" ").trim().ifEmpty { "Android phone" }
 
+        /** The name typed for this phone (kept apart, so it stays through Disconnect), else the phone's own name. */
+        fun phoneName(context: Context): String =
+            context.applicationContext.getSharedPreferences("phone-name", Context.MODE_PRIVATE).getString("name", null)
+                ?.takeIf { it.isNotBlank() } ?: deviceName(context)
+
+        fun rememberPhoneName(context: Context, name: String) {
+            context.applicationContext.getSharedPreferences("phone-name", Context.MODE_PRIVATE).edit().putString("name", name).apply()
+        }
+
         /** Connects with a pairing link: the code is traded for this phone's key (off the screen's thread). */
         fun claim(link: PairingLink, name: String): Claimed =
             PhoneClient(link.hosts, PinnedHttpsTransport(link.fingerprint)).claim(link.code, name)

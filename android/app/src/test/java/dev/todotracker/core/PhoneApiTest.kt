@@ -109,6 +109,19 @@ class PhoneApiTest {
     fun The_claim_sends_the_code_and_the_phones_name() {
         assertEquals(PhoneRequest("POST", "/api/phones/claim", """{"code":"abc","name":"Pixel 8"}"""), PhoneApi.claim("abc", "Pixel 8"))
     }
+
+    @Test
+    fun The_phones_name_is_what_was_typed_tidied_else_the_phones_own() {
+        assertEquals("Shahab's Pixel", PhoneApi.phoneName("  Shahab's \n  Pixel ", "Pixel 8"))
+        assertEquals("Pixel 8", PhoneApi.phoneName("   ", "Pixel 8"))
+        assertEquals("Pixel 8", PhoneApi.phoneName(null, " Pixel 8 "))
+        assertEquals("Android phone", PhoneApi.phoneName("", ""))
+        assertEquals(PhoneApi.MAX_NAME, PhoneApi.phoneName("x".repeat(100), "Pixel").length)
+        // Cut at the limit, but never through an emoji.
+        val name = PhoneApi.phoneName("a".repeat(59) + "📱", "Pixel")
+        assertEquals("a".repeat(59), name)
+        assertEquals("""{"code":"c","name":"Android phone"}""", PhoneApi.claim("c", "  ").body)
+    }
 }
 
 /** A computer that answers as told, and remembers what it was sent. */

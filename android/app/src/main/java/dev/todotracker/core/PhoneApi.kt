@@ -48,7 +48,21 @@ object PhoneApi {
     val export = PhoneRequest("GET", "/api/export")
     val health = PhoneRequest("GET", "/health")
 
-    fun claim(code: String, name: String) = post("/api/phones/claim", mapOf("code" to code, "name" to name))
+    fun claim(code: String, name: String) = post("/api/phones/claim", mapOf("code" to code, "name" to phoneName(name, "Android phone")))
+
+    /** The longest name the computer keeps for a phone. */
+    const val MAX_NAME = 60
+
+    /**
+     * The name the computer lists this phone by: what was typed (spaces tidied, at most [MAX_NAME] characters), or
+     * [fallback] (the phone's own name) when nothing was.
+     */
+    fun phoneName(typed: String?, fallback: String): String {
+        val tidy = typed?.trim()?.replace(Regex("\\s+"), " ").orEmpty()
+        val cut = tidy.ifEmpty { fallback.trim() }.ifEmpty { "Android phone" }.take(MAX_NAME)
+        // Not half an emoji at the end.
+        return (if (cut.isNotEmpty() && cut.last().isHighSurrogate()) cut.dropLast(1) else cut).trim()
+    }
 
     fun request(action: RemoteAction): PhoneRequest = when (action) {
         is RemoteAction.Capture -> post("/api/capture", mapOf("text" to action.text, "groupId" to action.groupId?.toString()))

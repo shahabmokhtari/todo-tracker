@@ -18,6 +18,7 @@ import dev.todotracker.core.BreakPrompt
 import dev.todotracker.core.Breaks
 import dev.todotracker.core.PairingLink
 import dev.todotracker.core.PhaseEnd
+import dev.todotracker.core.PhoneApi
 import dev.todotracker.core.PhoneClient
 import dev.todotracker.core.PhoneException
 import dev.todotracker.core.PhoneLink
@@ -199,6 +200,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     var pairingBusy: Boolean by mutableStateOf(false)
         private set
 
+    /** The name the computer lists this phone by (prefilled with the phone's own; kept through Disconnect). */
+    var phoneName: String by mutableStateOf(PhoneConnection.phoneName(application))
+        private set
+
+    fun changePhoneName(text: String) {
+        phoneName = text.take(PhoneApi.MAX_NAME)
+        PhoneConnection.rememberPhoneName(getApplication(), phoneName)
+    }
+
     /** The tasks are a computer's: what the computer doesn't let phones do (the focus timer's lengths) is hidden. */
     val isRemote: Boolean get() = pairing != null
 
@@ -206,6 +216,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         if (pairing != null) {
             // Connected to a computer: its tasks (the last read until it answers); this phone's own board isn't read.
             board = remoteFromCache()
+            // With the app closed, a check now and then (reminders added on the computer meanwhile still ring).
+            RemoteCheck.start(application)
             BoardHub.live = this
         } else {
             // Read after every save asked for before (a copy of the app just closed may still be saving), and from then
@@ -316,6 +328,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     private fun leaveRemote() {
+        RemoteCheck.stop(getApplication())
         pairing = null
         client = null
         remote = null
@@ -368,7 +381,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         if (pairingBusy) return
         pairingBusy = true
         pairingProblem = null
-        val name = PhoneConnection.deviceName(getApplication())
+        val name = PhoneApi.phoneName(phoneName, PhoneConnection.deviceName(getApplication()))
         viewModelScope.launch {
             val result = withContext(network) { runCatching { PhoneConnection.claim(link, name) } }
             pairingBusy = false
@@ -381,6 +394,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
                         return@fold
                     }
                     pairingLink = null
+                    // The name the computer has for it (what was typed, tidied, or the phone's own).
+                    changePhoneName(name)
                     pairing = paired
                     client = phone.client(paired)
                     computer = paired.computer
@@ -389,6 +404,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
                     openTaskId = null
                     selectedGroup = null
                     board = remoteFromCache()
+                    RemoteCheck.start(getApplication())
                     reminderSet = false
                     scheduled = null
                     status = "Connected to ${paired.computer}. Your tasks on this phone stay here for when you disconnect."

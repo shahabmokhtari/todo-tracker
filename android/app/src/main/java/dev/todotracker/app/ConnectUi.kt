@@ -56,6 +56,7 @@ fun ConnectToComputer(vm: BoardViewModel) {
                 "You're using the tasks on $computer, over its Wi-Fi or Tailscale. Changes you make here are made there. Your tasks on this phone are kept as they were, for when you disconnect.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text("This phone shows there as “${vm.phoneName}”.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             vm.remoteBanner?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { vm.poll() }) { Text("Check now") }
@@ -67,6 +68,7 @@ fun ConnectToComputer(vm: BoardViewModel) {
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             var pasted by rememberSaveable { mutableStateOf("") }
+            PhoneNameField(vm)
             Button(onClick = scan) { Text("Scan the code") }
             OutlinedTextField(
                 value = pasted, onValueChange = { pasted = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -75,6 +77,16 @@ fun ConnectToComputer(vm: BoardViewModel) {
             OutlinedButton(onClick = { vm.offerPairing(pasted) }, enabled = pasted.isNotBlank()) { Text("Connect") }
         }
     }
+}
+
+/** This phone's name, as the computer will list it (Settings › Phones there, and its timeline). */
+@Composable
+private fun PhoneNameField(vm: BoardViewModel) {
+    OutlinedTextField(
+        value = vm.phoneName, onValueChange = { vm.changePhoneName(it) }, singleLine = true, enabled = !vm.pairingBusy,
+        modifier = Modifier.fillMaxWidth(), label = { Text("This phone's name") },
+        supportingText = { Text("Your computer lists the phone by this name.") },
+    )
 }
 
 /** "Connect to <computer>?", asked before a pairing link is used (a link can come from anywhere). */
@@ -87,6 +99,7 @@ fun PairingDialog(vm: BoardViewModel) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("This phone will show the tasks on ${link.computer}, and changes you make here are made there. Your tasks on this phone stay here, untouched, for when you disconnect.")
+                PhoneNameField(vm)
                 vm.pairingProblem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (vm.pairingBusy) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

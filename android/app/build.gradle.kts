@@ -60,5 +60,7 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.3")
     // Scanning a computer's pairing QR code: on the phone, offline, without Google Play services.
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    // Connected to a computer, a check every 15 minutes or so with the app closed (reminders added there still ring).
+    implementation("androidx.work:work-runtime:2.9.1")
     testImplementation("junit:junit:4.13.2")
 }
