@@ -67,6 +67,12 @@ fun ConnectToComputer(vm: BoardViewModel) {
                 "Use the tasks on your computer from this phone, at home on the same Wi-Fi or anywhere with Tailscale. On the computer, open Todo Tracker › Settings › Phones › Connect a phone, then scan its code.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (vm.syncOn) {
+                Text(
+                    "This phone syncs on its own now. Connecting turns that off (your computer syncs the tasks then); the tasks on this phone stay here.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             var pasted by rememberSaveable { mutableStateOf("") }
             PhoneNameField(vm)
             Button(onClick = scan) { Text("Scan the code") }
@@ -98,7 +104,7 @@ fun PairingDialog(vm: BoardViewModel) {
         title = { Text("Connect to ${link.computer}?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("This phone will show the tasks on ${link.computer}, and changes you make here are made there. Your tasks on this phone stay here, untouched, for when you disconnect.")
+                Text("This phone will show the tasks on ${link.computer}, and changes you make here are made there. Your tasks on this phone stay here, untouched, for when you disconnect." + if (vm.syncOn) " Sync on this phone turns off." else "")
                 PhoneNameField(vm)
                 vm.pairingProblem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (vm.pairingBusy) {

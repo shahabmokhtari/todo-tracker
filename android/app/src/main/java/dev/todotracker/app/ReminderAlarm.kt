@@ -19,7 +19,7 @@ import dev.todotracker.R
 import dev.todotracker.core.Actor
 import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.BoardException
-import dev.todotracker.core.BoardFileStore
+import dev.todotracker.core.LocalBoard
 import dev.todotracker.core.DueReminder
 import dev.todotracker.core.PhoneException
 import dev.todotracker.core.Reminders
@@ -27,28 +27,23 @@ import dev.todotracker.core.RemoteAction
 import dev.todotracker.core.RemoteReminders
 import dev.todotracker.core.TaskBoard
 import dev.todotracker.core.TaskLinks
-import java.io.File
+import dev.todotracker.core.vault.VaultStore
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.launch
 
 /**
- * The one board on this phone, whoever changes it: the app while it runs (its view model registers as [live]), or,
- * with the app closed, an alarm or a notification button reading and writing the file. One at a time ([lock]).
+ * The one board on this phone, whoever changes it: its tasks folder ([store], one for the whole app: the screens, the
+ * alarms, notification buttons and sync all go through it, one change at a time). While the app runs its view model
+ * registers as [live] (it shows the board and is told when it changed underneath).
  */
 object BoardHub {
-    /** Held while the board file is read or written. */
-    val lock = Any()
-
-    /**
-     * Where the file is read and written, one thing at a time and in order, for the whole app (not one screen): a save
-     * asked for just before the app closes still happens, and is done before anything reads the file again.
-     */
+    /** Where changes made with the app closed are written, one at a time and in order, off the main thread. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val disk = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1))
 
-    /** The running app's board: changes go through it (so the screen and the file agree). Read and set on the main thread. */
+    /** The running app's board: changes go through it (so the screen and the files agree). Read and set on the main thread. */
     @Volatile
     var live: LiveBoard? = null
 
@@ -58,16 +53,24 @@ object BoardHub {
 
         /** Connected to a computer: something changed there (from a notification), or a reminder is due: read it again. */
         fun remoteChanged()
+
+        /** The tasks folder changed underneath (a sync with the app in the background): show it again. */
+        fun reloadLocal()
     }
 
-    fun file(context: Context) = File(context.filesDir, "board.json")
+    private var opened: LocalBoard.Opened? = null
 
-    /** Runs [read] on the disk queue (after every save asked for before it) and waits for it. */
-    fun <T> readNow(read: () -> T): T = kotlinx.coroutines.runBlocking(disk.coroutineContext) { synchronized(lock) { read() } }
+    /** The phone's tasks folder, opened once per process (the first time, board.json moves into it). */
+    fun local(context: Context): LocalBoard.Opened = synchronized(this) {
+        opened ?: LocalBoard.open(context.applicationContext.filesDir).also { opened = it }
+    }
+
+    /** The one store on the tasks folder; null when it can't be used (a board.json from a newer app: changes are off). */
+    fun store(context: Context): VaultStore? = local(context).store
 
     /**
      * Applies [action] to the board: through the running app, or (the app closed meanwhile, or not running) on the
-     * saved file, then saved and the next reminder set. The result says whether the board took it.
+     * tasks folder, then the next reminder set. The result says whether the board took it.
      */
     fun change(context: Context, action: (TaskBoard, Instant) -> Unit, done: (Result<Unit>) -> Unit) {
         val main = Handler(Looper.getMainLooper())
@@ -79,19 +82,38 @@ object BoardHub {
                 return@post
             }
             disk.launch {
-                val result = synchronized(lock) {
-                    runCatching {
-                        val store = BoardFileStore(file(context))
-                        // A board this app can't read (a newer version, damaged) is never written over from here.
-                        val board = store.load().also { if (store.problem != null) throw BoardException("Open the app to check your board.") }
-                        val now = Instant.now()
+                val result = runCatching {
+                    // A board this app can't read (a newer version) is never written over from here.
+                    val store = store(context) ?: throw BoardException("Open the app to check your board.")
+                    val now = Instant.now()
+                    store.update { board ->
                         action(board, now)
                         ReminderAlarm.deliver(context, board, now)
-                        store.save(board)
-                        ReminderAlarm.schedule(context, Reminders.nextAt(board, now))
                     }
+                    ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
                 }
+                if (result.isSuccess) SyncHub.soonInBackground(context)
                 main.post { done(result) }
+            }
+        }
+    }
+
+    /** Sync changed the tasks folder (from a worker): shown again in the app, or its reminders told and set. */
+    fun reloaded(context: Context) {
+        val main = Handler(Looper.getMainLooper())
+        main.post {
+            val app = live
+            if (app != null) {
+                app.reloadLocal()
+                return@post
+            }
+            disk.launch {
+                runCatching {
+                    val store = store(context) ?: return@runCatching
+                    val now = Instant.now()
+                    if (store.read { Reminders.due(it, now).isNotEmpty() }) store.update { ReminderAlarm.deliver(context, it, now) }
+                    ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
+                }
             }
         }
     }

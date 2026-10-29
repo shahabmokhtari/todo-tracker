@@ -16,7 +16,6 @@ import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.Breaks
 import dev.todotracker.core.PhaseEnd
 import dev.todotracker.core.Reminders
-import java.io.File
 import java.time.Instant
 
 /**
@@ -114,8 +113,9 @@ class RestartReceiver : BroadcastReceiver() {
                     RemoteAlarm.due(context.applicationContext, connection) { pending.finish() }
                     return@Thread
                 }
-                val file = File(context.filesDir, "board.json")
-                val board = synchronized(BoardHub.lock) { runCatching { BoardCodec.decode(file.readText()) }.getOrNull() } ?: return@Thread
+                // Syncing on its own: the checks with the app closed go on after a restart (WorkManager keeps them anyway).
+                if (SyncHub.get(context)?.on == true) SyncHub.startBackground(context)
+                val board = runCatching { BoardHub.store(context)?.snapshot() }.getOrNull() ?: return@Thread
                 val ends = Breaks.phaseEnds(board.pomodoro)
                 FocusAlarm.schedule(context, ends)
                 Breaks.missed(ends, Instant.now())?.let { FocusAlarm.notify(context, it) }
