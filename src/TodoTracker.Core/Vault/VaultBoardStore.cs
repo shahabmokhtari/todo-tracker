@@ -1015,9 +1015,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         foreach (var (rel, text, _) in writes.OrderByDescending(w => w.Gained))
         {
             plan.Touched.Add(rel);
+            var isNew = !next.Files.ContainsKey(rel);
             next.Files[rel] = new FileState(text, text, default, null);
             next.Layouts.Remove(rel);
-            plan.Operations.Add(undo => WriteTaskFile(rel, text, undo));
+            plan.Operations.Add(undo => WriteTaskFile(rel, text, isNew, undo));
         }
 
         // Top-level tasks that are gone (deleted, or now a subtask) go to the trash.
@@ -1204,12 +1205,21 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         undo.Push(() => Directory.Move(target, source));
     }
 
-    private void WriteTaskFile(string rel, string text, Stack<Action> undo)
+    /// <summary>Writes a task file; a new one (<paramref name="isNew"/>) never replaces a file that appeared meanwhile: the change is worked out again.</summary>
+    private void WriteTaskFile(string rel, string text, bool isNew, Stack<Action> undo)
     {
         _options.BeforeWrite?.Invoke(rel);
         var full = VaultFiles.Full(_root, rel);
-        var previous = File.Exists(full) ? File.ReadAllText(full) : null;
-        VaultFiles.WriteAtomic(full, text);
+        var previous = !isNew && File.Exists(full) ? File.ReadAllText(full) : null;
+        try
+        {
+            VaultFiles.WriteAtomic(full, text, replace: !isNew);
+        }
+        catch (IOException) when (isNew && File.Exists(full))
+        {
+            throw new VaultConflictException(rel);
+        }
+
         undo.Push(() =>
         {
             if (previous is null)

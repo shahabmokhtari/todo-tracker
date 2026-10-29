@@ -223,7 +223,8 @@ between writing contents and its list); refresh the time of blobs still in use (
 **A gist** (`GistRemote` port): `GET /gists?per_page=100` (up to 5 pages) to find the oldest gist described
 `Todo Tracker sync: <library>` (case-insensitive) that has `todo-tracker-sync.md`; `If-None-Match` with the ETag
 (304 = nothing new); files over the API's inline size come back `truncated` with a `raw_url` (fetch it, sending the
-token only to `*.githubusercontent.com` / `api.github.com`); publish = `PATCH` of `device-<id>.json` only (or `POST`
+token only to `api.github.com` and `gist.githubusercontent.com`, over https; redirects are followed by hand, at most
+5, https only, the host checked again at each hop before the token goes along); publish = `PATCH` of `device-<id>.json` only (or `POST`
 creating the gist with the marker the first time); the new version counts as "seen" only when the gist's history
 shows the version before ours is the one we read. Refuse a bundle over 9 MB with the C# message.
 Sign-in: GitHub's **device flow** (an OAuth app's public client id, scope `gist`, no secret on the phone), or a pasted

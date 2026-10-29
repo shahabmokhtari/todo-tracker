@@ -52,9 +52,7 @@ public sealed class GistRemote : ISyncRemote
             return;
         }
 
-        using var request = await RequestAsync(HttpMethod.Patch, $"/gists/{id}", cancellationToken).ConfigureAwait(false);
-        request.Content = Body(new JsonObject { ["files"] = new JsonObject { [$"device-{device}.json"] = null } });
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        using var response = await SendAsync(HttpMethod.Patch, $"/gists/{id}", new JsonObject { ["files"] = new JsonObject { [$"device-{device}.json"] = null } }, cancellationToken).ConfigureAwait(false);
         await EnsureAsync(response, cancellationToken).ConfigureAwait(false);
     }
 
@@ -66,13 +64,8 @@ public sealed class GistRemote : ISyncRemote
             return knownVersion == "none" ? null : new RemoteSnapshot([], "none", SelfMissing: true);
         }
 
-        using var request = await RequestAsync(HttpMethod.Get, $"/gists/{id}", cancellationToken).ConfigureAwait(false);
-        if (knownVersion is not null && Split(knownVersion).ETag is { Length: > 0 } etag && EntityTagHeaderValue.TryParse(etag, out var tag))
-        {
-            request.Headers.IfNoneMatch.Add(tag);
-        }
-
-        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        var tag = knownVersion is not null && Split(knownVersion).ETag is { Length: > 0 } etag && EntityTagHeaderValue.TryParse(etag, out var parsed) ? parsed : null;
+        using var response = await SendAsync(HttpMethod.Get, $"/gists/{id}", null, cancellationToken, tag).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotModified)
         {
             return null;
@@ -151,22 +144,14 @@ public sealed class GistRemote : ISyncRemote
         var files = new JsonObject { [$"device-{snapshot.Device}.json"] = new JsonObject { ["content"] = bundle } };
 
         var id = await GistIdAsync(cancellationToken).ConfigureAwait(false);
-        HttpRequestMessage request;
         if (id is null)
         {
             files[Marker] = new JsonObject { ["content"] = "# Todo Tracker sync\n\nTodo Tracker keeps each device's tasks here to sync them. Don't edit these files.\n" };
-            request = await RequestAsync(HttpMethod.Post, "/gists", cancellationToken).ConfigureAwait(false);
-            request.Content = Body(new JsonObject { ["description"] = _description, ["public"] = false, ["files"] = files });
-        }
-        else
-        {
-            request = await RequestAsync(HttpMethod.Patch, $"/gists/{id}", cancellationToken).ConfigureAwait(false);
-            request.Content = Body(new JsonObject { ["files"] = files });
         }
 
-        using (request)
+        var body = id is null ? new JsonObject { ["description"] = _description, ["public"] = false, ["files"] = files } : new JsonObject { ["files"] = files };
         {
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var response = await SendAsync(id is null ? HttpMethod.Post : HttpMethod.Patch, id is null ? "/gists" : $"/gists/{id}", body, cancellationToken).ConfigureAwait(false);
             await EnsureAsync(response, cancellationToken).ConfigureAwait(false);
             var gist = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false))!;
             if (id is null && gist["id"]?.GetValue<string>() is { } created)
@@ -196,8 +181,6 @@ public sealed class GistRemote : ISyncRemote
     }
 
     private static string? Revision(JsonNode gist) => gist["history"]?.AsArray() is { Count: > 0 } history ? history[0]?["version"]?.GetValue<string>() : null;
-
-    private static StringContent Body(JsonNode body) => new(body.ToJsonString(), Encoding.UTF8, "application/json");
 
     private static async Task EnsureAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
@@ -231,8 +214,7 @@ public sealed class GistRemote : ISyncRemote
         var found = new List<(string Id, string Created)>();
         for (var page = 1; page <= 5; page++)
         {
-            using var request = await RequestAsync(HttpMethod.Get, $"/gists?per_page=100&page={page}", cancellationToken).ConfigureAwait(false);
-            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            using var response = await SendAsync(HttpMethod.Get, $"/gists?per_page=100&page={page}", null, cancellationToken).ConfigureAwait(false);
             await EnsureAsync(response, cancellationToken).ConfigureAwait(false);
             var gists = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false))!.AsArray();
             foreach (var gist in gists)
@@ -266,11 +248,8 @@ public sealed class GistRemote : ISyncRemote
 
     private async Task<string> RawAsync(string url, CancellationToken cancellationToken)
     {
-        // The token only ever goes to GitHub.
-        var uri = new Uri(url);
-        var github = uri.Scheme == Uri.UriSchemeHttps && (uri.Host == "gist.githubusercontent.com" || uri.Host.EndsWith(".githubusercontent.com", StringComparison.OrdinalIgnoreCase) || uri.Host == "api.github.com");
-        using var request = github ? await RequestAsync(HttpMethod.Get, url, cancellationToken).ConfigureAwait(false) : new HttpRequestMessage(HttpMethod.Get, uri);
-        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        // The token only ever goes to GitHub's API and gist hosts (SendAsync checks every hop).
+        using var response = await SendAsync(HttpMethod.Get, url, null, cancellationToken, completion: HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
         await EnsureAsync(response, cancellationToken).ConfigureAwait(false);
         if (response.Content.Headers.ContentLength > MaxBundleBytes * 2L)
         {
@@ -280,14 +259,71 @@ public sealed class GistRemote : ISyncRemote
         return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<HttpRequestMessage> RequestAsync(HttpMethod method, string path, CancellationToken cancellationToken)
+    /// <summary>The only hosts the token is ever sent to (over https).</summary>
+    internal static readonly string[] TokenHosts = ["api.github.com", "gist.githubusercontent.com"];
+
+    private const int MaxRedirects = 5;
+
+    private static bool IsTokenHost(Uri uri) =>
+        uri.Scheme == Uri.UriSchemeHttps && TokenHosts.Contains(uri.IdnHost, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Sends a request to GitHub and follows redirects by hand (at most 5, https only): the token goes only to
+    /// <see cref="TokenHosts"/>, checked again at every hop, so a redirect can never carry it anywhere else. (The
+    /// HttpClient given should not follow redirects itself; .NET would drop the token on its own redirects anyway.)
+    /// </summary>
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, JsonNode? body, CancellationToken cancellationToken, EntityTagHeaderValue? ifNoneMatch = null, HttpCompletionOption completion = HttpCompletionOption.ResponseContentRead)
     {
-        var request = new HttpRequestMessage(method, path.StartsWith("https://", StringComparison.Ordinal) ? new Uri(path) : new Uri(Api + path));
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _token(cancellationToken).ConfigureAwait(false));
-        request.Headers.Accept.ParseAdd("application/vnd.github+json");
-        request.Headers.UserAgent.ParseAdd("TodoTracker-Sync");
-        request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
-        return request;
+        var uri = path.StartsWith("https://", StringComparison.Ordinal) ? new Uri(path) : new Uri(Api + path);
+        var content = body?.ToJsonString();
+        for (var hop = 0; ; hop++)
+        {
+            using var request = new HttpRequestMessage(method, uri);
+            if (IsTokenHost(uri))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _token(cancellationToken).ConfigureAwait(false));
+            }
+
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            request.Headers.UserAgent.ParseAdd("TodoTracker-Sync");
+            request.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+            if (ifNoneMatch is not null)
+            {
+                request.Headers.IfNoneMatch.Add(ifNoneMatch);
+            }
+
+            if (content is not null)
+            {
+                request.Content = new StringContent(content, Encoding.UTF8, "application/json");
+            }
+
+            var response = await _http.SendAsync(request, completion, cancellationToken).ConfigureAwait(false);
+            if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308) || response.Headers.Location is not { } location)
+            {
+                return response;
+            }
+
+            var status = response.StatusCode;
+            response.Dispose();
+            var next = location.IsAbsoluteUri ? location : new Uri(uri, location);
+            if (hop >= MaxRedirects)
+            {
+                throw new HttpRequestException("GitHub redirected too many times.", null, status);
+            }
+
+            if (next.Scheme != Uri.UriSchemeHttps)
+            {
+                throw new HttpRequestException($"GitHub redirected to a page that isn't secure ({next.Host}).", null, status);
+            }
+
+            if (status == HttpStatusCode.SeeOther || (status is HttpStatusCode.Moved or HttpStatusCode.Found && method == HttpMethod.Post))
+            {
+                method = HttpMethod.Get;
+                content = null;
+            }
+
+            uri = next;
+        }
     }
 
     private sealed record Bundle(DeviceSnapshot Snapshot, Dictionary<string, string>? Contents);

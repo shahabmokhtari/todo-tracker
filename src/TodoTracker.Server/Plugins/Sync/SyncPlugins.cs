@@ -25,7 +25,8 @@ public sealed record SyncToolRequest(string? Key, string? Tool, string? Place = 
 /// <summary>A private GitHub gist (picked by the person; signs in with the GitHub CLI or GH_TOKEN/GITHUB_TOKEN).</summary>
 public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncProvider
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+    // Redirects are followed by GistRemote itself, which checks every hop before sending the token on.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(60) };
     private readonly Lock _lock = new();
     private Task<string?>? _lookup;
     private DateTime _lookedUp;

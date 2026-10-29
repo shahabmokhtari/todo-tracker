@@ -87,7 +87,8 @@ public sealed partial class VaultBoardStore
                             break;
                         case SyncOpKind.Write:
                             var before = File.Exists(full) ? File.ReadAllBytes(full!) : null;
-                            VaultFiles.WriteAtomic(full!, op.Content!);
+                            // A file the plan expects not to exist yet is never written over if it appeared meanwhile.
+                            VaultFiles.WriteAtomic(full!, op.Content!, replace: op.Expected is not null);
                             undo.Push(() =>
                             {
                                 if (before is null)
