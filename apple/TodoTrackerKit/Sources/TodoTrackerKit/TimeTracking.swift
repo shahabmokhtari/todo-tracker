@@ -121,6 +121,8 @@ extension TaskBoard {
         stopTimers(allItems, now: now)
         let entry = TimeEntry(start: now, source: source, device: Self.thisDevice)
         item.timeEntries.append(entry)
+        // Starting work on a card moves it to Doing.
+        if !item.root.isDone, item.root.stage != .doing { item.root.stage = .doing }
         return entry
     }
 }

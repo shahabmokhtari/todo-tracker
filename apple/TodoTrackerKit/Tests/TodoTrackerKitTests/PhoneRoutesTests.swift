@@ -15,7 +15,7 @@ final class PhoneRoutesTests: XCTestCase {
         ("POST", "/api/items"),
         ("PATCH", "/api/items/\(id)"),
         ("DELETE", "/api/items/\(id)"),
-        ("POST", "/api/items/\(id)/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder|plan)"),
+        ("POST", "/api/items/\(id)/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder|plan|stage)"),
         ("POST", "/api/items/\(id)/reminders/\(id)/dismiss"),
         ("POST", "/api/now/(order|first)"),
         ("GET", "/api/energy"),
