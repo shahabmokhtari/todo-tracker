@@ -49,6 +49,8 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
 /// screen, the task's details. On a narrow one (iPhone, an iPad in Slide Over or a narrow Split View) the views are tabs
 /// and the details a sheet.
 public struct AppShell: View {
+    /// The app window's scene ("New Window" opens another).
+    public static let sceneId = "main"
     @ObservedObject var model: BoardModel
     @StateObject private var shell: ShellState
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -431,6 +433,7 @@ struct SearchFilterBar: View {
 /// and what to do with the selected task.
 public struct TodoTrackerCommands: Commands {
     @FocusedObject private var shell: ShellState?
+    @Environment(\.openWindow) private var openWindow
 
     public init() {}
 
@@ -439,6 +442,9 @@ public struct TodoTrackerCommands: Commands {
             Button("New Task") { shell?.quickAdd = true }
                 .keyboardShortcut("n")
                 .disabled(shell == nil)
+            // ⌘N is a new task: another window (or the window again, once closed) is ⇧⌘N.
+            Button("New Window") { openWindow(id: AppShell.sceneId) }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
         }
         CommandGroup(after: .sidebar) {
             ForEach(SidebarItem.views) { item in

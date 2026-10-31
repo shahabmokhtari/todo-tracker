@@ -47,7 +47,7 @@ struct TodoTrackerApp: App {
 
     var body: some Scene {
         #if os(macOS)
-        WindowGroup("Todo Tracker") {
+        WindowGroup("Todo Tracker", id: AppShell.sceneId) {
             shell.frame(minWidth: 360, minHeight: 480)
                 .onAppear { startOnce() }
         }
@@ -75,7 +75,7 @@ struct TodoTrackerApp: App {
         }
         .menuBarExtraStyle(.window)
         #else
-        WindowGroup("Todo Tracker") {
+        WindowGroup("Todo Tracker", id: AppShell.sceneId) {
             shell
                 // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
                 .onChange(of: scenePhase) { _, phase in
