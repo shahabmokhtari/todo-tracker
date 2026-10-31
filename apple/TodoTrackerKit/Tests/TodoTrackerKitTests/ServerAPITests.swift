@@ -99,4 +99,14 @@ final class ServerAPITests: XCTestCase {
         XCTAssertEqual(ServerClient.message(Data(#"{"error":"Task not found"}"#.utf8), status: 404), "Task not found")
         XCTAssertEqual(ServerClient.message(Data(), status: 500), "The server said no (HTTP 500).")
     }
+
+    /// Planning goes through PlanEndpoints (POST /api/items/{id}/plan): a start (and a length, else what it had), or none
+    /// to take it off the plan.
+    func testPlanningATaskAndTakingItOffThePlan() {
+        let at = BoardCodec.parseDate("2026-10-29T08:00:00.000Z")!
+        XCTAssertEqual(request(.plan(item, start: at, minutes: 90)),
+                       ServerRequest(method: "POST", path: "\(itemPath)/plan", body: #"{"minutes":90,"start":"2026-10-29T08:00:00.000Z"}"#))
+        XCTAssertEqual(request(.plan(item, start: at, minutes: nil)).body, #"{"start":"2026-10-29T08:00:00.000Z"}"#)
+        XCTAssertEqual(request(.unplan(item)), ServerRequest(method: "POST", path: "\(itemPath)/plan", body: "{}"))
+    }
 }

@@ -406,6 +406,8 @@ public sealed class PhoneTests
         await phone.PostOk("/api/pomodoro/reset", new { });
         await phone.PostOk("/api/timer/start", new { itemId = id });
         await phone.PostOk("/api/timer/stop", new { });
+        await phone.PostOk($"/api/items/{id}/plan", new { start = ServerFixture.T0.AddHours(2), minutes = 45 });
+        await phone.PostOk($"/api/items/{id}/plan", new { });
         Assert.Equal(HttpStatusCode.OK, (await phone.GetAsync(new Uri("/api/energy", UriKind.Relative), Cancel)).StatusCode);
         (await phone.PutAsJsonAsync("/api/energy", new { perDay = 12 }, Cancel)).EnsureSuccessStatusCode();
         (await phone.PatchAsJsonAsync($"/api/groups/{group.Id()}", new { name = "House" }, Cancel)).EnsureSuccessStatusCode();

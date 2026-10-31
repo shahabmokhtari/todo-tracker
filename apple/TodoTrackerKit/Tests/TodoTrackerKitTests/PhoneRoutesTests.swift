@@ -15,7 +15,7 @@ final class PhoneRoutesTests: XCTestCase {
         ("POST", "/api/items"),
         ("PATCH", "/api/items/\(id)"),
         ("DELETE", "/api/items/\(id)"),
-        ("POST", "/api/items/\(id)/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder)"),
+        ("POST", "/api/items/\(id)/(complete|reopen|archive|unarchive|notes|schedule|after|steps|reminders|move|reorder|plan)"),
         ("POST", "/api/items/\(id)/reminders/\(id)/dismiss"),
         ("POST", "/api/now/(order|first)"),
         ("GET", "/api/energy"),
@@ -45,7 +45,7 @@ final class PhoneRoutesTests: XCTestCase {
             .addGroup(name: "g"), .updateGroup(a, name: "g", color: nil), .deleteGroup(a, moveTo: b),
             .pomodoro(.start, itemId: a), .pomodoro(.pause, itemId: nil), .pomodoro(.resume, itemId: nil), .pomodoro(.skip, itemId: nil),
             .pomodoro(.reset, itemId: nil), .pomodoro(.next, itemId: a), .startTimer(a), .stopTimer, .setTheme("dark"),
-            .archive(a), .unarchive(a),
+            .archive(a), .unarchive(a), .plan(a, start: Date(), minutes: 45), .unplan(a),
         ]
         for action in actions {
             let request = ServerAPI.request(for: action)

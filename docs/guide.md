@@ -259,6 +259,20 @@ Workstreams and Recent notes (tap one to open its task).
   also where your tasks are, **Computer** and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
+* **Plan** (a week as a time grid; a day at a time on iPhone): drag a task from *Not planned* onto a time to plan a block
+  of work on it, drag a block to move it (on a touch screen, hold it first), drag its bottom edge to make it longer or
+  shorter (a quarter of an hour at a time). Tap a block to open its task. Without dragging: the calendar button on a
+  task (*Plan…*), a tap on an empty time, or a block's menu (earlier, later, longer, shorter, *Take off the plan*); with a
+  keyboard, the arrow keys move a selected block, Shift with up and down changes its length, Return opens it and Delete
+  takes it off the plan. While a block is on, its task is the thing to do now. Each day shows its deadlines, what comes
+  back that day, and its energy (⚡ planned against what there is in a day; red when it's more). *Work hours* or *Full
+  day*, and the gear sets work hours, work days and the day a week starts on, for each group on this device. Connected to
+  a computer (or on a Mac), planning goes to the computer's tasks like every other change.
+* **Reports**: time tracked, focus sessions, tasks done and your longest streak for 7 days, 4 weeks, 3 months, a year or
+  dates you pick; time per day (focus and other time), by group, the tasks that took the most time, when you work
+  (weekday × hour), active days (for 3 months or more), and the **Timeline**: a row per task with bars for its work, a
+  line from when it was made to when it was done (or is due), ◆ due and ● done. Tap a task to open it. The numbers are
+  the same as on your computer's Reports.
 
 ### Sync an iPhone or iPad with your other devices
 
