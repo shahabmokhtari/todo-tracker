@@ -65,7 +65,7 @@ public final class BoardModel: ObservableObject {
     public let sync: SyncModel?
     private var timer: Timer?
     private var lastRefresh = Date.distantPast
-    private var server: ServerClient?
+    private(set) var server: ServerClient?
     /// Bumped by every change and every read: a read only lands if nothing happened since it started (so an older
     /// board never replaces a newer one).
     private var generation = 0
@@ -316,7 +316,7 @@ public final class BoardModel: ObservableObject {
     }
 
     /// Sends a change to the server, then reads the board back.
-    private func send(_ action: ServerAction, _ message: String?, onDone: ((Data) -> Void)? = nil, onFail: (() -> Void)? = nil) {
+    func send(_ action: ServerAction, _ message: String?, onDone: ((Data) -> Void)? = nil, onFail: (() -> Void)? = nil) {
         guard let server else { return }
         changesInFlight += 1
         generation += 1
@@ -335,7 +335,7 @@ public final class BoardModel: ObservableObject {
     }
 
     /// While the tasks folder is opening, changes wait (says so). True when it's opening.
-    private func waitWhileConnecting() -> Bool {
+    func waitWhileConnecting() -> Bool {
         if isRemote, remote?.canChange != true {
             // Nothing is changed on the copy shown: it goes to the computer once it answers again.
             status = remoteBanner ?? "One moment: connecting to \(remoteComputer ?? "your computer")…"
@@ -356,7 +356,7 @@ public final class BoardModel: ObservableObject {
         }
         return mutate(message, local)
     }
-    private static func describe(_ error: Error) -> String {
+    static func describe(_ error: Error) -> String {
         (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
@@ -704,7 +704,7 @@ public final class BoardModel: ObservableObject {
         mutate("Focus timer saved") { _ in try board.setPomodoroSettings(settings) }
     }
 
-    private static func isBlank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    static func isBlank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     public func startFocus(_ id: UUID?) {
         let target = id ?? dashboard.focus?.item.id
@@ -1040,7 +1040,7 @@ public final class BoardModel: ObservableObject {
     // MARK: Plumbing
 
     @discardableResult
-    private func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
+    func mutate(_ message: String?, _ change: (Date) throws -> Void) -> Bool {
         guard !isRemote else { return false }
         guard !isReadOnly, storeFailure == nil else {
             status = storeFailure ?? (store?.wasMigrated == true

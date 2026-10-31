@@ -46,6 +46,9 @@ final class PhoneRoutesTests: XCTestCase {
             .pomodoro(.start, itemId: a), .pomodoro(.pause, itemId: nil), .pomodoro(.resume, itemId: nil), .pomodoro(.skip, itemId: nil),
             .pomodoro(.reset, itemId: nil), .pomodoro(.next, itemId: a), .startTimer(a), .stopTimer, .setTheme("dark"),
             .archive(a), .unarchive(a), .plan(a, start: Date(), minutes: 45), .unplan(a),
+            .boardMove(.stage(a, .doing)), .boardMove(.complete(a)), .boardMove(.move(a, parentId: b, groupId: nil, index: nil)),
+            .boardMove(.move(a, parentId: nil, groupId: b, index: 0)), .boardMove(.reorder(a, before: b)), .boardMove(.reorderAfter(a, after: b)),
+            .addTask(title: "t", parentId: nil, groupId: b, stage: .next),
         ]
         for action in actions {
             let request = ServerAPI.request(for: action)

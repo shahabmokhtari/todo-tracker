@@ -43,6 +43,10 @@ public enum ServerAction: Equatable, Sendable {
     /// A block of time to work on a task (minutes nil: what it had, else 30), or taken off the plan.
     case plan(UUID, start: Date, minutes: Int?)
     case unplan(UUID)
+    /// One change of a move on the Board or in the Tasks outline.
+    case boardMove(BoardMove)
+    /// A new task: under a parent, or at the top of a group in a column (nil: the server's defaults).
+    case addTask(title: String, parentId: UUID?, groupId: UUID?, stage: Stage?)
 }
 
 public enum PomodoroCommand: String, Sendable {
@@ -133,6 +137,28 @@ public enum ServerAPI {
             return post("/api/items/\(id(item))/plan", ["start": BoardCodec.formatDate(start), "minutes": minutes])
         case let .unplan(item):
             return post("/api/items/\(id(item))/plan", [:])
+        case let .boardMove(move):
+            return request(for: move)
+        case let .addTask(title, parentId, groupId, stage):
+            return post("/api/items", ["title": title, "parentId": parentId.map(id), "groupId": groupId.map(id), "stage": stage?.rawValue])
+        }
+    }
+
+    /// MoveRequest and ReorderRequest (ApiEndpoints.cs), StageRequest (BoardTimeEndpoints.cs).
+    private static func request(for move: BoardMove) -> ServerRequest {
+        switch move {
+        case let .complete(item):
+            return post("/api/items/\(id(item))/complete")
+        case let .stage(item, stage):
+            return post("/api/items/\(id(item))/stage", ["stage": stage.rawValue])
+        case let .move(item, parentId?, _, index):
+            return post("/api/items/\(id(item))/move", ["parentId": id(parentId), "index": index])
+        case let .move(item, nil, groupId, index):
+            return post("/api/items/\(id(item))/move", ["toTopLevel": true, "groupId": groupId.map(id), "index": index])
+        case let .reorder(item, before):
+            return post("/api/items/\(id(item))/reorder", ["before": before.map(id)])
+        case let .reorderAfter(item, after):
+            return post("/api/items/\(id(item))/reorder", ["after": id(after)])
         }
     }
 

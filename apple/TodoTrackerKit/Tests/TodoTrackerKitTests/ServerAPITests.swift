@@ -34,6 +34,26 @@ final class ServerAPITests: XCTestCase {
         XCTAssertEqual(request(.edit(item, TaskChanges(repeatRule: ""))).body, #"{"repeat":""}"#, "blank stops it repeating")
     }
 
+    /// The Board and Tasks views: the same requests as the web app's boardmodel.js and outlinemodel.js.
+    func testBoardAndOutlineMoves() {
+        let otherId = "8b0f2c1e-1111-4a6b-9c1d-000000000002"
+        XCTAssertEqual(request(.boardMove(.stage(item, .doing))), ServerRequest(method: "POST", path: "\(itemPath)/stage", body: #"{"stage":"doing"}"#))
+        XCTAssertEqual(request(.boardMove(.complete(item))), ServerRequest(method: "POST", path: "\(itemPath)/complete"))
+        XCTAssertEqual(request(.boardMove(.move(item, parentId: other, groupId: nil, index: nil))),
+                       ServerRequest(method: "POST", path: "\(itemPath)/move", body: "{\"parentId\":\"\(otherId)\"}"))
+        XCTAssertEqual(request(.boardMove(.move(item, parentId: nil, groupId: other, index: 0))).body,
+                       "{\"groupId\":\"\(otherId)\",\"index\":0,\"toTopLevel\":true}")
+        XCTAssertEqual(request(.boardMove(.move(item, parentId: nil, groupId: nil, index: nil))).body, #"{"toTopLevel":true}"#)
+        XCTAssertEqual(request(.boardMove(.reorder(item, before: other))),
+                       ServerRequest(method: "POST", path: "\(itemPath)/reorder", body: "{\"before\":\"\(otherId)\"}"))
+        XCTAssertEqual(request(.boardMove(.reorder(item, before: nil))).body, "{}", "no place: last")
+        XCTAssertEqual(request(.boardMove(.reorderAfter(item, after: other))).body, "{\"after\":\"\(otherId)\"}")
+        XCTAssertEqual(request(.addTask(title: "Plan", parentId: nil, groupId: other, stage: .doing)),
+                       ServerRequest(method: "POST", path: "/api/items", body: "{\"groupId\":\"\(otherId)\",\"stage\":\"doing\",\"title\":\"Plan\"}"))
+        XCTAssertEqual(request(.addTask(title: "Step", parentId: item, groupId: nil, stage: nil)).body,
+                       #"{"parentId":"8b0f2c1e-1111-4a6b-9c1d-000000000001","title":"Step"}"#)
+    }
+
     func testRemindersMovingAndArchiving() {
         let at = BoardCodec.parseDate("2026-01-05T16:30:00.000Z")!
         XCTAssertEqual(request(.addReminder(item, at: at, message: "Call back")),
