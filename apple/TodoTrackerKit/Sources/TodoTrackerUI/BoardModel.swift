@@ -348,7 +348,7 @@ public final class BoardModel: ObservableObject {
 
     /// A change: to the server when one is in use, else to the board on this device.
     @discardableResult
-    private func change(_ message: String?, server action: @autoclosure () -> ServerAction, local: (Date) throws -> Void) -> Bool {
+    func change(_ message: String?, server action: @autoclosure () -> ServerAction, local: (Date) throws -> Void) -> Bool {
         if waitWhileConnecting() { return false }
         if server != nil {
             send(action(), message)
