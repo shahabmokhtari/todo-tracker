@@ -69,8 +69,6 @@ public sealed record PlanRequest(DateTimeOffset? Start = null, int? Minutes = nu
 
 internal static class PlanEndpoints
 {
-    private const int MaxDays = 31;
-
     public static void Map(IEndpointRouteBuilder app)
     {
         var api = app.MapGroup("/api").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
@@ -83,30 +81,22 @@ internal static class PlanEndpoints
             var now = time.GetUtcNow();
             var first = from is null ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime)
                 : DateOnly.TryParseExact(from, "yyyy-MM-dd", out var d) ? d : throw new ArgumentException("from is a date like 2026-01-05.", nameof(from));
-            var count = Math.Clamp(days ?? 7, 1, MaxDays);
-            var start = At(first, zone);
-            var end = At(first.AddDays(count), zone);
+            var count = Math.Clamp(days ?? 7, 1, PlanDays.MaxDays);
             return store.ReadAsync(b =>
             {
-                bool InGroup(WorkItem i) => group is null || i.GroupId == group;
-                var items = b.AllItems().Where(i => !i.IsArchived && InGroup(i)).ToList();
-                var blocks = items.Where(i => i.PlannedAt is { } at && at < end && at + i.PlannedLength > start)
-                    .OrderBy(i => i.PlannedAt)
-                    .Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))
-                    .ToList();
-                var deadlines = items.Where(i => i.Deadline is { } dl && dl >= start && dl < end)
-                    .OrderBy(i => i.Deadline)
-                    .Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))
-                    .ToList();
-                var agenda = Agenda.Build(b, now, 0, group);
-                bool NotPlanned(AgendaEntry e) => e.Item.PlannedAt is null || e.Item.PlannedAt + e.Item.PlannedLength <= now;
+                var plan = PlanDays.Build(b, first, count, zone, now, group);
                 PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
                     e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title, e.Item.Energy);
-                var unplanned = agenda.Now.Where(NotPlanned).Select(Task).ToList();
-                var later = agenda.Waiting.Where(NotPlanned).Select(Task).ToList();
-                var energy = new PlanEnergyDto(b.DailyEnergy, Enumerable.Range(0, count).Select(first.AddDays)
-                    .ToDictionary(d => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), d => Energy.PlannedOn(b, d, zone)));
-                return new PlanDto(first.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), count, settings.PlanFor(Key(group)), blocks, deadlines, unplanned, later, energy);
+                static string Day(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                return new PlanDto(
+                    Day(first),
+                    count,
+                    settings.PlanFor(Key(group)),
+                    [.. plan.Blocks.Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))],
+                    [.. plan.Deadlines.Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))],
+                    [.. plan.Unplanned.Select(Task)],
+                    [.. plan.Later.Select(Task)],
+                    new PlanEnergyDto(b.DailyEnergy, plan.Energy.ToDictionary(e => Day(e.Key), e => e.Value)));
             });
         });
 
@@ -134,10 +124,4 @@ internal static class PlanEndpoints
     }
 
     private static string Key(Guid? group) => group?.ToString() ?? "all";
-
-    private static DateTimeOffset At(DateOnly day, TimeZoneInfo zone)
-    {
-        var wall = day.ToDateTime(TimeOnly.MinValue);
-        return new DateTimeOffset(wall, zone.GetUtcOffset(wall));
-    }
 }

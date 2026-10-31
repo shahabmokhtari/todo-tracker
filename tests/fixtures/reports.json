@@ -1,0 +1,1732 @@
+{
+  "about": "Reports between two local dates (inclusive) in the zone: time is the tracked time entries (a running timer counts until now), cut to the range and split at local midnights and hours; archived tasks count; a task's subtasks count for it. Seconds are whole (summed exactly, cut at the end). Groups: most time first; tasks: the top 15; hourGrid: [weekday 0 = Sunday][hour]; timeline: the 40 most worked rows, by when their work (else finish or creation) began. Checked by the C# core (ReportFixtureTests) and Swift (ReportFixtureTests).",
+  "zone": "Europe/Amsterdam",
+  "now": "2026-10-28T14:00:00Z",
+  "board": {
+    "schemaVersion": 1,
+    "groups": [
+      {
+        "id": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+        "name": "Work",
+        "color": "#3b82f6"
+      },
+      {
+        "id": "2dd4bffc-1ce4-44ce-a9d1-c3177f06c881",
+        "name": "Personal",
+        "color": "#22c55e"
+      },
+      {
+        "id": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+        "name": "Launch team",
+        "color": "#3b82f6"
+      }
+    ],
+    "items": [
+      {
+        "id": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+        "title": "Write the report",
+        "priority": "normal",
+        "createdAt": "2026-10-15T08:00:00.000Z",
+        "completedAt": "2026-10-21T13:00:00.000Z",
+        "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+        "stage": "inbox",
+        "time": [
+          {
+            "id": "c72d573c-088e-4629-9b82-3a3762bf0c4a",
+            "start": "2026-10-19T07:00:00.000Z",
+            "end": "2026-10-19T08:30:00.000Z",
+            "source": "manual"
+          }
+        ],
+        "children": [
+          {
+            "id": "273c2006-cff7-480f-a507-c51477323715",
+            "title": "Draft",
+            "priority": "normal",
+            "createdAt": "2026-10-19T07:00:00.000Z",
+            "completedAt": "2026-10-21T10:00:00.000Z",
+            "time": [
+              {
+                "id": "287d1a1b-394a-4cc3-8e35-cd19bbb58169",
+                "start": "2026-10-20T21:30:00.000Z",
+                "end": "2026-10-20T23:45:00.000Z",
+                "source": "manual"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+        "title": "Launch the site",
+        "priority": "normal",
+        "createdAt": "2026-10-10T08:00:00.000Z",
+        "deadline": "2026-10-30T16:00:00.000Z",
+        "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+        "stage": "doing",
+        "time": [
+          {
+            "id": "e6fc8b6c-3a84-4287-8863-d611ece11efe",
+            "start": "2026-10-22T08:00:00.000Z",
+            "end": "2026-10-22T08:25:00.000Z",
+            "source": "focus",
+            "device": "Shahabodins-MacBook-Pro"
+          },
+          {
+            "id": "8415cd5a-30ab-4c9a-8f02-825734afc155",
+            "start": "2026-10-24T23:30:00.000Z",
+            "end": "2026-10-25T02:30:00.000Z",
+            "source": "manual"
+          }
+        ]
+      },
+      {
+        "id": "b445b972-f3af-42c8-8832-17d911d2f3a9",
+        "title": "Inbox zero",
+        "priority": "normal",
+        "createdAt": "2026-10-01T08:00:00.000Z",
+        "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+        "stage": "inbox",
+        "time": [
+          {
+            "id": "6f495536-35da-44e1-b051-f699a0e18f60",
+            "start": "2026-10-18T21:00:00.000Z",
+            "end": "2026-10-18T23:00:00.000Z",
+            "source": "manual"
+          }
+        ]
+      },
+      {
+        "id": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+        "title": "Tax forms",
+        "priority": "normal",
+        "createdAt": "2026-10-05T08:00:00.000Z",
+        "completedAt": "2026-10-23T12:20:00.000Z",
+        "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+        "stage": "inbox",
+        "archivedAt": "2026-10-23T13:00:00.000Z",
+        "time": [
+          {
+            "id": "fcf28e8d-a50e-427a-8226-f54840726a9c",
+            "start": "2026-10-23T12:00:00.000Z",
+            "end": "2026-10-23T12:20:00.000Z",
+            "source": "manual"
+          }
+        ]
+      },
+      {
+        "id": "7ead2ae5-85d4-40fe-9e59-365fd64f710a",
+        "title": "Plan the offsite",
+        "priority": "normal",
+        "createdAt": "2026-10-27T09:00:00.000Z",
+        "deadline": "2026-11-05T09:00:00.000Z",
+        "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+        "stage": "inbox"
+      },
+      {
+        "id": "4ff7be19-9e1c-4c85-9bc2-b1e5cc7fc993",
+        "title": "Someday",
+        "priority": "normal",
+        "createdAt": "2026-09-01T08:00:00.000Z",
+        "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+        "stage": "inbox"
+      },
+      {
+        "id": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+        "title": "Prep the call",
+        "priority": "normal",
+        "createdAt": "2026-10-28T12:00:00.000Z",
+        "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+        "stage": "doing",
+        "time": [
+          {
+            "id": "0f652b3f-9ea5-4527-84de-f2b16a95609e",
+            "start": "2026-10-28T13:20:00.000Z",
+            "source": "manual",
+            "device": "Shahabodins-MacBook-Pro"
+          }
+        ]
+      }
+    ],
+    "activity": [
+      {
+        "at": "2026-10-01T08:00:00.000Z",
+        "itemId": "00000000-0000-0000-0000-000000000000",
+        "kind": "groupChanged",
+        "summary": "Added group \"Launch team\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-15T08:00:00.000Z",
+        "itemId": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+        "kind": "created",
+        "summary": "Created \"Write the report\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-19T07:00:00.000Z",
+        "itemId": "273c2006-cff7-480f-a507-c51477323715",
+        "kind": "created",
+        "summary": "Added \"Draft\" to \"Write the report\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T14:00:00.000Z",
+        "itemId": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+        "kind": "timeLogged",
+        "summary": "Logged 1 h 30 min on \"Write the report\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T14:00:00.000Z",
+        "itemId": "273c2006-cff7-480f-a507-c51477323715",
+        "kind": "timeLogged",
+        "summary": "Logged 2 h 15 min on \"Draft\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-21T10:00:00.000Z",
+        "itemId": "273c2006-cff7-480f-a507-c51477323715",
+        "kind": "completed",
+        "summary": "Completed \"Draft\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-21T13:00:00.000Z",
+        "itemId": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+        "kind": "completed",
+        "summary": "Completed \"Write the report\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-10T08:00:00.000Z",
+        "itemId": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+        "kind": "created",
+        "summary": "Created \"Launch the site\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-22T08:00:00.000Z",
+        "itemId": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+        "kind": "focusStarted",
+        "summary": "Focus started on \"Launch the site\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-22T08:25:00.000Z",
+        "itemId": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+        "kind": "focusCompleted",
+        "summary": "Focus session completed on \"Launch the site\"",
+        "actor": {
+          "kind": "system"
+        }
+      },
+      {
+        "at": "2026-10-28T14:00:00.000Z",
+        "itemId": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+        "kind": "timeLogged",
+        "summary": "Logged 3 h 00 min on \"Launch the site\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-01T08:00:00.000Z",
+        "itemId": "b445b972-f3af-42c8-8832-17d911d2f3a9",
+        "kind": "created",
+        "summary": "Created \"Inbox zero\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T14:00:00.000Z",
+        "itemId": "b445b972-f3af-42c8-8832-17d911d2f3a9",
+        "kind": "timeLogged",
+        "summary": "Logged 2 h 00 min on \"Inbox zero\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-05T08:00:00.000Z",
+        "itemId": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+        "kind": "created",
+        "summary": "Created \"Tax forms\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T14:00:00.000Z",
+        "itemId": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+        "kind": "timeLogged",
+        "summary": "Logged 20 min on \"Tax forms\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T12:20:00.000Z",
+        "itemId": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+        "kind": "completed",
+        "summary": "Completed \"Tax forms\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T13:00:00.000Z",
+        "itemId": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+        "kind": "archived",
+        "summary": "Archived \"Tax forms\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-27T09:00:00.000Z",
+        "itemId": "7ead2ae5-85d4-40fe-9e59-365fd64f710a",
+        "kind": "created",
+        "summary": "Created \"Plan the offsite\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-09-01T08:00:00.000Z",
+        "itemId": "4ff7be19-9e1c-4c85-9bc2-b1e5cc7fc993",
+        "kind": "created",
+        "summary": "Created \"Someday\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T12:00:00.000Z",
+        "itemId": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+        "kind": "created",
+        "summary": "Created \"Prep the call\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-28T13:20:00.000Z",
+        "itemId": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+        "kind": "timeLogged",
+        "summary": "Started the timer on \"Prep the call\"",
+        "actor": {
+          "kind": "user"
+        }
+      }
+    ],
+    "pomodoro": {
+      "settings": {
+        "focusMinutes": 25,
+        "shortBreakMinutes": 5,
+        "longBreakMinutes": 15,
+        "focusesBeforeLongBreak": 4
+      },
+      "phase": "idle",
+      "itemId": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+      "completedFocusCount": 1,
+      "breakEndedAt": "2026-10-22T08:30:00.000Z"
+    }
+  },
+  "cases": [
+    {
+      "from": "2026-10-19",
+      "to": "2026-11-01",
+      "group": null,
+      "expected": {
+        "trackedSeconds": 33000,
+        "focusSessions": 1,
+        "completed": 3,
+        "created": 3,
+        "activeDays": 7,
+        "longestStreak": 5,
+        "days": [
+          {
+            "date": "2026-10-19",
+            "trackedSeconds": 9000,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          },
+          {
+            "date": "2026-10-20",
+            "trackedSeconds": 1800,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-21",
+            "trackedSeconds": 6300,
+            "focusSeconds": 0,
+            "completed": 2,
+            "created": 0
+          },
+          {
+            "date": "2026-10-22",
+            "trackedSeconds": 1500,
+            "focusSeconds": 1500,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-23",
+            "trackedSeconds": 1200,
+            "focusSeconds": 0,
+            "completed": 1,
+            "created": 0
+          },
+          {
+            "date": "2026-10-24",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-25",
+            "trackedSeconds": 10800,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-26",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-27",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          },
+          {
+            "date": "2026-10-28",
+            "trackedSeconds": 2400,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          },
+          {
+            "date": "2026-10-29",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-30",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-31",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-11-01",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          }
+        ],
+        "groups": [
+          {
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "name": "Work",
+            "color": "#3b82f6",
+            "trackedSeconds": 20700
+          },
+          {
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "name": "Launch team",
+            "color": "#3b82f6",
+            "trackedSeconds": 12300
+          }
+        ],
+        "tasks": [
+          {
+            "id": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+            "title": "Write the report",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": true,
+            "trackedSeconds": 13500
+          },
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "done": false,
+            "trackedSeconds": 12300
+          },
+          {
+            "id": "b445b972-f3af-42c8-8832-17d911d2f3a9",
+            "title": "Inbox zero",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": false,
+            "trackedSeconds": 3600
+          },
+          {
+            "id": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+            "title": "Prep the call",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": false,
+            "trackedSeconds": 2400
+          },
+          {
+            "id": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+            "title": "Tax forms",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": true,
+            "trackedSeconds": 1200
+          }
+        ],
+        "hourGrid": [
+          [
+            0,
+            1800,
+            7200,
+            1800,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            3600,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3600,
+            1800,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1800
+          ],
+          [
+            3600,
+            2700,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1500,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1200,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "timeline": [
+          {
+            "id": "b445b972-f3af-42c8-8832-17d911d2f3a9",
+            "title": "Inbox zero",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-01T08:00:00Z",
+            "completedAt": null,
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-18T22:00:00Z",
+                "end": "2026-10-18T23:00:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "04078a00-e98d-4eed-ac41-3c50d74e7b92",
+            "title": "Write the report",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-15T08:00:00Z",
+            "completedAt": "2026-10-21T13:00:00Z",
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-19T07:00:00Z",
+                "end": "2026-10-19T08:30:00Z",
+                "source": "manual"
+              },
+              {
+                "start": "2026-10-20T21:30:00Z",
+                "end": "2026-10-20T23:45:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-10T08:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-10-30T16:00:00Z",
+            "work": [
+              {
+                "start": "2026-10-22T08:00:00Z",
+                "end": "2026-10-22T08:25:00Z",
+                "source": "focus"
+              },
+              {
+                "start": "2026-10-24T23:30:00Z",
+                "end": "2026-10-25T02:30:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+            "title": "Tax forms",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-05T08:00:00Z",
+            "completedAt": "2026-10-23T12:20:00Z",
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-23T12:00:00Z",
+                "end": "2026-10-23T12:20:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "7ead2ae5-85d4-40fe-9e59-365fd64f710a",
+            "title": "Plan the offsite",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-27T09:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-11-05T09:00:00Z",
+            "work": []
+          },
+          {
+            "id": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+            "title": "Prep the call",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-28T12:00:00Z",
+            "completedAt": null,
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-28T13:20:00Z",
+                "end": "2026-10-28T14:00:00Z",
+                "source": "manual"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "from": "2026-10-19",
+      "to": "2026-11-01",
+      "group": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+      "expected": {
+        "trackedSeconds": 12300,
+        "focusSessions": 1,
+        "completed": 0,
+        "created": 1,
+        "activeDays": 2,
+        "longestStreak": 1,
+        "days": [
+          {
+            "date": "2026-10-19",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-20",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-21",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-22",
+            "trackedSeconds": 1500,
+            "focusSeconds": 1500,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-23",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-24",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-25",
+            "trackedSeconds": 10800,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-26",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-27",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          },
+          {
+            "date": "2026-10-28",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-29",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-30",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-31",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-11-01",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          }
+        ],
+        "groups": [
+          {
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "name": "Launch team",
+            "color": "#3b82f6",
+            "trackedSeconds": 12300
+          }
+        ],
+        "tasks": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "done": false,
+            "trackedSeconds": 12300
+          }
+        ],
+        "hourGrid": [
+          [
+            0,
+            1800,
+            7200,
+            1800,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1500,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "timeline": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-10T08:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-10-30T16:00:00Z",
+            "work": [
+              {
+                "start": "2026-10-22T08:00:00Z",
+                "end": "2026-10-22T08:25:00Z",
+                "source": "focus"
+              },
+              {
+                "start": "2026-10-24T23:30:00Z",
+                "end": "2026-10-25T02:30:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "7ead2ae5-85d4-40fe-9e59-365fd64f710a",
+            "title": "Plan the offsite",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-27T09:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-11-05T09:00:00Z",
+            "work": []
+          }
+        ]
+      }
+    },
+    {
+      "from": "2026-10-25",
+      "to": "2026-10-25",
+      "group": null,
+      "expected": {
+        "trackedSeconds": 10800,
+        "focusSessions": 0,
+        "completed": 0,
+        "created": 0,
+        "activeDays": 1,
+        "longestStreak": 1,
+        "days": [
+          {
+            "date": "2026-10-25",
+            "trackedSeconds": 10800,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          }
+        ],
+        "groups": [
+          {
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "name": "Launch team",
+            "color": "#3b82f6",
+            "trackedSeconds": 10800
+          }
+        ],
+        "tasks": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "done": false,
+            "trackedSeconds": 10800
+          }
+        ],
+        "hourGrid": [
+          [
+            0,
+            1800,
+            7200,
+            1800,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "timeline": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-10T08:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-10-30T16:00:00Z",
+            "work": [
+              {
+                "start": "2026-10-24T23:30:00Z",
+                "end": "2026-10-25T02:30:00Z",
+                "source": "manual"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "from": "2026-10-22",
+      "to": "2026-10-28",
+      "group": null,
+      "expected": {
+        "trackedSeconds": 15900,
+        "focusSessions": 1,
+        "completed": 1,
+        "created": 2,
+        "activeDays": 4,
+        "longestStreak": 2,
+        "days": [
+          {
+            "date": "2026-10-22",
+            "trackedSeconds": 1500,
+            "focusSeconds": 1500,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-23",
+            "trackedSeconds": 1200,
+            "focusSeconds": 0,
+            "completed": 1,
+            "created": 0
+          },
+          {
+            "date": "2026-10-24",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-25",
+            "trackedSeconds": 10800,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-26",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 0
+          },
+          {
+            "date": "2026-10-27",
+            "trackedSeconds": 0,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          },
+          {
+            "date": "2026-10-28",
+            "trackedSeconds": 2400,
+            "focusSeconds": 0,
+            "completed": 0,
+            "created": 1
+          }
+        ],
+        "groups": [
+          {
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "name": "Launch team",
+            "color": "#3b82f6",
+            "trackedSeconds": 12300
+          },
+          {
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "name": "Work",
+            "color": "#3b82f6",
+            "trackedSeconds": 3600
+          }
+        ],
+        "tasks": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "done": false,
+            "trackedSeconds": 12300
+          },
+          {
+            "id": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+            "title": "Prep the call",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": false,
+            "trackedSeconds": 2400
+          },
+          {
+            "id": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+            "title": "Tax forms",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "done": true,
+            "trackedSeconds": 1200
+          }
+        ],
+        "hourGrid": [
+          [
+            0,
+            1800,
+            7200,
+            1800,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            2400,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1500,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1200,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "timeline": [
+          {
+            "id": "7d712467-f2aa-4ff6-941d-1e5a9b91e0e5",
+            "title": "Launch the site",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-10T08:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-10-30T16:00:00Z",
+            "work": [
+              {
+                "start": "2026-10-22T08:00:00Z",
+                "end": "2026-10-22T08:25:00Z",
+                "source": "focus"
+              },
+              {
+                "start": "2026-10-24T23:30:00Z",
+                "end": "2026-10-25T02:30:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "995f3947-7f3e-4136-b6e6-90d579978a4d",
+            "title": "Tax forms",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-05T08:00:00Z",
+            "completedAt": "2026-10-23T12:20:00Z",
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-23T12:00:00Z",
+                "end": "2026-10-23T12:20:00Z",
+                "source": "manual"
+              }
+            ]
+          },
+          {
+            "id": "7ead2ae5-85d4-40fe-9e59-365fd64f710a",
+            "title": "Plan the offsite",
+            "groupId": "db980d90-ca87-46c1-a8e7-9691d1dc4434",
+            "createdAt": "2026-10-27T09:00:00Z",
+            "completedAt": null,
+            "deadline": "2026-11-05T09:00:00Z",
+            "work": []
+          },
+          {
+            "id": "7d998b6a-547f-4484-b2a9-62b04d4b8d52",
+            "title": "Prep the call",
+            "groupId": "4d21d970-bb18-4489-b4c2-200fa2421c3a",
+            "createdAt": "2026-10-28T12:00:00Z",
+            "completedAt": null,
+            "deadline": null,
+            "work": [
+              {
+                "start": "2026-10-28T13:20:00Z",
+                "end": "2026-10-28T14:00:00Z",
+                "source": "manual"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,627 @@
+{
+  "about": "The Plan view: blocks overlapping the days shown (in the zone), deadlines in them, the tasks to do not planned yet (no block, or its block is over; Do now order), the ones put off (Later), and each day's energy. Then planning: a block is 5 minutes to 12 hours, 30 is the default (kept as none), no length keeps what it had, a done task can't be planned. Checked by the C# core (PlanFixtureTests) and Swift (PlanFixtureTests).",
+  "zone": "Europe/Amsterdam",
+  "now": "2026-10-28T10:15:00Z",
+  "board": {
+    "schemaVersion": 1,
+    "groups": [
+      {
+        "id": "c893771d-a009-4671-9509-759faeb5bf20",
+        "name": "Work",
+        "color": "#3b82f6"
+      },
+      {
+        "id": "109a04f1-02e5-40f6-b091-0b138597b248",
+        "name": "Personal",
+        "color": "#22c55e"
+      },
+      {
+        "id": "10eee738-3165-472f-8aa9-8da0b7b599f2",
+        "name": "Launch team",
+        "color": "#3b82f6"
+      }
+    ],
+    "items": [
+      {
+        "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "title": "Answer mail",
+        "priority": "high",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox"
+      },
+      {
+        "id": "fb0916ad-3079-4873-9a44-60198ffa052a",
+        "title": "Write the report",
+        "priority": "low",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-10-28T10:00:00.000Z",
+        "plannedMinutes": 60,
+        "energy": 2
+      },
+      {
+        "id": "1258538a-e44c-41a9-9463-271943de4f05",
+        "title": "Deep work",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-10-29T08:00:00.000Z",
+        "plannedMinutes": 120,
+        "energy": 3
+      },
+      {
+        "id": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+        "title": "Late call",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-10-30T22:30:00.000Z",
+        "plannedMinutes": 90
+      },
+      {
+        "id": "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c",
+        "title": "Old block",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-10-26T08:00:00.000Z"
+      },
+      {
+        "id": "4012df37-c204-4435-a7cf-2e0f68f21305",
+        "title": "Done block",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "completedAt": "2026-10-27T14:00:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-10-27T13:00:00.000Z",
+        "plannedMinutes": 45
+      },
+      {
+        "id": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+        "title": "Call the bank",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "nextActionAt": "2026-10-29T09:00:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox"
+      },
+      {
+        "id": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+        "title": "Send the summary",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "after": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox"
+      },
+      {
+        "id": "dd382a25-2fb4-43ff-945b-0ef187f9e53e",
+        "title": "Ship it",
+        "priority": "high",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "deadline": "2026-10-30T15:00:00.000Z",
+        "groupId": "10eee738-3165-472f-8aa9-8da0b7b599f2",
+        "stage": "inbox"
+      },
+      {
+        "id": "cd433c31-959a-474c-b1be-cf9f4e45b7af",
+        "title": "Team sync",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "10eee738-3165-472f-8aa9-8da0b7b599f2",
+        "stage": "inbox",
+        "plannedAt": "2026-10-28T12:00:00.000Z",
+        "plannedMinutes": 45
+      },
+      {
+        "id": "4bbfe9ae-789f-43a5-a072-da5013f49287",
+        "title": "Next week",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "plannedAt": "2026-11-02T09:00:00.000Z"
+      },
+      {
+        "id": "1cfa9b82-2974-4d46-ac5e-e034ac505997",
+        "title": "Put away",
+        "priority": "normal",
+        "createdAt": "2026-10-23T10:15:00.000Z",
+        "completedAt": "2026-10-23T10:15:00.000Z",
+        "groupId": "c893771d-a009-4671-9509-759faeb5bf20",
+        "stage": "inbox",
+        "archivedAt": "2026-10-23T10:15:00.000Z",
+        "plannedAt": "2026-10-27T08:00:00.000Z",
+        "plannedMinutes": 60
+      }
+    ],
+    "activity": [
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "00000000-0000-0000-0000-000000000000",
+        "kind": "groupChanged",
+        "summary": "Added group \"Launch team\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "kind": "created",
+        "summary": "Created \"Answer mail\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "fb0916ad-3079-4873-9a44-60198ffa052a",
+        "kind": "created",
+        "summary": "Created \"Write the report\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "fb0916ad-3079-4873-9a44-60198ffa052a",
+        "kind": "scheduled",
+        "summary": "Planned \"Write the report\" Wed 28 Oct 11:00, 60 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1258538a-e44c-41a9-9463-271943de4f05",
+        "kind": "created",
+        "summary": "Created \"Deep work\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1258538a-e44c-41a9-9463-271943de4f05",
+        "kind": "scheduled",
+        "summary": "Planned \"Deep work\" Thu 29 Oct 09:00, 120 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+        "kind": "created",
+        "summary": "Created \"Late call\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+        "kind": "scheduled",
+        "summary": "Planned \"Late call\" Fri 30 Oct 23:30, 90 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c",
+        "kind": "created",
+        "summary": "Created \"Old block\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c",
+        "kind": "scheduled",
+        "summary": "Planned \"Old block\" Mon 26 Oct 09:00, 30 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "4012df37-c204-4435-a7cf-2e0f68f21305",
+        "kind": "created",
+        "summary": "Created \"Done block\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "4012df37-c204-4435-a7cf-2e0f68f21305",
+        "kind": "scheduled",
+        "summary": "Planned \"Done block\" Tue 27 Oct 14:00, 45 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-27T14:00:00.000Z",
+        "itemId": "4012df37-c204-4435-a7cf-2e0f68f21305",
+        "kind": "completed",
+        "summary": "Completed \"Done block\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+        "kind": "created",
+        "summary": "Created \"Call the bank\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+        "kind": "scheduled",
+        "summary": "Next action 2026-10-29 09:00:00Z",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+        "kind": "created",
+        "summary": "Created \"Send the summary\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+        "kind": "scheduled",
+        "summary": "Waits until \"Answer mail\" is done",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "dd382a25-2fb4-43ff-945b-0ef187f9e53e",
+        "kind": "created",
+        "summary": "Created \"Ship it\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "cd433c31-959a-474c-b1be-cf9f4e45b7af",
+        "kind": "created",
+        "summary": "Created \"Team sync\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "cd433c31-959a-474c-b1be-cf9f4e45b7af",
+        "kind": "scheduled",
+        "summary": "Planned \"Team sync\" Wed 28 Oct 13:00, 45 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "4bbfe9ae-789f-43a5-a072-da5013f49287",
+        "kind": "created",
+        "summary": "Created \"Next week\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "4bbfe9ae-789f-43a5-a072-da5013f49287",
+        "kind": "scheduled",
+        "summary": "Planned \"Next week\" Mon 2 Nov 10:00, 30 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1cfa9b82-2974-4d46-ac5e-e034ac505997",
+        "kind": "created",
+        "summary": "Created \"Put away\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1cfa9b82-2974-4d46-ac5e-e034ac505997",
+        "kind": "scheduled",
+        "summary": "Planned \"Put away\" Tue 27 Oct 09:00, 60 min",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1cfa9b82-2974-4d46-ac5e-e034ac505997",
+        "kind": "completed",
+        "summary": "Completed \"Put away\"",
+        "actor": {
+          "kind": "user"
+        }
+      },
+      {
+        "at": "2026-10-23T10:15:00.000Z",
+        "itemId": "1cfa9b82-2974-4d46-ac5e-e034ac505997",
+        "kind": "archived",
+        "summary": "Archived \"Put away\"",
+        "actor": {
+          "kind": "user"
+        }
+      }
+    ],
+    "pomodoro": {
+      "settings": {
+        "focusMinutes": 25,
+        "shortBreakMinutes": 5,
+        "longBreakMinutes": 15,
+        "focusesBeforeLongBreak": 4
+      },
+      "phase": "idle",
+      "completedFocusCount": 0
+    }
+  },
+  "focus": "fb0916ad-3079-4873-9a44-60198ffa052a",
+  "cases": [
+    {
+      "from": "2026-10-26",
+      "days": 7,
+      "group": null,
+      "blocks": [
+        {
+          "id": "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c",
+          "start": "2026-10-26T08:00:00Z",
+          "minutes": 30,
+          "done": false
+        },
+        {
+          "id": "4012df37-c204-4435-a7cf-2e0f68f21305",
+          "start": "2026-10-27T13:00:00Z",
+          "minutes": 45,
+          "done": true
+        },
+        {
+          "id": "fb0916ad-3079-4873-9a44-60198ffa052a",
+          "start": "2026-10-28T10:00:00Z",
+          "minutes": 60,
+          "done": false
+        },
+        {
+          "id": "cd433c31-959a-474c-b1be-cf9f4e45b7af",
+          "start": "2026-10-28T12:00:00Z",
+          "minutes": 45,
+          "done": false
+        },
+        {
+          "id": "1258538a-e44c-41a9-9463-271943de4f05",
+          "start": "2026-10-29T08:00:00Z",
+          "minutes": 120,
+          "done": false
+        },
+        {
+          "id": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+          "start": "2026-10-30T22:30:00Z",
+          "minutes": 90,
+          "done": false
+        }
+      ],
+      "deadlines": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e"
+      ],
+      "unplanned": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e",
+        "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c"
+      ],
+      "later": [
+        {
+          "id": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+          "wakeAt": "2026-10-29T09:00:00Z",
+          "waitingFor": null
+        },
+        {
+          "id": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+          "wakeAt": null,
+          "waitingFor": "360bb428-5b1a-4f9c-a45b-f3f25312552f"
+        }
+      ],
+      "energy": {
+        "2026-10-26": 0.5,
+        "2026-10-27": 0.75,
+        "2026-10-28": 2.75,
+        "2026-10-29": 6,
+        "2026-10-30": 0.5,
+        "2026-10-31": 1,
+        "2026-11-01": 0
+      }
+    },
+    {
+      "from": "2026-10-26",
+      "days": 7,
+      "group": "10eee738-3165-472f-8aa9-8da0b7b599f2",
+      "blocks": [
+        {
+          "id": "cd433c31-959a-474c-b1be-cf9f4e45b7af",
+          "start": "2026-10-28T12:00:00Z",
+          "minutes": 45,
+          "done": false
+        }
+      ],
+      "deadlines": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e"
+      ],
+      "unplanned": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e"
+      ],
+      "later": [],
+      "energy": {
+        "2026-10-26": 0.5,
+        "2026-10-27": 0.75,
+        "2026-10-28": 2.75,
+        "2026-10-29": 6,
+        "2026-10-30": 0.5,
+        "2026-10-31": 1,
+        "2026-11-01": 0
+      }
+    },
+    {
+      "from": "2026-10-30",
+      "days": 1,
+      "group": null,
+      "blocks": [
+        {
+          "id": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+          "start": "2026-10-30T22:30:00Z",
+          "minutes": 90,
+          "done": false
+        }
+      ],
+      "deadlines": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e"
+      ],
+      "unplanned": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e",
+        "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c"
+      ],
+      "later": [
+        {
+          "id": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+          "wakeAt": "2026-10-29T09:00:00Z",
+          "waitingFor": null
+        },
+        {
+          "id": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+          "wakeAt": null,
+          "waitingFor": "360bb428-5b1a-4f9c-a45b-f3f25312552f"
+        }
+      ],
+      "energy": {
+        "2026-10-30": 0.5
+      }
+    },
+    {
+      "from": "2026-10-31",
+      "days": 1,
+      "group": null,
+      "blocks": [
+        {
+          "id": "b9c7276b-d909-4d46-a3ee-de40722dc706",
+          "start": "2026-10-30T22:30:00Z",
+          "minutes": 90,
+          "done": false
+        }
+      ],
+      "deadlines": [],
+      "unplanned": [
+        "dd382a25-2fb4-43ff-945b-0ef187f9e53e",
+        "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+        "35cb9d59-ae4d-4e85-9f4b-8ba2429df68c"
+      ],
+      "later": [
+        {
+          "id": "fa3d3f6d-c23a-4575-9ca4-87a280d26f15",
+          "wakeAt": "2026-10-29T09:00:00Z",
+          "waitingFor": null
+        },
+        {
+          "id": "390566ca-335c-4e36-8c9b-c00b4fc5ff45",
+          "wakeAt": null,
+          "waitingFor": "360bb428-5b1a-4f9c-a45b-f3f25312552f"
+        }
+      ],
+      "energy": {
+        "2026-10-31": 1
+      }
+    }
+  ],
+  "plan": [
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 2,
+      "error": "length"
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 721,
+      "error": "length"
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 45,
+      "plannedAt": "2026-10-28T13:15:00Z",
+      "plannedMinutes": 45
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-29T13:15:00Z",
+      "minutes": null,
+      "plannedAt": "2026-10-29T13:15:00Z",
+      "plannedMinutes": 45
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 30,
+      "plannedAt": "2026-10-28T13:15:00Z",
+      "plannedMinutes": null
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 720,
+      "plannedAt": "2026-10-28T13:15:00Z",
+      "plannedMinutes": 720
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": null,
+      "minutes": null,
+      "plannedAt": null,
+      "plannedMinutes": null
+    },
+    {
+      "id": "360bb428-5b1a-4f9c-a45b-f3f25312552f",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": null,
+      "plannedAt": "2026-10-28T13:15:00Z",
+      "plannedMinutes": null
+    },
+    {
+      "id": "4012df37-c204-4435-a7cf-2e0f68f21305",
+      "start": "2026-10-28T13:15:00Z",
+      "minutes": 30,
+      "error": "done"
+    }
+  ]
+}
