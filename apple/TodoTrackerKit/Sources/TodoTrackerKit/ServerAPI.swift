@@ -40,6 +40,9 @@ public enum ServerAction: Equatable, Sendable {
     case startTimer(UUID)
     case stopTimer
     case setTheme(String)
+    /// A block of time to work on a task (minutes nil: what it had, else 30), or taken off the plan.
+    case plan(UUID, start: Date, minutes: Int?)
+    case unplan(UUID)
 }
 
 public enum PomodoroCommand: String, Sendable {
@@ -126,6 +129,10 @@ public enum ServerAPI {
             return post("/api/timer/stop")
         case let .setTheme(theme):
             return ServerRequest(method: "PUT", path: "/api/settings/theme", body: json(["theme": theme]))
+        case let .plan(item, start, minutes):
+            return post("/api/items/\(id(item))/plan", ["start": BoardCodec.formatDate(start), "minutes": minutes])
+        case let .unplan(item):
+            return post("/api/items/\(id(item))/plan", [:])
         }
     }
 
