@@ -9,6 +9,10 @@ struct BoardView: View {
     @ObservedObject var model: BoardModel
     @Environment(\.shellState) private var shell
     @FocusState private var boardFocused: Bool
+    /// The first column on screen when they don't all fit (the column bar and a picked card's column scroll to it).
+    @State private var shownColumn: BoardColumn? = .inbox
+    /// How many columns fit side by side.
+    @State private var visibleCount = BoardColumn.allCases.count
 
     var body: some View {
         let columns = model.boardColumns
@@ -20,15 +24,21 @@ struct BoardView: View {
                 Text("Drag cards along, or select one and use Option and the arrow keys. Starting a timer moves a card to Doing.")
                     .font(.caption).foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
+                if visible < BoardColumn.allCases.count {
+                    // Not all columns fit: each is a tap away (and a swipe sideways).
+                    columnBar(columns, visible: visible).padding(.horizontal, 16)
+                }
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(BoardColumn.allCases) { column in
                             BoardColumnView(model: model, column: column, cards: columns[column] ?? [], selected: shell?.selectedTask)
                                 .containerRelativeFrame(.horizontal, count: visible, spacing: 12)
+                                .id(column)
                         }
                     }
                     .scrollTargetLayout()
                 }
+                .scrollPosition(id: $shownColumn, anchor: .leading)
                 // The margins count in the columns' width, so the last one ends where the screen does.
                 .contentMargins(.horizontal, 16, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
@@ -41,7 +51,43 @@ struct BoardView: View {
         .focusEffectDisabled()
         .onKeyPress(phases: .down) { press in key(press, columns: columns) }
         .onAppear { boardFocused = true }
+        // A card picked with the keyboard (or opened elsewhere) in a column off screen: the board scrolls to it.
+        .onChange(of: shell?.selectedTask) { _, id in
+            guard let id, let card = model.board.find(id), card.parent == nil else { return }
+            let all = BoardColumn.allCases
+            let column = BoardColumns.column(of: card)
+            if let first = shownColumn.flatMap({ all.firstIndex(of: $0) }), let want = all.firstIndex(of: column),
+               want >= first && want < first + visibleCount { return }
+            withAnimation(.snappy) { shownColumn = all[min(all.firstIndex(of: column) ?? 0, all.count - visibleCount)] }
+        }
         .background(Color.secondary.opacity(0.04))
+    }
+
+    /// The columns by name and count; the ones on screen are highlighted, a tap brings one into view.
+    private func columnBar(_ columns: [BoardColumn: [WorkItem]], visible: Int) -> some View {
+        let all = BoardColumn.allCases
+        let first = shownColumn.flatMap { all.firstIndex(of: $0) } ?? 0
+        return HStack(spacing: 6) {
+            ForEach(Array(all.enumerated()), id: \.element) { index, column in
+                let onScreen = index >= first && index < first + visible
+                Button {
+                    withAnimation(.snappy) { shownColumn = all[min(index, all.count - visible)] }
+                } label: {
+                    Text("\(column.name) \(columns[column]?.count ?? 0)")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .foregroundStyle(onScreen ? Theme.accent : .secondary)
+                        .background(Capsule().fill(onScreen ? Theme.accent.opacity(0.14) : Color.secondary.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show \(column.name)")
+                .accessibilityAddTraits(onScreen ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .onAppear { visibleCount = visible }
+        .onChange(of: visible) { _, now in visibleCount = now }
     }
 
     /// Arrows pick a card; Option-arrows move it; Space or ⌘↩ finishes it; Return opens it.
