@@ -316,13 +316,14 @@ struct TasksOutlineView: View {
         expandedText = set.map(\.uuidString).suffix(500).joined(separator: ",")
     }
 
-    /// The keys on the selected row (not while typing): Return renames, ⌘Return opens, Space finishes, Tab nests,
+    /// The keys on the selected row (not while typing): Return renames, Space finishes, Tab nests,
     /// Option-arrows reorder, Left and Right close and open.
     private func key(_ press: KeyPress) -> KeyPress.Result {
         guard editing == nil, field != .new, let id = selection.wrappedValue, let item = model.board.find(id) else { return .ignored }
         switch press.key {
         case .return where press.modifiers.contains(.command):
-            shell?.open(id)
+            // ⌘Return is Mark Done (the menu's); ⌘I opens the details.
+            return .ignored
         case .return:
             startRename(item)
         case .space:

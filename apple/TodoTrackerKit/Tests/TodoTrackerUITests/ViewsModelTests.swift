@@ -75,6 +75,44 @@ final class ViewsModelTests: XCTestCase {
         XCTAssertEqual(titles(model.board.find(ids[2])?.children), ["Pack"])
     }
 
+    /// Tab and Option-up/down in Tasks only see the tasks on screen: not another group's, not archived ones.
+    func testOutlineMovesOnlyUseTheTasksOnScreen() throws {
+        let model = BoardModel(store: nil)
+        let personal = model.groups[1].id
+        model.addTask("Work task")
+        let old = model.board.items[0]
+        model.complete(old.id)
+        model.archive(old.id)
+        model.select(group: personal)
+        model.addTask("Water plants")
+        model.addTask("Call mum")
+        let plants = model.board.items[1], mum = model.board.items[2]
+        XCTAssertEqual(titles(model.visibleRoots), ["Water plants", "Call mum"], "no archived task, no other group's")
+
+        XCTAssertFalse(model.canIndent(plants.id), "the first task on screen has nothing above it")
+        model.indent(plants.id)
+        model.step(plants.id, by: -1)
+        XCTAssertNil(plants.parent)
+        XCTAssertEqual(titles(model.board.items), ["Work task", "Water plants", "Call mum"])
+
+        model.select(group: nil)
+        XCTAssertEqual(titles(model.visibleRoots), ["Water plants", "Call mum"], "archived tasks stay out of Tasks")
+        XCTAssertFalse(model.canIndent(plants.id), "an archived task above doesn't count")
+        model.indent(mum.id)
+        XCTAssertEqual(mum.parent?.id, plants.id)
+    }
+
+    func testASubtaskDroppedOnAColumnIsNotACard() throws {
+        let model = BoardModel(store: nil)
+        model.addTask("Trip")
+        let trip = model.board.items[0]
+        model.addTask("Pack", parentId: trip.id)
+        model.moveCard(trip.children[0].id, to: .done)
+        XCTAssertFalse(trip.isDone)
+        XCTAssertFalse(trip.children[0].isDone)
+        XCTAssertEqual(model.status, "Only top-level tasks are cards; move its task instead.")
+    }
+
     func testATaskDroppedOnAGroupMovesThere() throws {
         let model = BoardModel(store: nil)
         let personal = model.groups[1].id
@@ -113,6 +151,31 @@ final class ViewsModelTests: XCTestCase {
         XCTAssertEqual(model.dashboard.now.map(\.item.id), [ids[2], ids[0], ids[1]])
         model.arrangeNow(moving: ids[2], before: nil)
         XCTAssertEqual(model.dashboard.now.map(\.item.id), [ids[0], ids[1], ids[2]])
+    }
+
+    /// Two quick moves through the server: the second is worked out (and sent) only once the first is done and the board
+    /// read back, so it never repeats the first.
+    func testThroughTheServerMovesWaitForTheOneBefore() async throws {
+        let remote = TaskBoard()
+        for title in ["A", "B", "C"] { try remote.addTask(NewTask(title), now: Date()) }
+        FakeServer.board = try BoardCodec.encode(remote)
+        FakeServer.requests = []
+        let model = BoardModel(store: nil)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FakeServer.self]
+        model.use(server: ServerClient(baseURL: URL(string: "http://127.0.0.1:5317")!, token: "test", session: URLSession(configuration: configuration)))
+        for _ in 0..<200 where model.board.items.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
+
+        let a = model.board.items[0].id
+        model.step(a, by: 1)
+        model.step(a, by: 1)
+        let reorder = "POST /api/items/\(a.uuidString.lowercased())/reorder"
+        for _ in 0..<200 where FakeServer.requests.filter({ $0 == reorder }).count < 2 { try await Task.sleep(nanoseconds: 20_000_000) }
+        let sent = FakeServer.requests.filter { $0 == reorder || $0 == "GET /api/export" }
+        let first = try XCTUnwrap(sent.firstIndex(of: reorder))
+        let second = try XCTUnwrap(sent.lastIndex(of: reorder))
+        XCTAssertNotEqual(first, second)
+        XCTAssertTrue(sent[first..<second].contains("GET /api/export"), "the board is read back before the next move: \(sent)")
     }
 
     func testThroughTheServerAMoveIsItsRequestsInOrder() async throws {

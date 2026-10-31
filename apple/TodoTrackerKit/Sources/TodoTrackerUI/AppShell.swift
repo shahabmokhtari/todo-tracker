@@ -450,7 +450,8 @@ public struct TodoTrackerCommands: Commands {
             let id = shell?.currentTask
             let item = id.flatMap { shell?.model.board.find($0) }
             Button(item?.isDone == true ? "Reopen" : "Mark Done") { if let id { shell?.model.toggleDone(id) } }
-                .keyboardShortcut(.return)
+                // ⌘Return, never plain Return: in the views Return renames or opens.
+                .keyboardShortcut(.return, modifiers: .command)
                 .disabled(item == nil)
             Button("Later: In an Hour") {
                 if let id, let model = shell?.model, let choice = model.snoozeChoices.first(where: { $0.id == "1h" }) { model.snooze(id, until: choice.at) }

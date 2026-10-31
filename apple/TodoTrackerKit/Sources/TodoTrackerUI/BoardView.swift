@@ -9,6 +9,8 @@ struct BoardView: View {
     @ObservedObject var model: BoardModel
     @Environment(\.shellState) private var shell
     @FocusState private var boardFocused: Bool
+    /// The column whose "Add to …" box is being typed in (the board's keys wait meanwhile).
+    @FocusState private var adding: BoardColumn?
     /// The first column on screen when they don't all fit (the column bar and a picked card's column scroll to it).
     @State private var shownColumn: BoardColumn? = .inbox
     /// How many columns fit side by side.
@@ -31,7 +33,7 @@ struct BoardView: View {
                 ScrollView(.horizontal) {
                     HStack(alignment: .top, spacing: 12) {
                         ForEach(BoardColumn.allCases) { column in
-                            BoardColumnView(model: model, column: column, cards: columns[column] ?? [], selected: shell?.selectedTask)
+                            BoardColumnView(model: model, column: column, cards: columns[column] ?? [], selected: shell?.selectedTask, addFocus: $adding)
                                 .containerRelativeFrame(.horizontal, count: visible, spacing: 12)
                                 .id(column)
                         }
@@ -90,9 +92,10 @@ struct BoardView: View {
         .onChange(of: visible) { _, now in visibleCount = now }
     }
 
-    /// Arrows pick a card; Option-arrows move it; Space or ⌘↩ finishes it; Return opens it.
+    /// Arrows pick a card; Option-arrows move it; Space finishes it (⌘↩ is the menu's Mark Done); Return opens it. Not
+    /// while typing in a column's "Add to …" box.
     private func key(_ press: KeyPress, columns: [BoardColumn: [WorkItem]]) -> KeyPress.Result {
-        guard let shell else { return .ignored }
+        guard let shell, adding == nil else { return .ignored }
         let cards = BoardColumn.allCases.map { columns[$0] ?? [] }
         let direction: BoardColumns.Direction?
         switch press.key {
@@ -127,7 +130,7 @@ struct BoardView: View {
             }
             return .handled
         }
-        if press.key == .space || (press.key == .return && press.modifiers.contains(.command)) {
+        if press.key == .space {
             model.toggleDone(card.id)
             return .handled
         }
@@ -145,6 +148,7 @@ struct BoardColumnView: View {
     let column: BoardColumn
     let cards: [WorkItem]
     let selected: UUID?
+    var addFocus: FocusState<BoardColumn?>.Binding
     @State private var newTitle = ""
     @State private var targeted = false
     @State private var dropBefore: UUID?
@@ -196,6 +200,7 @@ struct BoardColumnView: View {
             if column != .done {
                 TextField("Add to \(column.name)…", text: $newTitle)
                     .textFieldStyle(.roundedBorder)
+                    .focused(addFocus, equals: column)
                     .onSubmit {
                         model.addTask(newTitle, stage: column.stage)
                         newTitle = ""

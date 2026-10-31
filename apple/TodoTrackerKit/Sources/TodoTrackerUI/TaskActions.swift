@@ -27,10 +27,10 @@ public final class ShellState: ObservableObject {
         inspected = id
     }
 
-    /// The task the commands act on: the one picked, else the one open, else Today's focus.
+    /// The task the commands act on: the one picked, else the one open (never one you didn't pick, like Today's focus).
     public var currentTask: UUID? {
         for id in [selectedTask, inspected] { if let id, model.board.find(id) != nil { return id } }
-        return view == .today ? model.dashboard.focus?.item.id : nil
+        return nil
     }
 
     public func show(_ item: SidebarItem) {

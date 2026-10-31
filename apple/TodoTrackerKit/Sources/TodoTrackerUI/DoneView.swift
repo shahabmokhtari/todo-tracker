@@ -9,6 +9,8 @@ struct DoneView: View {
     @Environment(\.shellState) private var shell
     @State private var tab = Tab.done
     @State private var filter = ""
+    /// Typing in the find box: Space and Return are the box's.
+    @FocusState private var finding: Bool
 
     enum Tab: Hashable { case done, archive }
 
@@ -30,6 +32,7 @@ struct DoneView: View {
                 .labelsHidden()
                 TextField("Find a finished task", text: $filter)
                     .autocorrectionDisabled()
+                    .focused($finding)
                 if !model.searchText.isEmpty { SearchFilterBar(model: model) }
                 if !list.isEmpty {
                     Text("\(list.count) task\(list.count == 1 ? "" : "s")\(spent >= 60 ? " · \(Presentation.duration(spent)) spent" : "")")
@@ -49,13 +52,14 @@ struct DoneView: View {
                 }
             }
         }
+        // Space: Reopen on Done, Unarchive on Archive (as the row's button says).
         .onKeyPress(.space) {
-            guard let id = selection.wrappedValue, model.board.find(id) != nil else { return .ignored }
-            model.reopen(id)
+            guard !finding, let id = selection.wrappedValue, let item = model.board.find(id) else { return .ignored }
+            if tab == .done, item.archivedAt == nil { model.reopen(id) } else if tab == .archive, item.archivedAt != nil { model.unarchive(id) } else { return .ignored }
             return .handled
         }
         .onKeyPress(.return) {
-            guard let id = selection.wrappedValue else { return .ignored }
+            guard !finding, let id = selection.wrappedValue else { return .ignored }
             shell?.open(id)
             return .handled
         }

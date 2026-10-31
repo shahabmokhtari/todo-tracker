@@ -218,17 +218,21 @@ public enum OutlineMoves {
     /// Where a drop lands on a row: before it, after it, or inside it.
     public enum Zone: Sendable { case before, inside, after }
 
-    private static func siblings(_ board: TaskBoard, _ item: WorkItem) -> [WorkItem] { item.parent?.children ?? board.items }
+    /// A task's siblings: its parent's subtasks, or the top-level tasks on screen (`roots`: one group's, without archived
+    /// or hidden ones; nil: every top-level task), as the web's outline has them from /api/tree.
+    private static func siblings(_ board: TaskBoard, _ item: WorkItem, roots: [WorkItem]?) -> [WorkItem] {
+        item.parent?.children ?? roots ?? board.items
+    }
 
     /// The siblings shown (finished ones hidden unless `showDone`; the task itself always counts).
-    private static func shown(_ board: TaskBoard, _ item: WorkItem, showDone: Bool) -> [WorkItem] {
-        siblings(board, item).filter { showDone || !$0.isDone || $0 === item }
+    private static func shown(_ board: TaskBoard, _ item: WorkItem, showDone: Bool, roots: [WorkItem]?) -> [WorkItem] {
+        siblings(board, item, roots: roots).filter { showDone || !$0.isDone || $0 === item }
     }
 
     /// Make the task a subtask of the one above it (its previous sibling shown), last. Nil when there's none.
-    public static func indent(_ board: TaskBoard, _ id: UUID, showDone: Bool = true) -> [BoardMove]? {
+    public static func indent(_ board: TaskBoard, _ id: UUID, showDone: Bool = true, roots: [WorkItem]? = nil) -> [BoardMove]? {
         guard let item = board.find(id) else { return nil }
-        let visible = shown(board, item, showDone: showDone)
+        let visible = shown(board, item, showDone: showDone, roots: roots)
         guard let i = visible.firstIndex(where: { $0 === item }), i > 0 else { return nil }
         return [.move(id, parentId: visible[i - 1].id, groupId: nil, index: nil)]
     }
@@ -241,9 +245,9 @@ public enum OutlineMoves {
     }
 
     /// Up (-1) or down (1) among the siblings shown (finished ones may be hidden: they're stepped over).
-    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, showDone: Bool = true) -> [BoardMove]? {
+    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, showDone: Bool = true, roots: [WorkItem]? = nil) -> [BoardMove]? {
         guard let item = board.find(id) else { return nil }
-        let visible = shown(board, item, showDone: showDone)
+        let visible = shown(board, item, showDone: showDone, roots: roots)
         guard let i = visible.firstIndex(where: { $0 === item }), visible.indices.contains(i + delta) else { return nil }
         let neighbour = visible[i + delta].id
         return [delta < 0 ? .reorder(id, before: neighbour) : .reorderAfter(id, after: neighbour)]

@@ -7,9 +7,10 @@ import TodoTrackerKit
 extension BoardModel {
     // MARK: What the views show
 
-    /// Top-level tasks of the group on screen (all groups when none), in tree order.
+    /// Top-level tasks of the group on screen (all groups when none), in tree order; archived ones are put away (Done ›
+    /// Archive shows them).
     public var visibleRoots: [WorkItem] {
-        board.items.filter { selectedGroupId == nil || $0.groupId == selectedGroupId }
+        board.items.filter { $0.archivedAt == nil && (selectedGroupId == nil || $0.groupId == selectedGroupId) }
     }
 
     /// Top-level tasks the search finds (itself or one of its subtasks matches), or all of them when not searching.
@@ -25,7 +26,7 @@ extension BoardModel {
 
     /// Finished top-level tasks (not archived), newest first.
     public var finishedRoots: [WorkItem] {
-        matchingRoots.filter { $0.isDone && $0.archivedAt == nil }.sorted { $0.completedAt! > $1.completedAt! }
+        matchingRoots.filter(\.isDone).sorted { $0.completedAt! > $1.completedAt! }
     }
 
     /// Archived top-level tasks, newest first.
@@ -43,84 +44,133 @@ extension BoardModel {
 
     // MARK: Moves
 
-    /// Makes the changes of one move in order: on the board here (all or nothing), or one after the other on the server.
-    @discardableResult
-    func perform(_ moves: [BoardMove], _ message: String?) -> Bool {
-        guard !moves.isEmpty else { return false }
-        if waitWhileConnecting() { return false }
-        if server != nil {
-            sendInOrder(moves.map { ServerAction.boardMove($0) }, message)
-            return true
+    /// Makes a move, worked out by `build` from the board as it is when its turn comes. Here it's made at once (all or
+    /// nothing); on a server, each move waits for the one before (sent, and the board read back), so two quick presses
+    /// never send the same change twice.
+    func perform(_ build: @escaping () -> PlannedMove?) {
+        if waitWhileConnecting() { return }
+        guard server != nil else {
+            guard let planned = build(), !planned.moves.isEmpty else { return }
+            mutate(planned.message) { at in for move in planned.moves { try board.apply(move, now: at) } }
+            return
         }
-        return mutate(message) { at in for move in moves { try board.apply(move, now: at) } }
+        queuedMoves.append(build)
+        nextMove()
     }
 
-    /// Sends changes one after the other (each waits for the one before; one that fails stops the rest).
-    func sendInOrder(_ actions: [ServerAction], _ message: String?, onDone: ((Data) -> Void)? = nil) {
-        guard let first = actions.first else { return }
+    private func nextMove() {
+        guard !moveInFlight, !queuedMoves.isEmpty else { return }
+        let build = queuedMoves.removeFirst()
+        guard server != nil, let planned = build(), !planned.moves.isEmpty else {
+            nextMove()
+            return
+        }
+        moveInFlight = true
+        sendInOrder(planned.moves.map { ServerAction.boardMove($0) }, planned.message, onSettled: { [weak self] in
+            self?.moveInFlight = false
+            self?.nextMove()
+        })
+    }
+
+    /// Sends changes one after the other (each waits for the one before; one that fails stops the rest). `onSettled`:
+    /// all sent (or one failed), and the board read back.
+    func sendInOrder(_ actions: [ServerAction], _ message: String?, onDone: ((Data) -> Void)? = nil, onSettled: (() -> Void)? = nil) {
+        guard let first = actions.first else {
+            onSettled?()
+            return
+        }
         let rest = Array(actions.dropFirst())
-        send(first, rest.isEmpty ? message : nil, onDone: { [weak self] data in
-            if rest.isEmpty { onDone?(data) } else { self?.sendInOrder(rest, message, onDone: onDone) }
+        var ok = false
+        send(first, rest.isEmpty ? message : nil, onDone: { data in
+            ok = true
+            if rest.isEmpty { onDone?(data) }
+        }, onSettled: { [weak self] in
+            if ok, !rest.isEmpty, let self { self.sendInOrder(rest, message, onDone: onDone, onSettled: onSettled) } else { onSettled?() }
         })
     }
 
     /// A card to a column (Done finishes it; out of Done opens it again), before `before` (a card there; nil: its place
-    /// in the shared order, or last within its own column).
+    /// in the shared order, or last within its own column). Only top-level tasks are cards.
     public func moveCard(_ id: UUID, to column: BoardColumn, before: UUID? = nil) {
-        guard let card = board.find(id)?.root else { return }
-        let columns = boardColumns
-        let moves = BoardColumns.drop(card, to: column, before: before, columns: columns)
-        guard !moves.isEmpty else { return }
-        let from = BoardColumns.column(of: card)
-        var message: String? = column == .done ? "Done 🎉" : from == column ? nil : "Moved to \(column.name)"
-        if column == .doing, from != .doing, (columns[.doing]?.count ?? 0) + 1 > BoardColumns.wipLimit {
-            message = BoardColumns.overLimitMessage
+        guard let item = board.find(id) else { return }
+        guard item.parent == nil else {
+            status = "Only top-level tasks are cards; move its task instead."
+            return
         }
-        perform(moves, message)
+        perform { [weak self] in
+            guard let self, let card = self.board.find(id), card.parent == nil else { return nil }
+            let columns = self.boardColumns
+            let from = BoardColumns.column(of: card)
+            var message: String? = column == .done ? "Done 🎉" : from == column ? nil : "Moved to \(column.name)"
+            if column == .doing, from != .doing, (columns[.doing]?.count ?? 0) + 1 > BoardColumns.wipLimit {
+                message = BoardColumns.overLimitMessage
+            }
+            return PlannedMove(BoardColumns.drop(card, to: column, before: before, columns: columns), message)
+        }
     }
 
     /// Option-arrows on a card: left and right change column, up and down move it within the column.
     public func moveCard(_ id: UUID, _ direction: BoardColumns.Direction) {
-        guard let card = board.find(id)?.root, let move = BoardColumns.keyboardMove(card, direction, columns: boardColumns) else { return }
-        moveCard(card.id, to: move.column, before: move.before)
+        guard board.find(id)?.parent == nil else { return }
+        perform { [weak self] in
+            guard let self, let card = self.board.find(id), card.parent == nil else { return nil }
+            let columns = self.boardColumns
+            guard let move = BoardColumns.keyboardMove(card, direction, columns: columns) else { return nil }
+            return PlannedMove(BoardColumns.drop(card, to: move.column, before: move.before, columns: columns), move.column == .done ? "Done 🎉" : nil)
+        }
     }
 
-    /// Tab: under the task above it.
+    /// Tab: under the task above it on screen.
     public func indent(_ id: UUID, showDone: Bool = true) {
-        guard let moves = OutlineMoves.indent(board, id, showDone: showDone) else { return }
-        perform(moves, nil)
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.indent(self.board, id, showDone: showDone, roots: self.matchingRoots).map { PlannedMove($0, nil) }
+        }
     }
 
     /// Shift-Tab: out one level, right after its parent.
     public func outdent(_ id: UUID) {
-        guard let moves = OutlineMoves.outdent(board, id) else { return }
-        perform(moves, nil)
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.outdent(self.board, id).map { PlannedMove($0, nil) }
+        }
     }
 
-    public func canIndent(_ id: UUID, showDone: Bool = true) -> Bool { OutlineMoves.indent(board, id, showDone: showDone) != nil }
+    public func canIndent(_ id: UUID, showDone: Bool = true) -> Bool {
+        OutlineMoves.indent(board, id, showDone: showDone, roots: matchingRoots) != nil
+    }
+
     public func canOutdent(_ id: UUID) -> Bool { OutlineMoves.outdent(board, id) != nil }
 
-    /// Option-up or down: past the task above or below.
+    /// Option-up or down: past the task above or below on screen.
     public func step(_ id: UUID, by delta: Int, showDone: Bool = true) {
-        guard let moves = OutlineMoves.step(board, id, by: delta, showDone: showDone) else { return }
-        perform(moves, nil)
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.step(self.board, id, by: delta, showDone: showDone, roots: self.matchingRoots).map { PlannedMove($0, nil) }
+        }
     }
 
     /// A task dropped before, after or into another. False when it can't go there (into itself).
     @discardableResult
     public func drop(_ dragged: UUID, on target: UUID, _ zone: OutlineMoves.Zone) -> Bool {
-        guard let moves = OutlineMoves.drop(board, dragged, on: target, zone) else {
+        guard OutlineMoves.drop(board, dragged, on: target, zone) != nil else {
             if dragged != target { status = "A task can’t go inside itself." }
             return false
         }
-        return perform(moves, "Moved")
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.drop(self.board, dragged, on: target, zone).map { PlannedMove($0, "Moved") }
+        }
+        return true
     }
 
     /// A task dropped on a group in the sidebar: it moves there (a subtask becomes a task of its own, last).
     public func move(_ id: UUID, toGroup groupId: UUID) {
-        guard let moves = OutlineMoves.toGroup(board, id, groupId: groupId) else { return }
         let name = groups.first { $0.id == groupId }?.name ?? "the group"
-        perform(moves, "Moved to \(name)")
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.toGroup(self.board, id, groupId: groupId).map { PlannedMove($0, "Moved to \(name)") }
+        }
     }
 
     /// Do now in a new order (a task dragged before another, or to the end).
@@ -193,6 +243,17 @@ extension BoardModel {
     public func toggleDone(_ id: UUID) {
         guard let item = board.find(id) else { return }
         if item.isDone { reopen(id) } else { complete(id) }
+    }
+}
+
+/// A move worked out from the board: its changes, and what to say once it's made.
+struct PlannedMove {
+    let moves: [BoardMove]
+    let message: String?
+
+    init(_ moves: [BoardMove], _ message: String?) {
+        self.moves = moves
+        self.message = message
     }
 }
 
