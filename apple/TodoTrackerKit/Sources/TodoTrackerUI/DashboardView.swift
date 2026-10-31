@@ -126,16 +126,28 @@ public struct DashboardView: View {
     @State private var deletingGroup: TaskGroup?
     @State private var searching = false
     @State private var showSettings = false
+    /// The group tabs, search and Settings in the header (false: the window's sidebar has them).
+    var chrome = true
+    /// The window's shell: it shows a task's details, the break and the deep-linked task (nil: this view does).
+    @Environment(\.shellState) private var shell
+    /// The task dragged to a new place in Do now (for its drop line).
+    @State private var dropTarget: UUID?
 
-    public init(model: BoardModel, scrollable: Bool = true) {
+    public init(model: BoardModel, scrollable: Bool = true, chrome: Bool = true) {
         self.model = model
         self.scrollable = scrollable
+        self.chrome = chrome
+    }
+
+    /// A task's details: beside the view (or a sheet) through the shell, else this view's own sheet.
+    private func open(_ id: UUID) {
+        if let shell { shell.open(id) } else { detailId = id }
     }
 
     public var body: some View {
         VStack(spacing: 12) {
             header
-            groupTabs
+            if chrome { groupTabs }
             captureBar
             if searching || !model.searchText.isEmpty { searchBar }
             if model.remoteBanner != nil { RemoteBanner(model: model, reconnect: { showSettings = true }) }
@@ -160,19 +172,20 @@ public struct DashboardView: View {
         }
         // A todotracker://task/<id> link: that task's details (also when the link started the app).
         .onAppear {
-            if let id = model.openTaskId {
+            if shell == nil, let id = model.openTaskId {
                 detailId = id
                 model.openTaskId = nil
             }
         }
         .onChange(of: model.openTaskId) { _, id in
-            guard let id else { return }
+            guard shell == nil, let id else { return }
             detailId = id
             model.openTaskId = nil
         }
         #if os(iOS)
         // The Mac covers every screen with its own windows (see the app); here the break covers the app.
-        .fullScreenCover(isPresented: Binding(get: { model.breakPrompt != nil }, set: { if !$0 { model.takeBreak() } })) {
+        // (In the app's window, the window covers itself: see AppShell.)
+        .fullScreenCover(isPresented: Binding(get: { shell == nil && model.breakPrompt != nil }, set: { if !$0 { model.takeBreak() } })) {
             BreakView(model: model)
         }
         // Only one screen can be on top: an open task or prompt makes way for the break.
@@ -229,7 +242,7 @@ public struct DashboardView: View {
                 sectionLabel("Found", count: model.searchResults.count)
                 if model.searchResults.isEmpty { emptyText("No tasks match your search.") }
                 ForEach(model.searchResults.prefix(50)) { item in
-                    Button { detailId = item.id } label: {
+                    Button { open(item.id) } label: {
                         HStack(spacing: 8) {
                             Image(systemName: item.isArchived ? "archivebox" : item.isDone ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(item.isDone ? Color.green : .secondary)
@@ -297,6 +310,12 @@ public struct DashboardView: View {
                 }
             }
             Spacer()
+            if chrome { headerButtons }
+        }
+    }
+
+    private var headerButtons: some View {
+        HStack(spacing: 12) {
             Button {
                 withAnimation(.snappy(duration: 0.2)) {
                     if searching || !model.searchText.isEmpty {
@@ -328,7 +347,21 @@ public struct DashboardView: View {
                     let rest = model.dashboard.now.filter { $0.item.id != model.dashboard.focus?.item.id }
                     if rest.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing else right now. Nice." : "Nothing else here matches your search.") }
                     ForEach(rest) { entry in
-                        TaskRow(entry: entry, model: model, now: model.now) { detailId = entry.item.id }
+                        TaskRow(entry: entry, model: model, now: model.now) { open(entry.item.id) }
+                            .pointerHover()
+                            .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
+                            // Drag a task above another to do it first.
+                            .draggable(TaskDrag.payload(entry.item.id))
+                            .dropDestination(for: String.self) { texts, _ in
+                                let ids = TaskDrag.ids(texts)
+                                ids.forEach { model.arrangeNow(moving: $0, before: entry.item.id) }
+                                return !ids.isEmpty
+                            } isTargeted: { over in
+                                if over { dropTarget = entry.item.id } else if dropTarget == entry.item.id { dropTarget = nil }
+                            }
+                            .overlay(alignment: .top) {
+                                if dropTarget == entry.item.id { Capsule().fill(Theme.accent).frame(height: 3).offset(y: -2) }
+                            }
                     }
                 } label: { sectionLabel("Do now", count: model.dashboard.now.count) }
             }
@@ -336,7 +369,9 @@ public struct DashboardView: View {
                 DisclosureGroup(isExpanded: $showWaiting) {
                     if model.dashboard.waiting.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing is parked." : "Nothing waiting matches your search.") }
                     ForEach(model.dashboard.waiting) { entry in
-                        TaskRow(entry: entry, model: model, now: model.now) { detailId = entry.item.id }
+                        TaskRow(entry: entry, model: model, now: model.now) { open(entry.item.id) }
+                            .pointerHover()
+                            .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
                     }
                 } label: { sectionLabel("Waiting", count: model.dashboard.waiting.count) }
             }
@@ -356,7 +391,7 @@ public struct DashboardView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                             VStack(alignment: .leading, spacing: 1) {
-                                Button { detailId = item.id } label: { Text(item.title).strikethrough().foregroundStyle(.secondary) }
+                                Button { open(item.id) } label: { Text(item.title).strikethrough().foregroundStyle(.secondary) }
                                     .buttonStyle(.plain)
                                 if let parent = item.parent {
                                     Text(parent.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -392,7 +427,7 @@ public struct DashboardView: View {
                 DisclosureGroup(isExpanded: $showWorkstreams) {
                     if streams.isEmpty { emptyText("Tasks with subtasks or rollout steps show up here.") }
                     ForEach(streams) { o in
-                        Button { detailId = o.item.id } label: { WorkstreamRow(entry: o, now: model.now) }.buttonStyle(.plain)
+                        Button { open(o.item.id) } label: { WorkstreamRow(entry: o, now: model.now) }.buttonStyle(.plain)
                     }
                 } label: { sectionLabel("Workstreams", count: streams.count) }
             }
@@ -401,7 +436,7 @@ public struct DashboardView: View {
                     if model.dashboard.recentNotes.isEmpty { emptyText("Notes you and your agents log appear here.") }
                     ForEach(model.dashboard.recentNotes) { n in
                         // The note's task opens.
-                        Button { detailId = n.item.id } label: {
+                        Button { open(n.item.id) } label: {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(n.note.text).foregroundStyle(.primary).multilineTextAlignment(.leading)
                                 HStack(spacing: 5) {
@@ -521,7 +556,14 @@ public struct DashboardView: View {
 
     @ViewBuilder private var focusCard: some View {
         if let f = model.dashboard.focus {
-            FocusCard(entry: f, model: model, now: model.now) { detailId = f.item.id }
+            FocusCard(entry: f, model: model, now: model.now) { open(f.item.id) }
+                .contextMenu { TaskContextMenu(model: model, id: f.item.id) }
+                // A task dropped here is done first.
+                .dropDestination(for: String.self) { texts, _ in
+                    let ids = TaskDrag.ids(texts)
+                    ids.forEach { model.arrangeNow(moving: $0, before: f.item.id) }
+                    return !ids.isEmpty
+                }
         } else {
             HStack(spacing: 14) {
                 RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(hex: "#10b981").opacity(0.14))

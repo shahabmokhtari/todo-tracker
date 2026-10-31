@@ -8,21 +8,62 @@ import Combine
 
 @main
 struct TodoTrackerApp: App {
-    @StateObject private var model = BoardModel.live()
+    @StateObject private var model = Self.makeModel()
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
     @Environment(\.scenePhase) private var scenePhase
     #if os(macOS)
     @State private var breakWindows: BreakWindows?
     #endif
 
+    /// The tasks on this device (or the computer's, or the server's on a Mac). A debug build started with TT_DEMO=1 shows
+    /// a made-up board kept in memory instead (screenshots), and TT_VIEW=board (tasks, done…) opens on that view.
+    private static func makeModel() -> BoardModel {
+        #if DEBUG
+        if isDemo {
+            let demo = DemoBoard.model()
+            // TT_OPEN=1: today's focus task opens (its details beside the view).
+            if ProcessInfo.processInfo.environment["TT_OPEN"] == "1" { demo.openTaskId = demo.dashboard.focus?.item.id }
+            return demo
+        }
+        #endif
+        return BoardModel.live()
+    }
+
+    private static var isDemo: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["TT_DEMO"] == "1"
+        #else
+        return false
+        #endif
+    }
+
+    private static var startView: SidebarItem? {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["TT_VIEW"].flatMap(SidebarItem.init(rawValue:))
+        #else
+        return nil
+        #endif
+    }
+
     var body: some Scene {
         #if os(macOS)
         WindowGroup("Todo Tracker") {
-            dashboard.frame(minWidth: 320, idealWidth: 380, minHeight: 480)
+            shell.frame(minWidth: 360, minHeight: 480)
                 .onAppear { startOnce() }
         }
-        .defaultSize(width: 380, height: 820)
+        .defaultSize(width: 1180, height: 800)
         .windowResizability(.contentMinSize)
+        .commands { TodoTrackerCommands() }
+
+        // "Open in New Window" on a task.
+        WindowGroup("Task", id: TaskWindow.sceneId, for: UUID.self) { $id in
+            TaskWindow(model: model, id: id).followsAppTheme(theme).frame(minWidth: 380, minHeight: 480)
+        }
+        .defaultSize(width: 460, height: 720)
+
+        Settings {
+            SettingsView(model: model, embedded: true).followsAppTheme(theme)
+        }
 
         // Always-available glance from the menu bar: what to do now and quick capture.
         MenuBarExtra {
@@ -35,12 +76,19 @@ struct TodoTrackerApp: App {
         .menuBarExtraStyle(.window)
         #else
         WindowGroup("Todo Tracker") {
-            dashboard
+            shell
                 // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { model.becameActive() }
                     if phase == .background { model.wentToBackground() }
                 }
+        }
+        // ⌘N, ⌘F, ⌘1…⌘6 and the task's commands with a keyboard (hold ⌘ to see them).
+        .commands { TodoTrackerCommands() }
+
+        // "Open in New Window" on a task (iPad: next to the app, in Split View or Stage Manager).
+        WindowGroup("Task", id: TaskWindow.sceneId, for: UUID.self) { $id in
+            TaskWindow(model: model, id: id).followsAppTheme(theme)
         }
         // Now and then iOS wakes the app to sync in the background (BGTaskSchedulerPermittedIdentifiers in project.yml).
         .backgroundTask(.appRefresh(SyncModel.backgroundTaskId)) { await SyncModel.backgroundRefresh() }
@@ -51,14 +99,15 @@ struct TodoTrackerApp: App {
     /// Breaks on every screen, and the tasks folder through the server (synced with the other computers).
     private func startOnce() {
         if breakWindows == nil { breakWindows = BreakWindows(model: model) }
-        LocalServer.shared.connect(model)
+        // The made-up board never touches the server (or the tasks folder).
+        if !Self.isDemo { LocalServer.shared.connect(model) }
     }
     #endif
 
-    private var dashboard: some View {
-        DashboardView(model: model)
+    private var shell: some View {
+        AppShell(model: model, start: Self.startView)
             .followsAppTheme(theme)
-            .onAppear { BoardModel.requestNotificationPermission() }
+            .onAppear { if !Self.isDemo { BoardModel.requestNotificationPermission() } }
             // todotracker://task/<id> (Info.plist registers the scheme): the task opens here; a todotracker://pair link
             // from a computer's Settings › Phones connects this phone to it.
             .onOpenURL { model.open(link: $0) }
