@@ -63,6 +63,8 @@ public final class TaskBoard {
         item.deadline = spec.deadline
         item.sequential = spec.sequential
         item.stepDelay = spec.stepDelay
+        // A new card waits in the inbox until it's decided (subtasks aren't cards).
+        item.stage = parent == nil ? spec.stage ?? .inbox : .next
         try attach(item, to: parent)
         log(now, item.id, "created", parent.map { "Added \"\(title)\" to \"\($0.title)\"" } ?? "Created \"\(title)\"", actor)
         return item
@@ -279,6 +281,8 @@ public final class TaskBoard {
         if reminded && back > now { item.reminders.append(Reminder(dueAt: back, message: Self.defaultReminderMessage(item), kind: .nextAction)) }
         for d in item.selfAndDescendants.dropFirst() { d.completedAt = nil }
         stopTimers(item.selfAndDescendants, now: now)
+        // Done for this time: off Doing, ready for the next.
+        if item.parent == nil && item.stage == .doing { item.stage = .next }
         item.repeatRule = rule.countedDown()
         let names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

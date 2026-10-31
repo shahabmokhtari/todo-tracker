@@ -7,19 +7,32 @@ import TodoTrackerKit
 struct TaskDetailView: View {
     @ObservedObject var model: BoardModel
     let itemId: UUID
+    /// A sheet of its own size (false: beside a view, as wide as its column).
+    var sized = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.shellState) private var shell
 
     var body: some View {
         NavigationStack {
-            TaskDetailContent(model: model, itemId: itemId, close: { dismiss() })
+            TaskDetailContent(model: model, itemId: itemId, close: close)
                 // A subtask or a parent opens on top; Back returns to this one.
                 .navigationDestination(for: UUID.self) { id in
-                    TaskDetailContent(model: model, itemId: id, close: { dismiss() })
+                    TaskDetailContent(model: model, itemId: id, close: close)
                 }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 600)
+        .frame(minWidth: sized ? 460 : nil, minHeight: sized ? 600 : nil)
         #endif
+    }
+
+    /// Beside a view the details close by the window's own state (dismiss would close the window).
+    private func close() {
+        if !sized, let shell {
+            model.saveAllDrafts()
+            shell.inspected = nil
+        } else {
+            dismiss()
+        }
     }
 }
 

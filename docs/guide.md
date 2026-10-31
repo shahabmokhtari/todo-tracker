@@ -241,8 +241,27 @@ the running one's window.
 
 ## The iPhone, iPad and Mac app
 
+The window has the same views as the full app. On an iPad and a Mac, a sidebar lists them (**Today**, **Board**,
+**Tasks**, **Done**, **Reports**, **Plan**), your groups with how many tasks each has now, **Search** and **Settings**;
+a task's details open beside the view. On an iPhone (or an iPad in a narrow Split View or Slide Over) the views are tabs
+at the bottom, the group is picked from the menu at the top left, and a task's details open as a sheet.
+
 Today works like everywhere else: the Do this now card, Do now, Waiting, Done today (with when each was done),
-Workstreams and Recent notes (tap one to open its task).
+Workstreams and Recent notes (tap one to open its task). Drag a task in Do now above another to do it first.
+
+* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place (or use its
+  ⇆ menu). Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
+  Starting a timer moves a card to Doing. Type in the box under a column to add a card there.
+* **Tasks:** every task as an outline. Tap the selected task's title (or press Return) to rename it; Return again adds
+  the next task below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it;
+  Space marks it done. Drag a row onto another to put it inside, or use its ⋯ menu. *Show finished* in ⋯ at the top.
+* **Done:** what you finished, day by day, with Reopen and Archive; the Archive tab brings tasks back.
+* **Every task** has the same menu on a right-click or a long press: Mark done, Later, Start the timer, Open details,
+  Open in New Window (iPad and Mac), Move to (a column or a group), Copy link, Archive and Delete. Drag a task onto a
+  group in the sidebar to move it there.
+* **With a keyboard** (iPad or Mac; hold ⌘ on an iPad to see them): ⌘N new task, ⌘F search, ⌘1 to ⌘6 the views, ⌘↩
+  mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Option and
+  the arrows move a card on the Board. On a Mac, ⇧⌘N opens another window.
 
 * **Task details** (tap a title): change the title, details, priority, deadline (or clear it), repeat rule (type it in
   words or pick one; if a rule isn't understood, you're told why), energy and group. From there you can also snooze it
@@ -251,11 +270,11 @@ Workstreams and Recent notes (tap one to open its task).
   *Part of …*, which opens its parent. *Steps in order* and *Hours between steps* can be changed any time.
 * **Waiting tasks say why** ("Waits for “X” and snoozed until Fri 9:00"), with *Do now* and *Open parent*.
 * **Archive** a finished task to put it away; *Unarchive* brings it back. *Delete* asks first.
-* **Groups:** long-press a group tab (or ⋯ next to the tabs) to rename it, change its color, or delete it. Its tasks move
-  to the group you pick; they're never deleted.
+* **Groups:** long-press (or right-click) a group in the sidebar, or a group tab on an iPhone (or ⋯ next to the tabs),
+  to rename it, change its color, or delete it. Its tasks move to the group you pick; they're never deleted.
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
-* **Settings** (gear): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
+* **Settings** (in the sidebar, the gear on an iPhone, or Todo Tracker › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
   also where your tasks are, **Computer** and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.

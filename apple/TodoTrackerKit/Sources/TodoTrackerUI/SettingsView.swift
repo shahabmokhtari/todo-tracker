@@ -4,67 +4,85 @@ import TodoTrackerKit
 
 /// Settings: the computer a phone uses, appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
 /// Appearance and Energy sections; the focus timer's lengths are kept with the board.
-struct SettingsView: View {
+public struct SettingsView: View {
     @ObservedObject var model: BoardModel
+    /// In the window beside the sidebar, or the Mac's Settings window (no Close button, no navigation of its own).
+    var embedded = false
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
     @Environment(\.dismiss) private var dismiss
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                // iPhone and iPad: one of three — a computer's tasks, syncing on its own, or only on this device (the Mac
-                // has its own server).
-                if model.phone != nil {
-                    Section {
-                        Text(model.modeDescription).font(.footnote).accessibilityIdentifier("settings-mode")
-                    } header: {
-                        Text("Your tasks")
-                    }
-                    ComputerSection(model: model)
-                    if let sync = model.sync { SyncSection(model: model, sync: sync) }
-                }
+    public init(model: BoardModel, embedded: Bool = false) {
+        self.model = model
+        self.embedded = embedded
+    }
 
-                Section {
-                    Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
-                        theme = chosen
-                        model.setTheme(chosen)
-                    })) {
-                        ForEach(AppTheme.allCases) { Text($0.label).tag($0.rawValue) }
-                    }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text("Appearance")
-                } footer: {
-                    Text(model.usesServer ? "Every window follows it: this one, the browser and the sidebar." : "Light, dark, or as your device is.")
-                }
-
-                Section {
-                    Picker("Energy in a day", selection: Binding(get: { model.board.dailyEnergy }, set: { model.setDailyEnergy($0) })) {
-                        ForEach(energyChoices, id: \.self) { Text("\($0) ⚡").tag($0) }
-                    }
-                    .accessibilityIdentifier("settings-energy")
-                } header: {
-                    Text("Energy")
-                } footer: {
-                    Text("How much you have in a day, in ⚡. Each task takes ⚡ to ⚡⚡⚡ an hour (set it in its details; not said counts as ⚡). Every app uses this number.")
-                }
-
-                focusSection
-
-                Section {
-                    Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
-                } footer: {
-                    Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
-                }
+    public var body: some View {
+        if embedded {
+            form
+                #if os(macOS)
+                .formStyle(.grouped)
+                .frame(minWidth: 420, minHeight: 420)
+                #endif
+        } else {
+            NavigationStack {
+                form.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
             }
-            .navigationTitle("Settings")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
+            #if os(macOS)
+            .frame(minWidth: 420, minHeight: 520)
             #endif
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
         }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 520)
+    }
+
+    private var form: some View {
+        Form {
+            // iPhone and iPad: one of three — a computer's tasks, syncing on its own, or only on this device (the Mac
+            // has its own server).
+            if model.phone != nil {
+                Section {
+                    Text(model.modeDescription).font(.footnote).accessibilityIdentifier("settings-mode")
+                } header: {
+                    Text("Your tasks")
+                }
+                ComputerSection(model: model)
+                if let sync = model.sync { SyncSection(model: model, sync: sync) }
+            }
+
+            Section {
+                Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
+                    theme = chosen
+                    model.setTheme(chosen)
+                })) {
+                    ForEach(AppTheme.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Appearance")
+            } footer: {
+                Text(model.usesServer ? "Every window follows it: this one, the browser and the sidebar." : "Light, dark, or as your device is.")
+            }
+
+            Section {
+                Picker("Energy in a day", selection: Binding(get: { model.board.dailyEnergy }, set: { model.setDailyEnergy($0) })) {
+                    ForEach(energyChoices, id: \.self) { Text("\($0) ⚡").tag($0) }
+                }
+                .accessibilityIdentifier("settings-energy")
+            } header: {
+                Text("Energy")
+            } footer: {
+                Text("How much you have in a day, in ⚡. Each task takes ⚡ to ⚡⚡⚡ an hour (set it in its details; not said counts as ⚡). Every app uses this number.")
+            }
+
+            focusSection
+
+            Section {
+                Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
+            } footer: {
+                Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
+            }
+        }
+        .navigationTitle("Settings")
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
         #endif
     }
 

@@ -396,6 +396,11 @@ public sealed class PhoneTests
         await phone.PostOk("/api/now/order", new { ids = new[] { other.Id(), id } });
         await phone.PostOk("/api/now/first", new { ids = new[] { id } });
         await phone.PostOk($"/api/items/{id}/move", new { groupId = group.Id() });
+        // The Board and Tasks views on an iPad: a card to another column, a task into another and back out after it.
+        await phone.PostOk($"/api/items/{id}/stage", new { stage = "doing" });
+        await phone.PostOk($"/api/items/{other.Id()}/move", new { parentId = id });
+        await phone.PostOk($"/api/items/{other.Id()}/move", new { toTopLevel = true, groupId = group.Id() });
+        await phone.PostOk($"/api/items/{other.Id()}/reorder", new { after = id });
         await phone.PostOk($"/api/items/{id}/complete", new { });
         await phone.PostOk($"/api/items/{id}/reopen", new { });
         await phone.PostOk($"/api/items/{id}/complete", new { });
