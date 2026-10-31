@@ -341,20 +341,9 @@ public struct AppShell: View {
         case .done: DoneView(model: model)
         case .search: SearchView(model: model)
         case .settings: SettingsView(model: model, embedded: true)
-        // MARK: Plan and Reports plug in here: replace the placeholder line with the view.
-        case .plan: ViewPlaceholder(item: .plan) // Plan: PlanView(model: model)
-        case .reports: ViewPlaceholder(item: .reports) // Reports: ReportsView(model: model)
+        case .plan: PlanView(model: model, onOpen: { shell.open($0) })
+        case .reports: ReportsView(model: model, onOpen: { shell.open($0) })
         }
-    }
-}
-
-/// A view that isn't in this app yet: says where to find it meanwhile.
-struct ViewPlaceholder: View {
-    let item: SidebarItem
-
-    var body: some View {
-        ContentUnavailableView(item.name, systemImage: item.symbol,
-                               description: Text("\(item.name) is on its way to this app. Meanwhile it’s in Todo Tracker on your computer."))
     }
 }
 
