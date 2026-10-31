@@ -261,7 +261,7 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
   group in the sidebar to move it there.
 * **With a keyboard** (iPad or Mac; hold ⌘ on an iPad to see them): ⌘N new task, ⌘F search, ⌘1 to ⌘6 the views, ⌘↩
   mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Option and
-  the arrows move a card on the Board.
+  the arrows move a card on the Board. On a Mac, ⇧⌘N opens another window.
 
 * **Task details** (tap a title): change the title, details, priority, deadline (or clear it), repeat rule (type it in
   words or pick one; if a rule isn't understood, you're told why), energy and group. From there you can also snooze it
