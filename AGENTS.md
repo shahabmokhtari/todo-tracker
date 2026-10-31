@@ -85,7 +85,7 @@ dotnet run --project src/TodoTracker.Cli -- now --data "$DATA" --vault "$DATA/va
   system); the timeline and hooks show it. Use the `X-TodoTracker-Actor` header / `--as` / the MCP client name.
 - **The same rules on every platform.** Agenda, snooze choices, repeat rules, energy, deep links and the export format
   are implemented in C#, Swift and Kotlin with shared cases in `tests/fixtures` (`scenarios/`, `snooze.json`,
-  `breaks.json`, `repeat.json`, `energy.json`, `export.json`). Change one, change all three and the fixture. The tasks
+  `breaks.json`, `repeat.json`, `energy.json`, `export.json`, `board-moves.json`). Change one, change all three and the fixture. The tasks
   folder format and sync have generated fixtures too (`vault/`, `sync/`) for the phones that sync on their own
   ([docs/design/phone-sync.md](docs/design/phone-sync.md)).
 - **Every feature on every platform, docs in the same PR.** A user-facing change lands in the web app, the Windows
