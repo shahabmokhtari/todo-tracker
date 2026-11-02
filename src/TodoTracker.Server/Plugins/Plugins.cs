@@ -124,6 +124,7 @@ public sealed class PluginHost
         new GitHub.GitHubConnectorPlugin(),
         new Connectors.LoopPlugin(),
         new TeamsPlugin(),
+        new FeedbackPlugin(),
     ];
 
     /// <summary>Whether a plugin is switched on in this data folder (for processes without a host, e.g. tt).</summary>

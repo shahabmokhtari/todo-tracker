@@ -973,3 +973,10 @@ button.chip.path:hover { color: var(--accent); text-decoration: underline; }
 .swatch.auto { background: repeating-linear-gradient(45deg, var(--surface-2) 0 4px, color-mix(in srgb, var(--swatch, var(--border-strong)) 35%, transparent) 4px 8px); }
 .swatch.chosen { box-shadow: 0 0 0 2px var(--text); }
 .swatches input[type="color"] { width: 28px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+
+/* Send feedback (the sheet in the side panel) */
+.feedback { display: grid; gap: 12px; padding: 16px; }
+.feedback textarea { width: 100%; resize: vertical; min-height: 140px; }
+.feedback-counter { justify-self: end; margin-top: -8px; }
+.feedback-counter:empty, .feedback-status:empty { display: none; }
+.feedback .muted.small { margin: 0; }

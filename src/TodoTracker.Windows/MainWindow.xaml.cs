@@ -746,6 +746,12 @@ public partial class MainWindow : Window
             menu.Items.Add(PluginsMenu(Plugins));
         }
 
+        if (_vm.ShowFeedback)
+        {
+            menu.Items.Add(new Separator());
+            menu.Items.Add(new MenuItem { Header = "Send feedback…", Command = _vm.SendFeedbackCommand, ToolTip = "Tell us about a bug or an idea" });
+        }
+
         menu.Items.Add(new Separator());
         var startup = new MenuItem { Header = "Start with Windows", IsCheckable = true, IsChecked = StartupRegistration.IsEnabled };
         startup.Checked += (_, _) => StartupRegistration.Set(true);

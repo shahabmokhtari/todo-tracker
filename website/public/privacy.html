@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy · Onething</title>
+  <meta name="description" content="Onething keeps your tasks on your devices. What Send feedback sends, where it goes, and what it's used for.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="canonical" href="https://onething.awesomehq.app/privacy.html">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap header-row">
+      <a class="brand" href="/" aria-label="Onething, home">
+        <img src="/img/favicon.svg" alt="" width="32" height="32">
+        <span>Onething</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main" class="section">
+    <article class="wrap prose">
+      <h1>Privacy</h1>
+      <p class="section-lede">Onething keeps your tasks on your devices: markdown files in a folder you own. There's no
+        account and no telemetry. The apps only talk to the services you switch on (sync, connectors, an AI model you
+        add) and, when you choose to send a note, to our feedback relay.</p>
+
+      <h2>Your tasks</h2>
+      <p>Your tasks, notes and pictures stay in your tasks folder and in the app's data folder on your computer or
+        phone. Nothing from them is sent to us, ever. Sync, connectors and AI apps only see what you connect them to,
+        and only when you switch them on.</p>
+
+      <h2 id="feedback">Send feedback</h2>
+      <p>Send feedback (in Settings, the menus, or a shake on a phone) sends a note to the people who make Onething.
+        It's only sent when you press Send.</p>
+      <ul>
+        <li><strong>Your note</strong> and the kind you picked (Bug, Idea or Other).</li>
+        <li><strong>Your email, only if you type one</strong>, so we can reply.</li>
+        <li><strong>Coarse facts about the app:</strong> the platform, the app version, the system version, the device
+          model (on a computer, the processor type), your language, the screen size, and whether you opened it with a
+          button or a shake.</li>
+      </ul>
+      <p><strong>Never sent:</strong> your tasks or anything in them, your name, any user, install or advertising id,
+        your location, screenshots or logs.</p>
+      <p><strong>Where it goes:</strong> to <code>issues.awesomehq.app</code>, a small relay that files it as an issue
+        on Onething's <a href="https://github.com/shahabmokhtari/todo-tracker/issues">GitHub repository</a>. That
+        repository is public: the issue shows your note, the facts above and, if you typed one, your email. Leave the
+        email out if you don't want it there. The relay keeps your IP address only in memory, to limit how many notes
+        can be sent a minute, and deletes its own copy of the note 30 days after filing it.</p>
+      <p><strong>What it's used for:</strong> support (reading your note and, if you gave an email, replying) and
+        making the app work better. It's not linked to your identity and not used for tracking or advertising.</p>
+      <p><strong>Don't want it?</strong> Turn off Send feedback in Settings › Extras on a computer, or Shake to send
+        feedback in Settings on a phone.</p>
+
+      <h2>Questions</h2>
+      <p>Open an issue on <a href="https://github.com/shahabmokhtari/todo-tracker/issues">GitHub</a>, or send a note
+        from the app.</p>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <p><img src="/img/favicon.svg" alt="" width="20" height="20"> Onething</p>
+      <p><a href="/">Home</a> · <a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>

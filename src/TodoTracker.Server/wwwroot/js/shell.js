@@ -3,6 +3,7 @@
 
 import { breakState, breakOver, tipFor } from './breaks.js';
 import { rank } from './palette.js';
+import { openFeedback } from './plugins/feedback.js';
 import { clock, duration } from './timefmt.js';
 
 export const VIEWS = [
@@ -271,6 +272,7 @@ export function createShell(ctx) {
       ...(d?.groups ?? []).map((g) => ({ title: `Show ${g.name}`, keywords: 'group tab switch', icon: 'folder', run: () => ctx.setGroup(g.id) })),
       { title: 'Show all groups', keywords: 'group all', icon: 'layers', run: () => ctx.setGroup(null) },
       { title: 'Plugins', keywords: 'settings features', icon: 'settings', run: () => ctx.openPlugins() },
+      ctx.pluginOn('feedback') ? { title: 'Send feedback', keywords: 'bug idea report problem help contact', icon: 'chat', run: () => openFeedback(ctx.pluginHost, 'button') } : null,
     ];
     return list.filter(Boolean);
   }

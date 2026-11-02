@@ -1946,8 +1946,11 @@ refresh().then(() => {
   followTheme();
   askHooks();
   // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
-  loadPlugins();
   const params = new URLSearchParams(location.search);
+  // /?feedback opens the feedback sheet (its plugin does, once loaded); with the extra off, say so.
+  loadPlugins().then(() => {
+    if (params.has('feedback') && !pluginOn('feedback')) toast('Send feedback is off. Switch it on in Settings › Extras.', 'error');
+  });
   const item = params.get('item');
   if (item && state.dashboard) openDrawer(item);
   else if (params.has('plugins') && state.dashboard) openPlugins();

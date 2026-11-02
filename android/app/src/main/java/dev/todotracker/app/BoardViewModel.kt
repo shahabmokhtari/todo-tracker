@@ -121,6 +121,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     var theme: String by mutableStateOf(prefs.getString("theme", "system") ?: "system")
         private set
 
+    /** Shaking the phone opens Send feedback (on unless switched off in Settings); kept on this phone. */
+    var shakeToFeedback: Boolean by mutableStateOf(prefs.getBoolean("shake-to-feedback", true))
+        private set
+
+    fun chooseShakeToFeedback(on: Boolean) {
+        shakeToFeedback = on
+        prefs.edit().putBoolean("shake-to-feedback", on).apply()
+    }
+
     /** How long focus sessions and breaks last. */
     val focusSettings: PomodoroSettings get() = board.pomodoro.settings
 

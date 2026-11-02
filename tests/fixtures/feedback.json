@@ -1,0 +1,124 @@
+{
+  "about": "Send feedback: what every app sends to the issues relay, and what each answer means. A draft (kind, message, optional email, source, the sheet's clientID) plus coarse facts about the device become the request body; never anything from the tasks. The message: control characters removed (except new lines and tabs), trimmed, cut to maxMessage code points (2000 unless the case says), trimmed again; nothing left means nothing to send (body null). The title is \"<Kind> · <Platform>: <message>\" in full (the relay shortens it). The email is trimmed and left out when empty. Metadata keeps this key order and leaves out what isn't known. Answers: 2xx is sent; 408, 429, 5xx and no answer at all (offline, status null) mean try again with the same clientID; any other 4xx failed. Checked by the C# core (FeedbackFixtureTests), the server (FeedbackApiTests), the web app (feedback.test.mjs), Swift (FeedbackTests) and Kotlin (FeedbackTest).",
+  "relay": {
+    "url": "https://issues.awesomehq.app/v1/issues",
+    "publicKey": "pk_gGPPMjRSsuHaXRdgdXvUevvL",
+    "maxMessage": 2000
+  },
+  "texts": {
+    "sent": "Thanks — we read every note.",
+    "retry": "Couldn’t send — check your connection and try again.",
+    "failed": "Couldn’t send your note: something went wrong on our side. Please try again later.",
+    "finePrint": "We’ll include your app version, device model and language.",
+    "contactHint": "Only if you’d like a reply. It’s shown with your note on GitHub."
+  },
+  "kinds": [
+    { "id": "bug", "label": "Bug" },
+    { "id": "idea", "label": "Idea" },
+    { "id": "other", "label": "Other" }
+  ],
+  "sources": ["button", "shake", "page", "qr"],
+  "bodies": [
+    {
+      "name": "A bug from an iPhone, with a reply address",
+      "draft": { "kind": "bug", "message": "  The timer stops when I lock the phone.\n", "contact": "  me@example.com ", "source": "button", "clientID": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f" },
+      "device": { "platform": "iOS", "appVersion": "1.2.3", "build": "45", "os": "iOS 26.1", "device": "iPhone17,1", "language": "en-US", "screen": "393x852" },
+      "body": {
+        "message": "The timer stops when I lock the phone.",
+        "title": "Bug · iOS: The timer stops when I lock the phone.",
+        "contact": "me@example.com",
+        "clientID": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+        "labels": ["kind:bug", "platform:ios", "source:button"],
+        "metadata": { "Platform": "ios", "App version": "1.2.3 (45)", "OS": "iOS 26.1", "Device": "iPhone17,1", "Language": "en-US", "Screen": "393x852", "Source": "button" }
+      }
+    },
+    {
+      "name": "An idea from an iPad shake, the email left empty",
+      "draft": { "kind": "idea", "message": "A dark widget, please", "contact": "   ", "source": "shake", "clientID": "0b6c7a52-1d2e-4f3a-9b8c-7d6e5f4a3b2c" },
+      "device": { "platform": "iPadOS", "appVersion": "1.2.3", "build": "45", "os": "iPadOS 26.1", "device": "iPad16,3", "language": "de-DE", "screen": "1032x1376" },
+      "body": {
+        "message": "A dark widget, please",
+        "title": "Idea · iPadOS: A dark widget, please",
+        "clientID": "0b6c7a52-1d2e-4f3a-9b8c-7d6e5f4a3b2c",
+        "labels": ["kind:idea", "platform:ipados", "source:shake"],
+        "metadata": { "Platform": "ipados", "App version": "1.2.3 (45)", "OS": "iPadOS 26.1", "Device": "iPad16,3", "Language": "de-DE", "Screen": "1032x1376", "Source": "shake" }
+      }
+    },
+    {
+      "name": "Android, no build number and no screen size known",
+      "draft": { "kind": "other", "message": "Thanks for the app!", "contact": null, "source": "button", "clientID": "a3e1f2d4-5b6c-4d7e-8f90-1a2b3c4d5e6f" },
+      "device": { "platform": "Android", "appVersion": "2.0", "build": null, "os": "Android 15", "device": "Pixel 9", "language": "nl-NL", "screen": null },
+      "body": {
+        "message": "Thanks for the app!",
+        "title": "Other · Android: Thanks for the app!",
+        "clientID": "a3e1f2d4-5b6c-4d7e-8f90-1a2b3c4d5e6f",
+        "labels": ["kind:other", "platform:android", "source:button"],
+        "metadata": { "Platform": "android", "App version": "2.0", "OS": "Android 15", "Device": "Pixel 9", "Language": "nl-NL", "Source": "button" }
+      }
+    },
+    {
+      "name": "Control characters go, new lines and tabs stay",
+      "draft": { "kind": "bug", "message": "\u0007 Line one\r\nLine two\u0000\tend\u001b\u0085  ", "contact": "", "source": "button", "clientID": "c0ffee00-1234-4abc-8def-0123456789ab" },
+      "device": { "platform": "Windows", "appVersion": "1.0.0", "build": null, "os": "Windows 10.0.26100", "device": "x64", "language": "en-GB", "screen": "1920x1080" },
+      "body": {
+        "message": "Line one\nLine two\tend",
+        "title": "Bug · Windows: Line one\nLine two\tend",
+        "clientID": "c0ffee00-1234-4abc-8def-0123456789ab",
+        "labels": ["kind:bug", "platform:windows", "source:button"],
+        "metadata": { "Platform": "windows", "App version": "1.0.0", "OS": "Windows 10.0.26100", "Device": "x64", "Language": "en-GB", "Screen": "1920x1080", "Source": "button" }
+      }
+    },
+    {
+      "name": "Cut to the limit in code points (an emoji is one), then trimmed",
+      "maxMessage": 6,
+      "draft": { "kind": "idea", "message": "😀😀😀 abcdef", "contact": "", "source": "page", "clientID": "11111111-2222-4333-8444-555555555555" },
+      "device": { "platform": "macOS", "appVersion": "1.0.0", "build": "7", "os": "macOS 15.1", "device": "Mac14,2", "language": "en-US", "screen": null },
+      "body": {
+        "message": "😀😀😀 ab",
+        "title": "Idea · macOS: 😀😀😀 ab",
+        "clientID": "11111111-2222-4333-8444-555555555555",
+        "labels": ["kind:idea", "platform:macos", "source:page"],
+        "metadata": { "Platform": "macos", "App version": "1.0.0 (7)", "OS": "macOS 15.1", "Device": "Mac14,2", "Language": "en-US", "Source": "page" }
+      }
+    },
+    {
+      "name": "Cut where only a space is left: trimmed again",
+      "maxMessage": 4,
+      "draft": { "kind": "other", "message": "abc defgh", "contact": "", "source": "qr", "clientID": "22222222-3333-4444-8555-666666666666" },
+      "device": { "platform": "Linux", "appVersion": "1.0.0", "build": null, "os": "Linux 6.8", "device": "arm64", "language": "fr-FR", "screen": "2560x1440" },
+      "body": {
+        "message": "abc",
+        "title": "Other · Linux: abc",
+        "clientID": "22222222-3333-4444-8555-666666666666",
+        "labels": ["kind:other", "platform:linux", "source:qr"],
+        "metadata": { "Platform": "linux", "App version": "1.0.0", "OS": "Linux 6.8", "Device": "arm64", "Language": "fr-FR", "Screen": "2560x1440", "Source": "qr" }
+      }
+    },
+    {
+      "name": "Nothing but spaces and control characters: nothing to send",
+      "draft": { "kind": "bug", "message": "  \u0007 \n\t ", "contact": "me@example.com", "source": "button", "clientID": "33333333-4444-4555-8666-777777777777" },
+      "device": { "platform": "Web", "appVersion": "1.0.0", "build": null, "os": null, "device": null, "language": null, "screen": null },
+      "body": null
+    }
+  ],
+  "outcomes": [
+    { "status": 202, "outcome": "sent" },
+    { "status": 200, "outcome": "sent" },
+    { "status": 201, "outcome": "sent" },
+    { "status": null, "outcome": "retry" },
+    { "status": 408, "outcome": "retry" },
+    { "status": 429, "outcome": "retry" },
+    { "status": 500, "outcome": "retry" },
+    { "status": 502, "outcome": "retry" },
+    { "status": 503, "outcome": "retry" },
+    { "status": 504, "outcome": "retry" },
+    { "status": 400, "outcome": "failed" },
+    { "status": 401, "outcome": "failed" },
+    { "status": 403, "outcome": "failed" },
+    { "status": 404, "outcome": "failed" },
+    { "status": 413, "outcome": "failed" },
+    { "status": 415, "outcome": "failed" },
+    { "status": 422, "outcome": "failed" },
+    { "status": 301, "outcome": "failed" }
+  ]
+}

@@ -484,7 +484,7 @@ tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidi
 
 ### Plugins and Ask AI
 Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, Plan, version history, Obsidian,
-browser extension, sync, connectors, Copy for Loop, Teams) that can be switched off; the choice lives in `plugins.json`.
+browser extension, sync, connectors, Copy for Loop, Teams, Send feedback) that can be switched off; the choice lives in `plugins.json`.
 Off applies at once everywhere (UI, API, background work); extras without background work also come on at once, the
 others at the next start. Ask AI drives GitHub Copilot
 CLI or Claude Code over the Agent Client Protocol with Onething's MCP tools attached, or a model reached with an API
@@ -492,6 +492,33 @@ key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the 
 changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and
 can be searched, reopened (agents resume their session with `session/load` when they can), renamed and deleted with
 undo. A chat stays with the agent or model it began with. Details: [`docs/plugins.md`](plugins.md).
+
+### Send feedback
+One sheet on every platform (the **Send feedback** plugin): kind chips **Bug**, **Idea**, **Other**; a multiline note
+(at most 2000 code points, a counter in the last 200); an optional email hinted *Only if you’d like a reply. It’s shown with your note on GitHub.*; the fine
+print *We’ll include your app version, device model and language.*; **Send**. Each sheet makes one UUID v4
+`clientID` and sends it again on every retry, so the relay files a note once.
+
+* **Relay:** `POST https://issues.awesomehq.app/v1/issues` with `Authorization: Bearer pk_…` (the app's public key: it
+  can only open issues in this repository; no GitHub token or GitHub API anywhere). Body: `message` (control
+  characters except new lines and tabs removed, trimmed, cut to 2000 code points), `title` = `<Kind> · <Platform>:
+  <message>`, `contact` (left out when empty), `clientID`, `labels` = `kind:…`, `platform:…`, `source:button|shake|page|qr`,
+  and `metadata` in this order, leaving out what isn't known: Platform (lowercase), App version (`1.2.3 (45)`), OS,
+  Device, Language, Screen, Source. Never ids, IPs, location, screenshots, logs or anything from the tasks.
+* **Answers:** 2xx sent (*Thanks — we read every note.*, close); 408, 429, 5xx or no answer: keep the draft, *Couldn’t
+  send — check your connection and try again.*; any other 4xx: a generic error. Shared cases (body and answers):
+  `tests/fixtures/feedback.json`, run by C# (`Feedback`), Swift, Kotlin and the web app.
+* **Web, Windows and Linux:** the browser never calls the relay. The web sheet posts to `POST /api/plugins/feedback`
+  (owner's session only, 403 otherwise); the server adds the platform it runs on (Windows, macOS or Linux), its
+  version, `<OS> <version>`, the processor type as Device, and the browser's language and screen size, then sends it
+  and answers 202, 503 (try again) or 422 (failed). The sidebar (**⋯ › Send feedback…**), both tray menus and the
+  browser extension open `/?feedback=button`, which opens the sheet. Also: Settings › Feedback and Ctrl K.
+* **iPhone, iPad, Mac, Android:** a native sheet sending to the relay directly. Settings › Feedback everywhere; Mac
+  Help › Send Feedback…; Android ⋮ on Today. Shake to send (iPhone, iPad, Android; source `shake`), on by default with
+  a Settings switch, never while another sheet, a dialog or a break is on screen.
+* **Debug builds** log the body instead of sending: `ONETHING_FEEDBACK_SEND=1` (server, Xcode scheme) or
+  `-PonethingFeedbackSend=true` (Android) sends; `ONETHING_FEEDBACK_URL` points the server at another relay (tests).
+* Privacy: [`docs/privacy.md`](privacy.md) (and the store labels).
 
 ### Teams
 Paste a Teams **Workflows** webhook URL (channel › Workflows › "Post to a channel when a webhook request is
@@ -595,6 +622,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Apple stack | Native SwiftUI + Swift core port | Native feel and reliable CI. Parity with C# is enforced by the shared fixtures. |
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
+| Feedback | A create-only relay (issues.awesomehq.app) with a public key; the web app goes through the local server | A token that can open issues can also read them, and anything in an app can be extracted; the web app has no fixed origin to put on the relay's list |
 | MCP transport | Streamable HTTP inside the running app, plus `tt mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
 
 ## 12. Requirement traceability

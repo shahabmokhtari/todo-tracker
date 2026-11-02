@@ -7,7 +7,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
   its API answers 404, a paired browser extension (or phone) loses access, and its background work stops (Teams cards, version
   saving, sync).
 * **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser
-  extension, Phones, Copy for Loop, Energy, and the connectors). Phones' own switch, **Let phones connect**, opens its
+  extension, Phones, Copy for Loop, Energy, Send feedback, and the connectors). Phones' own switch, **Let phones connect**, opens its
   port at the next start. The ones with their own background work (Ask AI, Version history, the
   sync providers, Teams reminders) come on at the next start if they weren't running; Settings says so, and the
   sidebar offers to restart right away.
@@ -31,6 +31,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **GitHub Issues** | Each group in its own private GitHub repository: tasks are issues, both ways; repositories are made with the GitHub CLI ([`connectors.md`](connectors.md#github-issues)) | No |
 | **Copy for Loop** | Copy a group's tasks as a checklist, or one task with its notes and pictures, to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
+| **Send feedback** | Tell us about a bug or an idea from Settings, the menus or the command palette; it becomes an issue on Onething's GitHub ([below](#send-feedback)) | Yes |
 
 The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in
 `plugins.json` in the app's data folder and respected by every process (the app, `tt`, and `tt mcp`).
@@ -105,6 +106,34 @@ on this computer's own network or on Tailscale get an answer; anything from a pu
 Turning **Let phones connect** or **Phones** off shuts every phone out at once; the port itself closes at the next
 start. On a Mac or Windows firewall, allow Onething (or port 5318) for private networks. Run the server with
 `--phone-port <port>` to use another port.
+
+## Send feedback
+
+**Send feedback** opens one sheet: pick **Bug**, **Idea** or **Other**, write a note (up to 2000 characters; a counter
+shows near the end), add an email only if you'd like a reply, and **Send**. It says *Thanks — we read every note.*
+and closes. Without a connection it keeps what you wrote and says so: **Send** again sends the same note (it's never
+filed twice).
+
+* **Where:** Settings › Feedback and the command palette (Ctrl K) in the web app; **⋯ › Send feedback…** in the
+  Windows sidebar and **Send feedback…** in the tray menu (Windows and Linux), which open the web app's sheet; the
+  browser extension's speech-bubble button. The iPhone, iPad, Mac and Android apps have their own sheet (see the
+  [guide](guide.md)).
+* **What's sent:** the note, the kind, the email if you typed one, and coarse facts: platform, app version, system
+  version, device model (the processor type on a computer), language, screen size and how the sheet was opened.
+  Never anything from your tasks, and no ids. It goes to the issues relay at `issues.awesomehq.app` (with the app's
+  public key, which can only open issues; there's no GitHub token in any app), which files it as an issue on the
+  public GitHub repository, email included if you gave one. See [privacy](privacy.md).
+* **How:** the web app never calls the relay itself: it posts to `POST /api/plugins/feedback` and Onething on this
+  computer adds the facts and sends it. Only the person at this computer can (the app's own session; an agent or a
+  script with the API token gets 403). The title names the system the server runs on (Windows, macOS or Linux),
+  whether the sheet is in the app window or in a browser.
+* **Off:** the menu entries, the Settings section and the palette command leave at once, and the endpoint answers 404.
+
+**Developers.** Debug builds log the note instead of sending it. `ONETHING_FEEDBACK_SEND=1` sends from a debug build
+(`0` never sends, even from a release build), and `ONETHING_FEEDBACK_URL` sends to another relay (the e2e tests use a
+stand-in on 127.0.0.1). The Mac, iPhone and iPad apps read `ONETHING_FEEDBACK_SEND=1` from the Xcode scheme's
+environment; Android debug builds send only when built with `-PonethingFeedbackSend=true`. The request body and what
+each answer means are in `tests/fixtures/feedback.json`, checked in C#, Swift, Kotlin and the web app.
 
 ## Adding a plugin (developers)
 

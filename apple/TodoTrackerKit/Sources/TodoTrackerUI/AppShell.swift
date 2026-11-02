@@ -60,6 +60,7 @@ public struct AppShell: View {
     @State private var renamingGroup: TaskGroup?
     @State private var groupName = ""
     @State private var deletingGroup: TaskGroup?
+    @AppStorage(FeedbackShake.storageKey) private var shakeForFeedback = true
 
     public init(model: BoardModel, start: SidebarItem? = nil) {
         self.model = model
@@ -82,6 +83,14 @@ public struct AppShell: View {
         .onAppear { openLinkedTask() }
         .onChange(of: model.openTaskId) { _, _ in openLinkedTask() }
         .sheet(isPresented: $shell.quickAdd) { QuickAddSheet(model: model) }
+        .sheet(item: $shell.feedback) { FeedbackSheet(source: $0) }
+        #if os(iOS)
+        // Shake to send feedback: unless it's switched off, and never over another sheet or the break.
+        .onReceive(NotificationCenter.default.publisher(for: FeedbackShake.shaken)) { _ in
+            guard shakeForFeedback, model.breakPrompt == nil, shell.feedback == nil, !shell.quickAdd, !FeedbackShake.somethingIsShown() else { return }
+            shell.feedback = .shake
+        }
+        #endif
         .confirmationDialog(deleteQuestion, isPresented: Binding(get: { shell.deleting != nil }, set: { if !$0 { shell.deleting = nil } }), titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 if let id = shell.deleting {
@@ -133,6 +142,7 @@ public struct AppShell: View {
             if showing {
                 shell.inspected = nil
                 shell.quickAdd = false
+                shell.feedback = nil
             }
         }
         #endif
@@ -466,6 +476,10 @@ public struct TodoTrackerCommands: Commands {
             Button("Show Details") { if let id { shell?.open(id) } }
                 .keyboardShortcut("i")
                 .disabled(item == nil)
+        }
+        CommandGroup(replacing: .help) {
+            Button("Send Feedback…") { shell?.feedback = .button }
+                .disabled(shell == nil)
         }
     }
 }

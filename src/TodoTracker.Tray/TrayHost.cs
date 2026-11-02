@@ -90,6 +90,16 @@ internal sealed class TrayHost : IAsyncDisposable
                     return Path.GetFileName((await vault.AddAttachmentAsync(taskId, name, content, Actor.User).ConfigureAwait(false)).Path);
                 },
             });
+        // Send feedback is an extra: the menu offers it only while it's on (switched in Settings, it follows).
+        var plugins = services.GetRequiredService<TodoTracker.Server.Plugins.PluginHost>();
+        viewModel.ShowFeedback = plugins.IsRunning("feedback");
+        plugins.Settings.Changed += (_, id) =>
+        {
+            if (id == "feedback")
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => viewModel.ShowFeedback = plugins.IsRunning("feedback"));
+            }
+        };
         await viewModel.RefreshAsync().ConfigureAwait(true);
         return new TrayHost(server, viewModel, connection.BaseUrl);
     }

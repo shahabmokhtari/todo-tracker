@@ -47,7 +47,7 @@ import java.util.UUID
 /** Settings on this phone: sync or a connected computer, the theme, energy in a day, the focus timer's lengths, and what may notify you. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
+fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit, onFeedback: () -> Unit = {}) {
     var syncOpen by rememberSaveable { mutableStateOf(false) }
     if (syncOpen) {
         SyncScreen(vm) { syncOpen = false }
@@ -101,6 +101,14 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
                             OutlinedButton(onClick = {
                                 context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
                             }) { Text("Allow alarms") }
+                        }
+                    }
+                    HorizontalDivider()
+                    Setting("Feedback", "Found a bug or have an idea? Tell us: we read every note.") {
+                        OutlinedButton(onClick = onFeedback) { Text("Send feedback…") }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Shake to send feedback", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            androidx.compose.material3.Switch(checked = vm.shakeToFeedback, onCheckedChange = { vm.chooseShakeToFeedback(it) })
                         }
                     }
                 }

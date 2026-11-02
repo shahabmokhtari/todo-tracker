@@ -19,6 +19,7 @@ public static class TrayMenu
     public const string ResumeFocus = "focus-resume";
     public const string StopTimer = "timer-stop";
     public const string ToggleSidebar = "sidebar";
+    public const string Feedback = "feedback";
     public const string Settings = "settings";
     public const string Quit = "quit";
 
@@ -56,6 +57,11 @@ public static class TrayMenu
         if (sidebarShown is { } shown)
         {
             items.Add(new TrayItem(ToggleSidebar, shown ? "Hide the sidebar" : "Show the sidebar"));
+        }
+
+        if (vm.ShowFeedback)
+        {
+            items.Add(new TrayItem(Feedback, "Send feedback…"));
         }
 
         items.Add(new TrayItem(Settings, "Settings…"));

@@ -14,6 +14,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
+        // Send feedback: a debug build only logs a note; `gradle assembleDebug -PonethingFeedbackSend=true` sends it
+        // for real (to the issues relay). Release builds always send.
+        buildConfigField("boolean", "FEEDBACK_SEND", (project.findProperty("onethingFeedbackSend")?.toString() == "true").toString())
     }
 
     buildFeatures {

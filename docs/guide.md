@@ -226,6 +226,27 @@ in the sidebar) turn on **Let phones connect** and restart Onething. **Connect a
 the phone app (it works once, for 10 minutes). **Connected phones** lists them; **Disconnect** takes one's access back.
 A phone only reaches your tasks, never settings, hooks or AI apps. See [`docs/plugins.md`](plugins.md#phones).
 
+## Send feedback
+
+Found a bug, or have an idea? Tell us from any app: pick **Bug**, **Idea** or **Other**, write a note, add your email
+only if you'd like a reply, and press **Send**. Every note is read.
+
+* **Web app and app window:** Settings › Feedback › **Send feedback…**, or Ctrl K › *Send feedback*.
+* **Windows sidebar:** **⋯ › Send feedback…**; also in the tray icon's menu. **Linux:** the tray icon's menu. Both
+  open the app's sheet.
+* **Browser extension:** the speech-bubble button at the top of the panel.
+* **iPhone and iPad:** Settings › Feedback › **Send feedback…**, or shake the phone (switch it off with **Shake to
+  send feedback** in Settings; a shake does nothing while another sheet or a break is on screen). On an iPad with a
+  keyboard, Help › Send Feedback… too.
+* **Mac:** **Help › Send Feedback…**, or Settings › Feedback.
+* **Android:** Settings › Feedback › **Send feedback…**, **⋮ › Send feedback…** on Today, or shake the phone (switch
+  it off with **Shake to send feedback** in Settings; not while a sheet, a dialog or a break is on screen).
+
+No connection? The sheet keeps your note and says so; press **Send** again later (it's never filed twice). What's sent
+with it is only your app version, system, device model and language, never your tasks. The note becomes an issue on
+Onething's public GitHub repository (with your email, if you gave one): see [privacy](privacy.md). Don't want it? Turn
+off the **Send feedback** extra (Settings › Extras).
+
 ## Teams reminders
 
 Choose sidebar menu **⋯ › Connect Teams reminders…** and paste a Teams Workflows webhook URL.

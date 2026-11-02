@@ -6,6 +6,7 @@ import { createPhonesSection } from '../plugins/phones.js';
 import { THEMES, chooseTheme } from '../themes.js';
 import { describeHook } from '../hook-prompt.js';
 import { energyLine } from '../format.js';
+import { openFeedback, TEXTS as FEEDBACK } from '../plugins/feedback.js';
 
 const CONNECTOR_PLUGINS = new Set(['connector-notion', 'connector-mstodo']);
 
@@ -292,6 +293,9 @@ export function createSettingsView(ctx) {
       sync(list),
       phonesOn ? section('phones', 'Phones', 'Use the Onething app on your iPhone, iPad or Android phone with the tasks on this computer, at home on Wi-Fi or anywhere with Tailscale.', phones.element) : null,
       hookStatus ? hooks(hookStatus) : null,
+      list.some((p) => p.id === 'feedback' && p.enabled) ? section('feedback', 'Feedback', 'Found a bug, or have an idea? Tell the people who make Onething: every note is read.',
+        h('button', { class: 'btn', type: 'button', onclick: () => openFeedback(ctx.pluginHost, 'button') }, icon('chat', { size: 16 }), 'Send feedback…'),
+        h('p', { class: 'muted small' }, FEEDBACK.finePrint)) : null,
       plugins(list),
       section('keys', 'Keyboard', null, h('dl', { class: 'shortcuts' }, ...SHORTCUTS.flatMap(([keys, what]) => [h('dt', null, h('kbd', null, keys)), h('dd', null, what)])))));
   }
@@ -302,8 +306,8 @@ export function createSettingsView(ctx) {
       render(settings, list, labelList, hookStatus, energyInfo);
       await connectors.load();
       if (list.some((p) => p.id === 'phones' && p.enabled)) await phones.load();
-      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here), #/settings/phones: that section.
-      const part = location.hash.match(/^#\/settings\/(plugins|hooks|phones)/)?.[1];
+      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here), #/settings/phones, #/settings/feedback: that section.
+      const part = location.hash.match(/^#\/settings\/(plugins|hooks|phones|feedback)/)?.[1];
       if (part) root.querySelector(`#settings-${part}`)?.scrollIntoView();
     } catch (err) {
       ctx.toast(err.message, 'error');
