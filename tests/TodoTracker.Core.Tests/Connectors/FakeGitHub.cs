@@ -122,6 +122,18 @@ public sealed class FakeGitHub : HttpMessageHandler
 
         if (parts[3] == "labels")
         {
+            if (request.Method == HttpMethod.Post)
+            {
+                var name = body!["name"]!.GetValue<string>();
+                if (LabelsByRepo[fullName].Any(l => string.Equals(l, name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return Json(HttpStatusCode.UnprocessableEntity, new JsonObject { ["message"] = "Validation Failed" });
+                }
+
+                LabelsByRepo[fullName].Add(name);
+                return Json(HttpStatusCode.Created, new JsonObject { ["name"] = name });
+            }
+
             if (request.Method == HttpMethod.Delete)
             {
                 return LabelsByRepo[fullName].RemoveAll(l => string.Equals(l, parts[4], StringComparison.OrdinalIgnoreCase)) > 0
@@ -145,7 +157,10 @@ public sealed class FakeGitHub : HttpMessageHandler
             var query = System.Web.HttpUtility.ParseQueryString(path.Contains('?', StringComparison.Ordinal) ? path[path.IndexOf('?', StringComparison.Ordinal)..] : string.Empty);
             var page = int.Parse(query["page"] ?? "1", CultureInfo.InvariantCulture);
             var size = Math.Min(100, int.Parse(query["per_page"] ?? "30", CultureInfo.InvariantCulture));
-            return Json(HttpStatusCode.OK, new JsonArray([.. issues.Values.Skip((page - 1) * size).Take(size).Select(i => i.DeepClone())]));
+            // labels=a,b: issues with all of them (any case), as GitHub does.
+            var wanted = System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["labels"]?.Split(',') ?? [];
+            var matching = issues.Values.Where(i => wanted.All(w => i["labels"]!.AsArray().Any(l => string.Equals(l!["name"]!.GetValue<string>(), w, StringComparison.OrdinalIgnoreCase))));
+            return Json(HttpStatusCode.OK, new JsonArray([.. matching.Skip((page - 1) * size).Take(size).Select(i => i.DeepClone())]));
         }
 
         if (parts.Length == 4 && request.Method == HttpMethod.Post)
@@ -158,6 +173,20 @@ public sealed class FakeGitHub : HttpMessageHandler
         if (!issues.TryGetValue(int.Parse(parts[4], CultureInfo.InvariantCulture), out var issue))
         {
             return Json(HttpStatusCode.NotFound, new JsonObject { ["message"] = "Not Found" });
+        }
+
+        if (parts.Length == 6 && parts[5] == "labels" && request.Method == HttpMethod.Post)
+        {
+            foreach (var name in body!["labels"]!.AsArray().Select(l => l!.GetValue<string>()))
+            {
+                var labels = issue["labels"]!.AsArray();
+                if (!labels.Any(l => string.Equals(l!["name"]!.GetValue<string>(), name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    labels.Add(new JsonObject { ["name"] = Label(fullName, name) });
+                }
+            }
+
+            return Json(HttpStatusCode.OK, issue["labels"]!.DeepClone());
         }
 
         if (request.Method == HttpMethod.Patch)

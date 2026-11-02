@@ -149,6 +149,12 @@ public sealed record ConnectorPlanInput(
     /// isn't here (made on another computer) is brought in with that id, instead of waiting for it to arrive here.
     /// </summary>
     public bool AdoptMarked { get; init; }
+
+    /// <summary>
+    /// Tasks that are here but in another group: an item carrying one of their ids (moved to this group on the other
+    /// side) brings its task into this group.
+    /// </summary>
+    public IReadOnlySet<Guid> Elsewhere { get; init; } = new HashSet<Guid>();
 }
 
 /// <summary>The changes to make, and the links as they'll be once every change went through.</summary>
@@ -261,6 +267,15 @@ public static class ConnectorPlan
                     if (!marked.Archived && linkedLocal.Add(marker))
                     {
                         Merge(marked, there, null, new ConnectorLink(marker, there.Id, null));
+                    }
+                }
+                else if (input.Elsewhere.Contains(marker))
+                {
+                    // Moved to this group there: its task comes along (never one dropped there).
+                    if (!there.Dropped && linkedLocal.Add(marker))
+                    {
+                        ops.Add(new CreateLocal(marker, there.Id, there.Fields));
+                        links.Add(new ConnectorLink(marker, there.Id, there.Fields));
                     }
                 }
                 else if (marker == importId && canImport && linkedLocal.Add(importId))

@@ -18,6 +18,18 @@ export function previewText(p) {
   return parts.length ? `It will ${parts.join(', ')}.` : 'Nothing to change: they already match.';
 }
 
+/** The GitHub repositories other groups are in (each with those groups), for a group to join one. */
+export function reposInUse(groups, self) {
+  const byRepo = new Map();
+  for (const g of groups) {
+    if (!g.repo || g.group === self) continue;
+    byRepo.set(g.repo, [...(byRepo.get(g.repo) ?? []), g.group]);
+  }
+  return [...byRepo.entries()]
+    .map(([repo, names]) => ({ repo, groups: names.sort((a, b) => a.localeCompare(b)) }))
+    .sort((a, b) => a.repo.localeCompare(b.repo));
+}
+
 /** Settings › Connected apps: a card per connector, with its own switch, then its setup. */
 export function createConnectorsPanel(host) {
   const { h, icon } = host;
@@ -169,7 +181,8 @@ export function createConnectorsPanel(host) {
 
   /**
    * GitHub Issues: each group with its own private repository (made with the GitHub CLI, so nothing to paste), or a
-   * repository you pick. Snoozes, reminders and the rest travel as labels (due:, snooze:, remind:…).
+   * repository you pick, which groups can share (each group's issues carry its group:<name> label). Snoozes,
+   * reminders and the rest travel as labels (due:, snooze:, remind:…).
    */
   function githubCard(g) {
     // While the tasks live on GitHub it stays on (move them back first).
@@ -180,27 +193,50 @@ export function createConnectorsPanel(host) {
       onchange: () => run(host.put('/api/plugins/connector-github', { enabled: toggle.checked }), toggle.checked ? 'GitHub Issues is on' : 'GitHub Issues is off'),
     });
     const head = h('label', { class: 'connector-head' }, toggle, h('span', null, h('strong', null, 'GitHub Issues'),
-      h('span', { class: 'muted small' }, 'Each group in its own private repository: tasks are issues, both ways.')));
+      h('span', { class: 'muted small' }, 'Groups in private repositories (their own, or one they share): tasks are issues, both ways.')));
     if (!g.on) return h('section', { class: 'connector off' }, head);
     const ready = !g.missing;
+    const everyGroup = async (on, sharedRepo) => {
+      await run(host.put(`${githubBase}/every-group`, { on, sharedRepo: sharedRepo || null }), on ? (sharedRepo ? `Every group goes into ${sharedRepo}…` : 'Making the repositories (a moment each)…') : null);
+      // They're made in the background: look again in a bit.
+      if (on) [5000, 15000, 40000].forEach((ms) => setTimeout(load, ms));
+    };
     const every = h('input', {
-      type: 'checkbox', checked: g.everyGroup, disabled: !ready || g.mainPlace, 'aria-label': 'Every group gets its own repository',
-      onchange: async () => {
-        await run(host.put(`${githubBase}/every-group`, { on: every.checked }), every.checked ? 'Making the repositories (a moment each)…' : null);
-        // They're made in the background: look again in a bit.
-        if (every.checked) [5000, 15000, 40000].forEach((ms) => setTimeout(load, ms));
-      },
+      type: 'checkbox', checked: g.everyGroup, disabled: !ready || g.mainPlace, 'aria-label': 'Every group gets a repository',
+      onchange: () => everyGroup(every.checked, g.sharedRepo),
     });
+    // Optional: every group in one repository (each with its label) instead of one each.
+    const shared = h('input', { value: g.sharedRepo ?? '', placeholder: 'owner/name', spellcheck: false, 'aria-label': 'One repository for every group', disabled: !ready });
+    const sharedForm = h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); everyGroup(true, shared.value.trim()); } },
+      h('label', { class: 'field grow' }, h('span', null, 'Put every group in one repository (optional; empty: one each)'), shared),
+      h('button', { class: 'btn', type: 'submit', disabled: !ready }, 'Save'));
     const row = (x) => {
       const id = encodeURIComponent(x.groupId);
-      const repoLink = x.repo ? h('a', { href: `https://github.com/${x.repo}/issues`, target: '_blank', rel: 'noopener' }, x.repo) : h('span', { class: 'muted' }, 'not connected');
+      const connect = (repo) => run(host.post(`${githubBase}/groups/${id}/connect`, { repo }), `${x.group} is in step with ${repo}`);
+      const repoLink = x.repo ? h('a', { href: `https://github.com/${x.repo}/issues${x.label ? `?q=${encodeURIComponent(`label:"${x.label}"`)}` : ''}`, target: '_blank', rel: 'noopener' }, x.repo) : h('span', { class: 'muted' }, 'not connected');
+      const inUse = reposInUse(g.groups, x.group);
+      const sharing = x.repo ? inUse.find((r) => r.repo === x.repo)?.groups : null;
       const other = () => {
-        const repo = prompt(`Keep "${x.group}" in step with which repository? (owner/name)`, x.repo ?? '');
-        if (repo) run(host.post(`${githubBase}/groups/${id}/connect`, { repo }), `${x.group} is in step with ${repo}`);
+        const repo = prompt(`Keep "${x.group}" in step with which repository? (owner/name; other groups can use it too)`, x.repo ?? '');
+        if (repo) connect(repo.trim());
       };
+      // Join a repository other groups are in, or name another one.
+      const pick = h('select', {
+        class: 'small', 'aria-label': `Repository for ${x.group}`, disabled: !ready,
+        onchange: () => {
+          const value = pick.value;
+          pick.value = '';
+          if (value === 'other') other();
+          else if (value) connect(value);
+        },
+      },
+      h('option', { value: '', selected: true, disabled: true }, 'Use another…'),
+      ...inUse.map((r) => h('option', { value: r.repo }, `${r.repo} (with ${r.groups.join(', ')})`)),
+      h('option', { value: 'other' }, 'Another repository…'));
       return h('li', { class: 'github-group' },
         h('div', { class: 'row' },
           h('strong', null, x.group), repoLink,
+          x.label ? h('code', { class: 'small', title: 'Every issue of this group has this label' }, x.label) : null,
           x.repo
             ? h('span', { class: 'buttons' },
               h('button', { class: 'btn small', type: 'button', disabled: !ready, onclick: () => run(host.post(`${githubBase}/groups/${id}/sync`), 'Synced') }, 'Sync now'),
@@ -209,7 +245,8 @@ export function createConnectorsPanel(host) {
               } }, 'Stop'))
             : h('span', { class: 'buttons' },
               h('button', { class: 'btn small primary', type: 'button', disabled: !ready, title: 'Makes a private repository for this group with the GitHub CLI', onclick: () => run(host.post(`${githubBase}/groups/${id}/connect`, {}), `${x.group} has its repository`) }, 'Make its repository'),
-              h('button', { class: 'btn small ghost', type: 'button', disabled: !ready, onclick: other }, 'Use another…'))),
+              inUse.length ? pick : h('button', { class: 'btn small ghost', type: 'button', disabled: !ready, onclick: other }, 'Use another…'))),
+        sharing?.length ? h('p', { class: 'muted small' }, `Shares the repository with ${sharing.join(', ')}.`) : null,
         x.lastRun ? h('p', { class: 'muted small' }, `Last sync ${new Date(x.lastRun).toLocaleString()}: ${x.lastResult ?? ''}${x.repo ? ` · ${x.linked} linked` : ''}`) : null,
         x.problems?.length ? h('ul', { class: 'problems' }, ...x.problems.map((p) => h('li', null, icon('alert', { size: 14 }), p))) : null);
     };
@@ -219,7 +256,7 @@ export function createConnectorsPanel(host) {
       onchange: async () => {
         const on = main.checked;
         const question = on
-          ? 'Keep your tasks on GitHub instead of a tasks folder?\n\nEvery group gets its own private repository, and the app keeps its copy in its own folder. Your tasks folder is left as it is. Takes effect when Onething restarts.'
+          ? 'Keep your tasks on GitHub instead of a tasks folder?\n\nEvery group gets a private repository (its own, or the one you chose for every group), and the app keeps its copy in its own folder. Your tasks folder is left as it is. Takes effect when Onething restarts.'
           : 'Keep your tasks in a tasks folder again?\n\nThe app\'s copy goes into your tasks folder (what\'s there now is kept next to it, renamed). The repositories stay on GitHub. Takes effect when Onething restarts.';
         if (!confirm(question)) {
           main.checked = !on;
@@ -236,9 +273,12 @@ export function createConnectorsPanel(host) {
     });
     return h('section', { class: 'connector' }, head,
       ready
-        ? h('p', { class: 'muted small' }, `Signed in${g.account ? ` as ${g.account}` : ''} with the GitHub CLI. Snoozes, reminders, the board column, labels, icon and color travel as issue labels (due:, snooze:, remind:, stage:…).`)
+        ? h('p', { class: 'muted small' }, `Signed in${g.account ? ` as ${g.account}` : ''} with the GitHub CLI. Each group's issues have its group: label; snoozes, reminders, the board column, labels, icon and color travel as issue labels too (due:, snooze:, remind:, stage:…).`)
         : h('p', { class: 'hint' }, g.missing),
-      h('label', { class: 'check' }, every, h('span', null, g.mainPlace ? 'Every group has its own repository (GitHub is where your tasks live)' : 'Every group gets its own private repository (new groups too)')),
+      h('label', { class: 'check' }, every, h('span', null, g.mainPlace
+        ? (g.sharedRepo ? `Every group is in ${g.sharedRepo} (GitHub is where your tasks live)` : 'Every group has its own repository (GitHub is where your tasks live)')
+        : (g.sharedRepo ? `Every group goes into ${g.sharedRepo} (new groups too)` : 'Every group gets its own private repository (new groups too)'))),
+      sharedForm,
       h('label', { class: 'check' }, main, h('span', null, 'Keep my tasks on GitHub, without a tasks folder',
         h('span', { class: 'muted small' }, ' (other computers find the repositories and bring the tasks in)'))),
       g.mainPlaceAsked !== g.mainPlace ? h('p', { class: 'hint' }, 'Restart Onething to finish moving your tasks.') : null,

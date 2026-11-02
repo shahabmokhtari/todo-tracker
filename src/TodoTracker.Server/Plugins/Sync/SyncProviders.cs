@@ -8,12 +8,21 @@ public sealed record SyncAvailability(bool Available, string Detail);
 /// <summary>
 /// A place devices meet to sync (OneDrive, iCloud Drive, a GitHub gist, ...). Each is a plugin; the sync feature uses
 /// the first available one in <see cref="Order"/> unless the person picked one.
+/// <para>
+/// Adding a place: an <see cref="ISyncRemote"/> (in Core/Sync: where the snapshots and contents go), an
+/// <see cref="ISyncProvider"/> that makes it, and a <see cref="SyncProviderPlugin"/> for it listed in
+/// <see cref="PluginHost.BuiltIn"/>. Everything else (the engine, the API, the Sync panel, the sidebar's menu) works from
+/// <see cref="SyncService.Providers"/>.
+/// </para>
 /// </summary>
 public interface ISyncProvider
 {
     string Id { get; }
 
     string Name { get; }
+
+    /// <summary>The plugin that adds it (switched off: the place is no longer used, at once).</summary>
+    string PluginId => SyncProviderPlugin.IdPrefix + Id;
 
     /// <summary>Lower comes first when choosing automatically.</summary>
     int Order { get; }

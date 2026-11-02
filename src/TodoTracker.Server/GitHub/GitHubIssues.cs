@@ -14,31 +14,33 @@ using TodoTracker.Server.Plugins.Connectors;
 
 namespace TodoTracker.Server.GitHub;
 
-/// <summary>A group and its repository, as Settings shows them.</summary>
-public sealed record GitHubGroupView(Guid GroupId, string Group, string? Repo, ConnectorDirection Direction, bool Enabled, DateTimeOffset? LastRun, string? LastResult, IReadOnlyList<string> Problems, int Linked);
+/// <summary>A group and its repository, as Settings shows them (<paramref name="Label"/>: its label there, <c>group:Work</c>).</summary>
+public sealed record GitHubGroupView(Guid GroupId, string Group, string? Repo, ConnectorDirection Direction, bool Enabled, DateTimeOffset? LastRun, string? LastResult, IReadOnlyList<string> Problems, int Linked, string? Label = null);
 
 /// <summary>
 /// The GitHub connector as Settings shows it: whether <c>gh</c> is there and signed in (<see cref="Missing"/> says what
-/// to do), whether every group gets its own repository, and each group.
+/// to do), whether every group gets a repository (<paramref name="SharedRepo"/>: all in that one), and each group.
 /// </summary>
 /// <param name="MainPlace">The tasks live on GitHub now.</param>
 /// <param name="MainPlaceAsked">They're to live on GitHub (different from <paramref name="MainPlace"/>: until the app restarts).</param>
 /// <param name="Problems">What went wrong moving the tasks, or finding repositories.</param>
-public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups, bool MainPlaceAsked = false, IReadOnlyList<string>? Problems = null);
+public sealed record GitHubView(bool On, bool CliInstalled, string? Account, string? Missing, bool EveryGroup, bool MainPlace, IReadOnlyList<GitHubGroupView> Groups, bool MainPlaceAsked = false, IReadOnlyList<string>? Problems = null, string? SharedRepo = null);
 
-/// <summary>Connect a group: to <paramref name="Repo"/> ("owner/name"), or (none) to a new private repository.</summary>
+/// <summary>Connect a group: to <paramref name="Repo"/> ("owner/name", one other groups may use too), or (none) to a new private repository.</summary>
 public sealed record GitHubConnectRequest(string? Repo, ConnectorDirection? Direction);
 
-public sealed record GitHubEveryGroupRequest(bool On);
+/// <summary>Every group gets a repository (<paramref name="SharedRepo"/>: all go into that one, each with its label), or not.</summary>
+public sealed record GitHubEveryGroupRequest(bool On, string? SharedRepo = null);
 
 /// <summary>What switching where the tasks live did: the folder the app uses from its next start.</summary>
 public sealed record GitHubMainPlaceResult(bool MainPlace, string Path, bool RestartRequired);
 
 /// <summary>
-/// Each group in step with its own private GitHub repository: tasks are issues (see <see cref="GitHubRemote"/>). A
-/// group without a repository gets one made with <c>gh repo create</c> (named <c>todo-&lt;group&gt;</c>, private, with
-/// the topic <see cref="Topic"/>, so other computers find it). With "every group", new groups get theirs on the next
-/// sync. One thing at a time; nothing is ever deleted on either side.
+/// Groups in step with private GitHub repositories: tasks are issues (see <see cref="GitHubRemote"/>), and each group's
+/// issues carry its label (<c>group:Work</c>), so groups can share a repository (personal, work… in one). A group
+/// without a repository gets one made with <c>gh repo create</c> (named <c>todo-&lt;group&gt;</c>, private, with the
+/// topic <see cref="Topic"/>, so other computers find it), or goes into the shared repository when one is set. With
+/// "every group", new groups get theirs on the next sync. One thing at a time; nothing is ever deleted on either side.
 /// </summary>
 public sealed class GitHubIssues(
     IHttpClientFactory http,
@@ -102,7 +104,7 @@ public sealed class GitHubIssues(
         }
 
         var groups = await store.ReadAsync(b => b.Groups.Select(g => (g.Id, g.Name)).ToList(), cancellationToken).ConfigureAwait(false);
-        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))], settings.TasksOnGitHub, Main.Settings.Problems);
+        return new GitHubView(On, cli.Installed, _account, missing, EveryGroup, MainPlace, [.. groups.Select(g => GroupView(g.Id, g.Name))], settings.TasksOnGitHub, Main.Settings.Problems, Main.Settings.SharedRepo);
     }
 
     private bool EveryGroup => MainPlace || Main.Settings.Enabled;
@@ -111,7 +113,7 @@ public sealed class GitHubIssues(
     {
         var files = FilesOf(id);
         var s = files.Settings;
-        return new GitHubGroupView(id, name, s.Target, s.Direction, s.Enabled, s.LastRun, s.LastResult, s.Problems, files.Links.Count(l => l.State == LinkState.Active));
+        return new GitHubGroupView(id, name, s.Target, s.Direction, s.Enabled, s.LastRun, s.LastResult, s.Problems, files.Links.Count(l => l.State == LinkState.Active), s.Label);
     }
 
     /// <summary>Keeps a group in step with <paramref name="repo"/>, or with a new private repository made for it; syncs it.</summary>
@@ -122,17 +124,28 @@ public sealed class GitHubIssues(
         await OneAtATimeAsync(async () =>
         {
             var token = await TokenAsync(cancellationToken).ConfigureAwait(false);
-            await ConnectLockedAsync(token, groupId, request.Repo, request.Direction ?? ConnectorDirection.Both, cancellationToken).ConfigureAwait(false);
+            await ConnectLockedAsync(token, groupId, request.Repo, request.Direction ?? ConnectorDirection.Both, mayClaim: true, cancellationToken).ConfigureAwait(false);
             await SyncGroupLockedAsync(token, groupId, lifetime.ApplicationStopping).ConfigureAwait(false);
         }, cancellationToken).ConfigureAwait(false);
         return await GroupViewAsync(groupId, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Every group gets its own repository (now, and new groups at the next sync), or not (the ones there stay).</summary>
-    public async Task<GitHubView> SetEveryGroupAsync(bool on, CancellationToken cancellationToken)
+    /// <summary>
+    /// Every group gets a repository (now, and new groups at the next sync), or not (the ones there stay):
+    /// its own, or <paramref name="sharedRepo"/> ("owner/name", private) for all of them, each with its label.
+    /// </summary>
+    public async Task<GitHubView> SetEveryGroupAsync(bool on, string? sharedRepo, CancellationToken cancellationToken)
     {
         Running();
-        Main.Update(s => s with { Enabled = on });
+        string? shared = null;
+        if (!string.IsNullOrWhiteSpace(sharedRepo))
+        {
+            var token = await TokenAsync(cancellationToken).ConfigureAwait(false);
+            shared = await CheckRepoAsync(token, GitHubRemote.ValidRepo(sharedRepo), cancellationToken).ConfigureAwait(false);
+            await TagAsync(token, shared, cancellationToken).ConfigureAwait(false); // other computers find it
+        }
+
+        Main.Update(s => s with { Enabled = on, SharedRepo = shared });
         if (on)
         {
             // Making the repositories takes a while (gh, then a first sync each): in the background; each group shows how it went.
@@ -203,7 +216,8 @@ public sealed class GitHubIssues(
                 {
                     try
                     {
-                        await ConnectLockedAsync(token, group, null, ConnectorDirection.Both, cancellationToken).ConfigureAwait(false);
+                        var shared = Main.Settings.SharedRepo;
+                        await ConnectLockedAsync(token, group, shared, ConnectorDirection.Both, mayClaim: shared is null, cancellationToken).ConfigureAwait(false);
                     }
                     catch (Exception ex) when (ConnectorRunner.IsProblem(ex, cancellationToken))
                     {
@@ -270,7 +284,8 @@ public sealed class GitHubIssues(
                 var files = FilesOf(id);
                 if (files.Settings.Target is { } repo)
                 {
-                    Main.Update(s => s with { Forgotten = [.. s.Forgotten.Append(repo).Distinct(StringComparer.OrdinalIgnoreCase)] });
+                    var forgotten = Key(repo, files.Settings.Label);
+                    Main.Update(s => s with { Forgotten = [.. s.Forgotten.Append(forgotten).Distinct(StringComparer.OrdinalIgnoreCase)] });
                 }
 
                 files.Clear();
@@ -280,47 +295,63 @@ public sealed class GitHubIssues(
     }
 
     /// <summary>
-    /// Repositories made for groups (the <see cref="Topic"/> topic) that no group here has: each becomes a group (by
-    /// the name in its description), or joins the group of that name that has no repository yet.
+    /// Groups made on other computers, in repositories with the <see cref="Topic"/> topic: each <c>group:</c> label no
+    /// group here has becomes a group of that name (several groups can share a repository), or joins the group of that
+    /// name that has no repository yet. A repository from before labels (none of them) is one group, named in its
+    /// description. Groups deleted here (<see cref="ConnectorSettings.Forgotten"/>) aren't brought back.
     /// </summary>
     private async Task DiscoverLockedAsync(string token, CancellationToken cancellationToken)
     {
         var mapped = (await store.ReadAsync(b => b.Groups.Select(g => g.Id).ToList(), cancellationToken).ConfigureAwait(false))
-            .Select(id => FilesOf(id).Settings.Target).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
-        mapped.UnionWith(Main.Settings.Forgotten);
+            .Select(id => FilesOf(id).Settings).Where(s => s.Target is not null).Select(s => Key(s.Target!, s.Label)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var forgotten = Main.Settings.Forgotten.ToHashSet(StringComparer.OrdinalIgnoreCase);
         for (var page = 1; page < 50; page++)
         {
             var repos = await SendAsync(token, HttpMethod.Get, $"user/repos?affiliation=owner&per_page=100&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
             foreach (var repo in repos.OfType<JsonObject>())
             {
                 var fullName = repo["full_name"]?.GetValue<string>();
-                if (fullName is null || mapped.Contains(fullName) || repo["private"]?.GetValue<bool>() != true
+                // Forgotten whole, or a group here from before labels has all of it.
+                if (fullName is null || forgotten.Contains(fullName) || mapped.Contains(fullName) || repo["private"]?.GetValue<bool>() != true
                     || repo["topics"] is not JsonArray topics || !topics.Any(t => t?.GetValue<string>() == Topic))
                 {
                     continue;
                 }
 
-                var description = repo["description"]?.GetValue<string>() ?? string.Empty;
-                var name = description.StartsWith(Description(string.Empty), StringComparison.Ordinal) && description.Length > Description(string.Empty).Length
-                    ? description[Description(string.Empty).Length..].Trim()
-                    : repo["name"]?.GetValue<string>() ?? fullName;
-                var found = await store.UpdateAsync(b =>
+                var labels = (await Remote(token, fullName, null).LabelNamesAsync(cancellationToken).ConfigureAwait(false)).Where(GitHubRemote.IsGroupLabel).ToList();
+                if (labels.Count == 0)
                 {
-                    // The group of that name joins it, unless it has a repository already or was stopped here.
-                    if (b.Groups.FirstOrDefault(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)) is { } same)
+                    // From before labels: the repository is one group's (unless a group here uses it already).
+                    if (mapped.Any(m => m.StartsWith(fullName + "#", StringComparison.OrdinalIgnoreCase)) || string.Equals(fullName, Main.Settings.SharedRepo, StringComparison.OrdinalIgnoreCase))
                     {
-                        return FilesOf(same.Id).Settings is { Target: null, Stopped: false } ? same.Id : (Guid?)null;
+                        continue;
                     }
 
-                    return b.AddGroup(name, null, new Actor(ActorKind.Connector, "GitHub"), time.GetUtcNow()).Id;
-                }, cancellationToken).ConfigureAwait(false);
-                if (found is not { } group)
-                {
+                    var description = repo["description"]?.GetValue<string>() ?? string.Empty;
+                    var name = description.StartsWith(Description(string.Empty), StringComparison.Ordinal) && description.Length > Description(string.Empty).Length
+                        ? description[Description(string.Empty).Length..].Trim()
+                        : repo["name"]?.GetValue<string>() ?? fullName;
+                    if (await JoinAsync(name, fullName, null, cancellationToken).ConfigureAwait(false))
+                    {
+                        mapped.Add(Key(fullName, null));
+                    }
+
                     continue;
                 }
 
-                FilesOf(group).Update(s => s with { Target = fullName, TargetName = name, GroupId = group, Direction = ConnectorDirection.Both, Enabled = true });
-                mapped.Add(fullName);
+                foreach (var label in labels)
+                {
+                    var key = Key(fullName, label);
+                    if (mapped.Contains(key) || forgotten.Contains(key) || label.Length <= GitHubRemote.GroupPrefix.Length)
+                    {
+                        continue;
+                    }
+
+                    if (await JoinAsync(label[GitHubRemote.GroupPrefix.Length..].Trim(), fullName, label, cancellationToken).ConfigureAwait(false))
+                    {
+                        mapped.Add(key);
+                    }
+                }
             }
 
             if (repos.Count < 100)
@@ -329,6 +360,33 @@ public sealed class GitHubIssues(
             }
         }
     }
+
+    /// <summary>
+    /// The group named <paramref name="name"/> (made if there's none) is kept in step with <paramref name="repo"/>
+    /// (with <paramref name="label"/>), unless it has a repository already or was stopped here.
+    /// </summary>
+    private async Task<bool> JoinAsync(string name, string repo, string? label, CancellationToken cancellationToken)
+    {
+        var found = await store.UpdateAsync(b =>
+        {
+            if (b.Groups.FirstOrDefault(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase)) is { } same)
+            {
+                return FilesOf(same.Id).Settings is { Target: null, Stopped: false } ? same.Id : (Guid?)null;
+            }
+
+            return b.AddGroup(name, null, new Actor(ActorKind.Connector, "GitHub"), time.GetUtcNow()).Id;
+        }, cancellationToken).ConfigureAwait(false);
+        if (found is not { } group)
+        {
+            return false;
+        }
+
+        FilesOf(group).Update(s => s with { Target = repo, TargetName = name, GroupId = group, Label = label, Direction = ConnectorDirection.Both, Enabled = true });
+        return true;
+    }
+
+    /// <summary>A group's place: <c>owner/name</c> (the whole repository) or <c>owner/name#group:Label</c>.</summary>
+    private static string Key(string repo, string? label) => label is null ? repo : $"{repo}#{label}";
 
     // ---- inside --------------------------------------------------------------------------------
 
@@ -351,7 +409,7 @@ public sealed class GitHubIssues(
         return GroupView(groupId, name);
     }
 
-    private async Task ConnectLockedAsync(string token, Guid groupId, string? repo, ConnectorDirection direction, CancellationToken cancellationToken)
+    private async Task ConnectLockedAsync(string token, Guid groupId, string? repo, ConnectorDirection direction, bool mayClaim, CancellationToken cancellationToken)
     {
         var name = await store.ReadAsync(b => b.Groups.FirstOrDefault(g => g.Id == groupId)?.Name, cancellationToken).ConfigureAwait(false)
             ?? throw new KeyNotFoundException("There is no such group.");
@@ -359,16 +417,58 @@ public sealed class GitHubIssues(
             ? await MakeRepoAsync(token, name, cancellationToken).ConfigureAwait(false)
             : await CheckRepoAsync(token, GitHubRemote.ValidRepo(repo), cancellationToken).ConfigureAwait(false);
         var files = FilesOf(groupId);
+        var before = files.Settings;
+        var label = string.Equals(before.Target, target, StringComparison.OrdinalIgnoreCase) && before.Label is { } kept
+            ? kept
+            : await LabelLockedAsync(token, groupId, name, target, mayClaim, cancellationToken).ConfigureAwait(false);
         files.Update(s =>
         {
-            if (s.Target != target)
+            if (!string.Equals(s.Target, target, StringComparison.OrdinalIgnoreCase) || !string.Equals(s.Label, label, StringComparison.OrdinalIgnoreCase))
             {
-                files.SaveLinks([]); // another repository: its links start over (issues carry task ids: nothing is copied)
+                files.SaveLinks([]); // another repository or group label: its links start over (issues carry task ids: nothing is copied)
             }
 
-            return s with { Target = target, TargetName = name, GroupId = groupId, Direction = direction, Enabled = true, Stopped = false };
+            return s with { Target = target, TargetName = name, GroupId = groupId, Label = label, Direction = direction, Enabled = true, Stopped = false };
         });
     }
+
+    /// <summary>
+    /// The label a group gets in <paramref name="repo"/>: <c>group:&lt;name&gt;</c>, with a number when another group
+    /// here has that one there. With <paramref name="mayClaim"/>, a group that's the first in a repository without any
+    /// group labels (one made before them, or one picked with its issues) takes the issues there. The label is made in
+    /// the repository, so other computers find the group.
+    /// </summary>
+    private async Task<string> LabelLockedAsync(string token, Guid groupId, string name, string repo, bool mayClaim, CancellationToken cancellationToken)
+    {
+        var groups = await store.ReadAsync(b => b.Groups.Select(g => g.Id).Where(id => id != groupId).ToList(), cancellationToken).ConfigureAwait(false);
+        var others = groups.Select(id => FilesOf(id).Settings).Where(s => string.Equals(s.Target, repo, StringComparison.OrdinalIgnoreCase)).ToList();
+        var taken = others.Select(s => s.Label ?? GitHubRemote.GroupLabel(s.TargetName ?? string.Empty)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var n = 1;
+        while (taken.Contains(GitHubRemote.GroupLabel(name, n)))
+        {
+            n++;
+        }
+
+        var label = GitHubRemote.GroupLabel(name, n);
+        var remote = Remote(token, repo, label);
+        if (mayClaim && others.Count == 0 && !(await remote.LabelNamesAsync(cancellationToken).ConfigureAwait(false)).Any(GitHubRemote.IsGroupLabel))
+        {
+            await remote.ClaimUnlabelledAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        try
+        {
+            await remote.MakeLabelAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            // Made with its first issue instead.
+        }
+
+        return label;
+    }
+
+    private GitHubRemote Remote(string token, string repo, string? label) => new(http.CreateClient(HttpClientName), _ => Task.FromResult(token), repo, label);
 
     /// <summary>
     /// The group's repository: one this app made for it before (its name, with the topic), else a new private one
@@ -417,12 +517,17 @@ public sealed class GitHubIssues(
         return found["full_name"]?.GetValue<string>() ?? repo;
     }
 
-    /// <summary>The topic, so the repository is found from other computers (a repository that can't be tagged still works).</summary>
+    /// <summary>The topic, so the repository is found from other computers (its own topics stay; a repository that can't be tagged still works).</summary>
     private async Task TagAsync(string token, string repo, CancellationToken cancellationToken)
     {
         try
         {
-            await SendAsync(token, HttpMethod.Put, $"repos/{repo}/topics", new JsonObject { ["names"] = new JsonArray(Topic) }, cancellationToken).ConfigureAwait(false);
+            var topics = (await SendAsync(token, HttpMethod.Get, $"repos/{repo}", null, cancellationToken).ConfigureAwait(false))?["topics"] as JsonArray ?? [];
+            var names = topics.Select(t => t?.GetValue<string>()).OfType<string>().ToList();
+            if (!names.Contains(Topic))
+            {
+                await SendAsync(token, HttpMethod.Put, $"repos/{repo}/topics", new JsonObject { ["names"] = new JsonArray([.. names.Append(Topic).Select(t => (JsonNode)t)]) }, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (HttpRequestException)
         {
@@ -464,9 +569,17 @@ public sealed class GitHubIssues(
 
         try
         {
-            var remote = new GitHubRemote(http.CreateClient(HttpClientName), _ => Task.FromResult(token), repo);
+            if (current.Label is null)
+            {
+                // Connected before groups had labels: it gets its label now, and keeps the issues it had.
+                var name = await store.ReadAsync(b => b.Groups.FirstOrDefault(g => g.Id == groupId)?.Name, cancellationToken).ConfigureAwait(false) ?? current.TargetName ?? string.Empty;
+                var label = await LabelLockedAsync(token, groupId, current.TargetName ?? name, repo, mayClaim: true, cancellationToken).ConfigureAwait(false);
+                current = files.Update(s => s with { Label = label });
+            }
+
+            var remote = Remote(token, repo, current.Label);
             var runner = new ConnectorRunner($"github:{repo}", "GitHub", store, time, options.TimeZone);
-            var run = await runner.RunAsync(remote, new ConnectorTarget(groupId, current.Direction, AdoptMarked: MainPlace, GroupOnly: true), files.Links, cancellationToken).ConfigureAwait(false);
+            var run = await runner.RunAsync(remote, new ConnectorTarget(groupId, current.Direction, AdoptMarked: MainPlace, GroupOnly: true, TakeMoved: true), files.Links, cancellationToken).ConfigureAwait(false);
             files.SaveLinks(run.Links);
             if (run.Done.Any(d => d.Op is UpdateRemote or ArchiveRemote))
             {

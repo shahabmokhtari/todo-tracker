@@ -72,8 +72,9 @@ export function createSettingsView(ctx) {
   }
 
   function sync(list) {
-    const on = list.some((p) => p.id.startsWith('sync-') && p.enabled);
-    return section('sync', 'Sync', on ? 'Your tasks folder stays in step with your other computers.' : 'Switch on a sync extra below (OneDrive, iCloud Drive or a GitHub gist).',
+    const places = list.filter((p) => p.id.startsWith('sync-'));
+    const on = places.some((p) => p.enabled);
+    return section('sync', 'Sync', on ? 'Your tasks folder stays in step with your other computers.' : `Switch on a sync extra below${places.length ? ` (${places.map((p) => p.name).join(', ')})` : ''}.`,
       on ? h('button', { class: 'btn', type: 'button', onclick: () => {
         const open = document.querySelector('.sync-btn');
         if (open) open.click();

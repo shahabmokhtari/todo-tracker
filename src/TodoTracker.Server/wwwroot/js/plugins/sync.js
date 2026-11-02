@@ -1,4 +1,5 @@
-// Sync: keeps the tasks folder in step with your other computers through OneDrive, iCloud Drive or a GitHub gist.
+// Sync: keeps the tasks folder in step with your other computers through the sync places that are switched on
+// (OneDrive, iCloud Drive, a GitHub gist…: whatever the server lists in `providers`, nothing here is per place).
 // Shared by every sync provider plugin (each is its own plugin); the panel shows where it syncs, when it last did, and
 // anything both computers changed in the same place (keep yours, keep theirs, or compare them in a merge tool).
 

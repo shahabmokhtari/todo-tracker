@@ -224,8 +224,8 @@ and an iPhone or iPad joins the same sync on its own ([below](#sync-an-iphone-or
 
 ## Connectors: Notion, Microsoft To Do, GitHub Issues
 
-Keep a group in step with a Notion database, a Microsoft To Do list, or its own private GitHub repository (tasks as
-issues; snoozes, reminders and the rest as labels like `snooze:2026-10-20T14:30Z`; the repositories are made for you
+Keep a group in step with a Notion database, a Microsoft To Do list, or a private GitHub repository (its own, or one
+several groups share, each with its `group:` label; tasks as issues; snoozes, reminders and the rest as labels like `snooze:2026-10-20T14:30Z`; the repositories are made for you
 with the GitHub CLI). You can even keep your tasks only on GitHub, without a tasks folder. Nothing is ever deleted on
 either side. See [connectors.md](connectors.md).
 

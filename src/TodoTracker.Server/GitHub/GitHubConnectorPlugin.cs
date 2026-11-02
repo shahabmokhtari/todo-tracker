@@ -9,13 +9,13 @@ using TodoTracker.Server.Plugins.Connectors;
 
 namespace TodoTracker.Server.GitHub;
 
-/// <summary>GitHub Issues: each group in step with its own private repository (off by default; uses the GitHub CLI).</summary>
+/// <summary>GitHub Issues: groups in step with private GitHub repositories, their own or one they share (off by default; uses the GitHub CLI).</summary>
 public sealed class GitHubConnectorPlugin : ITodoPlugin
 {
     public static PluginInfo Definition { get; } = new(
         "connector-github",
         "GitHub Issues",
-        "Keeps each group in step with its own private GitHub repository: tasks are issues, both ways (makes the repositories with the GitHub CLI).",
+        "Keeps your groups in step with private GitHub repositories: tasks are issues, both ways. Each group gets its own repository (made with the GitHub CLI), or several share one, told apart by a group:<name> label.",
         DefaultEnabled: false,
         Live: true);
 
@@ -39,7 +39,7 @@ public sealed class GitHubConnectorPlugin : ITodoPlugin
         ArgumentNullException.ThrowIfNull(group);
         group.AddEndpointFilter(ConnectorEndpoints.OutsideErrors);
         group.MapGet("/", (GitHubIssues g, CancellationToken ct) => g.ViewAsync(ct));
-        group.MapPut("/every-group", (GitHubEveryGroupRequest request, GitHubIssues g, CancellationToken ct) => g.SetEveryGroupAsync(request.On, ct));
+        group.MapPut("/every-group", (GitHubEveryGroupRequest request, GitHubIssues g, CancellationToken ct) => g.SetEveryGroupAsync(request.On, request.SharedRepo, ct));
         group.MapPost("/groups/{id:guid}/connect", (Guid id, GitHubConnectRequest? request, GitHubIssues g, CancellationToken ct) => g.ConnectAsync(id, request ?? new GitHubConnectRequest(null, null), ct));
         group.MapPost("/groups/{id:guid}/sync", (Guid id, GitHubIssues g, CancellationToken ct) => g.SyncAsync(id, ct));
         group.MapDelete("/groups/{id:guid}", (Guid id, GitHubIssues g, CancellationToken ct) => g.DisconnectAsync(id, ct));

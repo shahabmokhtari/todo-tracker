@@ -71,6 +71,8 @@ public sealed class GitHubApiTests
         var issue = Assert.Single(github.Issues.Values);
         Assert.Equal("Ship the beta", issue["title"]!.GetValue<string>());
         Assert.Contains("priority:high", github.LabelsOf(1));
+        Assert.Contains("group:Side projects", github.LabelsOf(1));
+        Assert.Equal("group:Side projects", connected["label"]!.GetValue<string>());
 
         // Connecting again (or from another computer) finds the repository made for it: no second one.
         await client.DeleteAsync($"{Base}/groups/{group}");
@@ -267,8 +269,115 @@ public sealed class GitHubApiTests
         Assert.False(await server.Store.ReadAsync(b => b.Groups.Any(g => g.Name == "Errands")));
     }
 
+    [Fact]
+    public async Task Two_groups_can_share_one_repository_and_each_keeps_only_its_own_issues()
+    {
+        var (server, github, cli) = await StartAsync();
+        await using var _ = server;
+        var client = server.Client();
+        var errands = await server.Store.UpdateAsync(b => b.AddGroup("Errands", null, Actor.User, ServerFixture.T0).Id);
+        var reading = await server.Store.UpdateAsync(b => b.AddGroup("Reading", null, Actor.User, ServerFixture.T0).Id);
+        await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Buy stamps") { GroupId = errands }, Actor.User, ServerFixture.T0));
+        await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Finish Dune") { GroupId = reading }, Actor.User, ServerFixture.T0));
+        github.AddRepo("me/life");
+
+        var first = await (await client.PostAsJsonAsync($"{Base}/groups/{errands}/connect", new { repo = "me/life" })).Json();
+        var second = await (await client.PostAsJsonAsync($"{Base}/groups/{reading}/connect", new { repo = "me/life" })).Json();
+
+        Assert.Equal(("group:Errands", "group:Reading"), (first["label"]!.GetValue<string>(), second["label"]!.GetValue<string>()));
+        Assert.Empty(cli.Created);
+        github.Repo = "me/life";
+        Assert.Equal(2, github.Issues.Count);
+        Assert.Contains("group:Errands", github.LabelsOf(github.Issues.Values.Single(i => i["title"]!.GetValue<string>() == "Buy stamps")["number"]!.GetValue<int>()));
+
+        // An issue made on GitHub with a group's label goes to that group only.
+        github.Add("Return the library book", null, false, "group:Reading");
+        await server.App.Services.GetRequiredService<GitHubIssues>().SyncAllAsync(CancellationToken.None);
+        var titles = await server.Store.ReadAsync(b => b.AllItems().GroupBy(t => t.GroupId).ToDictionary(g => g.Key, g => g.Select(t => t.Title).Order(StringComparer.Ordinal).ToList()));
+        Assert.Equal(["Buy stamps"], titles[errands]);
+        Assert.Equal(["Finish Dune", "Return the library book"], titles[reading]);
+        Assert.Equal(3, github.Issues.Count);
+    }
+
+    [Fact]
+    public async Task Every_group_can_go_into_one_shared_repository_each_with_its_own_label()
+    {
+        var (server, github, cli) = await StartAsync();
+        await using var _ = server;
+        var client = server.Client();
+        github.AddRepo("me/everything", null, "notes");
+        var groups = await server.Store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList());
+
+        var view = await (await client.PutAsJsonAsync($"{Base}/every-group", new { on = true, sharedRepo = "me/everything" })).Json();
+        Assert.Equal("me/everything", view["sharedRepo"]!.GetValue<string>());
+        await server.App.Services.GetRequiredService<GitHubIssues>().SyncAllAsync(CancellationToken.None);
+
+        view = await client.GetJson(Base);
+        Assert.Empty(cli.Created);
+        Assert.All(view["groups"]!.AsArray(), g => Assert.Equal("me/everything", g!["repo"]!.GetValue<string>()));
+        Assert.Equal(groups.Select(n => $"group:{n}").Order(StringComparer.Ordinal), view["groups"]!.AsArray().Select(g => g!["label"]!.GetValue<string>()).Order(StringComparer.Ordinal));
+        // Found from other computers: the topic is added, the repository's own topics stay.
+        Assert.Equal(["notes", GitHubIssues.Topic], github.Repos["me/everything"]["topics"]!.AsArray().Select(t => t!.GetValue<string>()));
+        Assert.All(groups, n => Assert.Contains($"group:{n}", github.LabelsByRepo["me/everything"]));
+
+        // A public repository can't be the shared one.
+        github.AddRepo("me/open")["private"] = false;
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"{Base}/every-group", new { on = true, sharedRepo = "me/open" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task On_GitHub_each_group_label_in_a_shared_repository_becomes_a_group()
+    {
+        var (server, github, _) = await StartAsync();
+        await using var _ = server;
+        var settings = server.App.Services.GetRequiredService<SettingsStore>();
+        settings.SetStorage(SettingsStore.GitHubStorage);
+        settings.SetActiveStorage(SettingsStore.GitHubStorage);
+        var github2 = server.App.Services.GetRequiredService<GitHubIssues>();
+        github2.Main.Update(s => s with { SharedRepo = "me/life" });
+        var elsewhere = Guid.NewGuid();
+        github.AddRepo("me/life", "My life", GitHubIssues.Topic);
+        github.AddTo("me/life", "Buy stamps", $"<!-- todotracker:id={elsewhere:D} -->", false, "group:Errands");
+        github.AddTo("me/life", "Finish Dune", null, false, "group:Reading");
+
+        await github2.SyncAllAsync(CancellationToken.None);
+
+        var groups = await server.Store.ReadAsync(b => b.Groups.ToDictionary(g => g.Name, g => g.Id));
+        Assert.Equal(groups["Errands"], (await server.Store.ReadAsync(b => b.Find(elsewhere)))?.GroupId);
+        Assert.Contains(await server.Store.ReadAsync(b => b.AllItems().ToList()), t => t.Title == "Finish Dune" && t.GroupId == groups["Reading"]);
+        Assert.False(groups.ContainsKey("life"));
+        var view = await server.Client().GetJson(Base);
+        // Work joined the repository made for it elsewhere (before labels); the rest are in the shared one.
+        Assert.All(view["groups"]!.AsArray().Where(g => g!["group"]!.GetValue<string>() != "Work"), g => Assert.Equal("me/life", g!["repo"]!.GetValue<string>()));
+        Assert.Equal("me/todo-work", view["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Work")!["repo"]!.GetValue<string>());
+
+        // A group deleted here isn't brought back, though its label is still there.
+        await server.Store.UpdateAsync(b => { b.DeleteGroup(groups["Reading"], groups["Errands"], Actor.User, ServerFixture.T0); return 0; });
+        await github2.SyncAllAsync(CancellationToken.None);
+        Assert.False(await server.Store.ReadAsync(b => b.Groups.Any(g => g.Name == "Reading")));
+    }
+
+    [Fact]
+    public async Task A_group_connected_before_labels_takes_the_issues_in_its_repository_at_its_next_sync()
+    {
+        var (server, github, _) = await StartAsync();
+        await using var _ = server;
+        var issues = server.App.Services.GetRequiredService<GitHubIssues>();
+        var garden = await server.Store.UpdateAsync(b => b.AddGroup("Garden", null, Actor.User, ServerFixture.T0).Id);
+        var task = await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Old issue") { GroupId = garden }, Actor.User, ServerFixture.T0));
+        github.AddRepo("me/todo-garden", "Todo Tracker: Garden", GitHubIssues.Topic);
+        github.Repo = "me/todo-garden";
+        github.Add("Old issue", $"<!-- todotracker:id={task.Id:D} -->");
+        issues.FilesOf(garden).Update(s => s with { Target = "me/todo-garden", TargetName = "Garden", GroupId = garden, Enabled = true });
+
+        var view = await (await server.Client().PostAsync($"{Base}/groups/{garden}/sync", null)).Json();
+
+        Assert.Equal(("group:Garden", 1), (view["label"]!.GetValue<string>(), view["linked"]!.GetValue<int>()));
+        Assert.Contains("group:Garden", github.LabelsOf(1));
+        Assert.Single(github.Issues);
+    }
+
     [Theory]
-    [InlineData("Work", "todo-work")]
     [InlineData("Side projects!", "todo-side-projects")]
     [InlineData("Café & Crème", "todo-cafe-creme")]
     [InlineData("💡", "todo-tasks")]

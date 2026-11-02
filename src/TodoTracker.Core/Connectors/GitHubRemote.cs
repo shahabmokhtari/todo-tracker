@@ -8,14 +8,18 @@ using System.Text.RegularExpressions;
 namespace TodoTracker.Core.Connectors;
 
 /// <summary>
-/// A GitHub repository's issues as a task list (one repo per group). An issue is a task: its title, its body (the
+/// A GitHub repository's issues as a task list (a repository per group, or several groups in one, each with its label). An issue is a task: its title, its body (the
 /// details), open or closed (done), and labels for everything else: plain labels are tags; prefixed ones carry the
 /// rest (<c>due:2026-10-20</c>, <c>priority:high</c>, <c>snooze:2026-10-20T14:30Z</c>, <c>remind:…</c>,
 /// <c>stage:doing</c>, <c>label:Deep work</c>, <c>icon:🔥</c>, <c>color:#ff8800</c>, <c>plan:…/45</c>,
 /// <c>repeat:every weekday</c>). The task's id is a hidden comment at the end of the body. Nothing is ever deleted: a
 /// task deleted here closes its issue as "not planned".
+/// <para>
+/// <paramref name="label"/>: the group's label (<c>group:Work</c>), so several groups can share one repository: every
+/// issue the group makes gets it, and the group sees only the issues that have it. <c>group:</c> labels are never tags.
+/// </para>
 /// </summary>
-public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken, Task<string>> token, string repo) : IConnectorRemote
+public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken, Task<string>> token, string repo, string? label = null) : IConnectorRemote
 {
     /// <summary>GitHub's longest label name.</summary>
     public const int MaxLabel = 50;
@@ -30,6 +34,9 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
 
     public const string Due = "due:";
     public const string PriorityPrefix = "priority:";
+
+    /// <summary>The prefix of a group's label (<c>group:Work</c>): which group an issue in a shared repository is in.</summary>
+    public const string GroupPrefix = "group:";
 
     /// <summary>The label prefix of each extra (see <see cref="ExtraKeys"/>); reminders get one label each.</summary>
     public static readonly IReadOnlyDictionary<string, string> ExtraPrefixes = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -49,6 +56,34 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
 
     public string Repo { get; } = ValidRepo(repo);
 
+    /// <summary>The group's label (null: every issue in the repository is the group's).</summary>
+    public string? Label { get; } = string.IsNullOrWhiteSpace(label) ? null : label.Trim();
+
+    /// <summary>
+    /// The label of a group named <paramref name="group"/> (<c>group:Work</c>; <paramref name="n"/> above 1 adds a
+    /// number, for two groups whose names end up the same): no commas (GitHub lists labels with them), and no longer
+    /// than a label can be.
+    /// </summary>
+    public static string GroupLabel(string group, int n = 1)
+    {
+        var name = string.Join(' ', (group ?? string.Empty).Replace(',', ' ').Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (name.Length == 0)
+        {
+            name = "tasks";
+        }
+
+        var suffix = n > 1 ? " " + n.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        var room = MaxLabel - GroupPrefix.Length - suffix.Length;
+        return GroupPrefix + (name.Length <= room ? name : name[..room].TrimEnd()) + suffix;
+    }
+
+    /// <summary>Whether <paramref name="name"/> says which group an issue is in.</summary>
+    public static bool IsGroupLabel(string name) => name is not null && name.StartsWith(GroupPrefix, StringComparison.OrdinalIgnoreCase);
+
+    private string Scope => Label is null ? string.Empty : "&labels=" + Uri.EscapeDataString(Label);
+
+    private bool InScope(JsonObject issue) => Label is null || LabelNames(issue).Contains(Label, StringComparer.OrdinalIgnoreCase);
+
     /// <summary>"owner/name", or an exception saying what one looks like.</summary>
     public static string ValidRepo(string repo) =>
         repo is not null && RepoPattern().IsMatch(repo.Trim()) ? repo.Trim() : throw new ArgumentException("A repository looks like owner/name.", nameof(repo));
@@ -67,8 +102,8 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         var items = new List<RemoteItem>();
         for (var page = 1; ; page++)
         {
-            var batch = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues?state=all&per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
-            items.AddRange(batch.OfType<JsonObject>().Where(i => i["pull_request"] is null).Select(ItemOf));
+            var batch = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues?state=all&per_page={PageSize}&page={page}{Scope}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            items.AddRange(batch.OfType<JsonObject>().Where(i => i["pull_request"] is null && InScope(i)).Select(ItemOf));
             if (batch.Count < PageSize)
             {
                 return items;
@@ -76,8 +111,9 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         }
     }
 
+    /// <summary>The issue, or null when it's gone, or in another group now (its group label changed on GitHub).</summary>
     public async Task<RemoteItem?> FindAsync(string id, CancellationToken cancellationToken) =>
-        await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false) is JsonObject issue && issue["pull_request"] is null
+        await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false) is JsonObject issue && issue["pull_request"] is null && InScope(issue)
             ? ItemOf(issue)
             : null;
 
@@ -88,7 +124,7 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         {
             ["title"] = TitleOf(fields.Title),
             ["body"] = Body(fields.Notes, localId),
-            ["labels"] = new JsonArray([.. LabelsOf(fields).Select(l => (JsonNode)l)]),
+            ["labels"] = new JsonArray([.. (Label is null ? LabelsOf(fields) : LabelsOf(fields).Prepend(Label)).Select(l => (JsonNode)l)]),
         }, cancellationToken).ConfigureAwait(false) as JsonObject ?? throw new InvalidOperationException("GitHub didn't say which issue it made.");
         var id = created["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture);
         if (fields.Done)
@@ -128,7 +164,13 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         var labelFields = ConnectorFields.Due | ConnectorFields.Priority | ConnectorFields.Tags | ConnectorFields.Extras;
         if (previous is null || !SyncedFields.Same(Normalize(previous), Normalize(fields), labelFields))
         {
-            var foreign = LabelNames(await Current().ConfigureAwait(false)).Where(l => Kind(l) == LabelKind.Foreign);
+            var foreign = LabelNames(await Current().ConfigureAwait(false)).Where(l => Kind(l) == LabelKind.Foreign).ToList();
+            // The group's label stays (put back if it went), unless the issue is in another group now.
+            if (Label is not null && !foreign.Any(IsGroupLabel))
+            {
+                foreign.Add(Label);
+            }
+
             change["labels"] = new JsonArray([.. foreign.Concat(LabelsOf(fields)).Distinct(StringComparer.OrdinalIgnoreCase).Select(l => (JsonNode)l)]);
         }
 
@@ -142,8 +184,63 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         SendAsync(HttpMethod.Patch, $"repos/{Repo}/issues/{Number(id)}", new JsonObject { ["state"] = "closed", ["state_reason"] = "not_planned" }, cancellationToken);
 
     /// <summary>
+    /// Gives the group's label to every issue in the repository that isn't in a group yet (made before groups had
+    /// labels, or on GitHub without one): a group that had the repository to itself keeps its issues.
+    /// </summary>
+    public async Task ClaimUnlabelledAsync(CancellationToken cancellationToken)
+    {
+        if (Label is null)
+        {
+            return;
+        }
+
+        var unlabelled = new List<string>();
+        for (var page = 1; ; page++)
+        {
+            var batch = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues?state=all&per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            unlabelled.AddRange(batch.OfType<JsonObject>().Where(i => i["pull_request"] is null && !LabelNames(i).Any(IsGroupLabel)).Select(i => i["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture)));
+            if (batch.Count < PageSize)
+            {
+                break;
+            }
+        }
+
+        foreach (var number in unlabelled)
+        {
+            await SendAsync(HttpMethod.Post, $"repos/{Repo}/issues/{number}/labels", new JsonObject { ["labels"] = new JsonArray(Label) }, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Makes the group's label in the repository (so other computers find the group before it has an issue).</summary>
+    public async Task MakeLabelAsync(CancellationToken cancellationToken)
+    {
+        if (Label is null || (await LabelNamesAsync(cancellationToken).ConfigureAwait(false)).Contains(Label, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await SendAsync(HttpMethod.Post, $"repos/{Repo}/labels", new JsonObject { ["name"] = Label, ["color"] = "ededed", ["description"] = "A group in Todo Tracker" }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Every label the repository has.</summary>
+    public async Task<IReadOnlyList<string>> LabelNamesAsync(CancellationToken cancellationToken)
+    {
+        var names = new List<string>();
+        for (var page = 1; ; page++)
+        {
+            var labels = await SendAsync(HttpMethod.Get, $"repos/{Repo}/labels?per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
+            names.AddRange(labels.OfType<JsonObject>().Select(l => l["name"]?.GetValue<string>()).OfType<string>());
+            if (labels.Count < PageSize)
+            {
+                return names;
+            }
+        }
+    }
+
+    /// <summary>
     /// Deletes the repository's time labels no issue has any more (<c>snooze:</c>, <c>remind:</c>, <c>plan:</c>,
-    /// <c>due:</c>): each moment makes a label, and the label list would only grow.
+    /// <c>due:</c>): each moment makes a label, and the label list would only grow. Every issue counts, other groups'
+    /// too (they share the repository); group labels are never deleted.
     /// </summary>
     public async Task PruneLabelsAsync(CancellationToken cancellationToken)
     {
@@ -164,7 +261,7 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
             var labels = await SendAsync(HttpMethod.Get, $"repos/{Repo}/labels?per_page={PageSize}&page={page}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
             foreach (var name in labels.OfType<JsonObject>().Select(l => l["name"]?.GetValue<string>()).OfType<string>())
             {
-                if (!used.Contains(name) && timed.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                if (!used.Contains(name) && !IsGroupLabel(name) && timed.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
                 {
                     await SendAsync(HttpMethod.Delete, $"repos/{Repo}/labels/{Uri.EscapeDataString(name)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false);
                 }
@@ -243,6 +340,11 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     /// when it's not for this app. Values come back the way this app writes them (lowercase colors, rules as it says them).</summary>
     private static (string? Key, string Value)? Parse(string label)
     {
+        if (IsGroupLabel(label))
+        {
+            return null; // which group the issue is in, never a tag
+        }
+
         if (label.StartsWith(Due, StringComparison.OrdinalIgnoreCase))
         {
             return DateOnly.TryParseExact(label[Due.Length..].Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)

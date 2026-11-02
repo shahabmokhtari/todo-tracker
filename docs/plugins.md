@@ -26,7 +26,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
 | **Notion** | Keep a group in step with a Notion database, both ways ([`connectors.md`](connectors.md)) | No |
 | **Microsoft To Do** | Keep a group in step with a To Do list, both ways ([`connectors.md`](connectors.md)) | No |
-| **GitHub Issues** | Each group in its own private GitHub repository: tasks are issues, both ways; repositories are made with the GitHub CLI ([`connectors.md`](connectors.md#github-issues)) | No |
+| **GitHub Issues** | Groups in private GitHub repositories, their own or one they share (each group's issues carry its `group:` label): tasks are issues, both ways; repositories are made with the GitHub CLI ([`connectors.md`](connectors.md#github-issues)) | No |
 | **Copy for Loop** | Copy a group's tasks as a checklist, or one task with its notes and pictures, to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
 | **Send feedback** | Tell us about a bug or an idea from Settings, the menus or the command palette; it becomes an issue on Onething's GitHub ([below](#send-feedback)) | Yes |

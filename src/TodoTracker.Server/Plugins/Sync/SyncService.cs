@@ -95,7 +95,7 @@ public sealed class SyncService : IDisposable
     public string Library => Setting("library") is { Length: > 0 } library ? library : DefaultLibrary(_vault.RootPath);
 
     /// <summary>The providers whose plugin is on (one switched off since the app started stops at once).</summary>
-    public IReadOnlyList<ISyncProvider> Providers => _plugins is null ? _all : [.. _all.Where(p => !_plugins.IsSwitchedOff("sync-" + p.Id))];
+    public IReadOnlyList<ISyncProvider> Providers => _plugins is null ? _all : [.. _all.Where(p => !_plugins.IsSwitchedOff(p.PluginId))];
 
     public SyncView View
     {

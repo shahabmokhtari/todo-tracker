@@ -33,8 +33,10 @@ public interface IConnectorRemote
 /// <summary>Which group a connector keeps in step, and which side new tasks are created on. <paramref name="AdoptMarked"/>:
 /// the outside list is where the tasks live (see <see cref="ConnectorPlanInput.AdoptMarked"/>).
 /// <paramref name="GroupOnly"/>: only the group's tasks are in this list (a repository per group): a task moved to
-/// another group leaves it, as if deleted here (its item is archived), and goes to that group's list.</summary>
-public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction, bool AdoptMarked = false, bool GroupOnly = false);
+/// another group leaves it, as if deleted here (its item is archived), and goes to that group's list.
+/// <paramref name="TakeMoved"/> (with <paramref name="GroupOnly"/>): an item moved into this list on the other side
+/// (a GitHub issue given this group's label) moves its task into this group.</summary>
+public sealed record ConnectorTarget(Guid GroupId, ConnectorDirection Direction, bool AdoptMarked = false, bool GroupOnly = false, bool TakeMoved = false);
 
 /// <summary>What a run did: the plan, how many changes went through, what went wrong, and the links to keep.</summary>
 public sealed record ConnectorRun(ConnectorPlanResult Plan, IReadOnlyList<ConnectorOpResult> Done, IReadOnlyList<string> Problems, IReadOnlyList<ConnectorLink> Links)
@@ -66,7 +68,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(links);
         var now = time.GetUtcNow();
-        var local = await store.ReadAsync(b => LocalItems(b, target, links, now), cancellationToken).ConfigureAwait(false);
+        var (local, elsewhere) = await store.ReadAsync(b => (LocalItems(b, target, links, now), Elsewhere(b, target)), cancellationToken).ConfigureAwait(false);
         var items = (await remote.ListAsync(cancellationToken).ConfigureAwait(false)).ToList();
 
         // A linked item that isn't in the list (a filtered view, archived) is looked up before it counts as gone. Items
@@ -80,7 +82,7 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             }
         }
 
-        var plan = ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize, AdoptMarked = target.AdoptMarked });
+        var plan = ConnectorPlan.Make(new ConnectorPlanInput(connector, local, items, links, target.Direction, remote.Fields) { Normalize = remote.Normalize, AdoptMarked = target.AdoptMarked, Elsewhere = elsewhere });
         return (plan, items.GroupBy(i => i.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal));
     }
 
@@ -173,8 +175,14 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
     private int CreateHere(TaskBoard board, CreateLocal c, ConnectorFields fields, ConnectorTarget target)
     {
         var now = time.GetUtcNow();
-        if (board.Find(c.Id) is not null)
+        if (board.Find(c.Id) is { } existing)
         {
+            // Moved into this group on the other side: it moves here too.
+            if (target.TakeMoved && target.GroupOnly && existing.Parent is null && !existing.IsArchived && existing.GroupId != target.GroupId && board.Groups.Any(g => g.Id == target.GroupId))
+            {
+                board.MoveToGroup(c.Id, target.GroupId, _actor, now);
+            }
+
             // Already here (another group, or finished long ago): linked as it is, never a second task with its id.
             return UpdateHere(board, new UpdateLocal(c.Id, c.Fields), fields);
         }
@@ -412,6 +420,12 @@ public sealed class ConnectorRunner(string connector, string name, IBoardStore s
             Try(() => board.Update(item.Id, int.TryParse(f.Extra(ExtraKeys.Energy), NumberStyles.None, CultureInfo.InvariantCulture, out var level) ? new TaskChanges { Energy = level } : new TaskChanges { ClearEnergy = true }, _actor, now));
         }
     }
+
+    /// <summary>Top-level tasks in other groups (see <see cref="ConnectorTarget.TakeMoved"/>); none otherwise.</summary>
+    private static HashSet<Guid> Elsewhere(TaskBoard board, ConnectorTarget target) =>
+        target.TakeMoved && target.GroupOnly
+            ? [.. board.AllItems().Where(i => i.Parent is null && i.GroupId != target.GroupId && !i.IsArchived).Select(i => i.Id)]
+            : [];
 
     private List<LocalItem> LocalItems(TaskBoard board, ConnectorTarget target, IReadOnlyList<ConnectorLink> links, DateTimeOffset now)
     {

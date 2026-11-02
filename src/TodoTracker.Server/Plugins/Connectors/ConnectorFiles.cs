@@ -80,8 +80,17 @@ public sealed record ConnectorSettings
     /// <summary>GitHub: the person stopped this group (with "every group" on, it doesn't get a repository again).</summary>
     public bool Stopped { get; init; }
 
-    /// <summary>GitHub: repositories of groups deleted here (never brought back as groups).</summary>
+    /// <summary>GitHub: repositories of groups deleted here (never brought back as groups): <c>owner/name</c> (the
+    /// whole repository) or <c>owner/name#group:Label</c> (one group in a shared repository).</summary>
     public IReadOnlyList<string> Forgotten { get; init; } = [];
+
+    /// <summary>GitHub: the group's label in its repository (<c>group:Work</c>), fixed when it's connected; several
+    /// groups can share a repository this way.</summary>
+    public string? Label { get; init; }
+
+    /// <summary>GitHub, the whole connector: with "every group", groups go into this one repository (each with its
+    /// label) instead of getting one each.</summary>
+    public string? SharedRepo { get; init; }
 }
 
 /// <summary>

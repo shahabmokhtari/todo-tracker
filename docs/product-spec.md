@@ -454,6 +454,17 @@ The vault is plain Obsidian-flavored markdown: frontmatter properties, Obsidian 
 links, wiki-link attachments. Point the app at a folder inside an Obsidian vault (Menu › *Tasks folder*) and edit
 tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidian://open?path=…`).
 
+### GitHub Issues connector
+Groups stay in step with private GitHub repositories (issues, both ways; everything else as prefixed labels, see
+`docs/connectors.md`). Each connected group has a label in its repository, `group:<name>` (at most 50 characters, a
+number added when two groups here would get the same one), fixed when it's connected: every issue it makes gets it,
+it lists only issues with it, and an issue relabelled to another group moves its task to that group (never deleted;
+until that group syncs, the task stays where it was). So several groups can share one repository, and "every group"
+can put all of them in one shared repository instead of a `todo-<group>` each. `group:` labels are never tags and
+never pruned; time labels are pruned only when no issue in the repository uses them. A group connected before labels,
+or the first group in a repository without any `group:` labels, labels the issues that have none. With the tasks on
+GitHub, other computers find groups by their `group:` labels in repositories with the `todo-tracker` topic.
+
 ### Plugins and Ask AI
 Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, Plan, version history, Obsidian,
 browser extension, sync, connectors, Copy for Loop, Teams, Send feedback) that can be switched off; the choice lives in `plugins.json`.

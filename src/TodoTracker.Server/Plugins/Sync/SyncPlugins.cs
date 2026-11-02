@@ -107,9 +107,15 @@ public sealed class GistSyncProvider(TodoTrackerServerOptions options) : ISyncPr
     private static string? DefaultToken() => GitHub.GitHubCli.Token();
 }
 
-/// <summary>What every sync provider plugin adds: the sync service, its background loop, its endpoints and panel.</summary>
+/// <summary>
+/// What every sync provider plugin adds: the sync service, its background loop, its endpoints and panel (shared by all
+/// of them), and its own <see cref="ISyncProvider"/>. Its id is <see cref="IdPrefix"/> and the provider's id.
+/// </summary>
 public abstract class SyncProviderPlugin : ITodoPlugin
 {
+    /// <summary>Every sync plugin's id starts with this (the Sync section in Settings lists them by it).</summary>
+    public const string IdPrefix = "sync-";
+
     public abstract PluginInfo Info { get; }
 
     public string? WebModule => "/js/plugins/sync.js";
@@ -120,7 +126,11 @@ public abstract class SyncProviderPlugin : ITodoPlugin
         services.TryAddSingleton(CloudEnvironment.Current);
         services.TryAddSingleton<SyncService>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, SyncLoop>());
-        services.AddSingleton(sp => Provider(sp, options));
+        services.AddSingleton(sp =>
+        {
+            var provider = Provider(sp, options);
+            return provider.PluginId == Info.Id ? provider : throw new InvalidOperationException($"The sync place {provider.Id} belongs to the plugin {provider.PluginId}, not {Info.Id}.");
+        });
     }
 
     protected abstract ISyncProvider Provider(IServiceProvider services, TodoTrackerServerOptions options);

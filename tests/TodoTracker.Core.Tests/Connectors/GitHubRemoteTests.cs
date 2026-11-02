@@ -260,6 +260,109 @@ public sealed class GitHubRemoteTests : IDisposable
         Assert.Equal(elsewhere, adopted.Id);
     }
 
+    private GitHubRemote Scoped(string label) => new(_http, _ => Task.FromResult("gho_test"), _github.Repo, label);
+
+    [Fact]
+    public async Task A_group_in_a_shared_repository_labels_every_issue_it_makes_and_sees_only_its_own()
+    {
+        var work = Scoped("group:Work");
+        _github.Add("Someone else's", null, false, "group:Personal");
+        _github.Add("Not labelled");
+
+        var id = await work.CreateAsync(Guid.NewGuid(), new SyncedFields("Ship it", false, null, Priority.High, ["release"], null), CancellationToken.None);
+
+        Assert.Equal(["group:Work", "priority:high", "release"], _github.LabelsOf(int.Parse(id, System.Globalization.CultureInfo.InvariantCulture)).Order(StringComparer.Ordinal));
+        var listed = Assert.Single(await work.ListAsync(CancellationToken.None));
+        Assert.Equal(id, listed.Id);
+        Assert.Equal(["release"], listed.Fields.Tags);
+        Assert.Null(await work.FindAsync("1", CancellationToken.None));
+        Assert.NotNull(await work.FindAsync(id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_group_label_is_never_a_tag_and_stays_on_the_issue_when_its_labels_change()
+    {
+        var work = Scoped("group:Work");
+        _github.Add("Plan the offsite", null, false, "group:Work", "travel");
+        var before = Assert.Single(await work.ListAsync(CancellationToken.None)).Fields;
+        Assert.Equal(["travel"], before.Tags);
+
+        await work.UpdateAsync("1", before with { Tags = ["travel", "team"], Priority = Priority.High }, before, CancellationToken.None);
+        Assert.Equal(["group:Work", "priority:high", "team", "travel"], _github.LabelsOf(1).Order(StringComparer.Ordinal));
+
+        // Taken off between the list and the change: it goes back on (unless the issue is in another group now).
+        _github.Issues[1]["labels"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["name"] = "team" });
+        await work.UpdateAsync("1", before, before with { Tags = ["team"] }, CancellationToken.None);
+        Assert.Contains("group:Work", _github.LabelsOf(1));
+        _github.Issues[1]["labels"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["name"] = "group:Personal" });
+        await work.UpdateAsync("1", before with { Tags = ["x"] }, before, CancellationToken.None);
+        Assert.Equal(["group:Personal", "x"], _github.LabelsOf(1).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tidying_labels_keeps_group_labels_and_time_labels_another_groups_issues_still_use()
+    {
+        _github.Add("Personal errand", null, false, "group:Personal", "snooze:2026-01-07T09:00Z");
+        _github.Add("Old work", null, false, "group:Work", "snooze:2026-01-08T09:00Z");
+        _github.Issues[2]["labels"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["name"] = "group:Work" });
+
+        await Scoped("group:Work").PruneLabelsAsync(CancellationToken.None);
+
+        Assert.Equal(["group:Personal", "group:Work", "snooze:2026-01-07T09:00Z"], _github.LabelsByRepo[_github.Repo].Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_group_takes_the_issues_no_group_has_yet_and_leaves_other_groups_issues_alone()
+    {
+        _github.Add("Made before labels");
+        _github.Add("Personal", null, false, "group:Personal");
+        _github.Add("A pull request")["pull_request"] = new System.Text.Json.Nodes.JsonObject();
+
+        await Scoped("group:Work").ClaimUnlabelledAsync(CancellationToken.None);
+
+        Assert.Equal(["group:Work"], _github.LabelsOf(1));
+        Assert.Equal(["group:Personal"], _github.LabelsOf(2));
+        Assert.Empty(_github.LabelsOf(3));
+    }
+
+    [Fact]
+    public async Task An_issue_moved_to_another_group_on_GitHub_takes_its_task_there_and_nothing_is_lost()
+    {
+        var personal = await _store.UpdateAsync(b => b.AddGroup("Home", null, Actor.User, T0).Id);
+        var work = Scoped("group:Work");
+        var home = Scoped("group:Home");
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Fix the bike") { GroupId = _group }, Actor.User, T0));
+        var target = new ConnectorTarget(_group, ConnectorDirection.Both, GroupOnly: true, TakeMoved: true);
+        var homeTarget = target with { GroupId = personal };
+        var run = await _runner.RunAsync(work, target, [], CancellationToken.None);
+        IReadOnlyList<ConnectorLink> homeLinks = [];
+
+        // Relabelled on GitHub: group:Work → group:Home.
+        _github.Issues[1]["labels"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject { ["name"] = "group:Home" });
+        run = await _runner.RunAsync(work, target, run.Links, CancellationToken.None);
+        Assert.Equal(LinkState.RemoteGone, Assert.Single(run.Links).State);
+        Assert.Equal(_group, (await _store.ReadAsync(b => b.Get(task.Id))).GroupId); // gone from this group: the task stays
+
+        foreach (var _ in Enumerable.Range(0, 2))
+        {
+            var homeRun = await _runner.RunAsync(home, homeTarget, homeLinks, CancellationToken.None);
+            Assert.Empty(homeRun.Problems);
+            homeLinks = homeRun.Links;
+            run = await _runner.RunAsync(work, target, run.Links, CancellationToken.None);
+        }
+
+        Assert.Equal(personal, (await _store.ReadAsync(b => b.Get(task.Id))).GroupId);
+        Assert.Equal("open", _github.Issues[1]["state"]!.GetValue<string>());
+        Assert.Single(_github.Issues);
+        Assert.Empty(run.Links);
+    }
+
+    [Theory]
+    [InlineData("Work", "group:Work")]
+    [InlineData("  Side, projects ", "group:Side projects")]
+    [InlineData("A group with a name much longer than a label can hold", "group:A group with a name much longer than a label")]
+    public void A_groups_label_is_its_name_and_fits_a_GitHub_label(string group, string label) => Assert.Equal(label, GitHubRemote.GroupLabel(group));
+
     [Theory]
     [InlineData("me/todo-work", true)]
     [InlineData("my-org/tasks.personal", true)]

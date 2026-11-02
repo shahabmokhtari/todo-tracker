@@ -8,7 +8,7 @@ Microsoft To Do are **off** until you switch them on in **Settings › Connected
 |---|---|---|
 | **Notion** | ✓ | title, done, due date, priority, tags (from the database's columns) |
 | **Microsoft To Do** | ✓ | title, done, due date, importance, note |
-| **GitHub Issues** | ✓ | each group in its own private repository: title, done, details, due date, priority, tags, labels, snooze, reminders, board column, icon, color, plan, repeat |
+| **GitHub Issues** | ✓ | each group in a private repository (its own, or one groups share): title, done, details, due date, priority, tags, labels, snooze, reminders, board column, icon, color, plan, repeat |
 | **Loop** | copy and paste | a checklist of a group's tasks (Loop has no API that other apps can write to) |
 
 ## How it stays safe
@@ -83,12 +83,32 @@ setup is signing in once:
    manager, see cli.github.com) and run `gh auth login`.
 2. Switch on **GitHub Issues** in Settings › Connected apps.
 3. Choose **Make its repository** next to a group, or tick **Every group gets its own private repository**. New groups
-   then get theirs at the next sync. **Use another…** connects a group to a repository you already have (`owner/name`).
+   then get theirs at the next sync. **Use another…** connects a group to a repository you already have (`owner/name`),
+   or to one another group already uses (the list says which groups are in it).
 
 The repository is named after the group (`todo-work`, `todo-side-projects`), is private, and gets the topic
 `todo-tracker` and the description `Todo Tracker: <group>`. If that name is taken by a repository that isn't the
 group's, a number is added (`todo-personal-2`). Connecting the group again, on this computer or another, finds the
 repository that was made for it.
+
+### Several groups in one repository
+
+Groups can share a repository: personal, work and side projects in one place, told apart by labels. Every group has
+a label in its repository, `group:<name>` (`group:Work`, `group:Personal`; set when it's connected, and at most 50
+characters, GitHub's limit), and every issue it makes gets it. A group only sees the issues with its label, so:
+
+- **Make a task for a group on GitHub:** open an issue in the repository and give it the group's label.
+- **Move a task to another group on GitHub:** swap its `group:` label. The task moves to that group here at the next
+  sync (nothing is deleted on either side; until then it stays where it was).
+- To put **every group in one repository**, enter it (`owner/name`, private) under **Put every group in one
+  repository** next to *Every group gets…*: groups without a repository go into it, each with its label, instead of
+  getting a `todo-<group>` repository each. Onething adds the `todo-tracker` topic to it (its other topics stay), so
+  your other computers find it.
+
+A group that had its repository to itself before labels existed keeps its issues: at its next sync they get its label.
+The same happens when you connect the first group to a repository with issues that have no `group:` label yet; a
+repository other groups already use is never taken over that way. `group:` labels are never tags here, and they're
+never deleted when old labels are tidied away.
 
 | Task | Issue |
 |---|---|
@@ -114,19 +134,21 @@ Labels that aren't Onething's (`bug`, `priority:p1`, `stage:review`) stay on the
 don't make sense here (`color:red`) are left alone too, and never hold up the rest of the task. Two labels for one
 thing (two `snooze:` labels): the later time wins. A task moved to another group closes its issue (as not planned)
 and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
-keep growing. Repositories must be private: a public one is refused.
+keep growing (labels other groups in the same repository use are kept). Repositories must be private: a public one
+is refused.
 
 ### Keep your tasks on GitHub, without a tasks folder
 
 Tick **Keep my tasks on GitHub, without a tasks folder** (and restart Onething) to make GitHub the place your
 tasks live:
 
-- Every group has its own repository (made for it if it has none), and new groups get theirs.
+- Every group has a repository (its own, made for it if it has none, or the one you chose for every group), and new
+  groups get theirs.
 - The app keeps its working copy in its own data folder (`github-tasks`), so it works offline and stays instant;
   the tasks folder you had is copied in at the next start and then left alone.
-- On another computer, switch on GitHub Issues and tick the same box: every repository Onething made for a group
-  (the `todo-tracker` topic) becomes a group there, and its issues come in as the same tasks (same ids), finished ones
-  too.
+- On another computer, switch on GitHub Issues and tick the same box: in your repositories with the `todo-tracker`
+  topic, every `group:` label becomes a group there (a repository from before labels is one group, named in its
+  description), and its issues come in as the same tasks (same ids), finished ones too.
 - It syncs every 2 minutes, and half a minute after you change something.
 - What issues can't hold stays in the app's copy on each computer: subtasks, notes, time and attachments. Sync
   (OneDrive, iCloud Drive or a gist) can still carry those between your computers.
