@@ -78,8 +78,9 @@ public sealed partial class FeedbackRelay(IHttpClientFactory http, FeedbackSetti
                 return new Answer(outcome, status, null, null);
             }
 
-            var answer = JsonNode.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)) as JsonObject;
-            return new Answer(outcome, status, answer?["ref"]?.GetValue<string>(), answer?["status"]?.GetValue<string>());
+            // Taken: the note is sent whatever the answer says (the ref and status are only shown when they're there).
+            var answer = ReadAnswer(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            return new Answer(outcome, status, Text(answer, "ref"), Text(answer, "status"));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException && !cancellationToken.IsCancellationRequested)
         {
@@ -87,6 +88,21 @@ public sealed partial class FeedbackRelay(IHttpClientFactory http, FeedbackSetti
             return new Answer(FeedbackOutcome.Retry, null, null, null);
         }
     }
+
+    private static JsonObject? ReadAnswer(string text)
+    {
+        try
+        {
+            return JsonNode.Parse(text) as JsonObject;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Text(JsonObject? answer, string name) =>
+        answer?[name] is JsonValue value && value.TryGetValue(out string? text) ? text : null;
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Feedback not sent (a debug build; set ONETHING_FEEDBACK_SEND=1 to send it to {Url}): {Body}")]
     private static partial void LogNotSent(ILogger logger, Uri url, JsonObject body);

@@ -91,6 +91,20 @@ public sealed class FeedbackApiTests : IAsyncLifetime
         Assert.All(_server.Relay.Requests, r => Assert.Equal(id, JsonNode.Parse(r.Body)!["clientID"]!.GetValue<string>()));
     }
 
+    [Theory]
+    [InlineData("{\"ref\":5,\"status\":[\"queued\"]}")]
+    [InlineData("not json")]
+    public async Task A_note_the_relay_took_is_sent_even_when_its_answer_looks_odd(string body)
+    {
+        using var app = await AppClientAsync();
+        _server.Relay.Bodies.Enqueue(body);
+
+        using var response = await app.PostAsJsonAsync("/api/plugins/feedback", Note(Guid.NewGuid().ToString()));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Single(_server.Relay.Requests);
+    }
+
     [Fact]
     public async Task A_note_the_relay_refuses_says_something_went_wrong()
     {

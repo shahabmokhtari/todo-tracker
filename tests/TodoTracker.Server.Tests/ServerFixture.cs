@@ -147,6 +147,9 @@ public sealed class FakeRelay : HttpMessageHandler
 
     public Queue<int?> Answers { get; } = new();
 
+    /// <summary>What the next accepted notes' answers say instead of the usual ref and status.</summary>
+    public Queue<string> Bodies { get; } = new();
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Requests.Add(new Request(request.RequestUri!, request.Headers.Authorization?.ToString(), request.Headers.Contains("Origin"),
@@ -159,7 +162,7 @@ public sealed class FakeRelay : HttpMessageHandler
 
         return new HttpResponseMessage((System.Net.HttpStatusCode)code)
         {
-            Content = new StringContent(code < 300 ? "{\"ref\":\"IS-TEST0001\",\"status\":\"queued\"}" : "{\"error\":\"test\"}", System.Text.Encoding.UTF8, "application/json"),
+            Content = new StringContent(code < 300 ? (Bodies.Count > 0 ? Bodies.Dequeue() : "{\"ref\":\"IS-TEST0001\",\"status\":\"queued\"}") : "{\"error\":\"test\"}", System.Text.Encoding.UTF8, "application/json"),
         };
     }
 }
