@@ -3,7 +3,7 @@ using TodoTracker.Server.Plugins.AgentChat;
 
 namespace TodoTracker.Server.Tests.AgentChat;
 
-/// <summary>The chat: a warm agent with Todo Tracker's tools, safe permissions, and a transcript the UIs show.</summary>
+/// <summary>The chat: a warm agent with Onething's tools, safe permissions, and a transcript the UIs show.</summary>
 public sealed class AgentChatServiceTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
@@ -93,9 +93,9 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         Assert.Equal("C:\\Tools\\tt.exe", session["mcpServers"]![0]!["command"]!.GetValue<string>());
         Assert.Equal("TODOTRACKER_VAULT", session["mcpServers"]![0]!["env"]![0]!["name"]!.GetValue<string>());
         var prompts = messages.Where(m => m["method"]?.GetValue<string>() == "session/prompt").Select(m => m["params"]!["prompt"]!.ToJsonString()).ToList();
-        Assert.Contains("Todo Tracker", prompts[0], StringComparison.Ordinal);
+        Assert.Contains("Onething", prompts[0], StringComparison.Ordinal);
         Assert.Contains("hi", prompts[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("Todo Tracker", prompts[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("Onething", prompts[1], StringComparison.Ordinal);
         Assert.Equal("hello again", _chat.State.Entries[2].Text);
     }
 

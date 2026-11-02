@@ -11,7 +11,7 @@ namespace TodoTracker.Server.Plugins;
 public sealed record PairingClaim(string? Code, string? Name = null);
 
 /// <summary>
-/// Short-lived pairing codes: Todo Tracker shows 6 digits, the browser extension trades them for its own token, so no
+/// Short-lived pairing codes: Onething shows 6 digits, the browser extension trades them for its own token, so no
 /// secret is copied by hand. One code at a time, single use, 5 minutes, and 5 wrong guesses void it.
 /// </summary>
 public sealed class PairingCodes(TimeProvider time)
@@ -128,7 +128,7 @@ public sealed class BrowserExtensionPlugin : ITodoPlugin
         {
             if (codes.TryRedeem(claim.Code?.Trim()) is not { } codeId)
             {
-                return Results.Problem("That code didn’t work (codes last 5 minutes and work once). Get a new one in Todo Tracker.", statusCode: StatusCodes.Status400BadRequest);
+                return Results.Problem("That code didn’t work (codes last 5 minutes and work once). Get a new one in Onething.", statusCode: StatusCodes.Status400BadRequest);
             }
 
             var (token, browser) = browsers.Pair(claim.Name);

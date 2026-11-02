@@ -8,7 +8,7 @@ using TodoTracker.Desktop;
 namespace TodoTracker.Tray;
 
 /// <summary>
-/// Todo Tracker in the system tray: click it for the full window (in the browser); its menu adds a task, runs the
+/// Onething in the system tray: click it for the full window (in the browser); its menu adds a task, runs the
 /// focus timer and quits. The icon says what's going on (a red dot: a reminder is due).
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "The tray icon lives as long as the app; Avalonia disposes the icons it set when the app shuts down.")]
@@ -54,8 +54,8 @@ internal sealed class TrayApp : Application
 #pragma warning restore CA1031
         {
             Log(options.DataDirectory, ex);
-            var problem = ex is IOException ? $"Port {options.Port} is in use (is another program, or another user's Todo Tracker, using it?).\n\n{ex.Message}" : ex.Message;
-            var window = new ErrorWindow("Todo Tracker couldn't start", problem);
+            var problem = ex is IOException ? $"Port {options.Port} is in use (is another program, or another user's Onething, using it?).\n\n{ex.Message}" : ex.Message;
+            var window = new ErrorWindow("Onething couldn't start", problem);
             window.Closed += (_, _) => desktop.Shutdown(1);
             window.Show();
             return;

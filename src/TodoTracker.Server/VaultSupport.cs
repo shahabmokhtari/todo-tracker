@@ -23,7 +23,7 @@ public sealed class InstanceLock : IDisposable
         }
         catch (IOException ex)
         {
-            throw new StoreLockedException($"Another Todo Tracker instance is already using {dataDirectory}.", ex);
+            throw new StoreLockedException($"Another Onething instance is already using {dataDirectory}.", ex);
         }
     }
 

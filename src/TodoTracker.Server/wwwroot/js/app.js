@@ -226,7 +226,7 @@ function render() {
   renderProblems(d.problems ?? []);
   renderFilter();
   shell.update(d);
-  document.title = d.now.length ? `(${d.now.length}) Todo Tracker` : 'Todo Tracker';
+  document.title = d.now.length ? `(${d.now.length}) Onething` : 'Onething';
   if (kept) focusOrderControl(kept.id, kept.label);
 }
 

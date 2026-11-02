@@ -2,7 +2,7 @@ import XCTest
 @testable import TodoTrackerKit
 @testable import TodoTrackerUI
 
-/// Stands in for Todo Tracker's server: answers /api/export with a board and records what it's asked.
+/// Stands in for Onething's server: answers /api/export with a board and records what it's asked.
 final class FakeServer: URLProtocol {
     private static let lock = NSLock()
     private static var storedBoard = Data()

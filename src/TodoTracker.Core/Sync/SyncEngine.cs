@@ -267,7 +267,7 @@ public sealed class SyncEngine : IDisposable
 
         if (remote is { Partial: true })
         {
-            problems.Add("Another computer's sync file couldn't be read (it may be from a newer version of Todo Tracker); it's tried again.");
+            problems.Add("Another computer's sync file couldn't be read (it may be from a newer version of Onething); it's tried again.");
         }
 
         var published = false;

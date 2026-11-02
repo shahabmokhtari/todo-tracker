@@ -64,7 +64,7 @@ fun ConnectToComputer(vm: BoardViewModel) {
             }
         } else {
             Text(
-                "Use the tasks on your computer from this phone, at home on the same Wi-Fi or anywhere with Tailscale. On the computer, open Todo Tracker › Settings › Phones › Connect a phone, then scan its code.",
+                "Use the tasks on your computer from this phone, at home on the same Wi-Fi or anywhere with Tailscale. On the computer, open Onething › Settings › Phones › Connect a phone, then scan its code.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (vm.syncOn) {

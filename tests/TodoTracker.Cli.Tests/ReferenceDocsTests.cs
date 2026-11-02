@@ -56,7 +56,7 @@ public sealed class ReferenceDocsTests
         Line();
         Line(Generated);
         Line();
-        Line("Todo Tracker's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while");
+        Line("Onething's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while");
         Line("the app runs (with the API token). Setup for each AI app: [ai-connectors.md](ai-connectors.md). Changes are");
         Line("attributed to the agent and versioned; there is deliberately no tool that deletes a task.");
         Line();

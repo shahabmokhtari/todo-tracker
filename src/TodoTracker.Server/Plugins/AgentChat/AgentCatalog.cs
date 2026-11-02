@@ -52,7 +52,7 @@ public sealed class AgentCatalog
         switch (id)
         {
             case "copilot":
-                // Its own Copilot home and log folder: the chat only needs Todo Tracker's tools, and with the person's
+                // Its own Copilot home and log folder: the chat only needs Onething's tools, and with the person's
                 // own home (their MCP servers, plugins, shared logs) Copilot 1.0.93 crashes most of the time while
                 // starting a session. Sign-in still comes from gh; if it can't, fall back to the person's own home.
                 var copilot = Find("copilot") ?? throw Missing("GitHub Copilot CLI");

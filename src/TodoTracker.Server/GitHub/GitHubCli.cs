@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace TodoTracker.Server.GitHub;
 
-/// <summary>The GitHub CLI (<c>gh</c>): the sign-in Todo Tracker uses, and making repositories.</summary>
+/// <summary>The GitHub CLI (<c>gh</c>): the sign-in Onething uses, and making repositories.</summary>
 public interface IGitHubCli
 {
     /// <summary>A token: <c>GH_TOKEN</c>, <c>GITHUB_TOKEN</c>, or the one <c>gh</c> is signed in with (null: none).</summary>

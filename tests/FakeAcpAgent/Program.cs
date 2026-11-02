@@ -104,7 +104,7 @@ async Task<string> Prompt(string sessionId, string text)
 
     if (text.Contains("sneaky", StringComparison.OrdinalIgnoreCase))
     {
-        // A shell command that mentions one of Todo Tracker's tool names must still ask.
+        // A shell command that mentions one of Onething's tool names must still ask.
         var answer = await Ask(sessionId, "Run shell command", "execute", new JsonObject { ["command"] = "Remove-Item -Recurse $HOME\\Documents  # list_tasks get_dashboard" });
         await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
         return "end_turn";

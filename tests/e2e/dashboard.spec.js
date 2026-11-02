@@ -355,7 +355,7 @@ test('Plugins: an extra switched off is gone at once, and the light ones come ba
   await expect(loop).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Plan' }).uncheck();
   await expect(planLink).toBeHidden();
-  const restart = drawer.getByText('Restart Todo Tracker to switch it on.');
+  const restart = drawer.getByText('Restart Onething to switch it on.');
   await expect(restart).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Copy for Loop' }).check();
   await expect(loop).toBeVisible();

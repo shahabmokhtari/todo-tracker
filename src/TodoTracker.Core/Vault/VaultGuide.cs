@@ -7,10 +7,10 @@ internal static class VaultGuide
 
     public const string Text = Marker + """
 
-        # Todo Tracker vault
+        # Onething vault
 
-        This folder is a Todo Tracker task list stored as plain markdown. It works as (part of) an Obsidian vault.
-        People, the Todo Tracker apps, and AI agents all edit the same files. Prefer the `tt` CLI or the Todo Tracker MCP
+        This folder is a Onething task list stored as plain markdown. It works as (part of) an Obsidian vault.
+        People, the Onething apps, and AI agents all edit the same files. Prefer the `tt` CLI or the Onething MCP
         tools when they are available; editing files directly is fine too.
 
         ## Layout

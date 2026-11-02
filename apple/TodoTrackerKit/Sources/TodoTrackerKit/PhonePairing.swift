@@ -33,9 +33,9 @@ public struct PairingLink: Equatable, Sendable {
         public var errorDescription: String? {
             switch self {
             case .notAPairingLink:
-                return "That isn’t a Todo Tracker pairing link. On your computer, open Settings › Phones and connect a phone."
+                return "That isn’t a Onething pairing link. On your computer, open Settings › Phones and connect a phone."
             case .newerVersion:
-                return "That link is from a newer Todo Tracker. Update this app, then scan it again."
+                return "That link is from a newer Onething. Update this app, then scan it again."
             case .missing:
                 return "That pairing link is cut short. On your computer, open Settings › Phones and copy it again."
             }
@@ -183,7 +183,7 @@ public enum PhoneConnect {
         public var errorDescription: String? {
             switch self {
             case let .unreachable(computer):
-                return "Couldn’t reach \(computer). Make sure this phone is on the same Wi-Fi as it (or both are on Tailscale) and Todo Tracker is open there, then try again."
+                return "Couldn’t reach \(computer). Make sure this phone is on the same Wi-Fi as it (or both are on Tailscale) and Onething is open there, then try again."
             case let .refused(_, message): return message
             case let .disconnected(computer):
                 return "\(computer) disconnected this phone. To use its tasks again, connect again from Settings › Phones on it."

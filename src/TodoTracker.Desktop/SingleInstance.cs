@@ -4,7 +4,7 @@ using System.Text;
 namespace TodoTracker.Desktop;
 
 /// <summary>
-/// One Todo Tracker per signed-in user: the first launch owns a named mutex; later launches ask it to come to the
+/// One Onething per signed-in user: the first launch owns a named mutex; later launches ask it to come to the
 /// front and exit, or hand it what they were started with (a deep link). A restart (switching the tasks folder) waits
 /// for the old instance to let go.
 /// </summary>

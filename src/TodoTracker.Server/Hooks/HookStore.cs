@@ -201,7 +201,7 @@ public sealed class HookStore
         ArgumentNullException.ThrowIfNull(author);
         if (!author.Trusted)
         {
-            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks of the Todo Tracker app, or with tt hooks approve.");
+            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks of the Onething app, or with tt hooks approve.");
         }
 
         return Change(file =>

@@ -1,6 +1,6 @@
 # Plugins
 
-Every optional part of Todo Tracker is a plugin, so you can turn off what you don't use and keep the app calm.
+Every optional part of Onething is a plugin, so you can turn off what you don't use and keep the app calm.
 Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
 
 * **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
@@ -63,32 +63,32 @@ isn't shown twice). Otherwise a new session starts and is given the earlier mess
 
 ### What it can do
 
-* **It gets Todo Tracker's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
+* **It gets Onething's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
   endpoint; agents that only support stdio get `tt mcp`. API models use the app's MCP endpoint too, and their changes
   are recorded as the model (by its name).
 * **Reading your tasks needs no permission. Changing them asks first,** showing what would change (for example
   *Change your tasks: create task {"title":"Milk"}*): *Allow*, *Allow for this chat*, or *Don't allow*. Allowing for
   a chat is forgotten when you switch chats. Anything else (commands, files) always asks, and an unanswered question
   is refused after 5 minutes.
-  A request counts as Todo Tracker's only when the tool is named the way agents name this server's tools
+  A request counts as Onething's only when the tool is named the way agents name this server's tools
   (`todo-tracker-<tool>` for Copilot, `mcp__todo-tracker__<tool>` for Claude) and it isn't a command, delete or move;
   a tool name mentioned anywhere else (say, inside a command) never counts. Only "once" choices are sent to the agent,
-  so nothing is remembered beyond the chat. API models only get Todo Tracker's tools, and a tool they weren't offered
+  so nothing is remembered beyond the chat. API models only get Onething's tools, and a tool they weren't offered
   is refused.
 * An API model's answer has limits: up to 12 rounds and 24 tool calls, and long tool results are cut (the model is
   told). A tool call is never retried. If an answer is stopped, the chat can still go on.
 * It runs in its own working folder (`<data>/agent-chat/work`), not in your tasks folder. Copilot gets its own Copilot
   home there (without your personal MCP servers and plugins); it still signs in with `gh`. If Copilot answers that it
   isn't signed in that way, the chat switches to your normal Copilot settings and says so.
-* If the agent crashes while starting, Todo Tracker tries again and then says what happened (with the exit code).
+* If the agent crashes while starting, Onething tries again and then says what happened (with the exit code).
 
 ## Phones
 
-With **Phones** on, the Todo Tracker app on an iPhone, iPad or Android phone can work on the tasks on this computer (the
+With **Phones** on, the Onething app on an iPhone, iPad or Android phone can work on the tasks on this computer (the
 same tasks folder, synced as usual), at home on the same Wi-Fi or anywhere with [Tailscale](https://tailscale.com).
 
 1. **Settings › Phones › Let phones connect** (only in the app on this computer, not in a browser signed in with the
-   token). Restart Todo Tracker: it then also listens on port **5318** (all networks, HTTPS with a certificate it makes
+   token). Restart Onething: it then also listens on port **5318** (all networks, HTTPS with a certificate it makes
    once and keeps in its data folder). The loopback port and its rules don't change.
 2. **Connect a phone** shows a QR code (and a link to copy). Scan it in the phone app. The code works once, for 10
    minutes. The link says where to find this computer (its Wi-Fi and Tailscale addresses), and the certificate's
@@ -103,7 +103,7 @@ cookie don't work there. Changes say which phone made them ("You (Shahab's iPhon
 on this computer's own network or on Tailscale get an answer; anything from a public address is turned away.
 
 Turning **Let phones connect** or **Phones** off shuts every phone out at once; the port itself closes at the next
-start. On a Mac or Windows firewall, allow Todo Tracker (or port 5318) for private networks. Run the server with
+start. On a Mac or Windows firewall, allow Onething (or port 5318) for private networks. Run the server with
 `--phone-port <port>` to use another port.
 
 ## Adding a plugin (developers)

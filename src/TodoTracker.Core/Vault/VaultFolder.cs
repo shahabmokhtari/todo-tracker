@@ -1,8 +1,8 @@
 namespace TodoTracker.Core.Vault;
 
-/// <summary>What a folder holds, as Todo Tracker would see it (to warn before adopting a folder of existing notes).</summary>
+/// <summary>What a folder holds, as Onething would see it (to warn before adopting a folder of existing notes).</summary>
 /// <param name="Exists">Whether the folder exists.</param>
-/// <param name="IsTaskFolder">Whether Todo Tracker already uses it (it has a <c>.todo-tracker</c> folder).</param>
+/// <param name="IsTaskFolder">Whether Onething already uses it (it has a <c>.todo-tracker</c> folder).</param>
 /// <param name="Groups">Folders that would become groups (tabs).</param>
 /// <param name="Tasks">Markdown notes in them that would become tasks.</param>
 public sealed record VaultFolderSummary(bool Exists, bool IsTaskFolder, int Groups, int Tasks);

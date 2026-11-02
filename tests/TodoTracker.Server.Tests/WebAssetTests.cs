@@ -11,7 +11,7 @@ public sealed class WebAssetTests : IAsyncLifetime
     public async ValueTask DisposeAsync() => await _server.DisposeAsync();
 
     [Theory]
-    [InlineData("/", "text/html", "Todo Tracker")]
+    [InlineData("/", "text/html", "Onething")]
     [InlineData("/report.html", "text/html", "report.js")]
     [InlineData("/js/app.js", "text/javascript", "refresh")]
     [InlineData("/js/format.js", "text/javascript", "relativeTime")]

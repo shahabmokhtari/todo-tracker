@@ -10,7 +10,7 @@ using TodoTracker.Server;
 namespace TodoTracker.Tray;
 
 /// <summary>
-/// The tray app without its UI: runs Todo Tracker's server (the tasks folder, sync, the web app, MCP) and the view
+/// The tray app without its UI: runs Onething's server (the tasks folder, sync, the web app, MCP) and the view
 /// model the tray menu reads. A second copy finds the first one running and only opens its window.
 /// </summary>
 internal sealed class TrayHost : IAsyncDisposable

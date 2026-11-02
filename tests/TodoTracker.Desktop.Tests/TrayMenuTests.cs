@@ -28,9 +28,9 @@ public sealed class TrayMenuTests : IDisposable
     public void Hiding_the_sidebar_says_where_it_went_and_how_to_bring_it_back()
     {
         Assert.Equal(
-            "Todo Tracker is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back.",
+            "Onething is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back.",
             TrayMenu.HiddenHint(hotKey: true));
-        Assert.Equal("Todo Tracker is still running. Click its icon here to bring the sidebar back.", TrayMenu.HiddenHint(hotKey: false));
+        Assert.Equal("Onething is still running. Click its icon here to bring the sidebar back.", TrayMenu.HiddenHint(hotKey: false));
     }
 
     [Fact]
@@ -45,7 +45,7 @@ public sealed class TrayMenuTests : IDisposable
         Assert.Equal("Focus on “Write the report”", items.Single(i => i.Id == TrayMenu.StartFocus).Label);
         Assert.Equal("Hide the sidebar", items.Single(i => i.Id == TrayMenu.ToggleSidebar).Label);
         Assert.Equal("Show the sidebar", TrayMenu.Items(_vm, sidebarShown: false).Single(i => i.Id == TrayMenu.ToggleSidebar).Label);
-        Assert.Equal("Todo Tracker · 1 thing to do now", TrayMenu.Tooltip(_vm));
+        Assert.Equal("Onething · 1 thing to do now", TrayMenu.Tooltip(_vm));
     }
 
     [Fact]

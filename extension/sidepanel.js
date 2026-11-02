@@ -48,13 +48,13 @@ async function refresh() {
     $('main').hidden = false;
     render();
   } catch (err) {
-    if (err.unauthorized) return showSetup('Todo Tracker didn’t accept this connection any more. Get a new pairing code in Todo Tracker (Browser extension).');
+    if (err.unauthorized) return showSetup('Onething didn’t accept this connection any more. Get a new pairing code in Onething (Browser extension).');
     if (err.status === 404 && group) {
       group = null;
       await ext.storage.local.remove('groupId');
       return refresh();
     }
-    $('status').textContent = `Can't reach Todo Tracker: ${err.message}`;
+    $('status').textContent = `Can't reach Onething: ${err.message}`;
   }
 }
 
@@ -142,7 +142,7 @@ $('setup-form').addEventListener('submit', async (e) => {
   try {
     const serverUrl = normalizeServerUrl($('server').value);
     const typed = $('token').value.trim();
-    if (!typed && !$('code').value.trim()) throw new Error('Enter the pairing code shown in Todo Tracker.');
+    if (!typed && !$('code').value.trim()) throw new Error('Enter the pairing code shown in Onething.');
     const token = typed || await pair({ serverUrl, code: $('code').value });
     await ext.storage.local.set({ serverUrl, token });
     $('code').value = '';

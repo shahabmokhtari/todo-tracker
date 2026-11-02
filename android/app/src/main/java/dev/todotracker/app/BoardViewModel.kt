@@ -496,7 +496,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
                 },
                 onFailure = { e ->
                     pairingProblem = when (e) {
-                        is PhoneException.Unreachable -> "Couldn't reach ${link.computer}. Is this phone on the same Wi-Fi (or on Tailscale), and is Todo Tracker running there?"
+                        is PhoneException.Unreachable -> "Couldn't reach ${link.computer}. Is this phone on the same Wi-Fi (or on Tailscale), and is Onething running there?"
                         else -> e.message ?: "That didn't work. Try again."
                     }
                 },
@@ -896,7 +896,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         if (isRemote) {
             val name = computer ?: "your computer"
             when {
-                request == null -> status = "Do that in Todo Tracker on $name."
+                request == null -> status = "Do that in Onething on $name."
                 remote?.canChange != true -> status = "Can't change tasks right now: $name isn't answering. Try again when you're back on its Wi-Fi or Tailscale."
                 else -> return try {
                     action(Instant.now())

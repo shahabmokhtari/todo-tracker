@@ -53,7 +53,7 @@ final class FakeComputer: URLProtocol {
             return
         case .revoked where url.path != "/api/phones/claim":
             status = 401
-            body = Data(#"{"detail":"This phone isn’t connected to Todo Tracker."}"#.utf8)
+            body = Data(#"{"detail":"This phone isn’t connected to Onething."}"#.utf8)
         default:
             status = 200
             switch url.path {
@@ -264,7 +264,7 @@ final class RemoteModeTests: XCTestCase {
     func testABadLinkSaysWhyAndChangesNothing() async throws {
         let model = BoardModel(store: try phoneStore(), phone: setup())
         model.open(link: URL(string: link.replacingOccurrences(of: "v=1", with: "v=9"))!)
-        XCTAssertEqual(model.pairingError, "That link is from a newer Todo Tracker. Update this app, then scan it again.")
+        XCTAssertEqual(model.pairingError, "That link is from a newer Onething. Update this app, then scan it again.")
         XCTAssertNil(model.remote)
         XCTAssertTrue(FakeComputer.requests.isEmpty)
     }

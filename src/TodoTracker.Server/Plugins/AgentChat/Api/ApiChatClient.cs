@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 
 namespace TodoTracker.Server.Plugins.AgentChat;
 
-/// <summary>A tool the model may call: Todo Tracker's MCP tools, with their JSON schema, and whether it only reads.</summary>
+/// <summary>A tool the model may call: Onething's MCP tools, with their JSON schema, and whether it only reads.</summary>
 public sealed record ApiToolSpec(string Name, string Description, JsonNode InputSchema, bool ReadOnly = false);
 
 /// <summary>

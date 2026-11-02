@@ -80,7 +80,7 @@ public sealed class VaultStoreTests : IDisposable
         Assert.True(Directory.Exists(P("Work")));
         Assert.True(Directory.Exists(P("Personal")));
         Assert.True(File.Exists(P(".todo-tracker", "config.json")));
-        Assert.Contains("Todo Tracker vault", await File.ReadAllTextAsync(P("AGENTS.md")), StringComparison.Ordinal);
+        Assert.Contains("Onething vault", await File.ReadAllTextAsync(P("AGENTS.md")), StringComparison.Ordinal);
         Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
     }
 

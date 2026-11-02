@@ -52,7 +52,7 @@ public sealed class GitHubIssues(
 {
     public const string HttpClientName = "github";
 
-    /// <summary>The topic every repository Todo Tracker makes has.</summary>
+    /// <summary>The topic every repository Onething makes has.</summary>
     public const string Topic = "todo-tracker";
 
     private const string FilesPrefix = "github-";
@@ -430,6 +430,7 @@ public sealed class GitHubIssues(
         }
     }
 
+    /// <summary>How a repository made for a group is recognized again; it keeps the app's first name so existing repositories still match.</summary>
     public static string Description(string group) => $"Todo Tracker: {group}";
 
     /// <summary><c>todo-</c> and the group's name in letters, digits and dashes ("Side projects" → todo-side-projects).</summary>

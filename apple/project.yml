@@ -14,7 +14,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.9"
     GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_CFBundleDisplayName: Todo Tracker
+    INFOPLIST_KEY_CFBundleDisplayName: Onething
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
@@ -42,8 +42,8 @@ targets:
     info:
       path: Support/Info-iOS.plist
       properties:
-        NSCameraUsageDescription: Todo Tracker uses the camera to scan the code your computer shows when you connect this phone to it.
-        NSLocalNetworkUsageDescription: Todo Tracker connects to Todo Tracker on your computer, over your Wi-Fi, to use the tasks there.
+        NSCameraUsageDescription: Onething uses the camera to scan the code your computer shows when you connect this phone to it.
+        NSLocalNetworkUsageDescription: Onething connects to Onething on your computer, over your Wi-Fi, to use the tasks there.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
@@ -66,10 +66,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos
         PRODUCT_NAME: TodoTracker
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSAppleEventsUsageDescription: Todo Tracker puts your tasks in a note when you choose Copy to Apple Notes.
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Onething puts your tasks in a note when you choose Copy to Apple Notes.
         ENABLE_HARDENED_RUNTIME: YES
     # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only); todotracker://task/<id>
-    # links open the task (TaskLinks).
+    # links open the task (TaskLinks). The bundle stays TodoTracker.app (PRODUCT_NAME: updates replace it in place,
+    # and CI packages it by that name); App/en.lproj/InfoPlist.strings gives the menu bar the name people see
+    # (About Onething, Quit Onething).
     info:
       path: Support/Info-macOS.plist
       properties:

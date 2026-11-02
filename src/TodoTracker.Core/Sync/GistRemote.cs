@@ -13,6 +13,7 @@ namespace TodoTracker.Core.Sync;
 /// </summary>
 public sealed class GistRemote : ISyncRemote
 {
+    /// <summary>How the sync gist is found; it keeps the app's first name so devices already syncing still meet.</summary>
     public const string DescriptionPrefix = "Todo Tracker sync: ";
     public const string Marker = "todo-tracker-sync.md";
 

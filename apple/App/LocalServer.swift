@@ -4,7 +4,7 @@ import Foundation
 import TodoTrackerKit
 import TodoTrackerUI
 
-/// Runs Todo Tracker's server (it comes inside the app) in the background on this Mac, so the app uses the same tasks
+/// Runs Onething's server (it comes inside the app) in the background on this Mac, so the app uses the same tasks
 /// folder as the browser and the other computers: `~/Documents/Todo Tracker`, synced through OneDrive or iCloud Drive.
 /// It starts with the app, is started again if it stops, and stops when the app quits (`--parent-pid` covers a crash).
 /// The first time, it moves the tasks this Mac kept on its own into the folder.
@@ -75,7 +75,7 @@ final class LocalServer {
         reconnecting = true
         restarts += 1
         guard restarts <= 3 else {
-            model.reportLocalOnly("Todo Tracker's server keeps stopping; see ~/Library/Logs/TodoTracker/server.log, then quit and open the app again")
+            model.reportLocalOnly("Onething's server keeps stopping; see ~/Library/Logs/TodoTracker/server.log, then quit and open the app again")
             return
         }
         model.serverLost("Reconnecting to your tasks folder…")

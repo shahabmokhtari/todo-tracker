@@ -1,4 +1,4 @@
-# Multi-monitor placement test against the real Todo Tracker sidebar on the live Windows shell.
+# Multi-monitor placement test against the real Onething sidebar on the live Windows shell.
 # For every display: Menu > Position > Display N, then Dock right / Dock left / Float. Checks the window lands on that
 # monitor, only that monitor's work area changes, and every work area is restored on exit.
 # Skips (exit 0) on machines with a single monitor, such as CI runners.
@@ -40,7 +40,7 @@ function MainWindow($proc) {
   # Find the sidebar by process + automation name; Process.MainWindowHandle can briefly point at a WPF helper window.
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)),
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Todo Tracker sidebar')))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Onething sidebar')))
   for ($i = 0; $i -lt 100; $i++) {
     $w = (Root).FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
     if ($w -and $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Menu')))) {

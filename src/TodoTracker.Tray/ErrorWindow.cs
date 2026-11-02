@@ -5,7 +5,7 @@ using Avalonia.Media;
 
 namespace TodoTracker.Tray;
 
-/// <summary>Says why Todo Tracker couldn't start (instead of vanishing); closing it quits.</summary>
+/// <summary>Says why Onething couldn't start (instead of vanishing); closing it quits.</summary>
 internal sealed class ErrorWindow : Window
 {
     public ErrorWindow(string title, string message)
@@ -25,7 +25,7 @@ internal sealed class ErrorWindow : Window
             {
                 new TextBlock { Text = title, FontSize = 16, FontWeight = FontWeight.SemiBold },
                 new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                new TextBlock { Text = "Details are in errors.log in Todo Tracker's data folder.", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = "Details are in errors.log in Onething's data folder.", Opacity = 0.7, FontSize = 12, TextWrapping = TextWrapping.Wrap },
                 close,
             },
         };

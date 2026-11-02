@@ -70,7 +70,7 @@ internal static class CliCommands
             return text.ToString();
         }
 
-        text.AppendLine("tt — Todo Tracker in your terminal and for AI agents").AppendLine().AppendLine("Commands:");
+        text.AppendLine("tt — Onething in your terminal and for AI agents").AppendLine().AppendLine("Commands:");
         var width = All.Keys.Max(k => k.Length) + 2;
         foreach (var c in All.Values)
         {
@@ -175,7 +175,7 @@ internal static class CliCommands
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or PlatformNotSupportedException)
         {
-            throw new InvalidOperationException($"Couldn't open {link} ({ex.Message}). Is the Todo Tracker app installed and started once?", ex);
+            throw new InvalidOperationException($"Couldn't open {link} ({ex.Message}). Is the Onething app installed and started once?", ex);
         }
 
         await s.Print(new { item.Id, item.Title, Link = link }, (o, x) => o.Line($"Opened {x.Title}  {x.Link}")).ConfigureAwait(false);
@@ -607,7 +607,7 @@ internal static class CliCommands
                 var folder = obsidian is not null ? ObsidianVaults.TaskFolderIn(obsidian) : s.FullPath(target);
                 s.Settings.SetVaultPath(folder);
                 var result = new VaultSettingDto(folder, RestartRequired: true);
-                await s.Print(result, (o, r) => o.Line($"Tasks folder is now {r.Path}. Restart Todo Tracker to switch.")).ConfigureAwait(false);
+                await s.Print(result, (o, r) => o.Line($"Tasks folder is now {r.Path}. Restart Onething to switch.")).ConfigureAwait(false);
                 break;
             default:
                 throw new CliUsageException("tt vault takes guide, obsidian, or use <folder>.");

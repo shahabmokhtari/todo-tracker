@@ -1,6 +1,6 @@
 # Hooks and events
 
-Run your own script, or call a web address, when something happens in Todo Tracker: a task done, a reminder going off,
+Run your own script, or call a web address, when something happens in Onething: a task done, a reminder going off,
 a break starting. Extensions and scripts can also listen to everything as it happens.
 
 ## Where hooks live

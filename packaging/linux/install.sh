@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs Todo Tracker for this user: the app in ~/.local/share/todo-tracker, a launcher in your menu, and (with
+# Installs Onething for this user: the app in ~/.local/share/todo-tracker, a launcher in your menu, and (with
 # --autostart) a start with your session. Run it from the unpacked folder: ./install.sh [--autostart]
 set -eu
 
@@ -10,7 +10,7 @@ apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 icons="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/256x256/apps"
 
 mkdir -p "$bin" "$apps" "$icons"
-# A new copy next to the old one, then swapped: files of a running Todo Tracker are never overwritten.
+# A new copy next to the old one, then swapped: files of a running Onething are never overwritten.
 rm -rf "$app.new" "$app.old"
 cp -R "$here/app" "$app.new"
 if [ -d "$app" ]; then mv "$app" "$app.old"; fi
@@ -29,7 +29,7 @@ if [ "${1:-}" = "--autostart" ]; then
   autostart="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
   mkdir -p "$autostart"
   cp "$apps/todo-tracker.desktop" "$autostart/todo-tracker.desktop"
-  echo "Todo Tracker starts with your session."
+  echo "Onething starts with your session."
 fi
 
 echo "Installed. Start it from your app menu, or run: todo-tracker"

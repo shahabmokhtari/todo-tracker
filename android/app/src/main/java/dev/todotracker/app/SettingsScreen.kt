@@ -89,7 +89,7 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit) {
                     Setting("Notifications", "Reminders, snoozes ending, and the end of a focus session or a break are told with a notification, even with the app closed.") {
                         val notifyOff = android.os.Build.VERSION.SDK_INT >= 33 &&
                             androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-                        Text(if (notifyOff) "Notifications are off for Todo Tracker." else "Notifications are on.", style = MaterialTheme.typography.bodyMedium)
+                        Text(if (notifyOff) "Notifications are off for Onething." else "Notifications are on.", style = MaterialTheme.typography.bodyMedium)
                         if (!FocusAlarm.exactAllowed(context)) Text("Alarms may come a few minutes late: allow alarms so they come on time.", style = MaterialTheme.typography.bodyMedium)
                         OutlinedButton(onClick = {
                             context.startActivity(

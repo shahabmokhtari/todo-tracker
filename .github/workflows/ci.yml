@@ -320,7 +320,7 @@ jobs:
         run: |
           mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
           cp extension/safari/manifest.json safari-src/manifest.json
-          xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Todo Tracker Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
+          xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Onething Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
           project=$(find safari-build -name '*.xcodeproj' -maxdepth 3 | head -1)
           # The converter names the app and its extension inconsistently; signing requires the extension's bundle id
           # to start with the app's. Set both (and the id the app's code uses to find its extension).
@@ -353,9 +353,9 @@ jobs:
           xcodebuild -list -project "$project"
           # Ad-hoc signed ("-"): Safari won't load an extension app with no signature at all, even with "Allow
           # Unsigned Extensions" on. Users still clear the download quarantine (docs/browser-extension.md).
-          xcodebuild -project "$project" -scheme "Todo Tracker Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
-          codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/Todo Tracker Extension.app"
-          ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/Todo Tracker Extension.app" TodoTracker-Safari-Extension.zip
+          xcodebuild -project "$project" -scheme "Onething Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+          codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/Onething Extension.app"
+          ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/Onething Extension.app" TodoTracker-Safari-Extension.zip
       - uses: actions/upload-artifact@v4
         with:
           name: safari-extension

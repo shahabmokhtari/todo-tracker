@@ -106,7 +106,7 @@ struct ConnectComputerView: View {
                     } header: {
                         Text("Scan the code")
                     } footer: {
-                        Text("On your computer, open Todo Tracker › Settings › Phones and choose Connect a phone. Point the camera at the code it shows.")
+                        Text("On your computer, open Onething › Settings › Phones and choose Connect a phone. Point the camera at the code it shows.")
                     }
                 }
                 #endif
@@ -126,7 +126,7 @@ struct ConnectComputerView: View {
                 } footer: {
                     Text(canScan
                          ? "Under the code, the computer also shows its link to copy. A code works for 10 minutes, once."
-                         : "On your computer, open Todo Tracker › Settings › Phones, choose Connect a phone and copy the link under the code. It works for 10 minutes, once.")
+                         : "On your computer, open Onething › Settings › Phones, choose Connect a phone and copy the link under the code. It works for 10 minutes, once.")
                 }
                 if let error = model.pairingError {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }

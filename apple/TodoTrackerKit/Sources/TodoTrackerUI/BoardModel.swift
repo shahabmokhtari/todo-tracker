@@ -10,7 +10,7 @@ import UIKit
 #endif
 
 /// View model for the iOS and macOS apps. On its own it owns a board on this device: persists after every change,
-/// ticks the focus timer, and keeps local notifications in sync with pending reminders. On a Mac it uses Todo Tracker's
+/// ticks the focus timer, and keeps local notifications in sync with pending reminders. On a Mac it uses Onething's
 /// server instead (`use(server:)`): the tasks folder, synced with the other computers; changes go to the server and the
 /// board is read back from it.
 @MainActor
@@ -194,13 +194,13 @@ public final class BoardModel: ObservableObject {
         status = "Opening your tasks folder…"
     }
 
-    /// Still starting after a while (the first time, macOS may be asking whether Todo Tracker may use Documents).
+    /// Still starting after a while (the first time, macOS may be asking whether Onething may use Documents).
     public func connectingSlowly() {
         guard isConnecting else { return }
-        status = "Still opening your tasks folder… If macOS asks whether Todo Tracker may use your Documents folder, allow it."
+        status = "Still opening your tasks folder… If macOS asks whether Onething may use your Documents folder, allow it."
     }
 
-    /// Use Todo Tracker's server from now on: its tasks folder, synced with the other computers.
+    /// Use Onething's server from now on: its tasks folder, synced with the other computers.
     public func use(server client: ServerClient) {
         server = client
         serverURL = client.baseURL
@@ -233,7 +233,7 @@ public final class BoardModel: ObservableObject {
         }
         if store?.wasMigrated == true {
             isReadOnly = true
-            status = "Your tasks are in your tasks folder, but Todo Tracker's server isn't running (\(reason)). Changes are off until it is."
+            status = "Your tasks are in your tasks folder, but Onething's server isn't running (\(reason)). Changes are off until it is."
         } else {
             status = "Not syncing: \(reason). Your tasks stay on this Mac for now."
         }
@@ -1054,7 +1054,7 @@ public final class BoardModel: ObservableObject {
         guard !isRemote else { return false }
         guard !isReadOnly, storeFailure == nil else {
             status = storeFailure ?? (store?.wasMigrated == true
-                ? "Your tasks are in your tasks folder, and Todo Tracker's server isn't running: changes are off until it is."
+                ? "Your tasks are in your tasks folder, and Onething's server isn't running: changes are off until it is."
                 : "Your saved board couldn't be opened, so changes are disabled to protect it.")
             return false
         }

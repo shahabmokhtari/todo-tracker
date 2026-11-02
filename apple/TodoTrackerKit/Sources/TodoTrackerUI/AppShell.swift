@@ -155,7 +155,7 @@ public struct AppShell: View {
     private var split: some View {
         NavigationSplitView(columnVisibility: $columns) {
             sidebar
-                .navigationTitle("Todo Tracker")
+                .navigationTitle("Onething")
                 #if os(macOS)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
                 #endif

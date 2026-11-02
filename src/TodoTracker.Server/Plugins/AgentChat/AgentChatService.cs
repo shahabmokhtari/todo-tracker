@@ -17,7 +17,7 @@ public sealed class AgentChatOptions
     /// <summary>Where the chosen agent is remembered.</summary>
     public string? SettingsPath { get; init; }
 
-    /// <summary>The Todo Tracker MCP server over stdio (<c>tt mcp</c>); null when tt isn't available.</summary>
+    /// <summary>The Onething MCP server over stdio (<c>tt mcp</c>); null when tt isn't available.</summary>
     public AgentLaunch? Mcp { get; init; }
 
     /// <summary>The app's own MCP endpoint, preferred when the agent supports HTTP MCP servers.</summary>
@@ -65,7 +65,7 @@ public sealed record ChatState(string Status, string? Agent, IReadOnlyList<Agent
 /// <summary>
 /// Chats about your tasks, with Copilot or Claude (over ACP: the agent starts on the first message and stays warm) or a
 /// model reached with an API key. Every chat is kept and can be reopened; a chat stays with the agent or model it was
-/// started with. All of them get Todo Tracker's tools. Reading tasks needs no permission; changing them asks once (or
+/// started with. All of them get Onething's tools. Reading tasks needs no permission; changing them asks once (or
 /// for the rest of the chat); anything else (shell commands, files) always asks, and an unanswered request is refused.
 /// </summary>
 public sealed partial class AgentChatService : IAsyncDisposable
@@ -73,12 +73,12 @@ public sealed partial class AgentChatService : IAsyncDisposable
     public const string ApiPrefix = "api:";
 
     private const string Context =
-        "[Context from Todo Tracker, not from the user] You are the assistant inside Todo Tracker, the user's ADHD-friendly task list. " +
+        "[Context from Onething, not from the user] You are the assistant inside Onething, the user's ADHD-friendly task list. " +
         "Use the todo-tracker tools to look at and change their tasks (never edit files or run commands for that). " +
         "Capture what they ask for in their words, make big things small, keep replies short: what you did and the one next step.";
 
     private const string ApiSystemPrompt =
-        "You are the assistant inside Todo Tracker, the user's ADHD-friendly task list. Use the tools to look at and change their tasks. " +
+        "You are the assistant inside Onething, the user's ADHD-friendly task list. Use the tools to look at and change their tasks. " +
         "Capture what they ask for in their words, make big things small, keep replies short: what you did and the one next step.";
 
     private const int StartAttempts = 3;
@@ -529,7 +529,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
         || message.Contains("log in", StringComparison.OrdinalIgnoreCase) || message.Contains("sign in", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// The Todo Tracker tool a permission request is for, or null when it's anything else. Decided by the tool's name as
+    /// The Onething tool a permission request is for, or null when it's anything else. Decided by the tool's name as
     /// the agent names our server's tools (Copilot: <c>todo-tracker-create_task</c> when announced, then the bare name in
     /// the request; Claude: <c>mcp__todo-tracker__create_task</c>), never by words found elsewhere (a command can
     /// mention a tool), and never for commands, deletes or moves.
@@ -930,7 +930,7 @@ public sealed partial class AgentChatService : IAsyncDisposable
             _runningAgent = _choice;
             var init = await agent.RequestAsync(
                 "initialize",
-                new { protocolVersion = 1, clientCapabilities = new { fs = new { readTextFile = false, writeTextFile = false }, terminal = false }, clientInfo = new { name = "todo-tracker", title = "Todo Tracker", version = McpInfo.Version } },
+                new { protocolVersion = 1, clientCapabilities = new { fs = new { readTextFile = false, writeTextFile = false }, terminal = false }, clientInfo = new { name = "todo-tracker", title = "Onething", version = McpInfo.Version } },
                 _options.StartTimeout).ConfigureAwait(false);
             var caps = init.ValueKind == JsonValueKind.Object && init.TryGetProperty("agentCapabilities", out var c) ? c : default;
             _agentTakesHttp = caps.ValueKind == JsonValueKind.Object && caps.TryGetProperty("mcpCapabilities", out var mcpCaps)

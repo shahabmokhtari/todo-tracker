@@ -1,4 +1,4 @@
-# End-to-end placement test against the real Todo Tracker sidebar on the live Windows shell.
+# End-to-end placement test against the real Onething sidebar on the live Windows shell.
 # Drives the UI like a user (UI Automation): Menu > Position > Dock left / Float, Always on top,
 # then restarts the app to verify the placement is remembered.
 param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5402)
@@ -39,7 +39,7 @@ function MainWindow($proc) {
   # Find the sidebar by process + automation name; Process.MainWindowHandle can briefly point at a WPF helper window.
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)),
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Todo Tracker sidebar')))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Onething sidebar')))
   for ($i = 0; $i -lt 100; $i++) {
     $w = (Root).FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
     if ($w -and $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Menu')))) {

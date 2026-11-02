@@ -129,7 +129,7 @@ internal sealed partial class AppWindow : Window
     public AppWindow(AppWindowHost host)
     {
         _host = host;
-        Title = "Todo Tracker";
+        Title = "Onething";
         Width = 1280;
         Height = 860;
         MinWidth = AppWindowState.MinWidth;
@@ -226,7 +226,7 @@ internal sealed partial class AppWindow : Window
             core.NewWindowRequested += OnNewWindowRequested;
             core.NavigationStarting += OnNavigationStarting;
             core.NavigationCompleted += (_, e) => _loaded = e.IsSuccess && AppNavigation.Classify(_host.Origin, core.Source) == AppLink.App;
-            core.DocumentTitleChanged += (_, _) => Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "Todo Tracker" : core.DocumentTitle;
+            core.DocumentTitleChanged += (_, _) => Title = string.IsNullOrWhiteSpace(core.DocumentTitle) ? "Onething" : core.DocumentTitle;
             core.ProcessFailed += OnProcessFailed;
             await SetNativeBreaksAsync().ConfigureAwait(true);
         }

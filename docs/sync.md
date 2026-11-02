@@ -72,7 +72,7 @@ them). Places read come first in each sync, so the places written get what they 
 writing every place keeps them all the same (with a place only read or only written, a clash there can be settled right away, but later edits on both sides keep being merged against the last version both had). A place this computer stops writing to loses its copy of this computer's tasks, so nobody merges an old copy later. Choosing a single place again in **Sync with** goes back to one place.
 ## On a Mac
 
-The Mac app comes with Todo Tracker's server inside. It starts in the background with the app (and stops when the app
+The Mac app comes with Onething's server inside. It starts in the background with the app (and stops when the app
 quits), so the Mac uses the same tasks folder as everywhere else, `~/Documents/Todo Tracker`, and syncs it like a
 Windows computer does:
 
@@ -82,7 +82,7 @@ Windows computer does:
   from there. They are added to the other computers' tasks, never replace them (a task already there stays as it
   is). The old file is kept as `board.json.migrated`. While the folder opens, changes wait a moment.
 * Version history needs git (Xcode's command line tools, or Homebrew's git); without it, history is off on the Mac.
-* **More:** the menu bar glance shows where the tasks are and **Open Todo Tracker…** opens the full window in the
+* **More:** the menu bar glance shows where the tasks are and **Open Onething…** opens the full window in the
   browser (board, reports, Settings, the Sync panel).
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
   (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need

@@ -14,7 +14,7 @@ using TodoTracker.Core.Vault;
 namespace TodoTracker.Server;
 
 /// <summary>
-/// Composes the local Todo Tracker server: REST API, MCP endpoint, web UI, reminder loop, and integrations.
+/// Composes the local Onething server: REST API, MCP endpoint, web UI, reminder loop, and integrations.
 /// Used by the standalone web host and embedded in the Windows sidebar.
 /// </summary>
 public static class TodoTrackerHost
@@ -199,7 +199,7 @@ public static class TodoTrackerHost
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return $"Couldn't move your tasks yet ({ex.Message}). They're where they were; it's tried again when Todo Tracker starts (close apps that have files in the tasks folder open).";
+            return $"Couldn't move your tasks yet ({ex.Message}). They're where they were; it's tried again when Onething starts (close apps that have files in the tasks folder open).";
         }
     }
 
@@ -212,7 +212,7 @@ public static class TodoTrackerHost
         // Copying one into the other would never end, and a tasks folder holding the data folder would copy its secrets.
         var copy = GitHubCopyOf(options);
         return Inside(copy, folder) || Inside(folder, copy) || Inside(options.DataDirectory, folder)
-            ? "The tasks folder holds Todo Tracker's own data folder (or is inside its copy): choose a tasks folder elsewhere first."
+            ? "The tasks folder holds Onething's own data folder (or is inside its copy): choose a tasks folder elsewhere first."
             : null;
     }
 

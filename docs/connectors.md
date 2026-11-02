@@ -1,6 +1,6 @@
 # Connectors: Notion, Microsoft To Do, GitHub Issues, Loop
 
-Todo Tracker can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
+Onething can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
 Microsoft To Do are **off** until you switch them on in **Settings › Connected apps** (or the sidebar's
 **⋯ › Plugins**); they come on at once. Then open **Connectors** (the link button in the app's top bar).
 
@@ -36,7 +36,7 @@ syncing until you unarchive them.
 1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and create an **internal** integration
    with read and update content capabilities. Copy its token (it starts with `secret_` or `ntn_`).
 2. In Notion, open your tasks database and choose **•••** › **Connections**, then add the integration.
-3. In Todo Tracker's **Connectors** panel, paste the token and choose **Connect**. Then pick the database and the
+3. In Onething's **Connectors** panel, paste the token and choose **Connect**. Then pick the database and the
    group.
 
 Columns are recognized by their type and name:
@@ -55,7 +55,7 @@ Signing in to Microsoft needs an *app registration* (a client id). It's free and
 
 1. Open the [Azure portal](https://portal.azure.com) › **Microsoft Entra ID** › **App registrations** › **New
    registration**.
-2. **Name:** Todo Tracker. **Supported account types:** *Accounts in any organizational directory and personal
+2. **Name:** Onething. **Supported account types:** *Accounts in any organizational directory and personal
    Microsoft accounts*, so that both work and personal accounts can sign in.
 3. **Redirect URI:** choose *Public client/native (mobile & desktop)* and enter
    `https://login.microsoftonline.com/common/oauth2/nativeclient`. Then choose **Register**.
@@ -76,7 +76,7 @@ To Do has no tags and no *critical* importance: tags stay here, and critical tas
 ## GitHub Issues
 
 Each group can live in its own **private GitHub repository**, where every task is an issue. You don't create anything
-by hand: Todo Tracker makes the repository with the [GitHub CLI](https://cli.github.com) (`gh repo create`), so the only
+by hand: Onething makes the repository with the [GitHub CLI](https://cli.github.com) (`gh repo create`), so the only
 setup is signing in once:
 
 1. Install the GitHub CLI (Windows: `winget install GitHub.cli`; macOS: `brew install gh`; Linux: your package
@@ -110,7 +110,7 @@ Change any of these on GitHub (add `snooze:…` to snooze it, close the issue to
 next sync; change the task here and the issue follows. A task deleted here closes its issue as *not planned*. Subtasks,
 notes, time and attachments stay here. Pull requests in the repository are left alone.
 
-Labels that aren't Todo Tracker's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
+Labels that aren't Onething's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
 don't make sense here (`color:red`) are left alone too, and never hold up the rest of the task. Two labels for one
 thing (two `snooze:` labels): the later time wins. A task moved to another group closes its issue (as not planned)
 and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
@@ -118,13 +118,13 @@ keep growing. Repositories must be private: a public one is refused.
 
 ### Keep your tasks on GitHub, without a tasks folder
 
-Tick **Keep my tasks on GitHub, without a tasks folder** (and restart Todo Tracker) to make GitHub the place your
+Tick **Keep my tasks on GitHub, without a tasks folder** (and restart Onething) to make GitHub the place your
 tasks live:
 
 - Every group has its own repository (made for it if it has none), and new groups get theirs.
 - The app keeps its working copy in its own data folder (`github-tasks`), so it works offline and stays instant;
   the tasks folder you had is copied in at the next start and then left alone.
-- On another computer, switch on GitHub Issues and tick the same box: every repository Todo Tracker made for a group
+- On another computer, switch on GitHub Issues and tick the same box: every repository Onething made for a group
   (the `todo-tracker` topic) becomes a group there, and its issues come in as the same tasks (same ids), finished ones
   too.
 - It syncs every 2 minutes, and half a minute after you change something.
@@ -134,11 +134,11 @@ tasks live:
 Untick it (and restart) to go back: the app's copy goes into your tasks folder, and what that folder had is kept next
 to it (renamed `… .before-github-<date>`). The repositories stay on GitHub.
 
-The tasks move when Todo Tracker starts, never before: until then `tt` and AI apps keep using where they are now
+The tasks move when Onething starts, never before: until then `tt` and AI apps keep using where they are now
 (restart AI apps that keep `tt mcp` running afterwards). If something is in the way (a file in the tasks folder open in
 another app) the app starts as usual, says so here, and tries again at its next start. Only you can switch it, from the
 app's own window (not an AI app or script with the API token). A group deleted here keeps its repository on GitHub but
-isn't brought back. The tasks folder can't be one that holds Todo Tracker's data folder.
+isn't brought back. The tasks folder can't be one that holds Onething's data folder.
 
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,

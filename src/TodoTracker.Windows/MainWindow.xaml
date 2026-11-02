@@ -3,13 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="clr-namespace:TodoTracker.Desktop;assembly=TodoTracker.Desktop"
         xmlns:local="clr-namespace:TodoTracker.Windows"
-        Title="Todo Tracker"
+        Title="Onething"
         Width="360" Height="800"
         MinWidth="56"
         WindowStyle="None" ResizeMode="NoResize" Topmost="True" ShowInTaskbar="True"
         FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
         Background="{DynamicResource ApplicationBackgroundBrush}"
-        AutomationProperties.Name="Todo Tracker sidebar"
+        AutomationProperties.Name="Onething sidebar"
         PreviewKeyDown="OnWindowPreviewKeyDown"
         PreviewMouseLeftButtonUp="OnWindowPreviewMouseUp">
     <Window.Resources>
@@ -278,7 +278,7 @@
                     <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
                 </Border>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Todo Tracker" FontWeight="Bold" FontSize="14.5" FontFamily="Segoe UI Variable Display, Segoe UI" />
+                    <TextBlock Text="Onething" FontWeight="Bold" FontSize="14.5" FontFamily="Segoe UI Variable Display, Segoe UI" />
                     <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
                     <TextBlock x:Name="EnergyLine" Text="{Binding EnergyText}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                                Visibility="{Binding EnergyText, Converter={StaticResource VisibleWhen}}" ToolTip="Energy: each planned block's hours × its task's ⚡ an hour, against what you have in a day">

@@ -9,7 +9,7 @@ namespace TodoTracker.Server;
 public static class McpInfo
 {
     public const string Instructions =
-        "Todo Tracker is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.\n" +
+        "Onething is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.\n" +
         "- Start with get_dashboard (what to do now, what's waiting). Find tasks with search_tasks (#tag, label:x, group:work, is:done).\n" +
         "- Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.\n" +
         "- Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).\n" +
@@ -26,7 +26,7 @@ public static class McpInfo
     public static void Configure(McpServerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        options.ServerInfo = new() { Name = "todo-tracker", Title = "Todo Tracker", Version = Version };
+        options.ServerInfo = new() { Name = "todo-tracker", Title = "Onething", Version = Version };
         options.ServerInstructions = Instructions;
     }
 }

@@ -1,4 +1,4 @@
-# Todo Tracker
+# Onething
 
 > An ADHD-friendly task app that always shows the one thing to do now. Tasks are markdown files in a folder you own
 > (Obsidian-compatible). Native apps for Windows, macOS, iOS, Android and Linux, a web app, a browser extension, and

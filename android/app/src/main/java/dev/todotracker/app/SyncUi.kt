@@ -129,7 +129,7 @@ private fun SetUp(vm: BoardViewModel) {
     }
     if (place == SyncSettings.GIST) {
         Text("1. Make a GitHub token", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        Hint("GitHub opens with the gist scope chosen (that's all Todo Tracker needs). Choose when it expires, then Generate token, and copy it.")
+        Hint("GitHub opens with the gist scope chosen (that's all Onething needs). Choose when it expires, then Generate token, and copy it.")
         OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SyncHub.NEW_TOKEN_URL))) }) { Text("Open GitHub") }
         Text("2. Paste it here", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
         TokenField(token) { token = it }
@@ -200,7 +200,7 @@ private fun Syncing(vm: BoardViewModel) {
 
     HorizontalDivider()
     Heading("Your other devices")
-    if (status.devices.isEmpty()) Hint("None yet. On a computer, open Todo Tracker › Sync and choose GitHub gist with the same library name.")
+    if (status.devices.isEmpty()) Hint("None yet. On a computer, open Onething › Sync and choose GitHub gist with the same library name.")
     status.devices.forEach { d ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

@@ -47,6 +47,6 @@ public sealed class GitHubConnectorPlugin : ITodoPlugin
         group.MapPut("/main-place", async (GitHubEveryGroupRequest request, HttpContext http, GitHubIssues g, CancellationToken ct) =>
             Security.IsAppSession(http)
                 ? Results.Ok(await g.SetMainPlaceAsync(request.On, ct).ConfigureAwait(false))
-                : Results.Problem("Only you can move where your tasks live: in Settings of the Todo Tracker app.", statusCode: StatusCodes.Status403Forbidden));
+                : Results.Problem("Only you can move where your tasks live: in Settings of the Onething app.", statusCode: StatusCodes.Status403Forbidden));
     }
 }

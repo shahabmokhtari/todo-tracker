@@ -4,7 +4,7 @@ using TodoTracker.Server.Plugins.AgentChat;
 
 namespace TodoTracker.Server.Tests.AgentChat;
 
-/// <summary>API models use Todo Tracker's own MCP tools, so they can do what agents can, credited to the model.</summary>
+/// <summary>API models use Onething's own MCP tools, so they can do what agents can, credited to the model.</summary>
 public sealed class McpChatToolsTests : IAsyncLifetime
 {
     private ServerFixture _server = null!;

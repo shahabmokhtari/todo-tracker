@@ -50,7 +50,7 @@ public partial class App : Application
             if (args.Restart)
             {
                 // The old instance didn't close in time: say so rather than leaving no sidebar at all.
-                MessageBox.Show("Todo Tracker is still closing. Start it again in a moment.", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("Onething is still closing. Start it again in a moment.", "Onething", MessageBoxButton.OK, MessageBoxImage.Information);
             }
 
             Shutdown(args.SmokeTest ? 3 : 0);
@@ -84,14 +84,14 @@ public partial class App : Application
         }
         catch (StoreLockedException)
         {
-            MessageBox.Show("Todo Tracker is already running.", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Onething is already running.", "Onething", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown(0);
         }
 #pragma warning disable CA1031 // Last-chance handler: show the problem instead of crashing silently.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            MessageBox.Show($"Todo Tracker could not start:\n\n{ex.Message}", "Todo Tracker", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Onething could not start:\n\n{ex.Message}", "Onething", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
         }
     }
@@ -373,7 +373,7 @@ public partial class App : Application
             var health = await http.GetStringAsync(new Uri("/health", UriKind.Relative), timeout.Token).ConfigureAwait(true);
             log.Add($"health={health}");
             var page = await http.GetStringAsync(new Uri("/", UriKind.Relative), timeout.Token).ConfigureAwait(true);
-            Check(page.Contains("Todo Tracker", StringComparison.Ordinal), "dashboard page served");
+            Check(page.Contains("Onething", StringComparison.Ordinal), "dashboard page served");
 
             using var created = await http.PostAsJsonAsync(new Uri("/api/items", UriKind.Relative), new { title = "Smoke test task", priority = "high" }, timeout.Token).ConfigureAwait(true);
             Check(created.StatusCode == HttpStatusCode.Created, $"create via API returned {(int)created.StatusCode}");

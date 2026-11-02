@@ -1,4 +1,4 @@
-// Talks to the local Todo Tracker server (the Windows sidebar or `TodoTracker.Web`).
+// Talks to the local Onething server (the Windows sidebar or `TodoTracker.Web`).
 // Extension pages bypass CORS through host_permissions, and every call is attributed to the browser.
 
 export class ApiError extends Error {
@@ -27,7 +27,7 @@ export function pageSource(tab) {
   return { url: tab.url, title: tab.title || tab.url };
 }
 
-/** What Todo Tracker lists this browser as, e.g. "Edge on Windows". */
+/** What Onething lists this browser as, e.g. "Edge on Windows". */
 export function browserName(userAgent = globalThis.navigator?.userAgent ?? '') {
   const ua = String(userAgent);
   if (!ua) return 'Browser';
@@ -37,7 +37,7 @@ export function browserName(userAgent = globalThis.navigator?.userAgent ?? '') {
 }
 
 /**
- * Pairs with Todo Tracker: the 6-digit code shown there (Browser extension › Get a code) is traded for this browser's
+ * Pairs with Onething: the 6-digit code shown there (Browser extension › Get a code) is traded for this browser's
  * own token, so nothing secret has to be copied by hand. The custom header means web pages can't do this.
  */
 export async function pair({ serverUrl, code, name = browserName(), fetch = globalThis.fetch }) {
