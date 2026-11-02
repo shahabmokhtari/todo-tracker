@@ -544,6 +544,20 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         }
         version++
         showTimers()
+        updateWidgets()
+    }
+
+    // What the widgets were last told about (the board, its changes and order), and when.
+    private var widgetKey = ""
+    private var widgetsAt = Instant.EPOCH
+
+    /** The board changed (or a while went by): the home-screen widgets show it again. */
+    private fun updateWidgets() {
+        val key = "${System.identityHashCode(board)}|${board.activity.size}|${board.activity.lastOrNull()?.at}|${board.nowOrder}|${board.nowArrangedAt}|$isRemote"
+        if (key == widgetKey && Duration.between(widgetsAt, now) < Duration.ofMinutes(15)) return
+        widgetKey = key
+        widgetsAt = now
+        Widgets.update(getApplication())
     }
 
     /** Searches as you type: words in the title or details, is:done, is:archived, group:work, #tag… */

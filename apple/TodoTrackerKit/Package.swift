@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "TodoTrackerKit", targets: ["TodoTrackerKit"]),
         .library(name: "TodoTrackerUI", targets: ["TodoTrackerUI"]),
+        .library(name: "TodoTrackerWidgetUI", targets: ["TodoTrackerWidgetUI"]),
     ],
     dependencies: [
         // YAML frontmatter values in task files (the node API only; see Vault/Frontmatter.swift).
@@ -17,7 +18,9 @@ let package = Package(
         .target(name: "TodoTrackerKit", dependencies: [.product(name: "Yams", package: "Yams")]),
         // SwiftUI views and view model shared by the iOS and macOS apps.
         .target(name: "TodoTrackerUI", dependencies: ["TodoTrackerKit"]),
+        // The home-screen widgets' views (Now and Today), used by the widget extensions (apple/Widgets).
+        .target(name: "TodoTrackerWidgetUI", dependencies: ["TodoTrackerKit"]),
         .testTarget(name: "TodoTrackerKitTests", dependencies: ["TodoTrackerKit"]),
-        .testTarget(name: "TodoTrackerUITests", dependencies: ["TodoTrackerUI", "TodoTrackerKit"]),
+        .testTarget(name: "TodoTrackerUITests", dependencies: ["TodoTrackerUI", "TodoTrackerKit", "TodoTrackerWidgetUI"]),
     ]
 )

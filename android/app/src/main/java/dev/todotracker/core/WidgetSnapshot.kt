@@ -168,6 +168,17 @@ data class WidgetSnapshot(val at: Instant, val items: List<WidgetItem>, val fram
             return WidgetSnapshot(now, items, frames)
         }
 
+        /**
+         * Whether Done on the widget marks [id] done at [now]: only a task that's to do now and has no open subtasks
+         * (those open in the app). A second tap on a repeating task (moved on to its next time), or a widget showing a
+         * task done elsewhere, does nothing.
+         */
+        fun canMarkDone(board: TaskBoard, id: UUID, now: Instant): Boolean {
+            val item = board.find(id) ?: return false
+            if (item.isDone || item.hasOpenChildren) return false
+            return Agenda.build(board, now, recentNoteCount = 0).now.any { it.item.id == id }
+        }
+
         /** The start of the day after the one [at] is in. */
         fun nextMidnight(at: Instant, zone: ZoneId): Instant = at.atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone).toInstant()
 

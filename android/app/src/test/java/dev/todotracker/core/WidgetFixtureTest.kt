@@ -94,3 +94,36 @@ class WidgetFixtureTest {
         assertEquals(0, view.more)
     }
 }
+
+/** Done on the widget: only a task that's to do now is marked done (so a second tap, or an old widget, does nothing). */
+class WidgetDoneTest {
+    private val start: Instant = Instant.parse("2026-11-02T08:00:00Z")
+
+    @Test
+    fun aTaskToDoNowCanBeMarkedDoneFromTheWidget() {
+        val board = TaskBoard()
+        val item = board.addTask(NewTask("Answer mail"), now = start)
+        assertEquals(true, WidgetSnapshot.canMarkDone(board, item.id, start))
+    }
+
+    @Test
+    fun aSecondTapOnARepeatingTaskDoesNotSkipItsNextTime() {
+        val board = TaskBoard().apply { zone = ZoneId.of("Europe/Amsterdam") }
+        val item = board.addTask(NewTask("Stretch"), now = start)
+        board.update(item.id, TaskChanges(repeat = "every day"), now = start)
+        board.complete(item.id, now = start.plusSeconds(60))
+        assertFalse("it moved on to tomorrow", WidgetSnapshot.canMarkDone(board, item.id, start.plusSeconds(61)))
+    }
+
+    @Test
+    fun aDoneOrMissingTaskOrOneWithOpenSubtasksIsNotMarkedDone() {
+        val board = TaskBoard()
+        val done = board.addTask(NewTask("Old"), now = start)
+        board.complete(done.id, now = start)
+        val parent = board.addTask(NewTask("Move house"), now = start)
+        board.addTask(NewTask("Pack books", parentId = parent.id), now = start)
+        assertFalse(WidgetSnapshot.canMarkDone(board, done.id, start))
+        assertFalse(WidgetSnapshot.canMarkDone(board, UUID.randomUUID(), start))
+        assertFalse(WidgetSnapshot.canMarkDone(board, parent.id, start))
+    }
+}

@@ -48,6 +48,19 @@
         <!-- A reminder is due (or a snooze ends), and Mark done / In an hour on its notification. -->
         <receiver android:name=".app.ReminderAlarmReceiver" android:exported="false" />
         <receiver android:name=".app.ReminderActionReceiver" android:exported="false" />
+        <!-- The home-screen widgets: Now (the one thing to do now) and Today (the list, resizable). -->
+        <receiver android:name=".app.NowWidgetReceiver" android:exported="true" android:label="@string/widget_now">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_now" />
+        </receiver>
+        <receiver android:name=".app.TodayWidgetReceiver" android:exported="true" android:label="@string/widget_today">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_today" />
+        </receiver>
         <!-- The phone forgets alarms when it restarts (or the app is updated): they're set again. -->
         <receiver android:name=".app.RestartReceiver" android:exported="false">
             <intent-filter>

@@ -80,6 +80,15 @@ public final class BoardModel: ObservableObject {
 
     /// Called when the server stops answering (the Mac app then starts it again).
     public var onServerLost: (() -> Void)?
+
+    /// Where the home-screen widgets read what to show (the App Group; nil: no widgets, e.g. the demo board or tests).
+    public var widgetShelf: WidgetShelf? {
+        didSet { updateWidgets(force: true) }
+    }
+    var widgetKey = ""
+    var widgetWrittenAt = Date.distantPast
+    var widgetSnapshot: WidgetSnapshot?
+    private var widgetCheckedAt = Date.distantPast
     private var etag: String?
     private var themeSettled = false
 
@@ -165,12 +174,15 @@ public final class BoardModel: ObservableObject {
             openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
         }
         let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError, fallback: fallback, notice: notice)
+        model.widgetShelf = WidgetShelf.shared
         model.connectToPairedComputer()
         // At launch: a sync now, then every minute while the app is open.
         if !model.isRemote { sync?.start() }
         return model
         #else
-        return BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()))
+        let model = BoardModel(store: try? BoardFileStore(url: BoardFileStore.defaultURL()))
+        model.widgetShelf = WidgetShelf.shared
+        return model
         #endif
     }
 
@@ -386,6 +398,7 @@ public final class BoardModel: ObservableObject {
         let search = TaskSearch(searchText)
         searchResults = search.isEmpty ? [] : search.apply(board).filter { selectedGroupId == nil || $0.groupId == selectedGroupId }
         archivedCount = board.items.filter { $0.archivedAt != nil }.count
+        updateWidgets()
     }
 
     public func select(group: UUID?) {
@@ -1102,6 +1115,11 @@ public final class BoardModel: ObservableObject {
 
     private func tick() {
         let current = Date()
+        // Done tapped on a widget (the widget opened the app, or it was running): made here.
+        if current.timeIntervalSince(widgetCheckedAt) >= 2 {
+            widgetCheckedAt = current
+            applyWidgetRequests()
+        }
         if isRemote {
             now = current
             if remote?.canChange == true {

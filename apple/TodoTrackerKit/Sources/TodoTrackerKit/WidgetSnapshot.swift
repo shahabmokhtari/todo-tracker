@@ -67,6 +67,16 @@ public struct WidgetView: Equatable, Sendable {
     public let nowCount: Int
     public let laterCount: Int
 
+    public init(focus: WidgetItem?, next: [WidgetItem], more: Int, today: [WidgetItem], later: [(item: WidgetItem, at: Date)], nowCount: Int, laterCount: Int) {
+        self.focus = focus
+        self.next = next
+        self.more = more
+        self.today = today
+        self.later = later
+        self.nowCount = nowCount
+        self.laterCount = laterCount
+    }
+
     public static let empty = WidgetView(focus: nil, next: [], more: 0, today: [], later: [], nowCount: 0, laterCount: 0)
 
     /// How many more today after showing the first `shown` of the Do now list.
@@ -144,6 +154,12 @@ public struct WidgetSnapshot: Equatable, Sendable {
             items.append(WidgetItem(id: id, title: item.title, group: group?.name, color: group?.color, openSubtasks: item.hasOpenChildren))
         }
         return WidgetSnapshot(at: now, items: items, frames: frames)
+    }
+
+    /// The same lists as `other`, whenever each was worked out (only the clock moved between them).
+    public func sameLists(as other: WidgetSnapshot) -> Bool {
+        guard items == other.items, frames.count == other.frames.count, let a = frames.first, let b = other.frames.first else { return items == other.items && frames == other.frames }
+        return a.sameList(b) && Array(frames.dropFirst()) == Array(other.frames.dropFirst())
     }
 
     /// What to show at `at`, leaving out `hidden` (marked done from the widget, not saved yet).

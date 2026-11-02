@@ -146,6 +146,21 @@ how long a focus session and its breaks last; and whether notifications and on-t
 start), **syncing on its own** with your other devices (below), or **using a computer's tasks** (the section after).
 Switching never deletes tasks: the ones on the phone stay as they are.
 
+### Android widgets
+
+Two widgets keep the one thing to do now on your home screen. Touch and hold an empty spot on the home screen, tap
+**Widgets**, find the app and drag one out:
+
+* **Now**: the one thing to do now and its group, with **Done**. Make it wider to see the next few too, and how many
+  more there are today.
+* **Today**: your list for today, each with **Done**, then what comes back later today and when. Resize it to any size;
+  it scrolls.
+
+Tap a task to open it in the app. **Done** marks it done right there, just as **Mark done** in the app does (it's yours
+on the timeline). A task with subtasks still to do shows **Open** instead. Connected to a computer, Done goes to the
+computer; when it can't be reached, the app opens on that task and tells you, so you can mark it done once you're back.
+Snoozed tasks come back on the widgets on time, even with the app closed. With nothing to do, they say so.
+
 ### Sync Android with your other devices
 
 The Android app keeps its tasks in a tasks folder on the phone, the same kind as on your computers (an older version
@@ -296,6 +311,23 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
   (weekday × hour), active days (for 3 months or more), and the **Timeline**: a row per task with bars for its work, a
   line from when it was made to when it was done (or is due), ◆ due and ● done. Tap a task to open it. The numbers are
   the same as on your computer's Reports.
+
+### Widgets on iPhone, iPad and Mac
+
+Two widgets keep the one thing to do now in sight:
+
+* **Now** (small or medium): the one thing to do now and its group, with **Done**. The medium one also lists the next
+  few and how many more there are today. On an iPhone or iPad it also fits the Lock Screen.
+* **Today** (large): your list for today, each with **Done**, then what comes back later today and when.
+
+To add one on an iPhone or iPad, touch and hold the home screen, tap **Edit** › **Add Widget**, and pick the app. On a
+Mac, right-click the desktop and choose **Edit Widgets**, or open Notification Center and click **Edit Widgets**.
+
+Tap a task to open it in the app. **Done** takes the task off the widget at once and opens the app, which marks it done
+the way **Mark done** does: on this device, through your tasks folder on a Mac, or on the computer an iPhone or iPad is
+connected to (if it can't be reached yet, it's done as soon as it can be). A task with subtasks still to do shows
+**Open** instead. Snoozed tasks come back on the widgets on time, even with the app closed. The widgets get only the
+titles and groups of your tasks, never their details or notes.
 
 ### Sync an iPhone or iPad with your other devices
 

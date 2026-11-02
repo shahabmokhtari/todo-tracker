@@ -29,8 +29,14 @@ public struct WidgetDoneRequest: Equatable, Sendable {
 /// (`WidgetSnapshot`: titles, groups, ids and times; never details, notes or tokens) and the tasks marked done from a
 /// widget that the app hasn't saved yet. Kept out of backups.
 public struct WidgetShelf: Sendable {
-    /// The App Group the app and its widgets share.
-    public static let appGroup = "group.com.todotracker"
+    /// The App Group the app and its widgets share: the Info.plist's WidgetAppGroup (on a Mac it starts with the team's
+    /// id when signed with one), else group.com.todotracker.
+    public static var appGroup: String {
+        (Bundle.main.object(forInfoDictionaryKey: "WidgetAppGroup") as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "group.com.todotracker"
+    }
+
+    /// Posted in the app's process when Done was tapped on a widget (the app makes the change at once).
+    public static let doneRequested = Notification.Name("WidgetShelf.doneRequested")
 
     public let directory: URL
 
