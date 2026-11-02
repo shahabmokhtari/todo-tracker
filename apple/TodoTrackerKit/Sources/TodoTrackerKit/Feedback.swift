@@ -18,7 +18,7 @@ public enum Feedback {
     public static let retryText = "Couldn’t send — check your connection and try again."
     public static let failedText = "Couldn’t send your note: something went wrong on our side. Please try again later."
     public static let finePrint = "We’ll include your app version, device model and language."
-    public static let contactHint = "Only if you’d like a reply"
+    public static let contactHint = "Only if you’d like a reply. It’s shown with your note on GitHub."
 
     /// The note as it's sent: control characters gone (new lines and tabs stay), trimmed, at most
     /// <paramref name="maxMessage"/> code points, trimmed again. Empty: nothing to send.

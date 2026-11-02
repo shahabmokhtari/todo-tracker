@@ -49,7 +49,7 @@ public static class Feedback
         public const string Retry = "Couldn’t send — check your connection and try again.";
         public const string Failed = "Couldn’t send your note: something went wrong on our side. Please try again later.";
         public const string FinePrint = "We’ll include your app version, device model and language.";
-        public const string ContactHint = "Only if you’d like a reply";
+        public const string ContactHint = "Only if you’d like a reply. It’s shown with your note on GitHub.";
 
         public static string For(FeedbackOutcome outcome) => outcome switch
         {

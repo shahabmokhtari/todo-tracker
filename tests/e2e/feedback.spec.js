@@ -59,7 +59,7 @@ test('Send feedback: a note that couldn’t go keeps its words and goes on the n
   await sheet.getByRole('button', { name: 'Idea' }).click();
   await expect(sheet.getByRole('button', { name: 'Idea' })).toHaveAttribute('aria-pressed', 'true');
   await sheet.getByLabel('Your note').fill('A dark widget, please');
-  await expect(sheet.getByPlaceholder('Only if you’d like a reply')).toBeVisible();
+  await expect(sheet.getByPlaceholder('Only if you’d like a reply. It’s shown with your note on GitHub.')).toBeVisible();
   await sheet.getByLabel('Email (optional)').fill('me@example.com');
 
   answers.push(503);

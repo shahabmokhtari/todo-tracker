@@ -29,7 +29,7 @@ object Feedback {
     const val RETRY_TEXT = "Couldn’t send — check your connection and try again."
     const val FAILED_TEXT = "Couldn’t send your note: something went wrong on our side. Please try again later."
     const val FINE_PRINT = "We’ll include your app version, device model and language."
-    const val CONTACT_HINT = "Only if you’d like a reply"
+    const val CONTACT_HINT = "Only if you’d like a reply. It’s shown with your note on GitHub."
 
     /** What the note is about: its id (in the label) and what the sheet and the title say. */
     enum class Kind(val id: String, val label: String) {

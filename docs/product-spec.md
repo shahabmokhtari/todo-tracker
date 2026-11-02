@@ -495,7 +495,7 @@ undo. A chat stays with the agent or model it began with. Details: [`docs/plugin
 
 ### Send feedback
 One sheet on every platform (the **Send feedback** plugin): kind chips **Bug**, **Idea**, **Other**; a multiline note
-(at most 2000 code points, a counter in the last 200); an optional email hinted *Only if you’d like a reply*; the fine
+(at most 2000 code points, a counter in the last 200); an optional email hinted *Only if you’d like a reply. It’s shown with your note on GitHub.*; the fine
 print *We’ll include your app version, device model and language.*; **Send**. Each sheet makes one UUID v4
 `clientID` and sends it again on every retry, so the relay files a note once.
 

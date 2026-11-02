@@ -13,7 +13,7 @@ export const TEXTS = {
   retry: 'Couldn’t send — check your connection and try again.',
   failed: 'Couldn’t send your note: something went wrong on our side. Please try again later.',
   finePrint: 'We’ll include your app version, device model and language.',
-  contactHint: 'Only if you’d like a reply',
+  contactHint: 'Only if you’d like a reply. It’s shown with your note on GitHub.',
 };
 
 const SOURCES = ['button', 'shake', 'page', 'qr'];
