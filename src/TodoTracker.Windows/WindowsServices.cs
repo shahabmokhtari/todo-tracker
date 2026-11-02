@@ -40,7 +40,7 @@ internal sealed class WpfShell : IDesktopShell
 
     public string? Prompt(string title, string message, string? initialValue = null) => InputDialog.Show(Owner, title, message, initialValue);
 
-    public bool Confirm(string message) => MessageBox.Show(message, "Todo Tracker", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
+    public bool Confirm(string message) => MessageBox.Show(message, "Onething", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes;
 }
 
 /// <summary>Small keyboard-friendly prompt (Enter = OK, Esc = cancel).</summary>
@@ -156,7 +156,7 @@ internal static partial class DeepLinkRegistration
         try
         {
             using var key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{TodoTracker.Core.TaskLinks.Scheme}");
-            key.SetValue(string.Empty, "URL:Todo Tracker task link");
+            key.SetValue(string.Empty, "URL:Onething task link");
             key.SetValue("URL Protocol", string.Empty);
             using (var icon = key.CreateSubKey("DefaultIcon"))
             {

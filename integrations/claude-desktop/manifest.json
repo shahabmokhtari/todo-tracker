@@ -1,12 +1,12 @@
 {
   "manifest_version": "0.3",
   "name": "todo-tracker",
-  "display_name": "Todo Tracker",
+  "display_name": "Onething",
   "version": "1.0.0",
   "description": "Your ADHD-friendly task list: see what to do now, capture and organize tasks, log progress, defer work.",
-  "long_description": "Todo Tracker keeps your tasks as markdown files (an Obsidian vault works) and helps you focus on one next action. This extension lets Claude read your dashboard, capture tasks you mention, break work into steps, log progress, defer what can wait, and finish what is done. Every change is attributed to Claude and versioned, so it can be undone. It uses the same tasks as the Todo Tracker app, whether or not the app is running.",
+  "long_description": "Onething keeps your tasks as markdown files (an Obsidian vault works) and helps you focus on one next action. This extension lets Claude read your dashboard, capture tasks you mention, break work into steps, log progress, defer what can wait, and finish what is done. Every change is attributed to Claude and versioned, so it can be undone. It uses the same tasks as the Onething app, whether or not the app is running.",
   "author": {
-    "name": "Todo Tracker",
+    "name": "Onething",
     "url": "https://github.com/shahabmokhtari/todo-tracker"
   },
   "homepage": "https://github.com/shahabmokhtari/todo-tracker",
@@ -32,7 +32,7 @@
     "tasks_folder": {
       "type": "directory",
       "title": "Tasks folder",
-      "description": "Leave empty to use the folder the Todo Tracker app uses (Documents/Todo Tracker by default).",
+      "description": "Leave empty to use the folder the Onething app uses (Documents/Todo Tracker by default).",
       "required": false
     }
   },

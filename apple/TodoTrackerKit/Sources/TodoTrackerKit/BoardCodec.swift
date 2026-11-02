@@ -301,7 +301,7 @@ public final class BoardFileStore {
         return base.appendingPathComponent("TodoTracker", isDirectory: true).appendingPathComponent("board.json")
     }
 
-    /// The board moved into the tasks folder (Todo Tracker's server imported it and set it aside as `.migrated`).
+    /// The board moved into the tasks folder (Onething's server imported it and set it aside as `.migrated`).
     public var wasMigrated: Bool {
         FileManager.default.fileExists(atPath: url.appendingPathExtension("migrated").path)
     }

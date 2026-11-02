@@ -194,7 +194,7 @@ internal static class Security
 
         if (services.GetService<Plugins.PluginHost>()?.IsSwitchedOff(Plugins.PhonesPlugin.Id) != false || services.GetService<Plugins.PhoneAccess>()?.On != true)
         {
-            await Refuse(context, StatusCodes.Status403Forbidden, "Phones can’t connect to this computer right now. In Todo Tracker on it, open Settings › Phones and turn on “Let phones connect”.").ConfigureAwait(false);
+            await Refuse(context, StatusCodes.Status403Forbidden, "Phones can’t connect to this computer right now. In Onething on it, open Settings › Phones and turn on “Let phones connect”.").ConfigureAwait(false);
             return;
         }
 
@@ -208,14 +208,14 @@ internal static class Security
         var bearer = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? authorization["Bearer ".Length..].Trim() : null;
         if (services.GetService<PairedPhones>()?.Match(bearer) is not { } phone)
         {
-            await Refuse(context, StatusCodes.Status401Unauthorized, "This phone isn’t connected to Todo Tracker. On your computer, open Settings › Phones and connect it.").ConfigureAwait(false);
+            await Refuse(context, StatusCodes.Status401Unauthorized, "This phone isn’t connected to Onething. On your computer, open Settings › Phones and connect it.").ConfigureAwait(false);
             return;
         }
 
         var value = path.Value ?? string.Empty;
         if (!PhoneRoutes.Any(r => r.Method == method && r.Path.IsMatch(value)))
         {
-            await Refuse(context, StatusCodes.Status403Forbidden, "The phone app can’t do that. Use Todo Tracker on your computer.").ConfigureAwait(false);
+            await Refuse(context, StatusCodes.Status403Forbidden, "The phone app can’t do that. Use Onething on your computer.").ConfigureAwait(false);
             return;
         }
 

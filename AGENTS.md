@@ -1,11 +1,11 @@
 # AGENTS.md
 
 Guidance for AI coding agents (Copilot, Claude Code, Codex, Cursor…) and people working on this repository. For using
-Todo Tracker *from* an agent (MCP tools, `tt`, the skill), see [docs/ai-connectors.md](docs/ai-connectors.md).
+Onething *from* an agent (MCP tools, `tt`, the skill), see [docs/ai-connectors.md](docs/ai-connectors.md).
 
 ## What this is
 
-Todo Tracker is an ADHD-friendly task app: it always shows **one thing to do now**, keeps deferred work out of sight
+Onething is an ADHD-friendly task app: it always shows **one thing to do now**, keeps deferred work out of sight
 until it's due, and lets AI agents read and change the list. Tasks are markdown files in a folder the user owns (an
 Obsidian vault works). One .NET server (REST, MCP, the web app) runs inside every desktop app; the phone apps and the
 Mac app have native ports of the core rules.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the Mac app asks Todo Tracker's server to do: the same REST API the web app and the Windows app use. The
+/// What the Mac app asks Onething's server to do: the same REST API the web app and the Windows app use. The
 /// server keeps the tasks folder (markdown) and syncs it with the other computers.
 public enum ServerAction: Equatable, Sendable {
     case capture(text: String, groupId: UUID?)
@@ -195,7 +195,7 @@ public enum ServerError: Error, LocalizedError, Equatable {
 
     public var errorDescription: String? {
         switch self {
-        case let .unreachable(reason): return "Todo Tracker's server isn't answering (\(reason))."
+        case let .unreachable(reason): return "Onething's server isn't answering (\(reason))."
         case let .refused(_, message): return message
         }
     }

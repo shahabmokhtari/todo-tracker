@@ -2,13 +2,13 @@
 
 <!-- Made from the code by tests/TodoTracker.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/TodoTracker.Cli.Tests --filter ReferenceDocsTests`. -->
 
-Todo Tracker's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
+Onething's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
 the app runs (with the API token). Setup for each AI app: [ai-connectors.md](ai-connectors.md). Changes are
 attributed to the agent and versioned; there is deliberately no tool that deletes a task.
 
 ## What the server tells agents when they connect
 
-> Todo Tracker is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.
+> Onething is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.
 > - Start with get_dashboard (what to do now, what's waiting). Find tasks with search_tasks (#tag, label:x, group:work, is:done).
 > - Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.
 > - Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).
@@ -56,7 +56,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`stop_timer`](#stop_timer) | Stop the timer (whatever task it is on). |
 | [`log_time`](#log_time) | Record time already spent on a task (e.g. a meeting): when it started and for how many minutes (at most 24 hours). |
 | [`get_time_report`](#get_time_report) | Where the time went between two local dates (yyyy-MM-dd, inclusive; default the last 4 weeks): seconds tracked per day, group and task, focus sessions, tasks done, streaks, and a timeline. |
-| [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in Todo Tracker, and whether each is on, off or waiting for approval. |
+| [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in Onething, and whether each is on, off or waiting for approval. |
 | [`add_hook`](#add_hook) | Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. |
 | [`set_hook_enabled`](#set_hook_enabled) | Switch a hook on or off (by its id from list_hooks). |
 | [`remove_hook`](#remove_hook) | Remove a hook (by its id from list_hooks). |
@@ -359,11 +359,11 @@ Where the time went between two local dates (yyyy-MM-dd, inclusive; default the 
 
 ### `list_hooks`
 
-The hooks set up on this computer: what runs (a command or a web address) when something happens in Todo Tracker, and whether each is on, off or waiting for approval. *(read-only)*
+The hooks set up on this computer: what runs (a command or a web address) when something happens in Onething, and whether each is on, off or waiting for approval. *(read-only)*
 
 ### `add_hook`
 
-Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: Todo Tracker asks them (a notification or a prompt in the app; also Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
+Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: Onething asks them (a notification or a prompt in the app; also Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |

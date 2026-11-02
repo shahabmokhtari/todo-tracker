@@ -6,8 +6,8 @@ const status = (over) => ({ letPhonesConnect: true, listening: true, problem: nu
 
 test('Settings › Phones says whether phones can connect, and when a restart is needed', () => {
   assert.equal(phoneStatusLine(status()), 'On: phones on the same Wi-Fi or Tailscale reach this computer at 192.168.1.20:5318.');
-  assert.equal(phoneStatusLine(status({ listening: false })), 'Restart Todo Tracker so phones can connect.');
-  assert.equal(phoneStatusLine(status({ letPhonesConnect: false })), 'Phones can’t connect any more. Todo Tracker stops listening for them when it restarts.');
+  assert.equal(phoneStatusLine(status({ listening: false })), 'Restart Onething so phones can connect.');
+  assert.equal(phoneStatusLine(status({ letPhonesConnect: false })), 'Phones can’t connect any more. Onething stops listening for them when it restarts.');
   assert.equal(phoneStatusLine(status({ letPhonesConnect: false, listening: false })), 'Off: phones can’t reach this computer.');
   assert.match(phoneStatusLine(status({ addresses: [] })), /isn’t on a network/);
   assert.equal(phoneStatusLine(status({ listening: false, problem: 'Port 5318 is used by another app.' })), 'Port 5318 is used by another app.');

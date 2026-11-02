@@ -238,7 +238,7 @@ class SyncEngine(
         }
 
         if (snapshot != null && complete && reading) state.remoteVersion = snapshot.version
-        if (snapshot?.partial == true) problems.add("Another device's sync file couldn't be read (it may be from a newer version of Todo Tracker); it's tried again.")
+        if (snapshot?.partial == true) problems.add("Another device's sync file couldn't be read (it may be from a newer version of Onething); it's tried again.")
 
         var published = false
         val fingerprint = fingerprint(local)

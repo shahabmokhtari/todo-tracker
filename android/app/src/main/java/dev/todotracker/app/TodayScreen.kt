@@ -152,7 +152,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             AlertDialog(
                 onDismissRequest = { askExact = false },
                 title = { Text("Ring on time?") },
-                text = { Text("So reminders, and the end of a focus session or a break, are told right when they happen (not a few minutes later), allow Todo Tracker to set alarms.") },
+                text = { Text("So reminders, and the end of a focus session or a break, are told right when they happen (not a few minutes later), allow Onething to set alarms.") },
                 confirmButton = {
                     TextButton(onClick = {
                         askExact = false

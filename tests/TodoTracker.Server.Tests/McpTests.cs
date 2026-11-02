@@ -272,6 +272,6 @@ public sealed class McpTests : IAsyncLifetime
         var info = await Call("vault_info", new());
 
         Assert.Equal(_server.VaultDirectory, info.GetProperty("path").GetString());
-        Assert.Contains("Todo Tracker vault", info.GetProperty("guide").GetString(), StringComparison.Ordinal);
+        Assert.Contains("Onething vault", info.GetProperty("guide").GetString(), StringComparison.Ordinal);
     }
 }

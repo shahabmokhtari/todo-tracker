@@ -1,11 +1,11 @@
 ---
 name: todo-tracker
-description: Work with the user's Todo Tracker task list (an ADHD-friendly todo app). Use when the user mentions tasks, todos, reminders, what to work on next, planning their day or week, capturing follow-ups from a meeting or chat, logging progress, deferring work, tracking time, or automating something when a task is done; or when you finish something they asked you to track.
+description: Work with the user's Onething task list (an ADHD-friendly todo app). Use when the user mentions tasks, todos, reminders, what to work on next, planning their day or week, capturing follow-ups from a meeting or chat, logging progress, deferring work, tracking time, or automating something when a task is done; or when you finish something they asked you to track.
 ---
 
-# Todo Tracker
+# Onething
 
-Todo Tracker is the user's task list. It is built for ADHD: **one clear next action beats a long list**, nothing should
+Onething is the user's task list. It is built for ADHD: **one clear next action beats a long list**, nothing should
 nag, and nothing they wrote should ever be lost. Help them stay focused, not busy.
 
 ## How to reach it

@@ -2,7 +2,7 @@
 
 <img src="docs/images/logo.png" alt="" width="96" height="96">
 
-# Todo Tracker
+# Onething
 
 **The to-do list that tells you what to do *now*.**
 Built for ADHD brains, busy weeks, and the AI agents that help you get through them.
@@ -24,9 +24,9 @@ Built for ADHD brains, busy weeks, and the AI agents that help you get through t
 
 </div>
 
-## Why Todo Tracker
+## Why Onething
 
-Most task apps show you everything, all the time. Todo Tracker shows you **one thing to do now**, and keeps the rest
+Most task apps show you everything, all the time. Onething shows you **one thing to do now**, and keeps the rest
 calm until it matters.
 
 - 🎯 **One focus, not fifty.** A big card says what to do now. The rest waits below, in the order *you* chose.
@@ -76,7 +76,7 @@ calm until it matters.
 
 ## Your AI can use it too
 
-Todo Tracker speaks **MCP**, so your AI agent can work with your list like a good assistant: capture what you said in
+Onething speaks **MCP**, so your AI agent can work with your list like a good assistant: capture what you said in
 a meeting, tell you what to do next, break a project into steps, log what it did, and snooze what can wait.
 
 > **You:** what should I work on now?
@@ -110,6 +110,8 @@ Documents/Todo Tracker/
 └── Personal/
     └── Renew passport.md
 ```
+
+Onething used to be called Todo Tracker. The folder keeps that name, so nothing moves when you update.
 
 - **Obsidian-friendly:** point the app at your vault and every task opens in Obsidian.
 - **Version history:** every change is a version you can look at and restore.

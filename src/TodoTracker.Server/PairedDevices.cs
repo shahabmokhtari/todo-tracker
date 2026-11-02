@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace TodoTracker.Server;
 
-/// <summary>A browser (the extension) or a phone paired with Todo Tracker, as the app shows it: never its token.</summary>
+/// <summary>A browser (the extension) or a phone paired with Onething, as the app shows it: never its token.</summary>
 public sealed record PairedDevice(string Id, string Name, DateTimeOffset PairedAt, DateTimeOffset? LastUsed);
 
 /// <summary>

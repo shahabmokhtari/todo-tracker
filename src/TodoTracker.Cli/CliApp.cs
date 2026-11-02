@@ -8,7 +8,7 @@ using TodoTracker.Server;
 namespace TodoTracker.Cli;
 
 /// <summary>
-/// <c>tt</c>: Todo Tracker from a terminal, scripts and AI agents. It works directly on the tasks folder (the same one
+/// <c>tt</c>: Onething from a terminal, scripts and AI agents. It works directly on the tasks folder (the same one
 /// the app uses, safely alongside it), so it needs no running app. <c>--json</c> prints the same shapes as the REST API
 /// and MCP tools. Exit codes: 0 ok, 1 the change couldn't be made (message on stderr), 2 wrong usage.
 /// </summary>

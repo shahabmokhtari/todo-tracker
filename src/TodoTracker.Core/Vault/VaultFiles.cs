@@ -137,7 +137,7 @@ internal static partial class VaultFiles
             }
             catch (IOException ex)
             {
-                throw new StoreLockedException("Another Todo Tracker process kept the vault busy for too long. Try again.", ex);
+                throw new StoreLockedException("Another Onething process kept the vault busy for too long. Try again.", ex);
             }
         }
     }
@@ -159,7 +159,7 @@ internal static partial class VaultFiles
             }
             catch (IOException ex)
             {
-                throw new StoreLockedException("Another Todo Tracker process kept the vault busy for too long. Try again.", ex);
+                throw new StoreLockedException("Another Onething process kept the vault busy for too long. Try again.", ex);
             }
         }
     }

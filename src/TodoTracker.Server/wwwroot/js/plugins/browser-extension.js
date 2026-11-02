@@ -33,21 +33,21 @@ export function activate(host) {
     const step = (title, ...body) => h('li', null, h('strong', null, title), ...body.map((x) => (typeof x === 'string' ? h('p', { class: 'muted small' }, x) : x)));
     if (b.pack === 'safari') {
       return h('ol', { class: 'setup-steps' },
-        step('Get the Safari extension', 'Safari extensions come inside a small Mac app. Until it is in the App Store: use “Todo Tracker Extension.app” from the Mac build, or make it from the download below with Xcode installed:',
-          download, h('pre', { class: 'snippet' }, h('code', null, 'xcrun safari-web-extension-converter todo-tracker-extension-safari --macos-only --app-name "Todo Tracker Extension"'))),
+        step('Get the Safari extension', 'Safari extensions come inside a small Mac app. Until it is in the App Store: use “Onething Extension.app” from the Mac build, or make it from the download below with Xcode installed:',
+          download, h('pre', { class: 'snippet' }, h('code', null, 'xcrun safari-web-extension-converter todo-tracker-extension-safari --macos-only --app-name "Onething Extension"'))),
         step('Let the Mac open it', 'A downloaded app that isn’t notarized is blocked the first time: right-click it › Open › Open (or System Settings › Privacy & Security › Open Anyway). In Terminal this does the same:',
-          h('pre', { class: 'snippet' }, h('code', null, 'xattr -dr com.apple.quarantine "Todo Tracker Extension.app"'))),
+          h('pre', { class: 'snippet' }, h('code', null, 'xattr -dr com.apple.quarantine "Onething Extension.app"'))),
         step('Allow extensions that aren’t from the App Store', 'Safari › Settings › Advanced: turn on “Show features for web developers”. Then Develop › “Allow Unsigned Extensions” (Safari asks again after it restarts until the extension is signed).'),
-        step('Turn it on', 'Open “Todo Tracker Extension.app” once, then Safari › Settings › Extensions: tick Todo Tracker and allow it on 127.0.0.1.'),
-        step('Pair it', 'Click the Todo Tracker button in the toolbar and type the code below.'));
+        step('Turn it on', 'Open “Onething Extension.app” once, then Safari › Settings › Extensions: tick Onething and allow it on 127.0.0.1.'),
+        step('Pair it', 'Click the Onething button in the toolbar and type the code below.'));
     }
     return h('ol', { class: 'setup-steps' },
-      step('Download it and unzip it', 'Unzip to a folder you keep (for example Documents › Todo Tracker extension): the browser loads it from there.', download),
+      step('Download it and unzip it', 'Unzip to a folder you keep (for example Documents › Onething extension): the browser loads it from there.', download),
       step(`Open ${b.page}`, 'Browsers don’t let pages open this one: copy it into the address bar.',
         h('button', { class: 'btn', type: 'button', onclick: () => copy(b.page, 'Copied – paste it into the address bar') }, icon('note', { size: 16 }), `Copy ${b.page}`)),
       step('Turn on Developer mode', id === 'edge' ? 'The switch is in the left column (Edge may later ask about developer-mode extensions: choose Keep).' : 'The switch is at the top right.'),
       step('Load unpacked', 'Choose “Load unpacked” and pick the folder you unzipped (the one with manifest.json in it).'),
-      step('Pin it and open it', 'Click the puzzle piece in the toolbar, pin Todo Tracker, then click it: the side panel opens.'),
+      step('Pin it and open it', 'Click the puzzle piece in the toolbar, pin Onething, then click it: the side panel opens.'),
       step('Pair it', `Type the code below in the panel (it connects to ${serverUrl}).`));
   }
 
@@ -133,7 +133,7 @@ export function activate(host) {
           onclick: async () => {
             try {
               await host.del(`/api/plugins/browser-extension/devices/${encodeURIComponent(d.id)}`);
-              host.toast(`${d.name} can’t reach Todo Tracker any more`);
+              host.toast(`${d.name} can’t reach Onething any more`);
               load();
             } catch (err) {
               host.toast(err.message, 'error');

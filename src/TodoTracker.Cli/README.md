@@ -1,6 +1,6 @@
-# tt — Todo Tracker in your terminal and for AI agents
+# tt — Onething in your terminal and for AI agents
 
-`tt` reads and changes your Todo Tracker tasks (markdown files in a folder; an Obsidian vault works) without the app
+`tt` reads and changes your Onething tasks (markdown files in a folder; an Obsidian vault works) without the app
 running, and `tt mcp` serves them to AI apps over MCP (stdio).
 
 ```

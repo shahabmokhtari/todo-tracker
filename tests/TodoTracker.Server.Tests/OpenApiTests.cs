@@ -20,7 +20,7 @@ public sealed class OpenApiTests : IAsyncLifetime
         var doc = await Get("/openapi/v1.json");
 
         Assert.StartsWith("3.1", doc["openapi"]!.GetValue<string>(), StringComparison.Ordinal);
-        Assert.Equal("Todo Tracker", doc["info"]!["title"]!.GetValue<string>());
+        Assert.Equal("Onething", doc["info"]!["title"]!.GetValue<string>());
         var operations = Operations(doc);
         Assert.Contains(("get", "/api/dashboard", "getDashboard"), operations);
         Assert.Contains(("post", "/api/items", "createTask"), operations);

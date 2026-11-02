@@ -40,7 +40,7 @@ if (ParentProcess.FromArguments(args) is { } parent)
     _ = ParentProcess.WatchAsync(parent, app.Lifetime.StopApplication, TimeSpan.FromSeconds(1), app.Lifetime.ApplicationStopping);
 }
 
-Console.WriteLine($"Todo Tracker is running. Open within 15 minutes: {TodoTrackerHost.CreateLaunchUrl(app.Services, "/", TimeSpan.FromMinutes(15))}");
+Console.WriteLine($"Onething is running. Open within 15 minutes: {TodoTrackerHost.CreateLaunchUrl(app.Services, "/", TimeSpan.FromMinutes(15))}");
 Console.WriteLine("Later visits: paste the API token on the sign-in page.");
 Console.WriteLine($"MCP endpoint: {connection.McpUrl} (Bearer token stored in {Path.Combine(options.DataDirectory, "api-token")})");
 await app.RunAsync();

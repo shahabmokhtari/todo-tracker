@@ -106,10 +106,10 @@ internal static partial class OpenApiSetup
         {
             document.Info = new OpenApiInfo
             {
-                Title = "Todo Tracker",
+                Title = "Onething",
                 Version = McpInfo.Version,
                 Description = "The user's ADHD-friendly task list: see what to do now, capture and organize tasks, log progress, and defer work. " +
-                    "Send the API token from the Todo Tracker app as a bearer token.",
+                    "Send the API token from the Onething app as a bearer token.",
             };
             document.Components ??= new OpenApiComponents();
             document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
@@ -120,13 +120,13 @@ internal static partial class OpenApiSetup
                     Type = SecuritySchemeType.ApiKey,
                     In = ParameterLocation.Header,
                     Name = "Authorization",
-                    Description = "\"Bearer \" followed by the API token from Todo Tracker (Connect an AI app).",
+                    Description = "\"Bearer \" followed by the API token from Onething (Connect an AI app).",
                 }
                 : new OpenApiSecurityScheme
                 {
                     Type = SecuritySchemeType.Http,
                     Scheme = "bearer",
-                    Description = "The API token from Todo Tracker (Connect an AI app).",
+                    Description = "The API token from Onething (Connect an AI app).",
                 };
             document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("bearer", document)] = [] }];
             return Task.CompletedTask;

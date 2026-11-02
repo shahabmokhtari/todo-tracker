@@ -1,11 +1,11 @@
 {
   "name": "todo-tracker",
   "owner": {
-    "name": "Todo Tracker",
+    "name": "Onething",
     "url": "https://github.com/shahabmokhtari/todo-tracker"
   },
   "metadata": {
-    "description": "Todo Tracker plugins for Claude Code and GitHub Copilot CLI.",
+    "description": "Onething plugins for Claude Code and GitHub Copilot CLI.",
     "version": "1.0.0"
   },
   "plugins": [

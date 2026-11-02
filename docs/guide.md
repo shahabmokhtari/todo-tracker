@@ -1,7 +1,11 @@
-# Todo Tracker guide
+# Onething guide
 
-How to use every part of Todo Tracker. New here? Start with the [README](../README.md); for AI apps see
+How to use every part of Onething. New here? Start with the [README](../README.md); for AI apps see
 [ai-connectors.md](ai-connectors.md).
+
+Onething used to be called Todo Tracker. Updating keeps everything where it was: your tasks folder is still
+`Documents/Todo Tracker`, sync still finds your other devices, and the `tt` command, the `todo-tracker` MCP server and
+the app's files keep their names.
 
 ## The Windows sidebar
 
@@ -10,12 +14,12 @@ The sidebar docks on the right. To move it, use **⋯ › Position**:
 - **Float as a window** makes it a normal window you can drag and resize. Turn on **⋯ › Always on top** if you want it
   to stay above other windows.
 
-Your choice is remembered. Todo Tracker also sits in the notification area (the tray): click its icon to bring the
+Your choice is remembered. Onething also sits in the notification area (the tray): click its icon to bring the
 sidebar back; right-click it to open the full window, add a task, start or pause the focus timer, hide the sidebar
 (it gives the screen edge back) or quit. A red dot on it means a reminder is due.
 
 **⋯ › Hide the sidebar** puts it away until you want it back: it keeps running in the notification area, also after a
-restart. Click the tray icon, press Ctrl+Alt+Space, or start Todo Tracker again to bring it back.
+restart. Click the tray icon, press Ctrl+Alt+Space, or start Onething again to bring it back.
 
 **Full-screen apps and Remote Desktop:** a full-screen window (a Remote Desktop session, a video) ignores the edge the
 sidebar reserves, so the sidebar goes behind it rather than covering part of it. A full-screen Remote Desktop session
@@ -203,7 +207,7 @@ once when you come back to the app. The focus timer's lengths are set on the com
 
 The phone apps (iPhone, iPad, Android) can use the tasks on your computer, at home on Wi-Fi or anywhere with
 Tailscale. Turn on the **Phones** extra (Settings › Extras), then in **Settings › Phones** (or **⋯ › Connect a phone…**
-in the sidebar) turn on **Let phones connect** and restart Todo Tracker. **Connect a phone** shows a QR code: scan it in
+in the sidebar) turn on **Let phones connect** and restart Onething. **Connect a phone** shows a QR code: scan it in
 the phone app (it works once, for 10 minutes). **Connected phones** lists them; **Disconnect** takes one's access back.
 A phone only reaches your tasks, never settings, hooks or AI apps. See [`docs/plugins.md`](plugins.md#phones).
 
@@ -235,7 +239,7 @@ event at `GET /api/events`. See [hooks.md](hooks.md).
 ## Linux
 
 CI builds `todo-tracker-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
-(add `--autostart` to start it with your session): it puts Todo Tracker in your app menu and `todo-tracker` and `tt` in
+(add `--autostart` to start it with your session): it puts Onething in your app menu and `todo-tracker` and `tt` in
 `~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the AppIndicator extension. A second start opens
 the running one's window.
 
@@ -274,7 +278,7 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
   to rename it, change its color, or delete it. Its tasks move to the group you pick; they're never deleted.
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
-* **Settings** (in the sidebar, the gear on an iPhone, or Todo Tracker › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
+* **Settings** (in the sidebar, the gear on an iPhone, or Onething › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
   also where your tasks are, **Computer** and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.

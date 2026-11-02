@@ -38,7 +38,7 @@ public static class ObsidianVaults
         }
     }
 
-    /// <summary>Where Todo Tracker keeps its tasks inside an Obsidian vault.</summary>
+    /// <summary>Where Onething keeps its tasks inside an Obsidian vault (the folder keeps the app's first name, so it never moves).</summary>
     public static string TaskFolderIn(ObsidianVault vault)
     {
         ArgumentNullException.ThrowIfNull(vault);

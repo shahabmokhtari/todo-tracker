@@ -219,8 +219,8 @@ export function createConnectorsPanel(host) {
       onchange: async () => {
         const on = main.checked;
         const question = on
-          ? 'Keep your tasks on GitHub instead of a tasks folder?\n\nEvery group gets its own private repository, and the app keeps its copy in its own folder. Your tasks folder is left as it is. Takes effect when Todo Tracker restarts.'
-          : 'Keep your tasks in a tasks folder again?\n\nThe app\'s copy goes into your tasks folder (what\'s there now is kept next to it, renamed). The repositories stay on GitHub. Takes effect when Todo Tracker restarts.';
+          ? 'Keep your tasks on GitHub instead of a tasks folder?\n\nEvery group gets its own private repository, and the app keeps its copy in its own folder. Your tasks folder is left as it is. Takes effect when Onething restarts.'
+          : 'Keep your tasks in a tasks folder again?\n\nThe app\'s copy goes into your tasks folder (what\'s there now is kept next to it, renamed). The repositories stay on GitHub. Takes effect when Onething restarts.';
         if (!confirm(question)) {
           main.checked = !on;
           return;
@@ -228,7 +228,7 @@ export function createConnectorsPanel(host) {
 
         const result = await run(host.put(`${githubBase}/main-place`, { on }));
         if (result) {
-          host.toast(`${on ? 'Your tasks will live on GitHub' : 'Your tasks will live in the tasks folder again'}: restart Todo Tracker to switch.`);
+          host.toast(`${on ? 'Your tasks will live on GitHub' : 'Your tasks will live in the tasks folder again'}: restart Onething to switch.`);
         } else {
           main.checked = !on;
         }
@@ -241,7 +241,7 @@ export function createConnectorsPanel(host) {
       h('label', { class: 'check' }, every, h('span', null, g.mainPlace ? 'Every group has its own repository (GitHub is where your tasks live)' : 'Every group gets its own private repository (new groups too)')),
       h('label', { class: 'check' }, main, h('span', null, 'Keep my tasks on GitHub, without a tasks folder',
         h('span', { class: 'muted small' }, ' (other computers find the repositories and bring the tasks in)'))),
-      g.mainPlaceAsked !== g.mainPlace ? h('p', { class: 'hint' }, 'Restart Todo Tracker to finish moving your tasks.') : null,
+      g.mainPlaceAsked !== g.mainPlace ? h('p', { class: 'hint' }, 'Restart Onething to finish moving your tasks.') : null,
       g.problems?.length ? h('ul', { class: 'problems' }, ...g.problems.map((p) => h('li', null, icon('alert', { size: 14 }), p))) : null,
       h('ul', { class: 'github-groups' }, ...g.groups.map(row)));
   }

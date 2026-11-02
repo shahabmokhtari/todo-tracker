@@ -1,5 +1,5 @@
 // Ask AI: chats with GitHub Copilot or Claude Code (over ACP), or with a model reached with an API key. They read and
-// change tasks through Todo Tracker's own tools; reading needs no permission, changing tasks asks first, anything else
+// change tasks through Onething's own tools; reading needs no permission, changing tasks asks first, anything else
 // always asks. Every chat is kept: open, search, rename or delete (with undo) from the list.
 
 const base = '/api/plugins/agent-chat';

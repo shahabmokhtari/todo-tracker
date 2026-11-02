@@ -172,9 +172,9 @@ class PhoneClientTest {
 
     @Test
     fun The_token_goes_with_every_request_and_a_401_means_disconnected() {
-        val computer = FakeComputer { _, _, _ -> PhoneResponse(401, """{"detail":"This phone isn’t connected to Todo Tracker."}""") }
+        val computer = FakeComputer { _, _, _ -> PhoneResponse(401, """{"detail":"This phone isn’t connected to Onething."}""") }
         val error = assertThrows(PhoneException.Revoked::class.java) { PhoneClient(hosts, computer, "ttp_secret").perform(RemoteAction.StopTimer) }
-        assertEquals("This phone isn’t connected to Todo Tracker.", error.message)
+        assertEquals("This phone isn’t connected to Onething.", error.message)
         assertEquals("Bearer ttp_secret", computer.headers.single()["Authorization"])
     }
 

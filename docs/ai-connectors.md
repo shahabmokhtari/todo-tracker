@@ -1,6 +1,6 @@
 # Connect AI apps
 
-Todo Tracker is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
+Onething is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
 ask what to work on next, let an agent log progress or break a project into steps. Every change an AI makes is
 attributed to it (you'll see "Agent: claude" in the timeline) and versioned, so it can be undone.
 
@@ -116,7 +116,7 @@ Deleting, settings and sign-in are left out.
 
 ## Windows Copilot (on-device agent registry)
 
-Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. Todo Tracker isn't packaged as
+Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. Onething isn't packaged as
 MSIX yet; until then, use the Claude Desktop or VS Code setup.
 
 ## The `tt` command

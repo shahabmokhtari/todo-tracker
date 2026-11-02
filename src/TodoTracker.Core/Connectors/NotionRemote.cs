@@ -136,6 +136,7 @@ public sealed class NotionApi(HttpClient http, string token) : IDisposable
 /// </summary>
 public sealed partial class NotionRemote : IConnectorRemote, IDisposable
 {
+    /// <summary>The column that ties a page to its task; it keeps the app's first name so databases already set up still match.</summary>
     public const string MarkerColumn = "Todo Tracker ID";
 
     private readonly NotionApi _api;

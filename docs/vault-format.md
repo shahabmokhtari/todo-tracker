@@ -1,6 +1,6 @@
 # Vault format (v2)
 
-Todo Tracker stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
+Onething stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
 Obsidian vault, in a git repository, or in any sync service. People, the apps, the `tt` CLI, and AI agents all edit
 the same files. A vault the app creates gets a copy of this guide for agents in `AGENTS.md` at the vault root (a folder
 of existing notes is left as it is).

@@ -31,7 +31,7 @@ public static class TrayMenu
         ArgumentNullException.ThrowIfNull(vm);
         var items = new List<TrayItem>
         {
-            new(Open, "Open Todo Tracker"),
+            new(Open, "Open Onething"),
             new(Add, "Add a task…"),
             TrayItem.Separator,
         };
@@ -60,21 +60,21 @@ public static class TrayMenu
 
         items.Add(new TrayItem(Settings, "Settings…"));
         items.Add(TrayItem.Separator);
-        items.Add(new TrayItem(Quit, "Quit Todo Tracker"));
+        items.Add(new TrayItem(Quit, "Quit Onething"));
         return items;
     }
 
     /// <summary>What the tray icon says when the sidebar has just been hidden (where it went, how to get it back).</summary>
     public static string HiddenHint(bool hotKey) =>
         hotKey
-            ? "Todo Tracker is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back."
-            : "Todo Tracker is still running. Click its icon here to bring the sidebar back.";
+            ? "Onething is still running. Click its icon here or press Ctrl+Alt+Space to bring the sidebar back."
+            : "Onething is still running. Click its icon here to bring the sidebar back.";
 
     /// <summary>What's going on, at a glance: how much is waiting for you, the focus timer, a reminder.</summary>
     public static string Tooltip(SidebarViewModel vm)
     {
         ArgumentNullException.ThrowIfNull(vm);
-        var parts = new List<string> { "Todo Tracker", vm.NowCount == 1 ? "1 thing to do now" : $"{vm.NowCount} things to do now" };
+        var parts = new List<string> { "Onething", vm.NowCount == 1 ? "1 thing to do now" : $"{vm.NowCount} things to do now" };
         if (vm.HasAttention)
         {
             parts.Add("a reminder is due");

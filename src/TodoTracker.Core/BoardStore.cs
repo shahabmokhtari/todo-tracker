@@ -157,7 +157,7 @@ public sealed class FileBoardStore : BoardStoreBase
         }
         catch (IOException ex)
         {
-            throw new StoreLockedException($"Another Todo Tracker instance is already using {fullPath}.", ex);
+            throw new StoreLockedException($"Another Onething instance is already using {fullPath}.", ex);
         }
 
         try

@@ -1,10 +1,15 @@
-# Todo Tracker: product plan, design, and specification
+# Onething: product plan, design, and specification
 
 Traces to the original request in [`request.md`](request.md). Section 12 maps each requirement to its status.
 
+The product was called Todo Tracker. Everything people see says Onething; identifiers keep the old name so updates
+install in place and nothing moves: bundle and package ids, exe and assembly names, `TODOTRACKER_*` variables, data
+folders, the tasks folder (`Documents/Todo Tracker`), sync libraries and gist names, connector markers, `tt`, the
+`todo-tracker` MCP server and skill, the `todotracker://` scheme, headers, and the website's domain.
+
 ## 1. Vision
 
-Todo Tracker is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
+Onething is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
 browser tabs. It answers one question at a glance: *what should I do right now?* Everything that isn't actionable
 yet stays out of the way until it is due, and then it comes back by itself.
 
@@ -60,7 +65,7 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
   saves are verified against the files' content and are all-or-nothing, edits made outside the app (Obsidian,
   editors, agents) are picked up and acted on, and broken files are reported and never overwritten.
 * **Vault location.** `Documents/Todo Tracker` by default, or a folder chosen in the app (for example
-  `<Obsidian vault>/Todo Tracker`), `TODOTRACKER_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
+  `<Obsidian vault>/Onething`), `TODOTRACKER_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
   from earlier versions is imported once (and renamed to `board.json.migrated`).
 * **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
@@ -293,7 +298,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Card notes save themselves after a short pause and keep updating the same note; Enter finishes it.
 * Cards show labels (colored) and tags. The card menu opens the task in Obsidian or shows its markdown file.
 * Menu › *Tasks folder* shows where tasks live, opens the folder or Obsidian, keeps tasks in an Obsidian vault found on
-  this machine (`<vault>/Todo Tracker`), or chooses another folder (the app restarts to switch).
+  this machine (`<vault>/Onething`), or chooses another folder (the app restarts to switch).
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
@@ -306,7 +311,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * **Plan** (`PlanView`): the web Plan view's grid (`PlanGrid`: week or day, work hours stretched to show blocks outside them, work days, Monday or Sunday weeks, 15-minute snapping, 15 minutes to 12 hours when resizing; iPhone (compact width) shows a day). Blocks, deadlines, *Not planned* and *Later* come from `PlanDays` (port of `PlanDays.cs`, which `GET /api/plan` uses; shared fixture `tests/fixtures/plan.json`), planning from `TaskBoard.plan/unplan` (5 minutes to 12 hours, 30 kept as none, done tasks refused; same fixture). Drag and drop (touch, pointer), long-press-then-drag to move a block on touch, a resize handle, a context menu, VoiceOver actions and arrow keys; *Plan…* opens a sheet (task, start, length). On the Mac (server) and a connected phone, planning is `POST /api/items/{id}/plan` (`ServerAction.plan/.unplan`; allowed for phones). Plan settings (view, hours, work hours/days, week start) are kept per group on the device (UserDefaults), not in the server's settings.
 * **Reports** (`ReportsView`, Swift Charts): range 7 days / 4 weeks / 3 months / year / custom dates; KPIs, time per day (stacked focus/other, weekly for ranges over 120 days), by group (donut), top tasks, weekday × hour heat map, active-days calendar (90 days or more), and the Timeline (work bars, created→done/due line, ◆ due, ● done; tap a row to open the task). The numbers are `TimeReport` (port of `TimeReport.cs`) computed on the device from the board (its time entries and focus activity are in `/api/export`), so it works the same in all three modes and offline; shared fixture `tests/fixtures/reports.json` (across midnight and the change to winter time, a running timer, focus, archived tasks).
 * The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/TodoTracker/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below), or uses a computer's tasks (below). Settings says which of the three it is (connected to a computer, syncing on its own, only on this device); connecting to a computer turns sync off, and switching never deletes tasks.
-* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › TodoTrackerSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<TodoTrackerSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "Todo Tracker" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.todotracker.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
+* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › TodoTrackerSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<TodoTrackerSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "Onething" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.todotracker.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
 * **iPhone and iPad: Connect to a computer** (Settings › Computer; the Phones plugin, §8). The `todotracker://pair?v=1&hosts=…&code=…&fp=…&name=…` link (scanned with VisionKit's QR scanner, pasted, or opened) is checked (v=1 only; host:port list; a 32-byte base64url fingerprint); the phone claims a token (`POST /api/phones/claim` with the name typed on the Connect screen, prefilled with the device's and remembered) on each address in turn until one answers, and pins the certificate: TLS is accepted only when SHA-256 of the leaf certificate's DER equals the fingerprint (ATS allows local networking only). The token is kept in the Keychain (this device only); addresses, fingerprint and name in UserDefaults. The app then works through the REST API as the Mac does (only routes in the phone allow-list, Archive included; the browser sign-in isn't offered), and keeps the last `/api/export` on disk. At launch it shows that copy and looks for the computer (`GET /health` with the token, the last good address first). States: connected; unreachable (the copy, read-only, with "Can't reach <computer>. You're seeing your tasks from <time>; changes wait until you're back on its Wi-Fi or Tailscale."; every address retried every 30 s, when the app becomes active, and on pull to refresh); disconnected by the computer (401: the token is forgotten, the device board comes back, *Reconnect*). *Disconnect* forgets the token and the copy; the device board is never written while connected.
 
 ### Phones (Settings › Phones)
@@ -469,7 +474,7 @@ Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus time
 browser extension, sync, connectors, Copy for Loop, Teams) that can be switched off; the choice lives in `plugins.json`.
 Off applies at once everywhere (UI, API, background work); extras without background work also come on at once, the
 others at the next start. Ask AI drives GitHub Copilot
-CLI or Claude Code over the Agent Client Protocol with Todo Tracker's MCP tools attached, or a model reached with an API
+CLI or Claude Code over the Agent Client Protocol with Onething's MCP tools attached, or a model reached with an API
 key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the same tools. Reading needs no permission;
 changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and
 can be searched, reopened (agents resume their session with `session/load` when they can), renamed and deleted with

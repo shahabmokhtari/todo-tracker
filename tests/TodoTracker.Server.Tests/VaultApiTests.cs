@@ -59,7 +59,7 @@ public sealed class VaultApiTests : IAsyncLifetime
 
         Assert.Equal(_server.VaultDirectory, vault["path"]!.GetValue<string>());
         Assert.Equal("Work/Broken.md", vault["problems"]![0]!["path"]!.GetValue<string>());
-        Assert.Contains("Todo Tracker vault", vault["guide"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Contains("Onething vault", vault["guide"]!.GetValue<string>(), StringComparison.Ordinal);
         Assert.Equal("Work/Broken.md", (await _client.GetJson("/api/dashboard"))["problems"]![0]!["path"]!.GetValue<string>());
     }
 

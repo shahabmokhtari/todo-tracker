@@ -57,7 +57,7 @@ class SharedScenarioTest {
 
     @Test
     fun theServersExportReads() {
-        // The board as Todo Tracker's server sends it (written by the C# tests), with everything newer apps add.
+        // The board as Onething's server sends it (written by the C# tests), with everything newer apps add.
         val board = BoardCodec.decode(File(fixtures(), "export.json").readText())
 
         val launch = board.items.first { it.title == "Launch the site" }

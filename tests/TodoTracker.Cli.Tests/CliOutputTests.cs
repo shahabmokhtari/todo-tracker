@@ -93,7 +93,7 @@ public sealed class CliOutputTests : IDisposable
 
         var output = await _tt.Ok("vault", "use", target);
 
-        Assert.Contains("Restart Todo Tracker", output, StringComparison.Ordinal);
+        Assert.Contains("Restart Onething", output, StringComparison.Ordinal);
         Assert.Contains("elsewhere", await File.ReadAllTextAsync(Path.Combine(_tt.DataDirectory, "settings.json")), StringComparison.Ordinal);
     }
 

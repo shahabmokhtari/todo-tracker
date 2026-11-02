@@ -6,8 +6,8 @@ const BASE = '/api/plugins/phones';
 /** What to say about "Let phones connect" now: on, waiting for a restart, or what got in the way. */
 export function phoneStatusLine(status) {
   if (status.problem && status.letPhonesConnect) return status.problem;
-  if (status.letPhonesConnect && !status.listening) return 'Restart Todo Tracker so phones can connect.';
-  if (!status.letPhonesConnect && status.listening) return 'Phones can’t connect any more. Todo Tracker stops listening for them when it restarts.';
+  if (status.letPhonesConnect && !status.listening) return 'Restart Onething so phones can connect.';
+  if (!status.letPhonesConnect && status.listening) return 'Phones can’t connect any more. Onething stops listening for them when it restarts.';
   if (!status.letPhonesConnect) return 'Off: phones can’t reach this computer.';
   if (!status.addresses.length) return 'On, but this computer isn’t on a network a phone can reach. Connect it to Wi-Fi (or Tailscale).';
   return `On: phones on the same Wi-Fi or Tailscale reach this computer at ${status.addresses.join(', ')}.`;
@@ -51,7 +51,7 @@ export function createPhonesSection(ctx) {
         onclick: async () => {
           try {
             await ctx.api(`${BASE}/devices/${encodeURIComponent(d.id)}`, { method: 'DELETE' });
-            ctx.toast(`${d.name} can’t reach Todo Tracker any more`);
+            ctx.toast(`${d.name} can’t reach Onething any more`);
             load();
           } catch (err) {
             ctx.toast(err.message, 'error');
@@ -109,7 +109,7 @@ export function createPhonesSection(ctx) {
       const qr = h('img', { class: 'phone-qr', alt: 'QR code to connect a phone', src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(code.qrSvg)}` });
       // Native replaceChildren/append would show a null as the text "null": leave it out.
       out.replaceChildren(...[
-        h('p', null, 'In Todo Tracker on your phone, choose “Connect to a computer” and scan this code (or open the link on the phone).'),
+        h('p', null, 'In Onething on your phone, choose “Connect to a computer” and scan this code (or open the link on the phone).'),
         qr,
         h('div', { class: 'row' },
           h('input', { class: 'phone-link', type: 'text', readonly: true, value: code.link, 'aria-label': 'Link to connect a phone', onfocus: (e) => e.target.select() }),

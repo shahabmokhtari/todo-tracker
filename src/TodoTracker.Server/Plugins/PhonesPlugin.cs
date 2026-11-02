@@ -209,7 +209,7 @@ public sealed class PhoneListener
         }
         catch (SocketException)
         {
-            return Closed(options.PhonePort, $"Port {options.PhonePort} is used by another app, so phones can't connect. Close that app, then restart Todo Tracker.");
+            return Closed(options.PhonePort, $"Port {options.PhonePort} is used by another app, so phones can't connect. Close that app, then restart Onething.");
         }
 
         try
@@ -218,7 +218,7 @@ public sealed class PhoneListener
         }
         catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
         {
-            return Closed(options.PhonePort, $"Couldn't make the certificate phones check ({ex.Message}). Restart Todo Tracker to try again.");
+            return Closed(options.PhonePort, $"Couldn't make the certificate phones check ({ex.Message}). Restart Onething to try again.");
         }
     }
 }
@@ -249,7 +249,7 @@ public static class PhoneCertificate
 
         Directory.CreateDirectory(dataDirectory);
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=Todo Tracker", key, HashAlgorithmName.SHA256);
+        var request = new CertificateRequest("CN=Onething", key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
@@ -551,7 +551,7 @@ public sealed class PhonesPlugin : ITodoPlugin
         // Who may reach this computer from the network: only the person at it (the app's own session), like hooks.
         group.AddEndpointFilter(async (context, next) => Security.IsAppSession(context.HttpContext)
             ? await next(context).ConfigureAwait(false)
-            : Results.Problem("Only you can connect phones: in Settings › Phones of the Todo Tracker app on this computer.", statusCode: StatusCodes.Status403Forbidden));
+            : Results.Problem("Only you can connect phones: in Settings › Phones of the Onething app on this computer.", statusCode: StatusCodes.Status403Forbidden));
 
         group.MapGet("/", (PhoneAccess access, PhoneListener listener) => Status(access, listener));
         group.MapPut("/access", (PhoneAccessRequest request, PhoneAccess access, PhoneListener listener) =>
@@ -565,7 +565,7 @@ public sealed class PhonesPlugin : ITodoPlugin
             if (!access.On || listener.Fingerprint is not { } fingerprint)
             {
                 return Results.Problem(
-                    access.On ? listener.Problem ?? "Restart Todo Tracker first, so phones can reach it." : "Turn on “Let phones connect” first.",
+                    access.On ? listener.Problem ?? "Restart Onething first, so phones can reach it." : "Turn on “Let phones connect” first.",
                     statusCode: StatusCodes.Status409Conflict);
             }
 

@@ -6,7 +6,7 @@ using Forms = System.Windows.Forms;
 namespace TodoTracker.Windows;
 
 /// <summary>
-/// Todo Tracker in the notification area: click to bring the sidebar back, right-click for the menu (open, add a
+/// Onething in the notification area: click to bring the sidebar back, right-click for the menu (open, add a
 /// task, the focus timer, hide or show the sidebar, quit). The tooltip says what's going on; a dot means a reminder.
 /// </summary>
 internal sealed class TrayIcon : IDisposable
@@ -38,7 +38,7 @@ internal sealed class TrayIcon : IDisposable
     }
 
     /// <summary>A notification by the icon: the sidebar is hidden, still running, and how to get it back.</summary>
-    public void ShowHiddenHint() => _icon.ShowBalloonTip(6000, "Todo Tracker", TrayMenu.HiddenHint(_window.HasHotKey), Forms.ToolTipIcon.None);
+    public void ShowHiddenHint() => _icon.ShowBalloonTip(6000, "Onething", TrayMenu.HiddenHint(_window.HasHotKey), Forms.ToolTipIcon.None);
 
     public void Dispose()
     {

@@ -4,12 +4,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>tt</AssemblyName>
     <RootNamespace>TodoTracker.Cli</RootNamespace>
-    <Description>Todo Tracker from the terminal and for AI agents: tt now, tt add, tt done, and tt mcp (MCP server over stdio).</Description>
+    <Description>Onething from the terminal and for AI agents: tt now, tt add, tt done, and tt mcp (MCP server over stdio).</Description>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>tt</ToolCommandName>
     <PackageId>TodoTracker.Cli</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Todo Tracker</Authors>
+    <Authors>Onething</Authors>
     <PackageTags>todo;tasks;adhd;mcp;obsidian;cli</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

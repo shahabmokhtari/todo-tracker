@@ -809,7 +809,7 @@ public partial class MainWindow : Window
             {
                 host.Settings.SetEnabled(info.Id, item.IsChecked);
                 if (host.IsRunning(info.Id) != item.IsChecked
-                    && MessageBox.Show(this, $"{info.Name} is turned {(item.IsChecked ? "on" : "off")} from the next start. Restart Todo Tracker now?", "Plugins", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    && MessageBox.Show(this, $"{info.Name} is turned {(item.IsChecked ? "on" : "off")} from the next start. Restart Onething now?", "Plugins", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                 {
                     Restart();
                 }
@@ -869,7 +869,7 @@ public partial class MainWindow : Window
         var choose = new MenuItem { Header = "Choose another folder…" };
         choose.Click += (_, _) =>
         {
-            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Where should Todo Tracker keep your tasks?", InitialDirectory = root };
+            var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "Where should Onething keep your tasks?", InitialDirectory = root };
             if (dialog.ShowDialog(this) == true)
             {
                 SwitchVault(dialog.FolderName);
@@ -909,7 +909,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var message = $"Keep your tasks in\n{folder}?\n\nTodo Tracker restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
+        var message = $"Keep your tasks in\n{folder}?\n\nOnething restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
         var summary = TodoTracker.Core.Vault.VaultFolder.Inspect(folder);
         if (summary is { IsTaskFolder: false, Tasks: > 0 })
         {

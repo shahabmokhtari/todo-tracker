@@ -20,7 +20,7 @@ public sealed class ParsedTaskFile
     /// saves this task for another reason; it never rewrites a file just because it read it.</summary>
     public bool NeedsWrite { get; internal set; }
 
-    /// <summary>The file carries the app's task id (it was created or saved by Todo Tracker).</summary>
+    /// <summary>The file carries the app's task id (it was created or saved by Onething).</summary>
     public bool HasAppId { get; internal set; }
 
     public List<string> Warnings { get; } = [];

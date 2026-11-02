@@ -252,7 +252,7 @@ public actor SyncEngine {
 
         if let remoteSnapshot, complete { state.remoteVersion = remoteSnapshot.version }
         if remoteSnapshot?.partial == true {
-            problems.append("Another device's sync file couldn't be read (it may be from a newer version of Todo Tracker); it's tried again.")
+            problems.append("Another device's sync file couldn't be read (it may be from a newer version of Onething); it's tried again.")
         }
 
         var published = false

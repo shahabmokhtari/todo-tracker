@@ -47,7 +47,7 @@ struct TodoTrackerApp: App {
 
     var body: some Scene {
         #if os(macOS)
-        WindowGroup("Todo Tracker", id: AppShell.sceneId) {
+        WindowGroup("Onething", id: AppShell.sceneId) {
             shell.frame(minWidth: 360, minHeight: 480)
                 .onAppear { startOnce() }
         }
@@ -75,7 +75,7 @@ struct TodoTrackerApp: App {
         }
         .menuBarExtraStyle(.window)
         #else
-        WindowGroup("Todo Tracker", id: AppShell.sceneId) {
+        WindowGroup("Onething", id: AppShell.sceneId) {
             shell
                 // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
                 .onChange(of: scenePhase) { _, phase in
@@ -150,7 +150,7 @@ struct MenuBarGlance: View {
             }
             .font(.caption).foregroundStyle(.secondary)
             if model.usesServer {
-                Button("Open Todo Tracker…") {
+                Button("Open Onething…") {
                     Task { if let url = await model.launchURL() { NSWorkspace.shared.open(url) } }
                 }
                 .help("The full window in your browser: board, reports, settings and sync")
@@ -182,7 +182,7 @@ enum AppleNotesWriter {
     static func export(_ model: BoardModel) async -> String {
         let group = model.groups.first { $0.id == model.selectedGroupId }
         let roots = model.board.items.filter { group == nil || $0.groupId == group?.id }
-        let title = "Todo Tracker – \(group?.name ?? "All tasks")"
+        let title = "Onething – \(group?.name ?? "All tasks")"
         let arguments = AppleNotesExport.arguments(title: title, body: AppleNotesExport.html(roots, title: title))
         return await Task.detached { run(arguments) }.value
     }

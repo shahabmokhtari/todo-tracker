@@ -16,7 +16,7 @@ public interface IChatTools : IAsyncDisposable
 }
 
 /// <summary>
-/// Todo Tracker's own MCP tools, reached over the app's <c>/mcp</c> endpoint: the same tools Copilot and Claude get, and
+/// Onething's own MCP tools, reached over the app's <c>/mcp</c> endpoint: the same tools Copilot and Claude get, and
 /// whatever the model changes is credited to it (the MCP client is named after the model).
 /// </summary>
 public sealed class McpChatTools(Func<HttpClient> http, string modelName) : IChatTools
@@ -50,7 +50,7 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
             }
             catch (HttpRequestException ex)
             {
-                throw new InvalidOperationException($"Couldn't reach Todo Tracker's own tools: {ex.Message}", ex);
+                throw new InvalidOperationException($"Couldn't reach Onething's own tools: {ex.Message}", ex);
             }
         }
 
@@ -91,12 +91,12 @@ public sealed class McpChatTools(Func<HttpClient> http, string modelName) : ICha
             }
             catch (Exception again) when (again is HttpRequestException || (again is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
-                return new ChatToolResult($"Todo Tracker's tools couldn't be reached: {again.Message}", true);
+                return new ChatToolResult($"Onething's tools couldn't be reached: {again.Message}", true);
             }
         }
         catch (HttpRequestException ex)
         {
-            return new ChatToolResult($"Todo Tracker's tools couldn't be reached: {ex.Message}", true);
+            return new ChatToolResult($"Onething's tools couldn't be reached: {ex.Message}", true);
         }
     }
 

@@ -1,10 +1,10 @@
 // Screenshots for the README and docs, from a made-up demo board (never anyone's real tasks).
 //
 //   cd tests/e2e && npm install && npx playwright install chromium
-//   node screenshots.mjs                 # web views (any OS) + the Windows sidebar (Windows; quit Todo Tracker first)
+//   node screenshots.mjs                 # web views (any OS) + the Windows sidebar (Windows; quit Onething first)
 //   node screenshots.mjs --web-only
 //
-// It starts its own Todo Tracker on a throwaway data folder and port, fills it with the demo tasks below through the
+// It starts its own Onething on a throwaway data folder and port, fills it with the demo tasks below through the
 // API (as you and as an AI agent), and saves the pictures to docs/images. Your own app and tasks are never touched.
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -189,7 +189,7 @@ async function captureWeb(ids) {
   await browser.close();
 }
 
-/** Whether a Todo Tracker sidebar is running (only one runs at a time: a second one would just bring it forward). */
+/** Whether a Onething sidebar is running (only one runs at a time: a second one would just bring it forward). */
 function sidebarRunning() {
   try {
     return execFileSync('tasklist', ['/FI', 'IMAGENAME eq TodoTracker.exe', '/NH'], { encoding: 'utf8' }).includes('TodoTracker.exe');
@@ -201,7 +201,7 @@ function sidebarRunning() {
 /** The Windows sidebar, light and dark (the app renders itself to a PNG: --screenshot). */
 async function captureSidebar() {
   if (sidebarRunning()) {
-    console.log('Skipping the sidebar: quit Todo Tracker first (only one sidebar runs at a time), then run this again.');
+    console.log('Skipping the sidebar: quit Onething first (only one sidebar runs at a time), then run this again.');
     return;
   }
 

@@ -1,7 +1,7 @@
 import XCTest
 @testable import TodoTrackerKit
 
-/// The Mac app's requests to Todo Tracker's server: the same routes and fields as the web app (ApiEndpoints.cs).
+/// The Mac app's requests to Onething's server: the same routes and fields as the web app (ApiEndpoints.cs).
 final class ServerAPITests: XCTestCase {
     let item = UUID(uuidString: "8B0F2C1E-1111-4A6B-9C1D-000000000001")!
     let other = UUID(uuidString: "8B0F2C1E-1111-4A6B-9C1D-000000000002")!

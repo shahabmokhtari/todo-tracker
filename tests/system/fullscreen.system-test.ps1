@@ -22,11 +22,11 @@ public static class Native {
   public struct RECT { public int L, T, R, B; }
   // Top-level windows, frontmost first.
   public static List<IntPtr> ZOrder() { var list = new List<IntPtr>(); EnumWindows((h, l) => { list.Add(h); return true; }, IntPtr.Zero); return list; }
-  // The process's top-level window titled "Todo Tracker", shown or hidden.
+  // The process's top-level window titled "Onething", shown or hidden.
   public static IntPtr Sidebar(int pid) {
     var found = IntPtr.Zero;
     EnumWindows((h, l) => { int p; GetWindowThreadProcessId(h, out p); var s = new System.Text.StringBuilder(64); GetWindowText(h, s, 64);
-      if (p == pid && s.ToString() == "Todo Tracker") { found = h; return false; } return true; }, IntPtr.Zero);
+      if (p == pid && s.ToString() == "Onething") { found = h; return false; } return true; }, IntPtr.Zero);
     return found;
   }
 }
@@ -52,7 +52,7 @@ function TryFind($scope, $name, $type, $tries) {
 function SidebarElement($proc) {
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)),
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Todo Tracker sidebar')))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Onething sidebar')))
   for ($i = 0; $i -lt 100; $i++) { $w = (Root).FindFirst([System.Windows.Automation.TreeScope]::Children, $cond); if ($w) { return $w }; Start-Sleep -Milliseconds 200 }
   throw 'Sidebar window did not appear'
 }

@@ -52,7 +52,7 @@ export function createSettingsView(ctx) {
   }
 
   function plugins(list) {
-    const note = h('p', { class: 'muted small', hidden: true, role: 'status' }, 'Restart Todo Tracker to switch it on.');
+    const note = h('p', { class: 'muted small', hidden: true, role: 'status' }, 'Restart Onething to switch it on.');
     const row = (p) => {
       const toggle = h('input', { type: 'checkbox', checked: p.enabled, 'aria-label': p.name, onchange: async () => {
         try {
@@ -68,7 +68,7 @@ export function createSettingsView(ctx) {
       } });
       return h('label', { class: 'plugin-row' }, toggle, h('span', null, h('strong', null, p.name), h('span', { class: 'muted small' }, p.description)));
     };
-    return section('plugins', 'Extras', 'Every extra is a plugin. Turn off what you don’t use to keep Todo Tracker calm.',
+    return section('plugins', 'Extras', 'Every extra is a plugin. Turn off what you don’t use to keep Onething calm.',
       h('div', { class: 'plugins' }, ...list.filter((p) => !CONNECTOR_PLUGINS.has(p.id)).map(row)), note);
   }
 
@@ -149,7 +149,7 @@ export function createSettingsView(ctx) {
               if (confirm(`Remove the hook "${x.label}"?`)) call(`/api/hooks/${encodeURIComponent(x.id)}`, { method: 'DELETE' }, 'Removed');
             } }, icon('trash', { size: 14 })))),
         pending ? h('p', { class: 'small hook-why' }, `Added or changed by ${x.hook.addedBy ?? 'an agent'}. It runs only after you approve it. What it would do:`) : null,
-        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Todo Tracker app (the sidebar, Open in browser from the tray, or the Mac app), or run: tt hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
+        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the Onething app (the sidebar, Open in browser from the tray, or the Mac app), or run: tt hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
         pending ? h('pre', { class: 'hook-sample' }, what) : null,
         x.problem ? h('p', { class: 'hook-problem small' }, x.problem) : null);
     };
@@ -290,7 +290,7 @@ export function createSettingsView(ctx) {
       labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
-      phonesOn ? section('phones', 'Phones', 'Use the Todo Tracker app on your iPhone, iPad or Android phone with the tasks on this computer, at home on Wi-Fi or anywhere with Tailscale.', phones.element) : null,
+      phonesOn ? section('phones', 'Phones', 'Use the Onething app on your iPhone, iPad or Android phone with the tasks on this computer, at home on Wi-Fi or anywhere with Tailscale.', phones.element) : null,
       hookStatus ? hooks(hookStatus) : null,
       plugins(list),
       section('keys', 'Keyboard', null, h('dl', { class: 'shortcuts' }, ...SHORTCUTS.flatMap(([keys, what]) => [h('dt', null, h('kbd', null, keys)), h('dd', null, what)])))));

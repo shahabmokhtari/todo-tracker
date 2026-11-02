@@ -23,7 +23,7 @@ public sealed record ApiModelRequest(string? Preset, string? Name, string? BaseU
 /// <summary>An API model as screens see it: never its key, only whether it has one.</summary>
 public sealed record ApiModelView(string Id, string Preset, string Name, string BaseUrl, string Model, bool HasKey, bool Local);
 
-/// <summary>"Ask AI": a chat in the app with Copilot or Claude, which change your tasks through Todo Tracker's tools.</summary>
+/// <summary>"Ask AI": a chat in the app with Copilot or Claude, which change your tasks through Onething's tools.</summary>
 public sealed class AgentChatPlugin : ITodoPlugin
 {
     /// <summary>Tests point this at a scripted agent (a .dll run with dotnet).</summary>

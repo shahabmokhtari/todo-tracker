@@ -1,4 +1,4 @@
-// Todo Tracker website: a static site served by Cloudflare Workers static assets.
+// Onething website: a static site served by Cloudflare Workers static assets.
 // No account id or credentials here: wrangler reads them from your environment (see README.md).
 {
   "name": "todotracker-site",

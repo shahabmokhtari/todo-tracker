@@ -11,11 +11,12 @@ public sealed record ToDoList(string Id, string Name);
 
 /// <summary>
 /// One Microsoft To Do list (through Microsoft Graph) as an outside list: title, done, due date, importance and the
-/// note. Each task carries its Todo Tracker id as a linked resource (so nothing is ever copied twice). To Do has no
+/// note. Each task carries its Onething id as a linked resource (so nothing is ever copied twice). To Do has no
 /// tags and no "critical": tags stay here, critical shows as high there.
 /// </summary>
 public sealed partial class MicrosoftToDoRemote(HttpClient http, Func<CancellationToken, Task<string>> token, string listId, TimeZoneInfo zone) : IConnectorRemote
 {
+    /// <summary>How our linked items are recognized in To Do; it keeps the app's first name so tasks already there still match.</summary>
     public const string AppName = "Todo Tracker";
 
     public ConnectorFields Fields => ConnectorFields.Title | ConnectorFields.Done | ConnectorFields.Due | ConnectorFields.Priority | ConnectorFields.Notes;

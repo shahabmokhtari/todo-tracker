@@ -11,7 +11,7 @@ public final class ParsedTaskFile {
     /// task for another reason; it never rewrites a file just because it read it.
     public internal(set) var needsWrite = false
 
-    /// The file carries the app's task id (it was created or saved by Todo Tracker).
+    /// The file carries the app's task id (it was created or saved by Onething).
     public internal(set) var hasAppId = false
 
     public internal(set) var warnings: [String] = []

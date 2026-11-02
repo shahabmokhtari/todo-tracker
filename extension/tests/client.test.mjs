@@ -118,14 +118,14 @@ test('manifest only requests loopback host access', () => {
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
 });
 
-test('pairing trades the code shown in Todo Tracker for the token (no token to copy)', async () => {
+test('pairing trades the code shown in Onething for the token (no token to copy)', async () => {
   const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 200, body: { token: 'tok-123' } } });
 
   const token = await pair({ serverUrl: 'http://127.0.0.1:5317/', code: ' 123 456 ', name: 'Edge on Windows', fetch });
 
   assert.equal(token, 'tok-123');
   assert.equal(fetch.calls[0].url, 'http://127.0.0.1:5317/api/plugins/browser-extension/claim');
-  // The name is what Todo Tracker lists under paired browsers (to take one back).
+  // The name is what Onething lists under paired browsers (to take one back).
   assert.deepEqual(fetch.calls[0].body, { code: '123456', name: 'Edge on Windows' });
   // A custom header: a web page can't send it without the server's permission, so it can't claim codes.
   assert.equal(fetch.calls[0].init.headers['X-TodoTracker-Client'], 'browser-extension');

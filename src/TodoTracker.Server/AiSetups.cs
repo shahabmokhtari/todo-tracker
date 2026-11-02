@@ -7,7 +7,7 @@ public sealed record ConnectDto(string Tt, IReadOnlyList<AiSetupDto> Setups);
 
 /// <summary>
 /// Ready-made setups for AI apps, shown in "Connect an AI app". Local apps launch <c>tt mcp</c> (works whether or not
-/// Todo Tracker is running); HTTP clients use the running app's <c>/mcp</c> endpoint with the token.
+/// Onething is running); HTTP clients use the running app's <c>/mcp</c> endpoint with the token.
 /// </summary>
 public static class AiSetups
 {
@@ -49,7 +49,7 @@ public static class AiSetups
                 $$"""{ "servers": { "todo-tracker": { "type": "stdio", "command": {{command}}, "args": ["mcp"] } } }""", "json"),
             new("plugin", "Skill + tools for Claude Code / Copilot CLI", "Also teaches the agent how you like to work (needs tt on your PATH):",
                 $"/plugin marketplace add {Repository}\n/plugin install todo-tracker@todo-tracker", "command"),
-            new("http", "Other MCP apps (HTTP, while Todo Tracker runs)", "Use this server URL and header:",
+            new("http", "Other MCP apps (HTTP, while Onething runs)", "Use this server URL and header:",
                 $"URL: {connection.McpUrl}\nHeader: Authorization: Bearer {connection.Token}", "text"),
             new("terminal", "Terminal and scripts", "Every command has --json for scripts and agents:",
                 $"{run} now\n{run} add 'Renew passport !! due:7d #admin'\n{run} done passport", "command"),
