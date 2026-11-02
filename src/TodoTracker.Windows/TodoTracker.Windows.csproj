@@ -9,6 +9,8 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>TodoTracker</AssemblyName>
+    <!-- The icon Explorer, the taskbar and every window show; drawn by build/icons.py. -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <RootNamespace>TodoTracker.Windows</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- WPF0001: Fluent ThemeMode is marked experimental but is the supported way to get Windows 11 styling + dark mode. -->

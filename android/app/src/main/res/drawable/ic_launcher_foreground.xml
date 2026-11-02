@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The check, inside the adaptive icon's safe zone (the middle 66 of 108). -->
+<!-- Onething's mark: the task to do now, lit, and two later ones, faint. Drawn by build/icons.py;
+     inside the adaptive icon's safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M38,55 L49,66 L70,42"
-        android:strokeWidth="8"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000" />
+        android:pathData="M32.91,41.20 a7.73,7.73 0 1,0 15.47,0 a7.73,7.73 0 1,0 -15.47,0z M54.70,38.39 h17.72 a2.81,2.81 0 0,1 0,5.62 h-17.72 a2.81,2.81 0 0,1 0,-5.62z"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="1.00" />
+    <path
+        android:pathData="M36.28,57.38 a4.36,4.36 0 1,0 8.72,0 a4.36,4.36 0 1,0 -8.72,0z M50.91,55.55 h17.44 a1.83,1.83 0 0,1 0,3.66 h-17.44 a1.83,1.83 0 0,1 0,-3.66z"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.30" />
+    <path
+        android:pathData="M36.28,70.03 a4.36,4.36 0 1,0 8.72,0 a4.36,4.36 0 1,0 -8.72,0z M50.91,68.20 h13.22 a1.83,1.83 0 0,1 0,3.66 h-13.22 a1.83,1.83 0 0,1 0,-3.66z"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.18" />
 </vector>

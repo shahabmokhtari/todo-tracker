@@ -4,7 +4,7 @@ using Avalonia.Media.Imaging;
 
 namespace TodoTracker.Tray;
 
-/// <summary>The app's mark (a check on the brand gradient), with a red dot when a reminder needs you.</summary>
+/// <summary>The app's mark (one lit task above two faint ones, on the brand gradient), with a red dot when a reminder needs you.</summary>
 internal static class TrayArt
 {
     public static Bitmap Draw(bool attention, int size = 64)
@@ -18,23 +18,23 @@ internal static class TrayArt
                 EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
                 GradientStops =
                 {
-                    new GradientStop(Color.FromRgb(0x63, 0x66, 0xF1), 0),
-                    new GradientStop(Color.FromRgb(0x8B, 0x5C, 0xF6), 0.55),
-                    new GradientStop(Color.FromRgb(0xEC, 0x48, 0x99), 1),
+                    new GradientStop(Color.FromRgb(0x4F, 0x46, 0xE5), 0),
+                    new GradientStop(Color.FromRgb(0x7C, 0x3A, 0xED), 0.5),
+                    new GradientStop(Color.FromRgb(0xDB, 0x27, 0x77), 1),
                 },
             };
             ctx.DrawRectangle(brand, null, new Rect(0, 0, size, size), size * 0.22, size * 0.22);
-            var pen = new Pen(Brushes.White, size * 0.11, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
-            var check = new StreamGeometry();
-            using (var g = check.Open())
+            // One lit task (the thing to do now), then two faint ones: the same shapes as build/icons.py.
+            var white = Brushes.White;
+            ctx.DrawEllipse(white, null, new Point(size * 0.314, size * 0.322), size * 0.107, size * 0.107);
+            ctx.DrawRectangle(white, null, new Rect(size * 0.471, size * 0.283, size * 0.324, size * 0.078), size * 0.039, size * 0.039);
+            foreach (var (y, width, alpha) in new[] { (0.547, 0.293, 0.4), (0.723, 0.234, 0.25) })
             {
-                g.BeginFigure(new Point(size * 0.27, size * 0.52), false);
-                g.LineTo(new Point(size * 0.43, size * 0.68));
-                g.LineTo(new Point(size * 0.73, size * 0.34));
-                g.EndFigure(false);
+                var faint = new SolidColorBrush(Colors.White, alpha);
+                ctx.DrawEllipse(faint, null, new Point(size * 0.314, size * y), size * 0.061, size * 0.061);
+                ctx.DrawRectangle(faint, null, new Rect(size * 0.432, size * (y - 0.026), size * width, size * 0.051), size * 0.026, size * 0.026);
             }
 
-            ctx.DrawGeometry(null, pen, check);
             if (attention)
             {
                 var d = size * 0.42;

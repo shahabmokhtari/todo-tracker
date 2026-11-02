@@ -143,10 +143,35 @@ internal sealed class TrayIcon : IDisposable
             shape.AddArc(size - (r * 2) - 1, size - (r * 2) - 1, r * 2, r * 2, 0, 90);
             shape.AddArc(0, size - (r * 2) - 1, r * 2, r * 2, 90, 90);
             shape.CloseFigure();
-            using var brand = new Drawing.Drawing2D.LinearGradientBrush(new Drawing.Point(0, 0), new Drawing.Point(size, size), Drawing.Color.FromArgb(0x63, 0x66, 0xF1), Drawing.Color.FromArgb(0xEC, 0x48, 0x99));
+            using var brand = new Drawing.Drawing2D.LinearGradientBrush(new Drawing.Point(0, 0), new Drawing.Point(size, size), Drawing.Color.FromArgb(0x4F, 0x46, 0xE5), Drawing.Color.FromArgb(0xDB, 0x27, 0x77))
+            {
+                InterpolationColors = new Drawing.Drawing2D.ColorBlend
+                {
+                    Colors = [Drawing.Color.FromArgb(0x4F, 0x46, 0xE5), Drawing.Color.FromArgb(0x7C, 0x3A, 0xED), Drawing.Color.FromArgb(0xDB, 0x27, 0x77)],
+                    Positions = [0f, 0.5f, 1f],
+                },
+            };
             g.FillPath(brand, shape);
-            using var pen = new Drawing.Pen(Drawing.Color.White, size * 0.11f) { StartCap = Drawing.Drawing2D.LineCap.Round, EndCap = Drawing.Drawing2D.LineCap.Round, LineJoin = Drawing.Drawing2D.LineJoin.Round };
-            g.DrawLines(pen, [new Drawing.PointF(size * 0.27f, size * 0.52f), new Drawing.PointF(size * 0.43f, size * 0.68f), new Drawing.PointF(size * 0.73f, size * 0.34f)]);
+
+            // One lit task (the thing to do now), then two faint ones: the same shapes as build/icons.py.
+            void DrawTask(float y, float dotRadius, float barX, float barWidth, float barHeight, int alpha)
+            {
+                using var fill = new Drawing.SolidBrush(Drawing.Color.FromArgb(alpha, Drawing.Color.White));
+                g.FillEllipse(fill, size * (0.314f - dotRadius), size * (y - dotRadius), size * dotRadius * 2, size * dotRadius * 2);
+                using var bar = new Drawing.Drawing2D.GraphicsPath();
+                var h = size * barHeight;
+                var x = size * barX;
+                var top = (size * y) - (h / 2);
+                var w = size * barWidth;
+                bar.AddArc(x, top, h, h, 90, 180);
+                bar.AddArc(x + w - h, top, h, h, 270, 180);
+                bar.CloseFigure();
+                g.FillPath(fill, bar);
+            }
+
+            DrawTask(0.322f, 0.107f, 0.471f, 0.324f, 0.078f, 255);
+            DrawTask(0.547f, 0.061f, 0.432f, 0.293f, 0.051f, 102);
+            DrawTask(0.723f, 0.061f, 0.432f, 0.234f, 0.051f, 64);
             if (attention)
             {
                 using var dot = new Drawing.SolidBrush(Drawing.Color.FromArgb(0xEF, 0x44, 0x44));

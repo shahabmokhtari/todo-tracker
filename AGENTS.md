@@ -119,6 +119,7 @@ TT_WRITE_DOCS=1 dotnet test tests/TodoTracker.Cli.Tests --filter ReferenceDocsTe
 TT_WRITE_FIXTURES=1 dotnet test tests/TodoTracker.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
 TT_WRITE_FIXTURES=1 dotnet test --project tests/TodoTracker.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, from a made-up demo board (quit the app first on Windows)
+python3 build/icons.py                      # the app icon on every platform (pip install cairosvg pillow); the tray icons draw the same shapes in code
 ```
 
 ## Style
