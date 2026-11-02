@@ -92,7 +92,10 @@ object BoardHub {
                     }
                     ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
                 }
-                if (result.isSuccess) SyncHub.soonInBackground(context)
+                if (result.isSuccess) {
+                    SyncHub.soonInBackground(context)
+                    Widgets.update(context)
+                }
                 main.post { done(result) }
             }
         }
@@ -114,6 +117,7 @@ object BoardHub {
                     if (store.read { Reminders.due(it, now).isNotEmpty() }) store.update { ReminderAlarm.deliver(context, it, now) }
                     ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
                 }
+                Widgets.update(context)
             }
         }
     }
@@ -332,6 +336,7 @@ object RemoteAlarm {
         }
         val board = text?.let { runCatching { BoardCodec.decode(it) }.getOrNull() } ?: return reached
         ReminderAlarm.schedule(context, ReminderAlarm.deliverRemote(context, connection, board, now))
+        Widgets.update(context)
         return reached
     }
 

@@ -23,6 +23,8 @@ struct TodoTrackerApp: App {
             let demo = DemoBoard.model()
             // TT_OPEN=1: today's focus task opens (its details beside the view).
             if ProcessInfo.processInfo.environment["TT_OPEN"] == "1" { demo.openTaskId = demo.dashboard.focus?.item.id }
+            // TT_WIDGETS=1: the widgets show the made-up board too (screenshots of them).
+            if ProcessInfo.processInfo.environment["TT_WIDGETS"] == "1" { demo.widgetShelf = WidgetShelf.shared }
             return demo
         }
         #endif
@@ -79,7 +81,11 @@ struct TodoTrackerApp: App {
             shell
                 // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { model.becameActive() }
+                    if phase == .active {
+                        model.becameActive()
+                        // Done tapped on a widget (it opened the app).
+                        model.applyWidgetRequests()
+                    }
                     if phase == .background { model.wentToBackground() }
                 }
         }
@@ -111,6 +117,8 @@ struct TodoTrackerApp: App {
             // todotracker://task/<id> (Info.plist registers the scheme): the task opens here; a todotracker://pair link
             // from a computer's Settings › Phones connects this phone to it.
             .onOpenURL { model.open(link: $0) }
+            // Done tapped on a widget, with the app running: made at once.
+            .onReceive(NotificationCenter.default.publisher(for: WidgetShelf.doneRequested)) { _ in model.applyWidgetRequests() }
             #if os(macOS)
             // Links go to the open window instead of opening another one.
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])

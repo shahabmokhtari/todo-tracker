@@ -21,12 +21,14 @@ targets:
   TodoTracker-iOS:
     type: application
     platform: iOS
-    sources: [App]
+    sources: [App, Shared]
     dependencies:
       - package: TodoTrackerKit
         product: TodoTrackerKit
       - package: TodoTrackerKit
         product: TodoTrackerUI
+      # The home-screen and Lock Screen widgets (Now, Today).
+      - target: TodoTrackerWidgets-iOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.ios
@@ -52,15 +54,23 @@ targets:
         # Syncing on its own (Settings › Sync): iOS wakes the app now and then to sync in the background.
         BGTaskSchedulerPermittedIdentifiers: [com.todotracker.ios.sync]
         UIBackgroundModes: [fetch]
+        WidgetAppGroup: group.com.todotracker
+    # The App Group it shares with its widgets (what they show, and Done tapped on them: WidgetShelf).
+    entitlements:
+      path: Support/TodoTracker-iOS.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.todotracker]
   TodoTracker-macOS:
     type: application
     platform: macOS
-    sources: [App]
+    sources: [App, Shared]
     dependencies:
       - package: TodoTrackerKit
         product: TodoTrackerKit
       - package: TodoTrackerKit
         product: TodoTrackerUI
+      # The desktop and Notification Center widgets (Now, Today).
+      - target: TodoTrackerWidgets-macOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos
@@ -80,10 +90,72 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.todotracker.task-link
             CFBundleURLSchemes: [todotracker]
+        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.todotracker
+    # On a Mac an App Group starts with the team's id (none when built without one).
     entitlements:
-      path: App/TodoTracker-macOS.entitlements
+      path: Support/TodoTracker-macOS.entitlements
       properties:
         com.apple.security.automation.apple-events: true
+        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.todotracker]
+  # The widgets: they read what the app writes to the App Group and never touch the tasks themselves.
+  TodoTrackerWidgets-iOS:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared]
+    dependencies:
+      - package: TodoTrackerKit
+        product: TodoTrackerKit
+      - package: TodoTrackerKit
+        product: TodoTrackerWidgetUI
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.ios.widgets
+        PRODUCT_NAME: OnethingWidgets
+        INFOPLIST_KEY_CFBundleDisplayName: Onething
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+    info:
+      path: Support/Info-Widgets-iOS.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        WidgetAppGroup: group.com.todotracker
+    entitlements:
+      path: Support/Widgets-iOS.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.todotracker]
+  TodoTrackerWidgets-macOS:
+    type: app-extension
+    platform: macOS
+    sources: [Widgets, Shared]
+    dependencies:
+      - package: TodoTrackerKit
+        product: TodoTrackerKit
+      - package: TodoTrackerKit
+        product: TodoTrackerWidgetUI
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos.widgets
+        PRODUCT_NAME: OnethingWidgets
+        INFOPLIST_KEY_CFBundleDisplayName: Onething
+        SKIP_INSTALL: YES
+        ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: Support/Info-Widgets-macOS.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.todotracker
+    # Widgets on a Mac run in the app sandbox: only the App Group is reachable.
+    entitlements:
+      path: Support/Widgets-macOS.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.todotracker]
 schemes:
   TodoTracker-iOS:
     build:

@@ -276,12 +276,16 @@ jobs:
           xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-iOS
           -destination 'generic/platform=iOS Simulator' -configuration Debug
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: The iOS app carries its widgets
+        run: test -d apple/DerivedData/Build/Products/Debug-iphonesimulator/TodoTracker.app/PlugIns/OnethingWidgets.appex
       - name: Build macOS app
         working-directory: apple
         run: >
           xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-macOS
           -destination 'platform=macOS' -configuration Release
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: The macOS app carries its widgets
+        run: test -d apple/DerivedData/Build/Products/Release/TodoTracker.app/Contents/PlugIns/OnethingWidgets.appex
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
