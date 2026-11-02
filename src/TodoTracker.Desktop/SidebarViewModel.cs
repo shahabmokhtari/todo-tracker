@@ -389,6 +389,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool ShowFocusTimer { get; set; } = true;
 
+    /// <summary>Whether "Send feedback…" is offered (the Send feedback plugin).</summary>
+    [ObservableProperty]
+    public partial bool ShowFeedback { get; set; } = true;
+
     /// <summary>Ask AI in the sidebar (set by the host when the Ask AI plugin is on).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAsk))]
@@ -755,6 +759,10 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     /// <summary>Opens Settings › Phones (let phones connect, pair one with a QR code) in the app window.</summary>
     [RelayCommand]
     private void ConnectPhone() => OpenApp("/#/settings/phones");
+
+    /// <summary>The feedback sheet of the app (one sheet for every desktop app): a bug, an idea, anything.</summary>
+    [RelayCommand]
+    private void SendFeedback() => OpenApp("/?feedback=button");
 
     [RelayCommand]
     private void CopyMcpConfig()

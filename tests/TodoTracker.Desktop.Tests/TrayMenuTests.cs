@@ -41,11 +41,20 @@ public sealed class TrayMenuTests : IDisposable
 
         var items = TrayMenu.Items(_vm, sidebarShown: true);
 
-        Assert.Equal([TrayMenu.Open, TrayMenu.Add, null, TrayMenu.StartFocus, null, TrayMenu.ToggleSidebar, TrayMenu.Settings, null, TrayMenu.Quit], Ids(items));
+        Assert.Equal([TrayMenu.Open, TrayMenu.Add, null, TrayMenu.StartFocus, null, TrayMenu.ToggleSidebar, TrayMenu.Feedback, TrayMenu.Settings, null, TrayMenu.Quit], Ids(items));
+        Assert.Equal("Send feedback…", items.Single(i => i.Id == TrayMenu.Feedback).Label);
         Assert.Equal("Focus on “Write the report”", items.Single(i => i.Id == TrayMenu.StartFocus).Label);
         Assert.Equal("Hide the sidebar", items.Single(i => i.Id == TrayMenu.ToggleSidebar).Label);
         Assert.Equal("Show the sidebar", TrayMenu.Items(_vm, sidebarShown: false).Single(i => i.Id == TrayMenu.ToggleSidebar).Label);
         Assert.Equal("Onething · 1 thing to do now", TrayMenu.Tooltip(_vm));
+    }
+
+    [Fact]
+    public void Send_feedback_leaves_the_menu_when_its_extra_is_off()
+    {
+        _vm.ShowFeedback = false;
+
+        Assert.DoesNotContain(TrayMenu.Feedback, Ids(TrayMenu.Items(_vm, sidebarShown: null)));
     }
 
     [Fact]

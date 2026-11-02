@@ -25,7 +25,8 @@ const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/js
 
 // Everything in the throwaway folder: TODOTRACKER_VAULT (or _DATA) set in your shell would otherwise win over --data and
 // put the demo tasks in your own tasks folder. No cloud sync either.
-const isolated = { ...process.env, TODOTRACKER_DATA: data, TODOTRACKER_VAULT: path.join(data, 'vault'), TODOTRACKER_CLOUD: 'off' };
+// ONETHING_FEEDBACK_SEND=0: a demo never sends feedback anywhere.
+const isolated = { ...process.env, TODOTRACKER_DATA: data, TODOTRACKER_VAULT: path.join(data, 'vault'), TODOTRACKER_CLOUD: 'off', ONETHING_FEEDBACK_SEND: '0' };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 

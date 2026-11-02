@@ -177,6 +177,9 @@ internal sealed class TrayApp : Application
             case TrayMenu.StopTimer:
                 vm.StopTimerCommand.Execute(null);
                 break;
+            case TrayMenu.Feedback:
+                vm.SendFeedbackCommand.Execute(null);
+                break;
             case TrayMenu.Settings:
                 vm.OpenSettingsCommand.Execute(null);
                 break;

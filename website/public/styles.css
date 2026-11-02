@@ -286,3 +286,10 @@ strong { font-weight: 650; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Privacy page */
+.prose { max-width: 46em; }
+.prose h1 { font-size: clamp(2.2rem, 1.6rem + 2.6vw, 3.2rem); }
+.prose h2 { margin-top: 1.6em; font-size: clamp(1.4rem, 1.1rem + 1.2vw, 1.9rem); }
+.prose p, .prose li { color: var(--text-2); }
+.prose ul { display: grid; gap: 8px; padding-left: 1.2em; }

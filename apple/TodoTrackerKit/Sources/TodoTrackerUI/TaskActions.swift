@@ -18,6 +18,8 @@ public final class ShellState: ObservableObject {
     @Published public var deleting: UUID?
     /// Bumped to put the keyboard in the search box (⌘F).
     @Published public var searchRequests = 0
+    /// Send feedback is open (Help › Send Feedback…, or a shake), and how it was opened.
+    @Published public var feedback: FeedbackSource?
 
     public init(model: BoardModel) { self.model = model }
 

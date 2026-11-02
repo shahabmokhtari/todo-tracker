@@ -4,6 +4,8 @@ import path from 'node:path';
 
 const port = Number(process.env.E2E_PORT || 5399);
 const token = 'e2e-token-0123456789abcdefghijklmnop';
+// The stand-in issues relay (feedback.spec.js).
+const relayPort = Number((process.env.E2E_RELAY_PORT ??= '5397'));
 // Set once (workers inherit it): specs read the owner key from here.
 const dataDir = (process.env.TT_E2E_DATA ??= path.join(os.tmpdir(), `tt-e2e-${Date.now()}`));
 const configuration = process.env.E2E_CONFIGURATION || 'Debug';
@@ -28,7 +30,8 @@ export default defineConfig({
     url: `http://127.0.0.1:${port}/health`,
     timeout: 180_000,
     reuseExistingServer: false,
-    env: { TODOTRACKER_TOKEN: token, TODOTRACKER_TEST_AGENT: fakeAgent, TODOTRACKER_AGENT_PATH: noAgents, TODOTRACKER_CLOUD: 'off' },
+    // Feedback goes to a stand-in relay on this computer (feedback.spec.js runs it), never to issues.awesomehq.app.
+    env: { TODOTRACKER_TOKEN: token, TODOTRACKER_TEST_AGENT: fakeAgent, TODOTRACKER_AGENT_PATH: noAgents, TODOTRACKER_CLOUD: 'off', ONETHING_FEEDBACK_URL: `http://127.0.0.1:${relayPort}/v1/issues`, ONETHING_FEEDBACK_SEND: '1' },
     stdout: 'pipe',
   },
 });

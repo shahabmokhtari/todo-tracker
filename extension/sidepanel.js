@@ -190,6 +190,8 @@ $('note').addEventListener('submit', async (e) => {
 });
 
 $('open').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/') })));
+// The feedback sheet of the app (one sheet for every app): a bug, an idea, anything.
+$('feedback').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/?feedback=button') })));
 $('settings').addEventListener('click', async () => {
   const { serverUrl } = await ext.storage.local.get('serverUrl');
   $('server').value = serverUrl || 'http://127.0.0.1:5317';
@@ -197,6 +199,7 @@ $('settings').addEventListener('click', async () => {
 });
 
 $('open').append(icon('external', { size: 17 }));
+$('feedback').append(icon('chat', { size: 17 }));
 $('settings').append(icon('settings', { size: 17 }));
 ext.tabs.onActivated.addListener(showPage);
 ext.tabs.onUpdated.addListener((_, info) => info.title && showPage());

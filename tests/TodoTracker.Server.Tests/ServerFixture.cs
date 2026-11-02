@@ -19,13 +19,14 @@ public sealed class ServerFixture : IAsyncDisposable
     // Tests must never sync into this computer's real OneDrive or iCloud Drive.
     static ServerFixture() => Environment.SetEnvironmentVariable("TODOTRACKER_CLOUD", "off");
 
-    private ServerFixture(WebApplication app, string dataDirectory, FakeTimeProvider time, RecordingNotifier notifier, FakeHttpHandler teams)
+    private ServerFixture(WebApplication app, string dataDirectory, FakeTimeProvider time, RecordingNotifier notifier, FakeHttpHandler teams, FakeRelay relay)
     {
         App = app;
         DataDirectory = dataDirectory;
         Time = time;
         Notifier = notifier;
         Teams = teams;
+        Relay = relay;
     }
 
     public WebApplication App { get; }
@@ -40,6 +41,9 @@ public sealed class ServerFixture : IAsyncDisposable
     public RecordingNotifier Notifier { get; }
 
     public FakeHttpHandler Teams { get; }
+
+    /// <summary>Stands in for issues.awesomehq.app: feedback from a test never leaves the process.</summary>
+    public FakeRelay Relay { get; }
 
     public IBoardStore Store => App.Services.GetRequiredService<IBoardStore>();
 
@@ -65,10 +69,13 @@ public sealed class ServerFixture : IAsyncDisposable
         builder.Services.AddSingleton<TimeProvider>(time);
         builder.Services.AddSingleton<IReminderNotifier>(notifier);
         builder.Services.AddHttpClient(TeamsWebhookNotifier.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => teams);
+        var relay = new FakeRelay();
+        builder.Services.AddHttpClient(Plugins.FeedbackRelay.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => relay);
+        builder.Services.AddSingleton(new Plugins.FeedbackSettings(FakeRelay.Url, Send: true));
         services?.Invoke(builder.Services);
         var app = TodoTrackerHost.Build(builder);
         await app.StartAsync();
-        return new ServerFixture(app, dir, time, notifier, teams);
+        return new ServerFixture(app, dir, time, notifier, teams, relay);
     }
 
     public HttpClient Client(bool authenticated = true, string? actor = null)
@@ -126,6 +133,34 @@ public sealed class FakeHttpHandler : HttpMessageHandler
     {
         Requests.Add((request.RequestUri!, await request.Content!.ReadAsStringAsync(cancellationToken)));
         return new HttpResponseMessage(System.Net.HttpStatusCode.Accepted);
+    }
+}
+
+/// <summary>A pretend issues relay: records each request and answers with the next queued status (202 when none; null: offline).</summary>
+public sealed class FakeRelay : HttpMessageHandler
+{
+    public static readonly Uri Url = new("https://issues.test/v1/issues");
+
+    public sealed record Request(Uri Uri, string? Authorization, bool HasOrigin, string? ContentType, string Body);
+
+    public List<Request> Requests { get; } = [];
+
+    public Queue<int?> Answers { get; } = new();
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Requests.Add(new Request(request.RequestUri!, request.Headers.Authorization?.ToString(), request.Headers.Contains("Origin"),
+            request.Content?.Headers.ContentType?.MediaType, await request.Content!.ReadAsStringAsync(cancellationToken)));
+        var status = Answers.Count > 0 ? Answers.Dequeue() : 202;
+        if (status is not { } code)
+        {
+            throw new HttpRequestException("No connection (a test).");
+        }
+
+        return new HttpResponseMessage((System.Net.HttpStatusCode)code)
+        {
+            Content = new StringContent(code < 300 ? "{\"ref\":\"IS-TEST0001\",\"status\":\"queued\"}" : "{\"error\":\"test\"}", System.Text.Encoding.UTF8, "application/json"),
+        };
     }
 }
 

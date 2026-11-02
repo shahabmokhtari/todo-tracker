@@ -82,6 +82,8 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
     var editingGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
+    // Send feedback is open (from where: "button" or "shake").
+    var feedback by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     // A snooze, a reminder or a focus session is when notifications start to matter (they tell you with the app closed).
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -120,7 +122,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             containerColor = MaterialTheme.colorScheme.background,
         ) { padding ->
             Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
-                Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") })
+                Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = { feedback = "button" })
                 RemoteBanner(vm)
                 GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
                 Capture(vm)
@@ -143,7 +145,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         editingGroup?.let { GroupDialog(UUID.fromString(it), vm, onDismiss = { editingGroup = null }) }
         // A task's details (from a card, a search, a todotracker://task/<id> link or a reminder's notification).
         vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
-        if (settings) SettingsScreen(vm, onClose = { settings = false })
+        if (settings) SettingsScreen(vm, onClose = { settings = false }, onFeedback = { feedback = "button" })
         // A todotracker://pair link (opened, scanned or pasted): asked first.
         PairingDialog(vm)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
@@ -165,6 +167,12 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
             )
         }
         BreakScreen(vm)
+        feedback?.let { source -> FeedbackSheet(source, onClose = { feedback = null }) }
+        // A shake opens Send feedback, only on Today with nothing over it: no other sheet or dialog, no task, no
+        // Settings, never on the full-screen break.
+        val quiet = feedback == null && !settings && noteFor == null && !addingGroup && editingGroup == null && !askExact &&
+            vm.openTaskId == null && vm.pairingLink == null && vm.breakPrompt == null
+        ShakeToFeedback(enabled = vm.shakeToFeedback && quiet) { feedback = "shake" }
     }
 }
 
@@ -213,7 +221,7 @@ private fun Lists(vm: BoardViewModel, onNote: (UUID) -> Unit, onFocus: (UUID?) -
 }
 
 @Composable
-private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> Unit) {
+private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> Unit, onFeedback: () -> Unit) {
     // The view model's clock (it moves every second), so the greeting changes when the day part does.
     val hour = vm.now.atZone(ZoneId.systemDefault()).hour
     val greeting = when {
@@ -239,6 +247,15 @@ private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> U
         }
         TextButton(onClick = onSearch, modifier = Modifier.semantics { contentDescription = "Search" }) { Text("🔍", style = MaterialTheme.typography.titleLarge) }
         TextButton(onClick = onSettings, modifier = Modifier.semantics { contentDescription = "Settings" }) { Text("⚙", style = MaterialTheme.typography.titleLarge) }
+        // More: what isn't used every day.
+        Box {
+            var more by remember { mutableStateOf(false) }
+            TextButton(onClick = { more = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+            DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                DropdownMenuItem(text = { Text("Settings") }, onClick = { more = false; onSettings() })
+                DropdownMenuItem(text = { Text("Send feedback…") }, onClick = { more = false; onFeedback() })
+            }
+        }
     }
 }
 

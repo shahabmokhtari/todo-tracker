@@ -9,6 +9,8 @@ public struct SettingsView: View {
     /// In the window beside the sidebar, or the Mac's Settings window (no Close button, no navigation of its own).
     var embedded = false
     @AppStorage(AppTheme.storageKey) private var theme = AppTheme.system.rawValue
+    @AppStorage(FeedbackShake.storageKey) private var shakeForFeedback = true
+    @State private var sendingFeedback = false
     @Environment(\.dismiss) private var dismiss
 
     public init(model: BoardModel, embedded: Bool = false) {
@@ -79,7 +81,24 @@ public struct SettingsView: View {
             } footer: {
                 Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
             }
+
+            Section {
+                Button("Send feedback…") { sendingFeedback = true }
+                    .accessibilityIdentifier("settings-feedback")
+                #if os(iOS)
+                Toggle("Shake to send feedback", isOn: $shakeForFeedback)
+                #endif
+            } header: {
+                Text("Feedback")
+            } footer: {
+                #if os(iOS)
+                Text("Tell us what’s broken or what you’d like. Shake your iPhone or iPad to send a note from anywhere in the app.")
+                #else
+                Text("Tell us what’s broken or what you’d like (also in Help › Send Feedback…).")
+                #endif
+            }
         }
+        .sheet(isPresented: $sendingFeedback) { FeedbackSheet() }
         .navigationTitle("Settings")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

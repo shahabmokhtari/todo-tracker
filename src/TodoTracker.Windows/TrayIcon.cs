@@ -119,6 +119,9 @@ internal sealed class TrayIcon : IDisposable
                 }
 
                 break;
+            case TrayMenu.Feedback:
+                _vm.SendFeedbackCommand.Execute(null);
+                break;
             case TrayMenu.Settings:
                 _vm.OpenSettingsCommand.Execute(null);
                 break;
