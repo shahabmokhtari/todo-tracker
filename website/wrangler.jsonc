@@ -1,14 +1,19 @@
-// Onething website: a static site served by Cloudflare Workers static assets.
+// Onething website: a static site served by Cloudflare Workers static assets. src/worker.js runs first only to send
+// the old address (todotracker.awesomehq.app) to the new one.
 // No account id or credentials here: wrangler reads them from your environment (see README.md).
 {
   "name": "todotracker-site",
   "compatibility_date": "2026-10-01",
+  "main": "./src/worker.js",
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true,
     "not_found_handling": "404-page",
     "html_handling": "auto-trailing-slash"
   },
   "routes": [
+    { "pattern": "onething.awesomehq.app", "custom_domain": true },
     { "pattern": "todotracker.awesomehq.app", "custom_domain": true }
   ],
   "workers_dev": false,

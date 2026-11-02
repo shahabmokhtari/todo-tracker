@@ -1,6 +1,6 @@
 # Onething website
 
-The public site at <https://todotracker.awesomehq.app>. Plain HTML and CSS with a little JavaScript, no build step.
+The public site at <https://onething.awesomehq.app>. Plain HTML and CSS with a little JavaScript, no build step.
 It's served by Cloudflare Workers static assets (the Worker is named `todotracker-site`).
 
 | Path | What |
@@ -34,8 +34,8 @@ export CLOUDFLARE_ACCOUNT_ID=...         # only if the token can see more than o
 npx wrangler deploy
 ```
 
-The first deploy attaches `todotracker.awesomehq.app` as a custom domain (Cloudflare creates the DNS record and the
-certificate). `npx wrangler deploy --dry-run` checks the config without uploading.
+Deploying attaches `onething.awesomehq.app` and the old `todotracker.awesomehq.app` as custom domains (Cloudflare creates
+the DNS records and certificates); `src/worker.js` sends the old address to the same page at the new one. `npx wrangler deploy --dry-run` checks the config without uploading.
 
 ## Updating screenshots
 
