@@ -45,9 +45,14 @@ extension BoardModel {
         guard !pending.isEmpty else { return }
         // Opening the tasks folder, or the computer isn't answering yet: they wait (the widget keeps them out).
         if isConnecting || (isRemote && remote?.canChange != true) { return }
+        // One change per task: two taps (or Now and Today both tapped) are one Done, and while a Done for a task is
+        // still on its way the board here doesn't show it yet, so a repeating task would move on twice.
+        var handled = widgetDoneSending
         for request in pending {
             // Removed before the change is made, so it's never made twice.
             shelf.remove(request)
+            guard !handled.contains(request.task) else { continue }
+            handled.insert(request.task)
             guard request.outcome(on: board) == .complete, let item = board.find(request.task) else { continue }
             if item.hasOpenChildren {
                 openTaskId = item.id
@@ -56,7 +61,9 @@ extension BoardModel {
             }
             let id = item.id
             if server != nil {
-                send(.complete(id), "Done 🎉", onFail: { [weak self] in self?.openTaskId = id })
+                widgetDoneSending.insert(id)
+                send(.complete(id), "Done 🎉", onFail: { [weak self] in self?.openTaskId = id },
+                     onSettled: { [weak self] in self?.widgetDoneSending.remove(id) })
             } else if !mutate("Done 🎉", { try board.complete(id, now: $0) }) {
                 openTaskId = id
             }

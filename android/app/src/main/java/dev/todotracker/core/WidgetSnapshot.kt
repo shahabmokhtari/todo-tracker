@@ -179,6 +179,17 @@ data class WidgetSnapshot(val at: Instant, val items: List<WidgetItem>, val fram
             return Agenda.build(board, now, recentNoteCount = 0).now.any { it.item.id == id }
         }
 
+        /**
+         * The board as last read from the computer, with [id] marked done the way the computer just did it: the widget
+         * and its next tap go by this until the board is read again, so a repeating task isn't done twice (null when the
+         * text isn't a board).
+         */
+        fun markedDone(cached: String, id: UUID, now: Instant): String? = runCatching {
+            val board = BoardCodec.decode(cached)
+            if (canMarkDone(board, id, now)) board.complete(id, Actor.USER, now)
+            BoardCodec.encode(board)
+        }.getOrNull()
+
         /** The start of the day after the one [at] is in. */
         fun nextMidnight(at: Instant, zone: ZoneId): Instant = at.atZone(zone).toLocalDate().plusDays(1).atStartOfDay(zone).toInstant()
 

@@ -87,6 +87,8 @@ public final class BoardModel: ObservableObject {
     }
     var widgetKey = ""
     var widgetWrittenAt = Date.distantPast
+    /// Tasks a widget's Done was sent for (to the Mac's server or the computer) and the board hasn't been read back since.
+    var widgetDoneSending = Set<UUID>()
     var widgetSnapshot: WidgetSnapshot?
     private var widgetCheckedAt = Date.distantPast
     private var etag: String?

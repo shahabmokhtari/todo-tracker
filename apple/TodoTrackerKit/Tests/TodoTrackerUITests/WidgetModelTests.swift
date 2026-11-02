@@ -97,4 +97,31 @@ final class WidgetModelTests: XCTestCase {
         try await waitUntil { FakeServer.requests.contains("POST /api/items/\(task.id.uuidString.lowercased())/complete") }
         XCTAssertEqual(shelf.pendingDone(), [])
     }
+
+    func testOnTheServerTwoTapsOnARepeatingTaskAreOneDone() async throws {
+        let remote = TaskBoard()
+        let task = try remote.addTask(NewTask("Water the plants"), now: Date())
+        FakeServer.board = try BoardCodec.encode(remote)
+        FakeServer.requests = []
+        let shelf = WidgetShelf(directory: folder)
+        let model = BoardModel(store: nil)
+        model.widgetShelf = shelf
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FakeServer.self]
+        model.use(server: ServerClient(baseURL: URL(string: "http://127.0.0.1:5317")!, token: "test", session: URLSession(configuration: configuration)))
+        try await waitUntil { model.board.find(task.id) != nil }
+
+        // Now and Today both tapped, then once more before the server's answer is back: the board here still shows it.
+        try shelf.requestDone(task.id)
+        try shelf.requestDone(task.id)
+        model.applyWidgetRequests()
+        try shelf.requestDone(task.id)
+        model.applyWidgetRequests()
+
+        try await waitUntil { FakeServer.requests.contains("POST /api/items/\(task.id.uuidString.lowercased())/complete") }
+        try await Task.sleep(for: .milliseconds(500))
+        let completes = FakeServer.requests.filter { $0 == "POST /api/items/\(task.id.uuidString.lowercased())/complete" }
+        XCTAssertEqual(completes.count, 1)
+        XCTAssertEqual(shelf.pendingDone(), [])
+    }
 }

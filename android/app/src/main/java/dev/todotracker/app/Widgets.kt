@@ -141,6 +141,10 @@ object Widgets {
                     board.find(id)?.takeIf { it.hasOpenChildren }?.let { "“${it.title}” has open subtasks: finish them here." }
                 } else {
                     val error = suspendCancellableCoroutine { done -> RemoteAlarm.perform(app, pairing, RemoteAction.Complete(id)) { done.resume(it) } }
+                    // Done there: the board as last read moves on too, so a second tap before it's read again does nothing.
+                    if (error == null) connection.cached()?.let { cached ->
+                        WidgetSnapshot.markedDone(cached.text, id, Instant.now())?.let { connection.cache(it, null, cached.at) }
+                    }
                     // Read again (the app does it itself when it's open), so the widget shows what the computer has now.
                     if (error == null && BoardHub.live == null) withContext(Dispatchers.IO) { RemoteAlarm.readAndDeliver(app, connection) }
                     error
