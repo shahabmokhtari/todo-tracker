@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://todotracker.awesomehq.app/sitemap.xml
+Sitemap: https://onething.awesomehq.app/sitemap.xml
