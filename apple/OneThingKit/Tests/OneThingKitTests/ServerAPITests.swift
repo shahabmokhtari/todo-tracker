@@ -129,4 +129,51 @@ final class ServerAPITests: XCTestCase {
         XCTAssertEqual(request(.plan(item, start: at, minutes: nil)).body, #"{"start":"2026-10-29T08:00:00.000Z"}"#)
         XCTAssertEqual(request(.unplan(item)), ServerRequest(method: "POST", path: "\(itemPath)/plan", body: "{}"))
     }
+
+    /// The server takes the token alone as an API client: deleting, settings, sync and extras are the owner's, so the
+    /// Mac app sends the owner key with every request (not only for browser links).
+    func testEveryRequestCarriesTheOwnerKey() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HeaderRecorder.self]
+        let session = URLSession(configuration: configuration)
+        let base = URL(string: "http://127.0.0.1:5317")!
+        HeaderRecorder.ownerKeys = []
+
+        let owner = ServerClient(baseURL: base, token: "test", ownerKey: "owner-key-0123456789", session: session)
+        _ = try await owner.perform(.delete(item))
+        _ = try await owner.perform(.setTheme("dark"))
+        _ = try await owner.theme()
+        _ = try await owner.launchURL()
+        XCTAssertEqual(HeaderRecorder.ownerKeys, Array(repeating: "owner-key-0123456789", count: 4))
+
+        HeaderRecorder.ownerKeys = []
+        _ = try await ServerClient(baseURL: base, token: "test", session: session).theme()
+        XCTAssertEqual(HeaderRecorder.ownerKeys, [nil], "no key known: none sent")
+    }
+}
+
+/// Records the owner key header of every request and answers 200 (a sign-in link for /api/launch, else `{}`).
+private final class HeaderRecorder: URLProtocol {
+    private static let lock = NSLock()
+    private static var stored: [String?] = []
+
+    static var ownerKeys: [String?] {
+        get { lock.withLock { stored } }
+        set { lock.withLock { stored = newValue } }
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let url = request.url!
+        let key = request.value(forHTTPHeaderField: ServerClient.ownerKeyHeader)
+        Self.lock.withLock { Self.stored.append(key) }
+        let body = url.path == "/api/launch" ? Data(#"{"url":"http://127.0.0.1:5317/launch?code=abc"}"#.utf8) : Data("{}".utf8)
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

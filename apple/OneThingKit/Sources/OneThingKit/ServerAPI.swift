@@ -205,10 +205,14 @@ public enum ServerError: Error, LocalizedError, Equatable {
 public final class ServerClient: @unchecked Sendable {
     public let baseURL: URL
     private let token: String
-    /// The owner key from the server's data folder: browser links it asks for open the owner's session (the person at
-    /// this computer, who can approve hooks); without it they're ordinary sessions.
+    /// The owner key from the server's data folder, sent with every request: the server then knows it's the person at
+    /// this computer (who can delete, change settings, sync and extras; and whose browser links open the owner's
+    /// session). Without it the token alone is just an API client.
     private let ownerKey: String?
     private let session: URLSession
+
+    /// The header the owner key goes in (C#'s `OwnerKey.Header`).
+    public static let ownerKeyHeader = "X-OneThing-Owner-Key"
 
     public init(baseURL: URL, token: String, ownerKey: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL
@@ -249,6 +253,7 @@ public final class ServerClient: @unchecked Sendable {
         // Always asked fresh (an ETag is sent on purpose, and a 304 must come back as one).
         http.cachePolicy = .reloadIgnoringLocalCacheData
         http.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let ownerKey { http.setValue(ownerKey, forHTTPHeaderField: Self.ownerKeyHeader) }
         for (name, value) in headers { http.setValue(value, forHTTPHeaderField: name) }
         if let body = request.body {
             http.httpBody = Data(body.utf8)
@@ -272,7 +277,7 @@ public final class ServerClient: @unchecked Sendable {
     }
 
     public func launchURL(returnPath: String = "/") async throws -> URL {
-        let (data, status, _) = try await exchange(ServerAPI.launch(returnPath: returnPath), headers: ownerKey.map { ["X-OneThing-Owner-Key": $0] } ?? [:])
+        let (data, status, _) = try await exchange(ServerAPI.launch(returnPath: returnPath))
         guard (200..<300).contains(status) else { throw ServerError.refused(status: status, message: Self.message(data, status: status)) }
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let text = object?["url"] as? String, let url = URL(string: text) else { throw ServerError.refused(status: 200, message: "No sign-in link came back.") }
