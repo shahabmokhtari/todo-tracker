@@ -35,7 +35,7 @@ class TimeTrackingTest {
 
         assertEquals(Duration.ofMinutes(10), a.timeSpent(at(30)))
         assertEquals(b.id, board.runningTimer(at(30))?.item?.id)
-        board.stopTimer(at(30))
+        board.stopTimer(Actor.USER, at(30))
         assertNull(board.runningTimer())
         assertEquals(Duration.ofMinutes(20), b.timeSpent(at(60)))
     }
@@ -62,9 +62,9 @@ class TimeTrackingTest {
         val item = board.addTask(NewTask("Write report"), now = t0)
         board.startFocus(item.id, now = t0)
 
-        board.pauseFocus(at(10))
-        board.resumeFocus(at(20))
-        board.resetFocus(at(30))
+        board.pauseFocus(Actor.USER, at(10))
+        board.resumeFocus(Actor.USER, at(20))
+        board.resetFocus(Actor.USER, at(30))
 
         assertEquals(listOf(Duration.ofMinutes(10), Duration.ofMinutes(10)), item.timeEntries.map { it.duration(at(60)) })
         assertNull(board.runningTimer())
@@ -76,7 +76,7 @@ class TimeTrackingTest {
         val item = board.addTask(NewTask("Write report"), now = t0)
         val other = board.addTask(NewTask("Inbox zero"), now = t0)
         board.startFocus(item.id, now = t0)
-        board.skipFocus(at(5))
+        board.skipFocus(Actor.USER, at(5))
         assertNull(board.runningTimer())
 
         board.startTimer(other.id, now = at(6))
@@ -110,7 +110,7 @@ class TimeTrackingTest {
         board.startNextFocus(null, now = at(32))
         assertNull(board.pomodoro.breakEndedAt)
         board.tickPomodoro(at(32 + 26))
-        board.skipFocus(at(32 + 27))
+        board.skipFocus(Actor.USER, at(32 + 27))
         assertNull(board.pomodoro.breakEndedAt)
     }
 
@@ -183,7 +183,7 @@ class TimeTrackingTest {
         val board = TaskBoard()
         val item = board.addTask(NewTask("A"), now = t0)
         board.startFocus(item.id, now = t0)
-        board.pauseFocus(at(10))
+        board.pauseFocus(Actor.USER, at(10))
         board.startTimer(item.id, now = at(11))
 
         val again = BoardCodec.decode(BoardCodec.encode(board))
@@ -247,10 +247,10 @@ class TimeTrackingTest {
         board.startFocus(null, now = t0)
         assertEquals(listOf(PhaseEnd(at(25), true), PhaseEnd(at(30), false)), Breaks.phaseEnds(board.pomodoro))
 
-        board.pauseFocus(at(10))
+        board.pauseFocus(Actor.USER, at(10))
         assertEquals(emptyList<PhaseEnd>(), Breaks.phaseEnds(board.pomodoro))
 
-        board.resumeFocus(at(12))
+        board.resumeFocus(Actor.USER, at(12))
         board.tickPomodoro(at(28))
         assertEquals(listOf(PhaseEnd(at(32), false)), Breaks.phaseEnds(board.pomodoro))
 

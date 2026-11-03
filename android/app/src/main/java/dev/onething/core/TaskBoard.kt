@@ -51,10 +51,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         log(now, id, "updated", "Updated \"${item.title}\"", actor)
     }
 
-    /** How much energy there is in a day (null: back to the default). */
-    fun setEnergyPerDay(perDay: Int?) {
+    /** How much energy there is in a day (null: back to the default). The timeline says who set it. */
+    fun setEnergyPerDay(perDay: Int?, actor: Actor, now: Instant) {
         if (perDay != null && perDay !in 1..Energy.MAX_PER_DAY) throw BoardException("A day's energy is 1 to ${Energy.MAX_PER_DAY} ⚡.")
         energyPerDay = perDay
+        log(now, UUID(0, 0), "updated", if (perDay != null) "Set a day's energy to $perDay ⚡" else "Set a day's energy back to the default", actor)
     }
 
     /** The focus timer (Pomodoro): its phase, when it ends, and the task it times. */
@@ -262,9 +263,15 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
     /**
      * Records the order of the tasks someone sees in Do now (TaskBoard.ArrangeNow in C#, same rules): only the places
-     * those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks.
+     * those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks. The
+     * timeline says who arranged it.
      */
-    fun arrangeNow(ids: List<UUID>, now: Instant) {
+    fun arrangeNow(ids: List<UUID>, actor: Actor, now: Instant) {
+        arrangeNowCore(ids, now)
+        log(now, ids.firstOrNull() ?: UUID(0, 0), "moved", if (ids.isNotEmpty()) "Arranged Do now (\"${get(ids[0]).title}\" first)" else "Arranged Do now", actor)
+    }
+
+    private fun arrangeNowCore(ids: List<UUID>, now: Instant) {
         if (ids.toSet().size != ids.size) throw BoardException("Each task can appear only once.")
         ids.forEach { get(it) }
         val arranged = ids.toSet()
@@ -446,20 +453,28 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     /** Ends every timer (any device) that has run longer than [FORGOTTEN_AFTER], at that length. Returns how many ended. */
     fun closeForgottenTimers(now: Instant): Int {
         var closed = 0
-        for (entry in allItems.flatMap { it.timeEntries }) {
-            if (entry.isRunning && Duration.between(entry.start, now) > FORGOTTEN_AFTER) {
+        for (item in allItems) {
+            for (entry in item.timeEntries.filter { it.isRunning && Duration.between(it.start, now) > FORGOTTEN_AFTER }) {
                 entry.end = entry.start.plus(FORGOTTEN_AFTER)
+                log(now, item.id, "timeLogged", "Stopped a timer left running on \"${item.title}\" (counted ${minutesText(FORGOTTEN_AFTER)})", Actor.SYSTEM)
                 closed++
             }
         }
         return closed
     }
 
-    /** Stops the timer (every running one); the newest is returned. */
-    fun stopTimer(now: Instant): RunningTimer? {
+    /** Stops the timer (every running one); the newest is returned. The timeline says who stopped it. */
+    fun stopTimer(actor: Actor, now: Instant): RunningTimer? {
         val newest = runningTimer()
         stopTimers(allItems, now)
+        if (newest != null) log(now, newest.item.id, "timeLogged", "Stopped the timer on \"${newest.item.title}\" (${minutesText(newest.entry.duration(now))})", actor)
         return newest
+    }
+
+    /** "25 min", or "2 h 05 min" (as C#'s TaskBoard.Minutes, for the timeline). */
+    private fun minutesText(span: Duration): String {
+        val minutes = span.toNanos() / 60e9
+        return if (minutes < 60) "${Math.rint(minutes).toLong()} min" else "${Math.floor(minutes / 60).toLong()} h ${String.format(java.util.Locale.ROOT, "%02d", span.toMinutes() % 60)} min"
     }
 
     /** Ends the running timers among [items]: each at the start of a newer one, the newest now. */
@@ -499,29 +514,45 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         }
     }
 
-    fun pauseFocus(now: Instant) {
-        if (pomodoro.phase == PomodoroPhase.FOCUS) stopFocusTimer(now)
+    /** Pauses the focus session (its task's focus time stops). The timeline says who paused it. */
+    fun pauseFocus(actor: Actor, now: Instant) {
+        if (pomodoro.phase == PomodoroPhase.FOCUS) {
+            stopFocusTimer(now)
+            logFocus(now, "Paused focus on", actor)
+        }
         pomodoro.pause(now)
     }
 
-    fun resumeFocus(now: Instant) {
+    /** Goes on with a paused session (timing its task again). */
+    fun resumeFocus(actor: Actor, now: Instant) {
         val resuming = pomodoro.phase == PomodoroPhase.FOCUS && !pomodoro.isRunning
         pomodoro.resume(now)
+        if (resuming) logFocus(now, "Resumed focus on", actor)
         // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
         val item = pomodoro.itemId?.let { index[it] }
         if (resuming && item != null && !item.isDone && runningTimer(now) == null) startTimerCore(item, TimeSource.FOCUS, now)
     }
 
     /** A session that has already run out ends on time first, so Skip skips the break that followed it. */
-    fun skipFocus(now: Instant) {
+    fun skipFocus(actor: Actor, now: Instant) {
         tickPomodoro(now)
-        if (pomodoro.phase == PomodoroPhase.FOCUS) stopFocusTimer(now)
+        if (pomodoro.phase == PomodoroPhase.FOCUS) {
+            stopFocusTimer(now)
+            logFocus(now, "Ended focus early on", actor)
+        }
         pomodoro.skip(now)
     }
 
-    fun resetFocus(now: Instant) {
+    /** Stops focus altogether (a running session's time is kept). */
+    fun resetFocus(actor: Actor, now: Instant) {
         stopFocusTimer(now)
+        if (pomodoro.phase == PomodoroPhase.FOCUS) logFocus(now, "Stopped focus on", actor)
         pomodoro.reset()
+    }
+
+    private fun logFocus(now: Instant, what: String, actor: Actor) {
+        val item = pomodoro.itemId?.let { index[it] } ?: return
+        log(now, item.id, "timeLogged", "$what \"${item.title}\"", actor)
     }
 
     fun tickPomodoro(now: Instant): List<PomodoroEvent> {

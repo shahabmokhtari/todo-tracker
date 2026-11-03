@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import dev.onething.core.Actor
 import dev.onething.core.Agenda
 import dev.onething.core.BoardException
 import dev.onething.core.Dashboard
@@ -375,7 +376,7 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         change(if (level == null) "Energy: not said" else "Energy: ${"⚡".repeat(level)} an hour") { b, now -> b.setEnergy(id, level, now = now) }
 
     /** How much energy there is in a day (every app uses it). */
-    fun setDailyEnergy(perDay: Int?) = change("Energy in a day: ${perDay ?: Energy.DEFAULT_PER_DAY}") { b, _ -> b.setEnergyPerDay(perDay) }
+    fun setDailyEnergy(perDay: Int?) = change("Energy in a day: ${perDay ?: Energy.DEFAULT_PER_DAY}") { b, now -> b.setEnergyPerDay(perDay, Actor.USER, now) }
 
     /** Not done after all (from Done today): back in Do now. */
     fun reopen(id: UUID) { change(null) { b, now -> b.reopen(id, now = now) } }
@@ -439,13 +440,13 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         return change("Focus started") { b, now -> b.startFocus(on, now = now) }
     }
 
-    fun pauseFocus() = change(null) { b, now -> b.pauseFocus(now) }
+    fun pauseFocus() = change(null) { b, now -> b.pauseFocus(Actor.USER, now) }
 
-    fun resumeFocus() = change(null) { b, now -> b.resumeFocus(now) }
+    fun resumeFocus() = change(null) { b, now -> b.resumeFocus(Actor.USER, now) }
 
-    fun skipFocus() = change(null) { b, now -> b.skipFocus(now) }
+    fun skipFocus() = change(null) { b, now -> b.skipFocus(Actor.USER, now) }
 
-    fun resetFocus() = change(null) { b, now -> b.resetFocus(now) }
+    fun resetFocus() = change(null) { b, now -> b.resetFocus(Actor.USER, now) }
 
     /** "I'm taking it" (the break goes on), or "Not now" when the break is over. */
     fun takeBreak() {
@@ -470,13 +471,13 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** Times the task (any other timer stops), or stops it when it's the one timing. */
     fun toggleTimer(id: UUID) {
         if (board.runningTimer(Instant.now())?.item?.id == id) {
-            change("Timer stopped") { b, now -> b.stopTimer(now) }
+            change("Timer stopped") { b, now -> b.stopTimer(Actor.USER, now) }
         } else {
             change("Timing “${titleOf(id).orEmpty()}”") { b, now -> b.startTimer(id, now = now) }
         }
     }
 
-    fun stopTimer() = change("Timer stopped") { b, now -> b.stopTimer(now) }
+    fun stopTimer() = change("Timer stopped") { b, now -> b.stopTimer(Actor.USER, now) }
 
     fun select(group: UUID?) {
         selectedGroup = group
@@ -692,7 +693,7 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         if (i < 0 || i + 1 >= ids.size) return
         java.util.Collections.swap(ids, i, i + 1)
         val order = ids.toList()
-        change(null) { b, now -> b.arrangeNow(order, now = now) }
+        change(null) { b, now -> b.arrangeNow(order, Actor.USER, now) }
     }
 
     fun addNote(id: UUID, text: String): Boolean {

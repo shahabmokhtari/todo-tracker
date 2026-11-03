@@ -31,14 +31,14 @@ class TaskBoardTest {
         val c = board.addTask(NewTask("C"), now = t0)
         assertEquals(listOf(a.id, b.id, c.id), Agenda.build(board, t0).now.map { it.item.id })
 
-        board.arrangeNow(listOf(b.id, a.id, c.id), now = t0)
+        board.arrangeNow(listOf(b.id, a.id, c.id), Actor.USER, t0)
         assertEquals(listOf(b.id, a.id, c.id), Agenda.build(board, t0).now.map { it.item.id })
         assertEquals(t0, board.nowArrangedAt)
 
         // Only the arranged tasks' places are reused (another tab's order stays).
-        board.arrangeNow(listOf(c.id, b.id), now = t0)
+        board.arrangeNow(listOf(c.id, b.id), Actor.USER, t0)
         assertEquals(listOf(c.id, a.id, b.id), board.nowOrder)
-        assertThrows(BoardException::class.java) { board.arrangeNow(listOf(a.id, a.id), now = t0) }
+        assertThrows(BoardException::class.java) { board.arrangeNow(listOf(a.id, a.id), Actor.USER, t0) }
     }
 
     @Test
