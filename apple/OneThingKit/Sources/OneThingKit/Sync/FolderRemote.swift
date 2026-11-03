@@ -117,9 +117,24 @@ public final class FolderRemote: SyncRemote {
 
     private var devicesDir: URL { root.appendingPathComponent("devices") }
 
+    /// The folder's files are reached on this queue: `NSFileCoordinator` blocks while the file provider downloads or
+    /// writes, and that must never hold up the few threads Swift's tasks share.
+    private static let queue = DispatchQueue(label: "com.onething.sync.folder")
+
+    /// Runs `body` with the folder reachable, on `queue`; the task waits without holding a thread.
+    private func inFolder<T>(_ body: @escaping () throws -> T) async throws -> T {
+        let access = self.access
+        return try await withCheckedThrowingContinuation { continuation in
+            Self.queue.async {
+                continuation.resume(with: Result { try access.withAccess(body) })
+            }
+        }
+    }
+
     public func forget(_ device: String) async throws {
         guard device.utf16.count > 1, device.utf16.count <= 64, Ordinal.isAsciiLetterOrDigit(device) else { throw SyncDataError("Not a device id.") }
-        try access.withAccess { try access.remove(devicesDir.appendingPathComponent(device + ".json")) }
+        let file = devicesDir.appendingPathComponent(device + ".json")
+        try await inFolder { [self] in try access.remove(file) }
     }
 
     /// The other devices there, without reading or downloading anything else.
@@ -133,7 +148,7 @@ public final class FolderRemote: SyncRemote {
     }
 
     public func read(self device: String, knownVersion: String?) async throws -> RemoteSnapshot? {
-        try access.withAccess {
+        try await inFolder { [self] in
             try FileManager.default.createDirectory(at: devicesDir, withIntermediateDirectories: true)
             let names = try access.list(devicesDir)
             let selfMissing = !names.contains { Ordinal.equalIgnoreCase($0, device + ".json") }
@@ -171,7 +186,7 @@ public final class FolderRemote: SyncRemote {
     }
 
     public func readContent(_ device: DeviceSnapshot, _ entry: SyncEntry) async throws -> Data {
-        try access.withAccess {
+        try await inFolder { [self] in
             let path = try blobPath(entry.hash)
             if !access.exists(path) {
                 _ = access.requestDownload(path)
@@ -183,20 +198,33 @@ public final class FolderRemote: SyncRemote {
     }
 
     public func publish(_ snapshot: DeviceSnapshot, read: (SyncEntry) throws -> Data, readVersion: String?) async throws -> String? {
-        try access.withAccess {
-            let now = clock()
+        let now = clock()
+        let missing: [SyncEntry] = try await inFolder { [self] in
+            var missing: [SyncEntry] = []
+            var hashes = Set<String>()
             for entry in snapshot.entries {
                 let path = try blobPath(entry.hash)
                 if !access.exists(path) || !intact(path, entry.hash) {
-                    // Missing, or there but not what its name says (cut short, damaged): written (again).
-                    try access.write(try read(entry), to: path)
-                    checked[entry.hash] = (access.modified(path), access.size(path))
+                    // Missing, or there but not what its name says (cut short, damaged): written (again), below.
+                    if hashes.insert(entry.hash).inserted { missing.append(entry) }
                 } else if let modified = access.modified(path), modified < now.addingTimeInterval(-86_400) {
                     // Still in use: never "old" to a device cleaning up while it sees an older list of ours.
                     try? access.setModified(path, now)
                     checked[entry.hash] = (access.modified(path), access.size(path))
                 }
             }
+            return missing
+        }
+        for entry in missing {
+            // Read from this device's tasks here; written to the folder on its queue.
+            let data = try read(entry)
+            try await inFolder { [self] in
+                let path = try blobPath(entry.hash)
+                try access.write(data, to: path)
+                checked[entry.hash] = (access.modified(path), access.size(path))
+            }
+        }
+        return try await inFolder { [self] in
             try access.write(snapshot.encoded(), to: devicesDir.appendingPathComponent(snapshot.device + ".json"))
             if now.timeIntervalSince(lastCollect) > 6 * 3600 {
                 lastCollect = now
