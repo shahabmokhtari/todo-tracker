@@ -4,7 +4,7 @@
 
 import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
-import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
+import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus, DRAG_TYPE } from './common.js';
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
 const EXPANDED_KEY = 'onething.outline.expanded';
@@ -107,7 +107,8 @@ export function createOutlineView(ctx) {
   }
 
   function newRowEditor(depth, at) {
-    const input = h('input', { class: 'otitle new', placeholder: 'New task', maxlength: 300, 'aria-label': 'New task' });
+    // What's typed is kept with `at`: a redraw (or an add that didn't go through) doesn't lose it.
+    const input = h('input', { class: 'otitle new', placeholder: 'New task', maxlength: 300, 'aria-label': 'New task', value: at.draft ?? '', oninput: () => { at.draft = input.value; } });
     const finish = async (keepGoing) => {
       const title = input.value.trim();
       if (!title) {
@@ -118,9 +119,15 @@ export function createOutlineView(ctx) {
 
       input.disabled = true;
       const created = await create(title, at);
-      adding = created && keepGoing ? { afterId: created.id } : null;
+      if (!created) {
+        // Not added (the reason was shown): the text stays in the box to try again.
+        input.disabled = false;
+        if (keepGoing) input.focus();
+        return;
+      }
+      adding = keepGoing ? { afterId: created.id } : null;
       await ctx.refreshAll();
-      if (!keepGoing && created) focusRow(created.id);
+      if (!keepGoing) focusRow(created.id);
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); finish(true); }
@@ -163,7 +170,7 @@ export function createOutlineView(ctx) {
         dragging = node.id;
         el.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', node.id);
+        e.dataTransfer.setData(DRAG_TYPE, node.id);
       },
       ondragend: () => { dragging = null; el.classList.remove('dragging'); clearMarks(); },
       ondragover: (e) => {
