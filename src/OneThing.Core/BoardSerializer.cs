@@ -22,6 +22,12 @@ public static class BoardSerializer
     /// <summary>Everything stored for one task and its subtasks (used to tell which tasks a change touched).</summary>
     internal static string SerializeItem(WorkItem item) => JsonSerializer.Serialize(ToDocument(item), Options);
 
+    /// <summary>The board without its activity log (which only grows, and can be long): to compare or put back cheaply.</summary>
+    internal static string SerializeWithoutActivity(TaskBoard board)
+    {
+        return JsonSerializer.Serialize(ToDocument(board, activity: false), Options);
+    }
+
     public static TaskBoard Deserialize(string json)
     {
         BoardDocument doc;
@@ -55,7 +61,7 @@ public static class BoardSerializer
         return options;
     }
 
-    private static BoardDocument ToDocument(TaskBoard board) => new()
+    private static BoardDocument ToDocument(TaskBoard board, bool activity = true) => new()
     {
         SchemaVersion = TaskBoard.CurrentSchemaVersion,
         Groups = board.Groups.Select(g => new GroupDocument { Id = g.Id, Name = g.Name, Color = g.Color }).ToList(),
@@ -64,7 +70,7 @@ public static class BoardSerializer
         NowOrder = board.NowOrder.Count == 0 ? null : board.NowOrder.ToList(),
         NowArrangedAt = board.NowArrangedAt,
         EnergyPerDay = board.EnergyPerDay,
-        Activity = board.Activity.Select(a => new ActivityDocument { At = a.At, ItemId = a.ItemId, Kind = a.Kind, Summary = a.Summary, Actor = ToDocument(a.Actor) }).ToList(),
+        Activity = !activity ? null : board.Activity.Select(a => new ActivityDocument { At = a.At, ItemId = a.ItemId, Kind = a.Kind, Summary = a.Summary, Actor = ToDocument(a.Actor) }).ToList(),
         Pomodoro = new PomodoroDocument
         {
             Settings = new PomodoroSettingsDocument

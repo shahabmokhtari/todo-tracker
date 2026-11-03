@@ -394,6 +394,42 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task An_activity_log_replaced_by_a_longer_one_is_read_again_from_the_start()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+        var log = P(".onething", "activity.jsonl");
+        var mine = await File.ReadAllTextAsync(log, TestContext.Current.CancellationToken);
+
+        // A sync client puts back another copy: different from the first byte, and longer.
+        var other = "\uFEFF" + mine.Replace("Plan", "Plot", StringComparison.Ordinal) + mine.Replace("Plan", "Pile", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(log, other, new System.Text.UTF8Encoding(false), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+
+        var summaries = await store.ReadAsync(b => b.Activity.Select(a => a.Summary).ToList());
+
+        Assert.Equal(["Created \"Plot\"", "Created \"Pile\""], summaries);
+    }
+
+    [Fact]
+    public async Task An_activity_log_that_starts_with_a_byte_order_mark_reads_every_line_once()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+        var log = P(".onething", "activity.jsonl");
+        var line = (await File.ReadAllTextAsync(log, TestContext.Current.CancellationToken)).Replace("Plan", "Plot", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(log, "\uFEFF" + line, new System.Text.UTF8Encoding(false), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+        await store.ReadAsync(_ => 0);
+
+        await File.AppendAllTextAsync(log, line.Replace("Plot", "Pile", StringComparison.Ordinal), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+        var summaries = await store.ReadAsync(b => b.Activity.Select(a => a.Summary).ToList());
+
+        Assert.Equal(["Created \"Plot\"", "Created \"Pile\""], summaries);
+    }
+
+    [Fact]
     public async Task A_new_task_never_replaces_a_file_that_appeared_while_it_was_saved()
     {
         var written = false;

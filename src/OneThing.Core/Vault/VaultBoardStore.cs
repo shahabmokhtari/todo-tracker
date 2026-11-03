@@ -200,7 +200,9 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     changed |= Reload();
                 }
 
-                var snapshot = BoardSerializer.Serialize(_board);
+                // Without the activity log (it only grows, and can be long): put back with as many entries as it had.
+                var snapshot = BoardSerializer.SerializeWithoutActivity(_board);
+                var logged = _board.ActivityList.Count;
                 try
                 {
                     // Only what this change did to completion is "handled"; edits still settling stay pending.
@@ -213,12 +215,12 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 catch (VaultConflictException) when (attempt < 3)
                 {
                     // Someone saved a file between our read and our write (nothing was written): re-read, re-apply.
-                    _board = BoardSerializer.Deserialize(snapshot);
+                    _board = Restore(snapshot, logged);
                     MarkDirty();
                 }
                 catch
                 {
-                    _board = BoardSerializer.Deserialize(snapshot);
+                    _board = Restore(snapshot, logged);
                     MarkDirty();
                     throw;
                 }
@@ -239,6 +241,18 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>The board as it was before a change that failed: its activity log as it was, without copying it through JSON.</summary>
+    private TaskBoard Restore(string snapshot, int logged)
+    {
+        var board = BoardSerializer.Deserialize(snapshot);
+        foreach (var entry in _board.ActivityList.Take(logged))
+        {
+            board.AddLoadedActivity(entry);
+        }
+
+        return board;
     }
 
     public void Dispose()
@@ -496,7 +510,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
         return TryReadText(Path.Combine(MetaDir, "config.json")) != _configText
             || TryReadText(Path.Combine(MetaDir, "state.json")) != _stateText
-            || FileLength(Path.Combine(MetaDir, "activity.jsonl")) != _activityLength;
+            || FileLength(Path.Combine(MetaDir, "activity.jsonl")) != _activityLength
+            || (_activityLength > 0 && !ActivityTailMatches(Path.Combine(MetaDir, "activity.jsonl")));
     }
 
     /// <summary>Rebuilds the board from disk (caller holds the lock). Returns whether anything changed.</summary>
@@ -507,7 +522,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _forceContent = false;
         var initial = !_loadedOnce;
         _loadedOnce = true;
-        var before = BoardSerializer.Serialize(_board);
+        var before = (Board: BoardSerializer.SerializeWithoutActivity(_board), Logged: _board.ActivityList.Count, Last: _board.ActivityList.LastOrDefault());
         var oldBoard = _board;
         var oldCaches = _caches;
         var config = ReadConfig();
@@ -702,7 +717,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         var changed = reacted ? Persist() : WriteMetadataIfChanged();
-        return changed | BoardSerializer.Serialize(_board) != before;
+        return changed | (BoardSerializer.SerializeWithoutActivity(_board), _board.ActivityList.Count, _board.ActivityList.LastOrDefault()) != before;
     }
 
     /// <summary>Applies what the app would have done for edits made in the files. Returns whether the board changed.</summary>
@@ -1584,48 +1599,96 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private sealed record ActivityLine(DateTimeOffset At, Guid ItemId, ActivityKind Kind, string Summary, ActorKind ActorKind, string? Actor);
 
-    /// <summary>Reads only what other processes appended since the last read; a shorter file means it was replaced.</summary>
+    /// <summary>
+    /// Reads only what other processes appended since the last read (counted in bytes, a byte-order mark skipped). A
+    /// shorter file, or one whose bytes before that point aren't the ones read (replaced by a sync client, a restored
+    /// copy), is read again from the start.
+    /// </summary>
     private void LoadActivity(TaskBoard board)
     {
         var path = Path.Combine(MetaDir, "activity.jsonl");
-        var length = FileLength(path);
-        if (length < _activityLength)
+        try
         {
-            _activity.Clear();
-            _activityLength = 0;
-        }
-
-        if (length > _activityLength)
-        {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            stream.Seek(_activityLength, SeekOrigin.Begin);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            var text = reader.ReadToEnd();
-            var complete = text.LastIndexOf('\n');
-            if (complete >= 0)
+            var length = FileLength(path);
+            if (length < _activityLength || (_activityLength > 0 && !ActivityTailMatches(path)))
             {
-                foreach (var line in text[..complete].Split('\n'))
+                _activity.Clear();
+                _activityLength = 0;
+                _activityTail = [];
+            }
+
+            if (length > _activityLength)
+            {
+                byte[] bytes;
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
-                    try
-                    {
-                        if (line.Length > 0 && JsonSerializer.Deserialize<ActivityLine>(line, JsonLine) is { } a)
-                        {
-                            _activity.Add(new ActivityEntry(a.At, a.ItemId, a.Kind, a.Summary, new Actor(a.ActorKind, a.Actor)));
-                        }
-                    }
-                    catch (JsonException)
-                    {
-                        // A torn line (crash mid-append) is skipped.
-                    }
+                    stream.Seek(_activityLength, SeekOrigin.Begin);
+                    using var copy = new MemoryStream();
+                    stream.CopyTo(copy);
+                    bytes = copy.ToArray();
                 }
 
-                _activityLength += Encoding.UTF8.GetByteCount(text[..(complete + 1)]);
+                var start = _activityLength == 0 && bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble) ? Encoding.UTF8.Preamble.Length : 0;
+                var complete = Array.LastIndexOf(bytes, (byte)'\n');
+                if (complete >= start)
+                {
+                    foreach (var line in Encoding.UTF8.GetString(bytes, start, complete - start).Split('\n'))
+                    {
+                        try
+                        {
+                            if (line.TrimEnd('\r') is { Length: > 0 } text && JsonSerializer.Deserialize<ActivityLine>(text, JsonLine) is { } a)
+                            {
+                                _activity.Add(new ActivityEntry(a.At, a.ItemId, a.Kind, a.Summary, new Actor(a.ActorKind, a.Actor)));
+                            }
+                        }
+                        catch (JsonException)
+                        {
+                            // A torn line (crash mid-append) is skipped.
+                        }
+                    }
+
+                    _activityLength += complete + 1;
+                    RememberActivityTail(path);
+                }
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Locked or offline right now: the entries read so far stay, the rest is read next time.
         }
 
         foreach (var entry in _activity)
         {
             board.AddLoadedActivity(entry);
+        }
+    }
+
+    // The last bytes read of the activity log (up to 4 KB before _activityLength): if they're different now, it was replaced.
+    private byte[] _activityTail = [];
+
+    private const int ActivityTailBytes = 4096;
+
+    private byte[] ReadActivityTail(string path)
+    {
+        var size = (int)Math.Min(ActivityTailBytes, _activityLength);
+        var tail = new byte[size];
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        stream.Seek(_activityLength - size, SeekOrigin.Begin);
+        stream.ReadExactly(tail);
+        return tail;
+    }
+
+    private void RememberActivityTail(string path) => _activityTail = ReadActivityTail(path);
+
+    private bool ActivityTailMatches(string path)
+    {
+        try
+        {
+            return ReadActivityTail(path).AsSpan().SequenceEqual(_activityTail);
+        }
+        catch (Exception ex) when (ex is EndOfStreamException or IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
@@ -1665,6 +1728,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         });
         _activity.AddRange(pending);
         _activityLength = FileLength(path);
+        RememberActivityTail(path);
         return true;
     }
 

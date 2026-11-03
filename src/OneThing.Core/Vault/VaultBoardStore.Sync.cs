@@ -281,9 +281,23 @@ public sealed partial class VaultBoardStore
         }
 
         Remember(SyncKeys.Order, SyncKeys.OrderPath, OrderBytes(_board.NowOrder));
-        if (File.Exists(Path.Combine(MetaDir, "activity.jsonl")))
+        var activity = new FileInfo(Path.Combine(MetaDir, "activity.jsonl"));
+        if (activity.Exists)
         {
-            Remember(SyncKeys.Activity, SyncKeys.ActivityPath, File.ReadAllBytes(Path.Combine(MetaDir, "activity.jsonl")));
+            // The log only grows (and can be long): hashed again only when its size or time changed, read only to merge.
+            var stamp = (activity.LastWriteTimeUtc, activity.Length);
+            ((DateTime, long) Stamp, string Hash) known;
+            lock (_syncHashes)
+            {
+                if (!_syncHashes.TryGetValue(SyncKeys.ActivityPath, out known) || known.Stamp != stamp)
+                {
+                    known = (stamp, SyncHash.Of(File.ReadAllBytes(activity.FullName)));
+                    _syncHashes[SyncKeys.ActivityPath] = known;
+                }
+            }
+
+            entries[SyncKeys.Activity] = new SyncEntry(SyncKeys.Activity, SyncKeys.ActivityPath, known.Hash);
+            seen.Add(SyncKeys.ActivityPath);
         }
 
         lock (_syncHashes)
