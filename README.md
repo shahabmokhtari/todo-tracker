@@ -57,7 +57,7 @@ calm until it matters.
 | Everything about a task | The Windows sidebar | On your phone |
 |---|---|---|
 | ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
-| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
+| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | Native Android and iPhone apps. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
 <summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>
@@ -93,7 +93,8 @@ claude mcp add onething --scope user -- onething mcp    # Claude Code
 copilot plugin install onething@onething            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
 ```
 
-…or **⋯ › Connect an AI app** in the app, which writes the setup for Claude Desktop, VS Code, Cursor and others. Every
+…or **⋯ › Connect an AI app** in the app, which gives you the setup to copy for Claude Desktop, VS Code, ChatGPT and
+others. Every
 change an agent makes is **attributed to it and versioned**, there's deliberately **no delete tool**, and hooks an
 agent adds wait until you allow them.
 
