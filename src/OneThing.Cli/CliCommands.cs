@@ -40,7 +40,7 @@ internal static class CliCommands
         new CliCommand("restore", "ot restore <task> <version>", "Put a task back the way it was in a version", null, Restore),
         new CliCommand("groups", "ot groups", "Groups (tabs) with counts", null, Groups),
         new CliCommand("labels", "ot labels", "The curated labels", null, Labels),
-        new CliCommand("vault", "ot vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", null, Vault),
+        new CliCommand("vault", "ot vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", "use is for you, the person at the computer (not for AI agents); the app switches at its next start.", Vault),
         new CliCommand("mcp", "onething mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
         new CliCommand("start", "ot start <task>", "Start timing a task (any other timer stops)", "The task's card moves to Doing. ot stop stops it.", Start),
         new CliCommand("stop", "ot stop", "Stop the timer", null, Stop),
@@ -51,8 +51,8 @@ internal static class CliCommands
             "add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…\n" +
             "edit <id> [--event e] and any of the add options (only what you give changes).\n" +
             "<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).\n" +
-            "A command gets the event as JSON on stdin. With --as (or ONETHING_AGENT) a hook you add or change waits for approval:\n" +
-            "ot hooks approve <id> <version> (without --as; ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
+            "A command gets the event as JSON on stdin. A hook an AI agent adds or changes (--as or ONETHING_AGENT) waits for your approval:\n" +
+            "approving is for you, the person at the computer: ot hooks approve <id> <version> (ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -187,16 +187,24 @@ internal static class CliCommands
         _ = a.Word(0, "which task");
 
         // Several tasks only when every word is an id; otherwise the words are one title ("ot done Renew passport").
+        // All of them are found first, then done in one change: a wrong id leaves every task as it was.
         IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
-        var done = new List<ItemDto>();
-        foreach (var reference in references)
+        var ids = await s.Store.UpdateAsync(b =>
         {
-            done.Add(await s.Change((b, now) =>
+            var now = s.Now;
+            var items = references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).Distinct().ToList();
+            foreach (var id in items)
             {
-                var item = TaskResolver.Resolve(b, reference, i => !i.IsDone);
-                b.Complete(item.Id, s.Actor, now);
-                return item;
-            }).ConfigureAwait(false));
+                b.Complete(id, s.Actor, now);
+            }
+
+            return items;
+        }).ConfigureAwait(false);
+        await s.SaveVersion().ConfigureAwait(false);
+        var done = new List<ItemDto>();
+        foreach (var id in ids)
+        {
+            done.Add(await s.Item(id).ConfigureAwait(false));
         }
 
         if (done.Count == 1)
@@ -219,6 +227,7 @@ internal static class CliCommands
             b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Now);
             return true;
         }).ConfigureAwait(false);
+        await s.SaveVersion().ConfigureAwait(false);
         var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, null, 5, s.Links)).ConfigureAwait(false);
         await s.Print(dashboard, (o, d) => o.Dashboard(d)).ConfigureAwait(false);
     }
@@ -503,13 +512,18 @@ internal static class CliCommands
         await s.Print(item, (o, i) => o.Changed("Moved", i, withGroup: true)).ConfigureAwait(false);
     }
 
+    /// <summary>The longest wait between steps: a year.</summary>
+    private const double MaxStepDelayHours = 24 * 366;
+
     private static async Task Steps(CliSession s, CliArgs a)
     {
         a.Allow("delay");
         var reference = a.Word(0, "which task");
         _ = a.Word(1, "the steps");
         TimeSpan? delay = a.Value("delay") is { } text
-            ? double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) && hours >= 0 ? TimeSpan.FromHours(hours) : throw new CliUsageException("--delay is in hours, e.g. 24.")
+            ? double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) && hours >= 0 && hours <= MaxStepDelayHours
+                ? TimeSpan.FromHours(hours)
+                : throw new CliUsageException($"--delay is in hours, from 0 to {MaxStepDelayHours.ToString(CultureInfo.InvariantCulture)} (a year), e.g. 24.")
             : null;
         var item = await s.Change((b, now) =>
         {
@@ -602,6 +616,12 @@ internal static class CliCommands
                 await s.Print(vaults, (o, v) => o.ObsidianVaults(v)).ConfigureAwait(false);
                 break;
             case "use":
+                if (s.Actor.Kind == ActorKind.Agent)
+                {
+                    // Like approving hooks: only the person at the computer moves where the tasks live.
+                    throw new InvalidOperationException("Only you can change where your tasks live: do it in the app (Tasks folder in the sidebar's menu, or Settings).");
+                }
+
                 var target = a.WordsFrom(1, "which folder or Obsidian vault");
                 var obsidian = ObsidianVaults.Discover().FirstOrDefault(v => string.Equals(v.Name, target, StringComparison.OrdinalIgnoreCase));
                 var folder = obsidian is not null ? ObsidianVaults.TaskFolderIn(obsidian) : s.FullPath(target);

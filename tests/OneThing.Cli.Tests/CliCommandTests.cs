@@ -122,6 +122,54 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Done_with_a_wrong_second_id_leaves_every_task_open()
+    {
+        var a = (await _tt.Json("add", "First thing")).Id().ToString("N")[..8];
+
+        var result = await _tt.Run("done", a, "deadbeef");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal(["First thing"], (await _tt.Json("list")).Titles());
+    }
+
+    [Theory]
+    [InlineData("g")]
+    [InlineData("h")]
+    [InlineData("j")]
+    [InlineData("v")]
+    public async Task One_letter_tags_that_look_like_short_options_can_be_removed(string tag)
+    {
+        var id = (await _tt.Json("add", "Tagged")).Id().ToString();
+        await _tt.Ok("tag", id, "+" + tag, "+keep");
+
+        var item = await _tt.Json("tag", id, "-" + tag);
+
+        Assert.Equal(["keep"], item["tags"].Strings());
+    }
+
+    [Fact]
+    public async Task A_huge_step_delay_is_a_usage_error_not_a_crash()
+    {
+        var id = (await _tt.Json("add", "Roll out")).Id().ToString();
+
+        var result = await _tt.Run("steps", id, "Ring 0", "--delay", "1e10");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("--delay is in hours", result.Error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true, "mcp")]
+    [InlineData(true, "MCP")]
+    [InlineData(true, "--data", "x", "mcp")]
+    [InlineData(false, "now")]
+    [InlineData(false, "--as")]
+    public void Ctrl_c_stops_the_mcp_server_cleanly_however_it_was_started(bool stops, params string[] args)
+    {
+        Assert.Equal(stops, CliApp.StopsOnCtrlC(args));
+    }
+
+    [Fact]
     public async Task Done_with_unquoted_title_words_completes_only_that_task()
     {
         await _tt.Ok("add", "Renew passport");
