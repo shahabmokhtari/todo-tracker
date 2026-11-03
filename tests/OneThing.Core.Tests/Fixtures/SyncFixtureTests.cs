@@ -299,7 +299,7 @@ public sealed class SyncFixtureTests
 
     private sealed record SideSpec(string Device, string Name, (string Key, string Path, string Text)[] Entries);
 
-    private sealed record PlanCase(string Name, SideSpec Local, SideSpec Peer, (string Key, string Path, string Text)[] Base, (string Key, string Text)[]? Deleted = null, bool ValidateTasks = false);
+    private sealed record PlanCase(string Name, SideSpec Local, SideSpec Peer, (string Key, string Path, string Text)[] Base, (string Key, string Text)[]? Deleted = null, bool ValidateTasks = false, (string Key, string Path)[]? Held = null);
 
     private static (string, string, string) T(string path, string text, string key = Key1) => (key, path, text);
 
@@ -344,6 +344,9 @@ public sealed class SyncFixtureTests
         yield return new PlanCase("a version some device deleted isn't brought back", A(), B(trip), [], [(Key1, Trip)]);
         yield return new PlanCase("a version some device deleted goes here too", A(trip), B(), [], [(Key1, Trip)]);
         yield return new PlanCase("a deleted version that changed since stays", A(checkedFlights), B(), [], [(Key1, Trip)]);
+        yield return new PlanCase("held there (it can't sync from there): not deleted here", A(trip), B(), [trip], Held: [(Key1, "Work/Trip.md")]);
+        yield return new PlanCase("held here (it can't sync from here): a peer edit waits", A(), B(checkedFlights), [trip], Held: [(Key1, "Work/Trip.md")]);
+        yield return new PlanCase("a new file where a held one is gets another name", A(), B(("f/Work/Trip.md", "Work/Trip.md", "their note\n")), [], Held: [(Key1, "Work/Trip.md")]);
 
         yield return new PlanCase("moved there: moved here", A(trip), B(T("Personal/Trip.md", Trip)), [trip]);
         yield return new PlanCase("moved there and edited here: moved, the edit stays", A(checkedFlights), B(T("Personal/Trip.md", Trip)), [trip]);
@@ -405,11 +408,12 @@ public sealed class SyncFixtureTests
         {
             Deleted = e => deleted.Contains((e.Key, e.Hash)),
             IsValidTask = c.ValidateTasks ? IsValidTask : (_, _) => true,
+            Held = [.. (c.Held ?? []).Select(h => new SyncHeld(h.Key, h.Path, "held"))],
         };
         var plan = SyncPlanner.Plan(local, peer, old, h => blobs.GetValueOrDefault(h), options);
 
         JsonObject Side2(SideSpec s) => new() { ["device"] = s.Device, ["name"] = s.Name, ["entries"] = Entries(s.Entries) };
-        return new JsonObject
+        var result = new JsonObject
         {
             ["name"] = c.Name,
             ["local"] = Side2(c.Local),
@@ -440,6 +444,12 @@ public sealed class SyncFixtureTests
                 })]),
             },
         };
+        if (c.Held is { } held)
+        {
+            result["held"] = new JsonArray([.. held.Select(h => (JsonNode)new JsonObject { ["key"] = h.Key, ["path"] = h.Path })]);
+        }
+
+        return result;
     }
 
     private static string KindName(SyncOpKind kind) => kind switch

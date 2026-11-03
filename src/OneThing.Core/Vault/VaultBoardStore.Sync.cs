@@ -214,28 +214,43 @@ public sealed partial class VaultBoardStore
         var memory = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var held = new List<SyncHeld>();
         void Add(string key, string rel)
         {
             var full = VaultFiles.Full(_root, rel);
             var info = new FileInfo(full);
-            if (info.Exists && info.Length <= SyncLimits.MaxFileBytes && !info.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            if (!info.Exists)
             {
-                // Files are only read again when their time or size changed (sync looks every minute).
-                var stamp = (info.LastWriteTimeUtc, info.Length);
-                ((DateTime, long) Stamp, string Hash) known;
-                lock (_syncHashes)
-                {
-                    if (!_syncHashes.TryGetValue(rel, out known) || known.Stamp != stamp)
-                    {
-                        known = (stamp, SyncHash.Of(File.ReadAllBytes(full)));
-                        _syncHashes[rel] = known;
-                    }
-                }
-
-                entries[key] = new SyncEntry(key, rel, known.Hash);
-                covered.Add(rel);
-                seen.Add(rel);
+                return;
             }
+
+            // Here but not shareable: listed as held, so the other devices keep theirs (left out, it would look deleted).
+            var why = !IsSyncablePath(rel) ? "its name has characters other devices can't use; rename it to sync it again"
+                : info.Length > SyncLimits.MaxFileBytes ? "it's bigger than 50 MB"
+                : info.Attributes.HasFlag(FileAttributes.ReparsePoint) ? "it's a link to somewhere else"
+                : null;
+            if (why is not null)
+            {
+                held.Add(new SyncHeld(key, rel, why));
+                covered.Add(rel);
+                return;
+            }
+
+            // Files are only read again when their time or size changed (sync looks every minute).
+            var stamp = (info.LastWriteTimeUtc, info.Length);
+            ((DateTime, long) Stamp, string Hash) known;
+            lock (_syncHashes)
+            {
+                if (!_syncHashes.TryGetValue(rel, out known) || known.Stamp != stamp)
+                {
+                    known = (stamp, SyncHash.Of(File.ReadAllBytes(full)));
+                    _syncHashes[rel] = known;
+                }
+            }
+
+            entries[key] = new SyncEntry(key, rel, known.Hash);
+            covered.Add(rel);
+            seen.Add(rel);
         }
 
         foreach (var (id, rel) in _caches.Paths)
@@ -297,7 +312,7 @@ public sealed partial class VaultBoardStore
             }
 
             throw new SyncStaleException($"{e.Path} changed.");
-        });
+        }) { Held = held };
     }
 
     /// <summary>Files in the vault's folders (never root-level files like AGENTS.md, hidden ones, or links that lead elsewhere).</summary>

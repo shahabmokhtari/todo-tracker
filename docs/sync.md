@@ -127,6 +127,8 @@ Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-you
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,
   `.onething` except the settings, order and activity), links that lead outside the folder, or files over 50 MB.
+  A task that can't sync for now (over 50 MB, a link, or a name another computer can't use) stays on every computer
+  as it is: the Sync panel says which one and why, and it syncs again once it's fixed.
 * Paths and contents from other computers are checked (no `..`, contents must match their hash) before anything is
   written, and a file is only changed if it is still exactly what the merge was worked out from.
 * What sync remembers (the device id, what it agreed on, the contents a merge needs) is kept in the app's local data

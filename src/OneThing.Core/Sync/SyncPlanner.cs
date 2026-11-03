@@ -45,6 +45,9 @@ public sealed record SyncPlanOptions
 
     /// <summary>Whether merged text is still a valid task file (else both versions are kept whole).</summary>
     public Func<string, string, bool> IsValidTask { get; init; } = (_, _) => true;
+
+    /// <summary>Entries one side can't sync right now: left as they are here (never written, moved or deleted).</summary>
+    public IReadOnlyCollection<SyncHeld> Held { get; init; } = [];
 }
 
 /// <summary>
@@ -62,9 +65,16 @@ public static partial class SyncPlanner
         ArgumentNullException.ThrowIfNull(readBase);
         var ctx = new Context(local, peer, @base, readBase, options ?? new SyncPlanOptions());
         var files = new List<(string Key, SyncEntry? L, SyncEntry P, SyncEntry? B)>();
+        var held = ctx.Options.Held.Select(h => h.Key).ToHashSet(StringComparer.Ordinal);
         var keys = local.Entries.Keys.Union(peer.Entries.Keys).Union(@base.Keys).Order(StringComparer.Ordinal);
         foreach (var key in keys)
         {
+            if (held.Contains(key))
+            {
+                // Here (or there) but can't sync right now: left as it is, never taken as deleted.
+                continue;
+            }
+
             var l = local.Entries.GetValueOrDefault(key);
             var p = peer.Entries.GetValueOrDefault(key);
             var b = @base.GetValueOrDefault(key);
@@ -162,7 +172,7 @@ public static partial class SyncPlanner
         public List<SyncConflict> Conflicts { get; } = [];
 
         /// <summary>Paths in use here (and planned), to never write over another entry's file.</summary>
-        public HashSet<string> Taken { get; } = new(local.Entries.Values.Select(e => e.Path), StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Taken { get; } = new(local.Entries.Values.Select(e => e.Path).Concat(options.Held.Select(h => h.Path)), StringComparer.OrdinalIgnoreCase);
 
         public bool LocalWins { get; } = string.CompareOrdinal(local.Device, peer.Device) < 0;
 
