@@ -123,7 +123,6 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         ) { padding ->
             Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
                 Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = { feedback = "button" })
-                RemoteBanner(vm)
                 GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
                 Capture(vm)
                 if (searching || vm.query.isNotEmpty()) SearchBox(vm, onClose = { searching = false; vm.search("") })
@@ -146,8 +145,6 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         // A task's details (from a card, a search, a todotracker://task/<id> link or a reminder's notification).
         vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
         if (settings) SettingsScreen(vm, onClose = { settings = false }, onFeedback = { feedback = "button" })
-        // A todotracker://pair link (opened, scanned or pasted): asked first.
-        PairingDialog(vm)
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
       }
         if (askExact) {
@@ -171,7 +168,7 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         // A shake opens Send feedback, only on Today with nothing over it: no other sheet or dialog, no task, no
         // Settings, never on the full-screen break.
         val quiet = feedback == null && !settings && noteFor == null && !addingGroup && editingGroup == null && !askExact &&
-            vm.openTaskId == null && vm.pairingLink == null && vm.breakPrompt == null
+            vm.openTaskId == null && vm.breakPrompt == null
         ShakeToFeedback(enabled = vm.shakeToFeedback && quiet) { feedback = "shake" }
     }
 }
@@ -239,8 +236,6 @@ private fun Header(vm: BoardViewModel, onSettings: () -> Unit, onSearch: () -> U
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            // Connected: whose tasks these are.
-            vm.computer?.let { Text("On $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, maxLines = 1) }
             vm.energyToday?.let { energy ->
                 Text(energy, style = MaterialTheme.typography.bodySmall, color = if (vm.energyOver) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }

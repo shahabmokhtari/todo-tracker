@@ -59,12 +59,12 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    // repeatOnLifecycle: the screen's clock and sync run only while the app is on screen.
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // Frontmatter values (YAML nodes only, never typed decoding): the tasks folder format, docs/design/phone-sync.md.
     implementation("org.yaml:snakeyaml:2.3")
-    // Scanning a computer's pairing QR code: on the phone, offline, without Google Play services.
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-    // Connected to a computer, a check every 15 minutes or so with the app closed (reminders added there still ring).
+    // Syncing with the app closed (every 15 minutes or so, and soon after a change from a notification), and the widgets' updates.
     implementation("androidx.work:work-runtime:2.9.1")
     // The home-screen widgets (Now, Today).
     implementation("androidx.glance:glance-appwidget:1.1.1")

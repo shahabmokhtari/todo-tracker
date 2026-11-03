@@ -8,21 +8,13 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.todotracker.core.Agenda
-import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.BoardException
 import dev.todotracker.core.Dashboard
 import dev.todotracker.core.Energy
 import dev.todotracker.core.NewTask
 import dev.todotracker.core.BreakPrompt
 import dev.todotracker.core.Breaks
-import dev.todotracker.core.PairingLink
 import dev.todotracker.core.PhaseEnd
-import dev.todotracker.core.PhoneApi
-import dev.todotracker.core.PhoneClient
-import dev.todotracker.core.PhoneException
-import dev.todotracker.core.PhoneLink
-import dev.todotracker.core.RemoteAction
-import dev.todotracker.core.RemoteState
 import dev.todotracker.core.PomodoroEventKind
 import dev.todotracker.core.PomodoroPhase
 import dev.todotracker.core.QuickCaptureParser
@@ -38,16 +30,14 @@ import dev.todotracker.core.TaskLinks
 import dev.todotracker.core.TaskSearch
 import dev.todotracker.core.WorkItem
 import dev.todotracker.core.LocalBoard
-import dev.todotracker.core.sync.PhoneMode
 import dev.todotracker.core.sync.PhoneSync
 import dev.todotracker.core.sync.PhoneSyncOutcome
+import dev.todotracker.core.sync.SyncBackend
 import dev.todotracker.core.sync.SyncSchedule
 import dev.todotracker.core.sync.SyncSettings
 import dev.todotracker.core.sync.SyncStatus
 import dev.todotracker.core.vault.VaultStore
 import java.time.Duration
-import java.io.File
-import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -55,9 +45,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /** Something just done that can be taken back (shown with an Undo button). */
 data class Undoable(val message: String, val undo: () -> Unit)
@@ -73,9 +60,10 @@ data class FocusState(
 )
 
 /**
- * The board on this phone: its tasks folder (the one store, [BoardHub.store]), and every change saved there right
- * away; or, connected, a computer's. The lists follow the clock (waiting tasks come back). Syncing on its own, the
- * phone syncs on launch and resume, 5 s after a change and every minute while open (off the screen's thread).
+ * The board on this phone: its tasks folder (the one store, [BoardHub.store]). A change shows at once and is saved
+ * there right away, off the screen's thread. While the app is on screen ([whileOnScreen]) the lists follow the clock
+ * (waiting tasks come back) and, syncing, the phone syncs on launch and resume, 5 s after a change and every minute;
+ * with the app closed, WorkManager syncs (SyncHub).
  */
 class BoardViewModel(application: Application) : AndroidViewModel(application), BoardHub.LiveBoard {
     // The tasks folder, opened off the screen's thread (the first time, board.json moves in): null until then.
@@ -188,67 +176,16 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     private var dismissedOver: Instant? = null
     private var scheduled: List<PhaseEnd>? = null
 
-    // ---- Connected to a computer (Settings › Connect to a computer) ----
+    // Changes on their way to the tasks folder: until the last is saved, the board on screen shows them already.
+    private var writing = 0
 
-    private val phone = PhoneConnection(application)
-    private var pairing: PhoneConnection.Pairing? = phone.load()
-    private var client: PhoneClient? = pairing?.let { phone.client(it) }
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val network = Dispatchers.IO.limitedParallelism(1)
-    // The computer's board as last read (shown again when a change doesn't go through), its tag, and when.
-    private var remoteText: String? = null
-    private var remoteEtag: String? = null
-    private var remoteReadAt: Instant? = null
-    private var sending = 0
-
-    /** How it stands with the computer (null: this phone's own board is shown). */
-    var remote: RemoteState? by mutableStateOf(null)
-        private set
-
-    /** The connected computer's name. */
-    var computer: String? by mutableStateOf(pairing?.computer)
-        private set
-
-    /** The calm line over the tasks when the computer can't be reached (null: nothing to say). */
-    var remoteBanner: String? by mutableStateOf(null)
-        private set
-
-    /** The computer that disconnected this phone (said with Reconnect, until dismissed). */
-    var revokedFrom: String? by mutableStateOf(if (pairing == null) phone.revokedFrom else null)
-        private set
-
-    /** A pairing link waiting for "Connect" (and why the last try didn't work). */
-    var pairingLink: PairingLink? by mutableStateOf(null)
-        private set
-    var pairingProblem: String? by mutableStateOf(null)
-        private set
-    var pairingBusy: Boolean by mutableStateOf(false)
-        private set
-
-    /** The name the computer lists this phone by (prefilled with the phone's own; kept through Disconnect). */
-    var phoneName: String by mutableStateOf(PhoneConnection.phoneName(application))
-        private set
-
-    fun changePhoneName(text: String) {
-        phoneName = text.take(PhoneApi.MAX_NAME)
-        PhoneConnection.rememberPhoneName(getApplication(), phoneName)
-    }
-
-    /** The tasks are a computer's: what the computer doesn't let phones do (the focus timer's lengths) is hidden. */
-    val isRemote: Boolean get() = pairing != null
+    // Reminders being told and marked in the tasks folder right now.
+    private var delivering = false
 
     // ---- Sync with your other devices: its state (the actions are at the end) ----
 
     private var phoneSync: PhoneSync? = null
     private val syncSchedule = SyncSchedule()
-
-    /** Only on this phone, syncing on its own, or a computer's tasks: one at a time. */
-    val mode: PhoneMode get() = when {
-        // [computer] is screen state (the screen follows it); it's set exactly while connected.
-        computer != null -> PhoneMode.CONNECTED
-        syncOn -> PhoneMode.SYNCING
-        else -> PhoneMode.ON_THIS_PHONE
-    }
 
     var syncOn: Boolean by mutableStateOf(false)
         private set
@@ -266,257 +203,82 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         private set
     var syncLibrary: String by mutableStateOf(SyncSettings.DEFAULT_LIBRARY)
         private set
-    var syncPlace: String? by mutableStateOf(null)
+
+    /** The ways this phone can sync (Settings › Sync offers them), the first one first. */
+    var syncBackends: List<SyncBackend> by mutableStateOf(emptyList())
+        private set
+
+    /** The one it syncs through (null: sync is off). */
+    var syncBackend: SyncBackend? by mutableStateOf(null)
         private set
 
     /** This phone has synced with the others once (everything came in, its own went out). */
     var syncJoined: Boolean by mutableStateOf(false)
         private set
 
-    /** The token can't be read any more (restored to another phone): sign in again. */
-    var syncNeedsToken: Boolean by mutableStateOf(false)
+    /** The backend's token can't be read any more (restored to another phone): sign in again. */
+    var syncNeedsSignIn: Boolean by mutableStateOf(false)
         private set
 
     init {
-        if (pairing != null) {
-            // Connected to a computer: its tasks (the last read until it answers); this phone's own board isn't read.
-            board = remoteFromCache()
-            // With the app closed, a check now and then (reminders added on the computer meanwhile still ring).
-            RemoteCheck.start(application)
-            BoardHub.live = this
-        } else {
-            // Shown once the tasks folder is open (just below); changes wait until then.
-            board = TaskBoard()
-            readOnly = true
-        }
+        // Shown once the tasks folder is open (just below); changes wait until then.
+        board = TaskBoard()
+        readOnly = true
         viewModelScope.launch {
             val local = withContext(Dispatchers.IO) { BoardHub.local(application) }
             val sync = withContext(Dispatchers.IO) { SyncHub.get(application) }
+            val loaded = withContext(Dispatchers.IO) { runCatching { local.store?.snapshot() }.getOrNull() }
             opened = local
             phoneSync = sync
             moving = null
+            showDeviceBoard(loaded)
             // From now on alarms and notification buttons change the tasks through this screen (the same store).
-            if (!isRemote) board = deviceBoard(register = true)
+            BoardHub.live = this@BoardViewModel
             readSyncStatus()
             if (syncOn) SyncHub.startBackground(application)
             reminderSet = false
             refresh()
         }
         refresh()
-        viewModelScope.launch {
-            var seconds = 0
-            while (true) {
-                delay(1_000)
-                val lists = ++seconds % 30 == 0
-                tick(lists)
-                // Connected: the computer's board is read again every 30 s (just "unchanged" when it is).
-                if (lists) poll()
-                // Syncing on its own: when the schedule says so (5 s after a change, every minute).
-                if (syncOn && !isRemote && !syncBusy && syncSchedule.due(Instant.now())) syncNow(asked = false)
-            }
+    }
+
+    /**
+     * While the app is on screen (MainActivity runs it while started, and it stops when the app leaves the screen):
+     * every second the clocks move and the focus timer moves on, every 30 s the lists follow the clock, and sync runs
+     * when its schedule says so (5 s after a change, every minute). With the app closed, WorkManager syncs instead.
+     */
+    suspend fun whileOnScreen() {
+        var seconds = 0
+        while (true) {
+            delay(1_000)
+            tick(lists = ++seconds % 30 == 0)
+            if (syncOn && !syncBusy && syncSchedule.due(Instant.now())) syncNow(asked = false)
         }
-        poll()
     }
 
     /** This phone's own board, as its tasks folder holds it (a board.json from a newer app: changes are off, nothing is overwritten). */
-    private fun deviceBoard(register: Boolean = false): TaskBoard {
-        val o = opened ?: run {
-            // Still opening: shown when it's open.
-            readOnly = true
-            return TaskBoard()
-        }
+    private fun showDeviceBoard(snapshot: TaskBoard?) {
+        val o = opened ?: return
         val s = o.store
-        val loaded = if (s == null) {
+        if (s == null || snapshot == null) {
             readOnly = true
             status = o.problem
-            TaskBoard()
-        } else {
-            readOnly = false
-            o.problem?.let { status = it }
-            s.problems.firstOrNull()?.let { status = "“${it.path}” couldn't be read (${it.message}). It's kept as it is." }
-            s.snapshot()
+            board = TaskBoard()
+            return
         }
-        if (register) BoardHub.live = this
-        return loaded
-    }
-
-    /** The computer's board as last read (until it answers). */
-    private fun remoteFromCache(): TaskBoard {
         readOnly = false
-        remote = RemoteState.Connecting
-        val cached = phone.cached()
-        remoteText = cached?.text
-        remoteEtag = cached?.etag
-        remoteReadAt = cached?.at
-        return remoteBoard()
+        o.problem?.let { status = it }
+        s.problems.firstOrNull()?.let { status = "“${it.path}” couldn't be read (${it.message}). It's kept as it is." }
+        board = snapshot
     }
-
-    private fun remoteBoard(): TaskBoard = remoteText?.let { runCatching { BoardCodec.decode(it) }.getOrNull() } ?: TaskBoard()
 
     /** Back in the app: the alarms are set again (allowing exact alarms meanwhile makes them ring on time). */
     fun resume() {
         scheduled = null
         reminderSet = false
-        if (!isRemote && store != null) board = store!!.snapshot()
         refresh()
-        poll()
+        reloadLocal()
         syncSchedule.soon()
-    }
-
-    /** Reads the computer's board again if it changed (nothing to do while changes are on their way). */
-    fun poll() {
-        val c = client ?: return
-        if (sending > 0) return
-        val etag = remoteEtag
-        viewModelScope.launch {
-            val result = withContext(network) {
-                runCatching {
-                    val export = c.export(etag)
-                    phone.answered(c)
-                    val now = Instant.now()
-                    if (export == null) phone.stillCurrent(now) else phone.cache(export.text, export.etag, now)
-                    export
-                }
-            }
-            if (client !== c || sending > 0) return@launch
-            result.fold(
-                onSuccess = { export ->
-                    if (export != null) {
-                        val read = runCatching { BoardCodec.decode(export.text) }
-                        read.onSuccess {
-                            board = it
-                            remoteText = export.text
-                            remoteEtag = export.etag
-                        }
-                        read.onFailure { e -> status = "Couldn't read the tasks from ${computer}: ${e.message}" }
-                    }
-                    // Back in touch: what was said about not reaching it is old news.
-                    if (remote is RemoteState.Unreachable) status = null
-                    remoteReadAt = Instant.now()
-                    remote = RemoteState.read(remoteReadAt!!)
-                },
-                onFailure = { e -> failed(e) },
-            )
-            refresh()
-        }
-    }
-
-    /** A read or a change didn't reach the computer (or it said this phone isn't connected any more). */
-    private fun failed(e: Throwable) {
-        val error = e as? PhoneException ?: PhoneException.Unreachable(e.message ?: "no answer")
-        val next = RemoteState.failed(remote ?: RemoteState.Connecting, error, remoteReadAt)
-        if (next is RemoteState.Revoked) revoked() else remote = next
-    }
-
-    /** The computer disconnected this phone: its own board comes back (as it was), with a way to reconnect. */
-    private fun revoked() {
-        val name = computer
-        phone.forget(revoked = true)
-        leaveRemote()
-        revokedFrom = name
-    }
-
-    private fun leaveRemote() {
-        RemoteCheck.stop(getApplication())
-        pairing = null
-        client = null
-        remote = null
-        remoteText = null
-        remoteEtag = null
-        remoteReadAt = null
-        computer = null
-        undoable = null
-        openTaskId = null
-        selectedGroup = null
-        board = deviceBoard()
-        reminderSet = false
-        scheduled = null
-        refresh()
-    }
-
-    /** Stops using the computer's tasks: this phone's own board comes back (the computer keeps its tasks). */
-    fun disconnect() {
-        val name = computer ?: return
-        phone.forget(revoked = false)
-        leaveRemote()
-        status = "Back to the tasks on this phone. To remove this phone on $name too, open Settings › Phones there."
-    }
-
-    fun dismissRevoked() {
-        revokedFrom = null
-        phone.revokedFrom = null
-    }
-
-    /** A pairing link (opened, scanned or pasted): asks first, then connects. */
-    fun offerPairing(text: String?) {
-        val link = PhoneLink.parse(text)
-        if (link == null) {
-            status = "That isn't a whole pairing link. On your computer, open Settings › Phones › Connect a phone, then scan the new code."
-            return
-        }
-        pairingProblem = null
-        pairingLink = link
-    }
-
-    fun cancelPairing() {
-        if (pairingBusy) return
-        pairingLink = null
-        pairingProblem = null
-    }
-
-    /** Trades the link's code for this phone's key, then shows the computer's tasks. */
-    fun confirmPairing() {
-        val link = pairingLink ?: return
-        if (pairingBusy) return
-        pairingBusy = true
-        pairingProblem = null
-        val name = PhoneApi.phoneName(phoneName, PhoneConnection.deviceName(getApplication()))
-        viewModelScope.launch {
-            val result = withContext(network) { runCatching { PhoneConnection.claim(link, name) } }
-            pairingBusy = false
-            result.fold(
-                onSuccess = { claimed ->
-                    phone.save(link, claimed, Instant.now())
-                    val paired = phone.load()
-                    if (paired == null) {
-                        pairingProblem = "Connected, but this phone couldn't keep its key safely. Try again."
-                        return@fold
-                    }
-                    pairingLink = null
-                    // The name the computer has for it (what was typed, tidied, or the phone's own).
-                    changePhoneName(name)
-                    pairing = paired
-                    client = phone.client(paired)
-                    computer = paired.computer
-                    revokedFrom = null
-                    undoable = null
-                    openTaskId = null
-                    selectedGroup = null
-                    board = remoteFromCache()
-                    RemoteCheck.start(getApplication())
-                    reminderSet = false
-                    scheduled = null
-                    val wasSyncing = syncOn
-                    if (wasSyncing) turnOffSync()
-                    status = "Connected to ${paired.computer}. Your tasks on this phone stay here for when you disconnect." +
-                        if (wasSyncing) " Sync on this phone is off now (the computer syncs them)." else ""
-                    refresh()
-                    poll()
-                },
-                onFailure = { e ->
-                    pairingProblem = when (e) {
-                        is PhoneException.Unreachable -> "Couldn't reach ${link.computer}. Is this phone on the same Wi-Fi (or on Tailscale), and is Onething running there?"
-                        else -> e.message ?: "That didn't work. Try again."
-                    }
-                },
-            )
-        }
-    }
-
-    /** The computer's board changed (a notification button), or a reminder is due: read it again. */
-    override fun remoteChanged() {
-        refresh()
-        poll()
     }
 
     override fun onCleared() {
@@ -524,15 +286,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         super.onCleared()
     }
 
-    fun refresh() {
+    fun refresh(deliver: Boolean = true) {
         now = Instant.now()
-        // Reminders due now are told (once): with the app open, closed, or the phone locked.
-        // Connected, the computer's reminders are told here too (once each), and nothing is written back.
-        val remoteNext = if (isRemote) ReminderAlarm.deliverRemote(getApplication(), phone, board, now) else null
-        if (!isRemote && !readOnly && Reminders.due(board, now).isNotEmpty()) {
-            runCatching { if (local(changed = false) { ReminderAlarm.deliver(getApplication(), it, now) }) syncSchedule.changed(now) }
+        // Reminders due now are told (once): with the app open, closed, or the phone locked. Told and marked as told
+        // in the tasks folder, off the screen's thread (the redraw after it doesn't try again).
+        if (deliver && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
+            delivering = true
+            val app = getApplication<Application>()
+            save(changed = false, at = now, mutate = { b, at -> ReminderAlarm.deliver(app, b, at) }) { result ->
+                delivering = false
+                if (result.getOrNull() == true) syncSchedule.changed(Instant.now())
+                refresh(deliver = false)
+            }
         }
-        remoteBanner = remote?.let { RemoteState.banner(it, computer ?: "your computer", now, ZoneId.systemDefault()) }
         if (selectedGroup != null && board.groups.none { it.id == selectedGroup }) selectedGroup = null
         groups = board.groups.map { it.id to it.name }
         groupColors = board.groups.associate { it.id to it.color }
@@ -544,9 +310,9 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         searchResults = TaskSearch.parse(query).takeIf { !it.isEmpty }?.let { search ->
             search.apply(board).filter { selectedGroup == null || it.groupId == selectedGroup }.sortedBy { it.isDone }
         }
-        val nextReminder = if (isRemote) remoteNext else if (readOnly) null else Reminders.nextAt(board, now)
+        val nextReminder = if (readOnly) null else Reminders.nextAt(board, now)
         // While the tasks folder opens, the alarm set before stays as it is (the board shown is only a placeholder).
-        if ((nextReminder != scheduledReminder || !reminderSet) && (isRemote || opened != null)) {
+        if ((nextReminder != scheduledReminder || !reminderSet) && opened != null) {
             scheduledReminder = nextReminder
             reminderSet = true
             ReminderAlarm.schedule(getApplication(), nextReminder)
@@ -562,7 +328,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     /** The board changed (or a while went by): the home-screen widgets show it again. */
     private fun updateWidgets() {
-        val key = "${System.identityHashCode(board)}|${board.activity.size}|${board.activity.lastOrNull()?.at}|${board.nowOrder}|${board.nowArrangedAt}|$isRemote"
+        val key = "${System.identityHashCode(board)}|${board.activity.size}|${board.activity.lastOrNull()?.at}|${board.nowOrder}|${board.nowArrangedAt}"
         if (key == widgetKey && Duration.between(widgetsAt, now) < Duration.ofMinutes(15)) return
         widgetKey = key
         widgetsAt = now
@@ -575,34 +341,34 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         refresh()
     }
 
-    /** An alarm or a notification button changed the board while the app runs. */
-    override fun applyOutside(action: (TaskBoard, Instant) -> Unit): Result<Unit> {
-        if (readOnly) return Result.failure(BoardException("Your board is from a newer version of the app, so changes are off to protect it."))
-        // Connected, the phone's own board isn't changed (the computer's changes go through the REST API).
-        if (isRemote) return Result.failure(BoardException("Open the app to change tasks on ${computer}."))
-        return try {
-            local { action(it, Instant.now()) }
-            Result.success(Unit)
+    /** An alarm, a notification button or a widget changes the board while the app runs: shown at once, then saved. */
+    override fun applyOutside(action: (TaskBoard, Instant) -> Unit, done: (Result<Unit>) -> Unit) {
+        if (opened == null || readOnly) {
+            return done(Result.failure(BoardException(opened?.problem ?: "Your board is from a newer version of the app, so changes are off to protect it.")))
+        }
+        val at = Instant.now()
+        try {
+            action(board, at)
         } catch (e: BoardException) {
-            Result.failure(e)
-        } catch (e: IOException) {
-            Result.failure(e)
-        } finally {
             refresh()
+            return done(Result.failure(e))
+        }
+        refresh()
+        save(at = at, mutate = action) { result ->
+            refresh()
+            done(result)
         }
     }
 
     /** How much energy a task takes per hour (1 to 3; null: not said). */
-    fun setEnergy(id: UUID, level: Int?) = change(
-        if (level == null) "Energy: not said" else "Energy: ${"⚡".repeat(level)} an hour",
-        RemoteAction.Update(id, TaskChanges(energy = level, clearEnergy = level == null)),
-    ) { board.setEnergy(id, level, now = it) }
+    fun setEnergy(id: UUID, level: Int?) =
+        change(if (level == null) "Energy: not said" else "Energy: ${"⚡".repeat(level)} an hour") { b, now -> b.setEnergy(id, level, now = now) }
 
     /** How much energy there is in a day (every app uses it). */
-    fun setDailyEnergy(perDay: Int?) = change("Energy in a day: ${perDay ?: Energy.DEFAULT_PER_DAY}", RemoteAction.SetDailyEnergy(perDay)) { board.setEnergyPerDay(perDay) }
+    fun setDailyEnergy(perDay: Int?) = change("Energy in a day: ${perDay ?: Energy.DEFAULT_PER_DAY}") { b, _ -> b.setEnergyPerDay(perDay) }
 
     /** Not done after all (from Done today): back in Do now. */
-    fun reopen(id: UUID) { change(null, RemoteAction.Reopen(id)) { board.reopen(id, now = it) } }
+    fun reopen(id: UUID) { change(null) { b, now -> b.reopen(id, now = now) } }
 
     /** Every second: the clocks move; the focus timer moves on (saved); every 30 s the lists follow the clock too. */
     private fun tick(lists: Boolean) {
@@ -611,16 +377,13 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         // A timer left running for half a day was forgotten: it ends (at 12 hours), so the task can be timed again.
         val closed = if (readOnly) 0 else board.closeForgottenTimers(now)
         if (events.isNotEmpty() || closed > 0) {
-            // Connected, the computer moves its own timer on: this only shows it. Here, the same is done to the tasks folder.
-            if (!isRemote) {
-                try {
-                    local { b ->
-                        b.tickPomodoro(now)
-                        b.closeForgottenTimers(now)
-                    }
-                } catch (e: IOException) {
-                    status = "Couldn't save (${e.message}). It's tried again."
-                }
+            // Shown at once; the same is done to the tasks folder (off the screen's thread).
+            save(at = now, mutate = { b, at ->
+                b.tickPomodoro(at)
+                b.closeForgottenTimers(at)
+            }) { result ->
+                result.onFailure { e -> status = "Couldn't save (${e.message}). It's tried again." }
+                refresh()
             }
             // Running in the background (a locked phone): this moved the timer on before the alarm could ring.
             events.lastOrNull()?.takeIf { !appVisible }?.let { onPhaseEnded(PhaseEnd(it.at, it.kind == PomodoroEventKind.FOCUS_COMPLETED)) }
@@ -664,16 +427,16 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     fun startFocus(id: UUID?): Boolean {
         val on = id ?: dashboard.focus?.item?.id
-        return change("Focus started", RemoteAction.Pomodoro("start", on)) { board.startFocus(on, now = it) }
+        return change("Focus started") { b, now -> b.startFocus(on, now = now) }
     }
 
-    fun pauseFocus() = change(null, RemoteAction.Pomodoro("pause")) { board.pauseFocus(it) }
+    fun pauseFocus() = change(null) { b, now -> b.pauseFocus(now) }
 
-    fun resumeFocus() = change(null, RemoteAction.Pomodoro("resume")) { board.resumeFocus(it) }
+    fun resumeFocus() = change(null) { b, now -> b.resumeFocus(now) }
 
-    fun skipFocus() = change(null, RemoteAction.Pomodoro("skip")) { board.skipFocus(it) }
+    fun skipFocus() = change(null) { b, now -> b.skipFocus(now) }
 
-    fun resetFocus() = change(null, RemoteAction.Pomodoro("reset")) { board.resetFocus(it) }
+    fun resetFocus() = change(null) { b, now -> b.resetFocus(now) }
 
     /** "I'm taking it" (the break goes on), or "Not now" when the break is over. */
     fun takeBreak() {
@@ -692,19 +455,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         dismissedBreak = Breaks.due(board.pomodoro, Instant.now())?.until ?: dismissedBreak
         dismissedOver = seenBreak
         val fallback = dashboard.focus?.item?.id
-        change("Focus started", RemoteAction.Pomodoro("next", fallback)) { board.startNextFocus(fallback, now = it) }
+        change("Focus started") { b, now -> b.startNextFocus(fallback, now = now) }
     }
 
     /** Times the task (any other timer stops), or stops it when it's the one timing. */
     fun toggleTimer(id: UUID) {
         if (board.runningTimer(Instant.now())?.item?.id == id) {
-            change("Timer stopped", RemoteAction.StopTimer) { board.stopTimer(it) }
+            change("Timer stopped") { b, now -> b.stopTimer(now) }
         } else {
-            change("Timing “${titleOf(id).orEmpty()}”", RemoteAction.StartTimer(id)) { board.startTimer(id, now = it) }
+            change("Timing “${titleOf(id).orEmpty()}”") { b, now -> b.startTimer(id, now = now) }
         }
     }
 
-    fun stopTimer() = change("Timer stopped", RemoteAction.StopTimer) { board.stopTimer(it) }
+    fun stopTimer() = change("Timer stopped") { b, now -> b.stopTimer(now) }
 
     fun select(group: UUID?) {
         selectedGroup = group
@@ -727,8 +490,6 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     /** A clicked todotracker://task/<id> link: that task opens (anything else is ignored). */
     fun openLink(link: String?) {
-        // todotracker://pair?… from a computer's Settings › Phones: connect to it (asked first).
-        if (PhoneLink.isPairing(link)) return offerPairing(link)
         val target = TaskLinks.target(link)
         if (target is TaskLinks.Target.Task) {
             when {
@@ -745,17 +506,20 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     fun doneAt(item: WorkItem): Instant? = Agenda.doneAt(board, item)
 
     /** Quick capture: "Call mum @tomorrow !high due:3d". True when it was added. */
-    fun capture(text: String): Boolean = change("Added", RemoteAction.Capture(text, selectedGroup)) { now ->
-        val capture = QuickCaptureParser.parse(text, now, ZoneId.systemDefault())
-        val item = board.addTask(NewTask(capture.title, groupId = selectedGroup, priority = capture.priority, deadline = capture.deadline), now = now)
-        capture.nextActionAt?.let { board.scheduleNextAction(item.id, it, notify = true, now = now) }
+    fun capture(text: String): Boolean {
+        val group = selectedGroup
+        return change("Added") { b, now ->
+            val capture = QuickCaptureParser.parse(text, now, ZoneId.systemDefault())
+            val item = b.addTask(NewTask(capture.title, groupId = group, priority = capture.priority, deadline = capture.deadline), now = now)
+            capture.nextActionAt?.let { b.scheduleNextAction(item.id, it, notify = true, now = now) }
+        }
     }
 
     /** Done, with a way back (a mis-tap shouldn't lose a task). */
     fun complete(id: UUID) {
         val title = titleOf(id) ?: return
-        if (change(null, RemoteAction.Complete(id)) { board.complete(id, now = it) }) {
-            undoable = Undoable("Done: $title") { change(null, RemoteAction.Reopen(id)) { board.reopen(id, now = it) } }
+        if (change(null) { b, now -> b.complete(id, now = now) }) {
+            undoable = Undoable("Done: $title") { change(null) { b, now -> b.reopen(id, now = now) } }
         }
     }
 
@@ -768,9 +532,9 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     /** Snoozes until a time: a quick choice or one picked on the calendar (refused when it's already past). */
     fun snoozeUntil(id: UUID, at: Instant) {
         val undo = snoozeUndo(id)
-        if (change(null, RemoteAction.Schedule(id, at)) {
-                if (!at.isAfter(it)) throw BoardException("That time has passed. Pick a later one.")
-                board.scheduleNextAction(id, at, notify = true, now = it)
+        if (change(null) { b, now ->
+                if (!at.isAfter(now)) throw BoardException("That time has passed. Pick a later one.")
+                b.scheduleNextAction(id, at, notify = true, now = now)
             }
         ) {
             undoable = Undoable("Snoozed until ${describe(at)}", undo)
@@ -780,7 +544,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     /** Snoozes until another task is done; it comes back with a reminder then. */
     fun waitFor(id: UUID, afterId: UUID) {
         val undo = snoozeUndo(id)
-        if (change(null, RemoteAction.WaitFor(id, afterId)) { board.waitFor(id, afterId, now = it) }) undoable = Undoable("Waiting for “${titleOf(afterId)}”", undo)
+        if (change(null) { b, now -> b.waitFor(id, afterId, now = now) }) undoable = Undoable("Waiting for “${titleOf(afterId)}”", undo)
     }
 
     /** Puts the task's snooze back as it was before (Undo on "Snoozed until…"): its wait, or back in Do now. */
@@ -790,17 +554,13 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         val after = item?.afterId
         val reminded = before != null && item.reminders.any { it.kind == dev.todotracker.core.ReminderKind.NEXT_ACTION && it.dueAt == before && it.dismissedAt == null }
         return {
-            val now0 = Instant.now()
-            val request = when {
-                after != null && board.canWaitFor(id, after) -> RemoteAction.WaitFor(id, after)
-                before != null && before.isAfter(now0) -> RemoteAction.Schedule(id, before, notify = reminded)
-                else -> RemoteAction.BringBack(id)
-            }
-            change(null, request) { now ->
-                when (request) {
-                    is RemoteAction.WaitFor -> board.waitFor(id, request.afterId, now = now)
-                    is RemoteAction.Schedule -> board.scheduleNextAction(id, request.at, notify = request.notify, now = now)
-                    else -> board.clearNextAction(id, now = now)
+            val waitFor = after?.takeIf { board.canWaitFor(id, it) }
+            val until = before?.takeIf { it.isAfter(Instant.now()) }
+            change(null) { b, now ->
+                when {
+                    waitFor != null -> b.waitFor(id, waitFor, now = now)
+                    until != null -> b.scheduleNextAction(id, until, notify = reminded, now = now)
+                    else -> b.clearNextAction(id, now = now)
                 }
             }
         }
@@ -809,7 +569,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     // ---- A task's details ----
 
     /** Saves what the details changed (a bad value is refused with why, and nothing changes). */
-    fun edit(id: UUID, changes: TaskChanges, message: String? = "Saved"): Boolean = change(message, RemoteAction.Update(id, changes)) { board.update(id, changes, now = it) }
+    fun edit(id: UUID, changes: TaskChanges, message: String? = "Saved"): Boolean = change(message) { b, now -> b.update(id, changes, now = now) }
 
     fun setPriority(id: UUID, priority: Priority) = edit(id, TaskChanges(priority = priority), "Priority: ${priority.wire}")
 
@@ -824,41 +584,39 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     fun setStepDelay(id: UUID, hours: Double?) =
         edit(id, if (hours == null || hours <= 0) TaskChanges(clearStepDelay = true) else TaskChanges(stepDelay = Duration.ofMinutes(Math.round(hours * 60))), "Saved")
 
-    fun addSubtask(parentId: UUID, title: String) = change("Added", RemoteAction.AddSubtask(parentId, title)) { board.addTask(NewTask(title, parentId = parentId), now = it) }
+    fun addSubtask(parentId: UUID, title: String) = change("Added") { b, now -> b.addTask(NewTask(title, parentId = parentId), now = now) }
 
     /** Steps done one after another, [hours] apart (one per line). */
     fun addSteps(parentId: UUID, lines: String, hours: Double?): Boolean {
         val titles = lines.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val delay = hours?.takeIf { it > 0 }?.let { Duration.ofMinutes(Math.round(it * 60)) }
-        return change("Added ${titles.size} step${if (titles.size == 1) "" else "s"}", RemoteAction.AddSteps(parentId, titles, delay?.toMinutes())) {
-            board.addSteps(parentId, titles, delay, now = it)
-        }
+        return change("Added ${titles.size} step${if (titles.size == 1) "" else "s"}") { b, now -> b.addSteps(parentId, titles, delay, now = now) }
     }
 
     /** A reminder at a time (the task stays where it is). */
-    fun addReminder(id: UUID, at: Instant, message: String?) = change("Reminder set for ${describe(at)}", RemoteAction.AddReminder(id, at, message)) {
-        if (!at.isAfter(it)) throw BoardException("That time has passed. Pick a later one.")
-        board.addReminder(id, at, message, now = it)
+    fun addReminder(id: UUID, at: Instant, message: String?) = change("Reminder set for ${describe(at)}") { b, now ->
+        if (!at.isAfter(now)) throw BoardException("That time has passed. Pick a later one.")
+        b.addReminder(id, at, message, now = now)
     }
 
     fun archive(id: UUID) {
         val title = titleOf(id) ?: return
-        if (change(null, RemoteAction.Archive(id)) { board.archive(id, now = it) }) {
-            undoable = Undoable("Archived: $title") { change(null, RemoteAction.Unarchive(id)) { board.unarchive(id, now = it) } }
+        if (change(null) { b, now -> b.archive(id, now = now) }) {
+            undoable = Undoable("Archived: $title") { change(null) { b, now -> b.unarchive(id, now = now) } }
         }
     }
 
-    fun unarchive(id: UUID) = change("Back in Done", RemoteAction.Unarchive(id)) { board.unarchive(id, now = it) }
+    fun unarchive(id: UUID) = change("Back in Done") { b, now -> b.unarchive(id, now = now) }
 
     /** Deletes the task and its subtasks for good (asked first, on screen). */
     fun delete(id: UUID) {
         val title = titleOf(id) ?: return
         if (openTaskId == id) openTaskId = board.find(id)?.parent?.id
-        change("Deleted “$title”", RemoteAction.Delete(id)) { board.delete(id, now = it) }
+        change("Deleted “$title”") { b, now -> b.delete(id, now = now) }
     }
 
     fun moveToGroup(id: UUID, groupId: UUID) =
-        change("Moved to ${board.groups.firstOrNull { it.id == groupId }?.name}", RemoteAction.MoveToGroup(id, groupId)) { board.moveToGroup(id, groupId, now = it) }
+        change("Moved to ${board.groups.firstOrNull { it.id == groupId }?.name}") { b, now -> b.moveToGroup(id, groupId, now = now) }
 
     fun groupOf(id: UUID): UUID? = board.find(id)?.groupId
 
@@ -866,12 +624,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     // ---- Groups ----
 
-    fun updateGroup(id: UUID, name: String, color: String?) = change("Saved", RemoteAction.UpdateGroup(id, name, color)) { board.updateGroup(id, name, color, now = it) }
+    fun updateGroup(id: UUID, name: String, color: String?) = change("Saved") { b, now -> b.updateGroup(id, name, color, now = now) }
 
     /** Deletes a group; its tasks move to [moveTo] (none are lost). */
     fun deleteGroup(id: UUID, moveTo: UUID): Boolean {
         val name = groupName(id)
-        return change("Deleted “$name”; its tasks are in ${groupName(moveTo)}", RemoteAction.DeleteGroup(id, moveTo)) { board.deleteGroup(id, moveTo, now = it) }
+        return change("Deleted “$name”; its tasks are in ${groupName(moveTo)}") { b, now -> b.deleteGroup(id, moveTo, now = now) }
     }
 
     // ---- Settings ----
@@ -881,18 +639,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         prefs.edit().putString("theme", theme).apply()
     }
 
-    /** The focus timer's lengths are set on the computer when connected (phones can't): hidden then. */
-    val canSetFocusLengths: Boolean get() = !isRemote
-
-    fun setFocusLengths(focus: Int, shortBreak: Int, longBreak: Int) = change("Saved", null) { board.setFocusLengths(focus, shortBreak, longBreak) }
+    fun setFocusLengths(focus: Int, shortBreak: Int, longBreak: Int) = change("Saved") { b, _ -> b.setFocusLengths(focus, shortBreak, longBreak) }
 
     /** Tasks it can wait for: the open ones shown (to do now, then waiting), not itself, its subtasks or parents, or what waits for it. */
     fun waitCandidates(id: UUID): List<Pair<UUID, String>> =
         (dashboard.now + dashboard.waiting).map { it.item }.distinctBy { it.id }.filter { board.canWaitFor(id, it.id) }.map { it.id to it.title }
 
-    fun bringBack(id: UUID) = change(null, RemoteAction.BringBack(id)) { board.clearNextAction(id, now = it) }
+    fun bringBack(id: UUID) = change(null) { b, now -> b.clearNextAction(id, now = now) }
 
-    fun dismissReminder(id: UUID, reminderId: UUID) = change(null, RemoteAction.DismissReminder(id, reminderId)) { board.dismissReminder(id, reminderId, now = it) }
+    fun dismissReminder(id: UUID, reminderId: UUID) = change(null) { b, now -> b.dismissReminder(id, reminderId, now = now) }
 
     /** Do something else first: the task moves one down Do now (the next one becomes the focus). */
     fun skip(id: UUID) {
@@ -900,41 +655,22 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         val i = ids.indexOf(id)
         if (i < 0 || i + 1 >= ids.size) return
         java.util.Collections.swap(ids, i, i + 1)
-        change(null, RemoteAction.ArrangeNow(ids.toList())) { board.arrangeNow(ids, now = it) }
+        val order = ids.toList()
+        change(null) { b, now -> b.arrangeNow(order, now = now) }
     }
 
-    fun addNote(id: UUID, text: String) = change("Note saved", RemoteAction.AddNote(id, text)) { board.addNote(id, text, now = it) }
+    fun addNote(id: UUID, text: String) = change("Note saved") { b, now -> b.addNote(id, text, now = now) }
 
-    fun addGroup(name: String) = change(null, RemoteAction.AddGroup(name), after = { body ->
-        // The computer made the group (with its own id): that's the one to show.
-        runCatching { Json.parseToJsonElement(body).jsonObject["id"]?.jsonPrimitive?.content?.let(UUID::fromString) }.getOrNull()?.let { selectedGroup = it }
-    }) { selectedGroup = board.addGroup(name, now = it).id }
+    /** A new group, shown once it's saved. */
+    fun addGroup(name: String) = change(null, saved = { id: UUID -> selectedGroup = id }) { b, now -> b.addGroup(name, now = now).id }
 
     /**
-     * Applies a change and saves it; false (with the reason shown) when the board refused it. Connected to a computer,
-     * it's [request] that changes the tasks there (the change shows here at once, then the computer's board is read
-     * back); [after] gets the computer's answer. A change the computer doesn't let phones make (null) isn't made.
+     * Applies a change: it's checked and shown at once on the board on screen, then made again on the tasks folder (the
+     * one store) off the screen's thread, where only the files it touched are written (all or nothing; a file changed
+     * underneath is read again and the change made again). False (with the reason shown) when the board refused it.
+     * [action] gets the board to change and the time; what it returns on the saved board goes to [saved].
      */
-    private fun change(message: String?, request: RemoteAction?, after: ((String) -> Unit)? = null, action: (Instant) -> Unit): Boolean {
-        if (isRemote) {
-            val name = computer ?: "your computer"
-            when {
-                request == null -> status = "Do that in Onething on $name."
-                remote?.canChange != true -> status = "Can't change tasks right now: $name isn't answering. Try again when you're back on its Wi-Fi or Tailscale."
-                else -> return try {
-                    action(Instant.now())
-                    send(request, after)
-                    status = message
-                    true
-                } catch (e: BoardException) {
-                    status = e.message
-                    false
-                } finally {
-                    refresh()
-                }
-            }
-            return false
-        }
+    private fun <T> change(message: String?, saved: (T) -> Unit = {}, action: (TaskBoard, Instant) -> T): Boolean {
         if (opened == null) {
             status = "Just a moment: your tasks are still opening."
             return false
@@ -943,76 +679,58 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             status = opened?.problem ?: "Your board is from a newer version of the app, so changes are off to protect it."
             return false
         }
-        return try {
-            local { action(Instant.now()) }
-            status = message
-            true
+        val at = Instant.now()
+        try {
+            action(board, at)
         } catch (e: BoardException) {
             status = e.message
-            false
-        } catch (e: IOException) {
-            status = "Couldn't save your change (${e.message}). Nothing was changed; try again."
-            false
-        } finally {
+            refresh()
+            return false
+        }
+        status = message
+        refresh()
+        save(at = at, mutate = action) { result ->
+            result.onSuccess(saved)
+            result.onFailure { e ->
+                undoable = null
+                status = if (e is BoardException) e.message else "Couldn't save your change (${e.message}). Nothing was changed; try again."
+            }
             refresh()
         }
+        return true
     }
 
     /**
-     * Sends a change to the computer (one at a time, in order); once none are left on their way, its board is read back.
-     * One that doesn't go through is taken back on screen (the computer's board as last read), with why.
+     * Makes [mutate] on the tasks folder at [at], off the screen's thread (BoardHub.disk: one at a time and in order,
+     * with the alarms' and widgets' changes, never waiting on the screen), then shows what's saved and tells [after]
+     * (on the main thread). [changed]: sync goes out a few seconds later.
      */
-    private fun send(request: RemoteAction, after: ((String) -> Unit)?) {
-        val c = client ?: return
-        sending++
-        viewModelScope.launch {
-            val result = withContext(network) { runCatching { c.perform(request).also { phone.answered(c) } } }
-            sending--
-            if (client !== c) return@launch
-            result.fold(
-                onSuccess = { body -> after?.invoke(body) },
-                onFailure = { e ->
-                    undoable = null
-                    board = remoteBoard()
-                    val name = computer ?: "your computer"
-                    status = when (e) {
-                        is PhoneException.Refused -> "Not changed: ${e.message}"
-                        is PhoneException.Revoked -> null
-                        else -> "Not changed: couldn't reach $name."
-                    }
-                    // A change the computer refused (that route, that task) says nothing about the connection.
-                    if (e !is PhoneException.Refused) failed(e)
-                    refresh()
-                },
-            )
-            if (sending == 0) poll()
+    private fun <T> save(changed: Boolean = true, at: Instant, mutate: (TaskBoard, Instant) -> T, after: (Result<T>) -> Unit) {
+        val s = store ?: return after(Result.failure(BoardException("Your board is from a newer version of the app, so changes are off to protect it.")))
+        writing++
+        BoardHub.disk.launch {
+            val result = runCatching { s.update { mutate(it, at) } }
+            val saved = runCatching { s.snapshot() }.getOrNull()
+            withContext(Dispatchers.Main) {
+                writing--
+                if (saved != null && writing == 0) board = saved
+                if (changed && result.isSuccess) syncSchedule.changed(Instant.now())
+                after(result)
+            }
         }
     }
 
-    /**
-     * Applies a change to the tasks folder (the one store): [mutate] runs on the store's board ([board] points at it
-     * meanwhile, so the actions that use it change the right one), only the files it touched are written (all or
-     * nothing; a file changed underneath is read again and the change made again), then the screen shows a copy of
-     * what's saved. [changed]: sync goes out a few seconds later.
-     */
-    private fun <T> local(changed: Boolean = true, mutate: (TaskBoard) -> T): T {
-        val s = store ?: throw BoardException("Your board is from a newer version of the app, so changes are off to protect it.")
-        try {
-            return s.update { b ->
-                board = b
-                mutate(b)
-            }.also { if (changed) syncSchedule.changed(Instant.now()) }
-        } finally {
-            board = s.snapshot()
-        }
-    }
-
-    /** Sync (or another part of the app) changed the tasks folder: show it as it is now. */
+    /** Sync (or another part of the app) changed the tasks folder: show it as it is now (read off the screen's thread). */
     override fun reloadLocal() {
-        if (isRemote) return
-        store?.let { board = it.snapshot() }
-        reminderSet = false
-        refresh()
+        val s = store ?: return
+        BoardHub.disk.launch {
+            val saved = runCatching { s.snapshot() }.getOrNull()
+            withContext(Dispatchers.Main) {
+                if (saved != null && writing == 0) board = saved
+                reminderSet = false
+                refresh()
+            }
+        }
     }
 
     // ---- Sync with your other devices (Settings) ----
@@ -1022,18 +740,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     private fun readSyncStatus() {
         val p = phoneSync ?: return
         syncOn = p.on
-        syncPlace = p.settings.place
+        syncBackends = p.backends.all
+        syncBackend = p.backend
         syncLibrary = p.settings.library
         syncJoined = p.settings.joined
         syncNotice = p.settings.notice
-        syncNeedsToken = p.settings.place == SyncSettings.GIST && p.settings.token == null
+        syncNeedsSignIn = p.needsSignIn
         syncStatus = p.status()
     }
 
     /** Syncs now (off the screen's thread); what came in shows at once, reminders included. */
     fun syncNow(asked: Boolean = true) {
         val p = phoneSync ?: return
-        if (!p.on || isRemote || syncBusy) return
+        if (!p.on || syncBusy) return
         syncBusy = true
         syncSchedule.started(Instant.now())
         if (asked) syncMessage = null
@@ -1052,17 +771,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     /**
-     * Turns on sync through a gist (or, in a debug build, a folder on the phone) with [token]; the first sync joins
-     * the library: everything from the other devices comes in first, then this phone's tasks go out.
+     * Turns on sync through the backend [place] names (a gist; in a debug build, a folder on the phone), signed in with
+     * [token] when it asks for one; the first sync joins the library: everything from the other devices comes in
+     * first, then this phone's tasks go out.
      */
     fun turnOnSync(place: String, token: String?, library: String) {
         val p = phoneSync ?: return
-        if (place == SyncSettings.GIST && token.isNullOrBlank() && p.settings.token == null) {
-            syncMessage = "Paste a GitHub token with the gist scope first."
+        val signIn = p.backends[place]?.token
+        if (signIn != null && token.isNullOrBlank() && p.settings.token == null) {
+            syncMessage = signIn.missing
             return
         }
         syncMessage = null
-        SyncHub.run({ p.turnOn(place, token?.takeIf { it.isNotBlank() }, library, connected = isRemote) }) { result ->
+        SyncHub.run({ p.turnOn(place, token?.takeIf { it.isNotBlank() }, library) }) { result ->
             result.onFailure { e -> syncMessage = e.message }
             result.onSuccess {
                 SyncHub.startBackground(getApplication())
@@ -1081,13 +802,12 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     }
 
     /** Stops syncing; the tasks stay on this phone. */
-    fun turnOffSync(then: (() -> Unit)? = null) {
-        val p = phoneSync ?: return then?.invoke() ?: Unit
+    fun turnOffSync() {
+        val p = phoneSync ?: return
         SyncHub.stopBackground(getApplication())
         SyncHub.run({ p.turnOff() }) {
             readSyncStatus()
             syncMessage = null
-            then?.invoke()
         }
     }
 

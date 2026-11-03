@@ -39,15 +39,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import dev.todotracker.core.sync.PhoneMode
+import dev.todotracker.core.sync.SyncBackend
 import dev.todotracker.core.sync.SyncSettings
+import dev.todotracker.core.sync.TokenSignIn
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
-/** Settings: how this phone gets its tasks (one of three), and the way into the Sync screen. */
+/** Settings: whether this phone syncs, and the way into the Sync screen. */
 @Composable
 fun SyncSection(vm: BoardViewModel, onOpen: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -57,11 +58,12 @@ fun SyncSection(vm: BoardViewModel, onOpen: () -> Unit) {
     }
 }
 
-private fun modeLine(vm: BoardViewModel): String = when (vm.mode) {
-    PhoneMode.CONNECTED -> "This phone uses the tasks on ${vm.computer ?: "your computer"}, so it doesn't sync on its own (the computer does)."
-    PhoneMode.SYNCING -> "This phone syncs its tasks on its own with your computers and other phones" + (vm.syncStatus.lastSync?.let { " · last synced ${syncAgo(it, vm.now)}" } ?: "") + "."
-    PhoneMode.ON_THIS_PHONE -> "Your tasks are only on this phone. Sync keeps them in step with your computers and other phones, no computer running needed."
-}
+private fun modeLine(vm: BoardViewModel): String =
+    if (vm.syncOn) {
+        "This phone syncs its tasks on its own with your computers and other phones" + (vm.syncStatus.lastSync?.let { " · last synced ${syncAgo(it, vm.now)}" } ?: "") + "."
+    } else {
+        "Your tasks are only on this phone. Sync keeps them in step with your computers and other phones, no computer running needed."
+    }
 
 /** "just now", "5 minutes ago", "3 hours ago", else the date. */
 fun syncAgo(at: Instant, now: Instant): String {
@@ -74,7 +76,7 @@ fun syncAgo(at: Instant, now: Instant): String {
     }
 }
 
-/** Settings › Sync with your other devices: set it up (a GitHub gist), or see how it goes, sync now, forget a device, turn it off. */
+/** Settings › Sync with your other devices: set it up (through one of the backends), or see how it goes, sync now, forget a device, turn it off. */
 @Composable
 fun SyncScreen(vm: BoardViewModel, onClose: () -> Unit) {
     BackHandler(onBack = onClose)
@@ -85,11 +87,7 @@ fun SyncScreen(vm: BoardViewModel, onClose: () -> Unit) {
                 Text("Sync", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
             }
             Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                when (vm.mode) {
-                    PhoneMode.CONNECTED -> Connected(vm)
-                    PhoneMode.SYNCING -> Syncing(vm)
-                    PhoneMode.ON_THIS_PHONE -> SetUp(vm)
-                }
+                if (vm.syncOn) Syncing(vm) else SetUp(vm)
             }
         }
     }
@@ -101,57 +99,49 @@ private fun Hint(text: String) = Text(text, style = MaterialTheme.typography.bod
 @Composable
 private fun Heading(text: String) = Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
 
-@Composable
-private fun Connected(vm: BoardViewModel) {
-    val computer = vm.computer ?: "your computer"
-    Heading("Connected to $computer")
-    Hint("This phone shows the tasks on $computer, and $computer syncs them with your other devices. A phone either uses a computer's tasks or syncs its own, not both.")
-    Hint("To sync this phone's own tasks instead, disconnect first. Your tasks on this phone are still here, as you left them.")
-    OutlinedButton(onClick = { vm.disconnect() }) { Text("Disconnect from $computer") }
-}
-
-/** Off: what sync does, and turning it on through a gist (the token first). */
+/** Off: what sync does, and turning it on through one of the backends (signed in first, when it asks for a token). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SetUp(vm: BoardViewModel) {
     val context = LocalContext.current
-    var place by rememberSaveable { mutableStateOf(SyncSettings.GIST) }
+    val backends = vm.syncBackends
+    var place by rememberSaveable { mutableStateOf(backends.firstOrNull()?.id) }
+    val backend = backends.firstOrNull { it.id == place } ?: return
     // Not saveable: the token never goes into the saved screen state.
     var token by remember { mutableStateOf("") }
     var library by rememberSaveable { mutableStateOf(vm.syncLibrary) }
     Heading("Sync with your other devices")
-    Hint("Your tasks stay on this phone and sync with your computers and other phones through a private GitHub gist, even when no computer is on. Changes made on more than one device are merged.")
-    if (SyncHub.folderAllowed) {
+    if (backends.size > 1) {
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = place == SyncSettings.GIST, onClick = { place = SyncSettings.GIST }, label = { Text("A private GitHub gist") })
-            FilterChip(selected = place == SyncSettings.FOLDER, onClick = { place = SyncSettings.FOLDER }, label = { Text("A folder (test builds)") })
+            backends.forEach { b ->
+                FilterChip(selected = b.id == backend.id, onClick = { place = b.id }, label = { Text(b.name.replaceFirstChar { it.uppercase() }) })
+            }
         }
     }
-    if (place == SyncSettings.GIST) {
-        Text("1. Make a GitHub token", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        Hint("GitHub opens with the gist scope chosen (that's all Onething needs). Choose when it expires, then Generate token, and copy it.")
-        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SyncHub.NEW_TOKEN_URL))) }) { Text("Open GitHub") }
+    Hint(backend.about)
+    backend.token?.let { signIn ->
+        Text("1. Make a ${signIn.label}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Hint(signIn.steps)
+        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(signIn.url))) }) { Text("Open ${signIn.site}") }
         Text("2. Paste it here", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        TokenField(token) { token = it }
-    } else {
-        Hint("Syncs through ${SyncHub.debugFolder(context, library.ifBlank { SyncSettings.DEFAULT_LIBRARY }).path} (copy it to and from a computer's Apps/TodoTrackerSync folder to try sync).")
+        TokenField(signIn, token) { token = it }
     }
     LibraryField(library) { library = it }
     vm.syncMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     Button(onClick = {
-        vm.turnOnSync(place, token, library)
+        vm.turnOnSync(backend.id, token, library)
         token = ""
-    }, enabled = place != SyncSettings.GIST || token.isNotBlank()) { Text("Turn on sync") }
+    }, enabled = backend.token == null || token.isNotBlank()) { Text("Turn on sync") }
     Hint("Joining a library adds this phone's tasks to it: the first sync brings in the tasks your other devices have, then adds this phone's beside them (nothing is replaced).")
 }
 
 @Composable
-private fun TokenField(value: String, onChange: (String) -> Unit) {
+private fun TokenField(signIn: TokenSignIn, value: String, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value, onValueChange = onChange, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("GitHub token") }, visualTransformation = PasswordVisualTransformation(),
+        label = { Text(signIn.label) }, visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        supportingText = { Text("Kept encrypted on this phone, and sent only to GitHub.") },
+        supportingText = { Text("Kept encrypted on this phone, and sent only to ${signIn.site}.") },
     )
 }
 
@@ -170,7 +160,8 @@ private fun Syncing(vm: BoardViewModel) {
     val status = vm.syncStatus
     var forgetting by rememberSaveable { mutableStateOf<String?>(null) }
     var turningOff by rememberSaveable { mutableStateOf(false) }
-    Heading(if (vm.syncPlace == SyncSettings.FOLDER) "Syncing through a folder" else "Syncing through a private GitHub gist")
+    val backend: SyncBackend? = vm.syncBackend
+    Heading("Syncing through ${backend?.name ?: "a place this version doesn't know"}")
     Hint("Library “${vm.syncLibrary}”. It syncs when you open the app, a few seconds after a change, every minute while it's open, and now and then when it's closed.")
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(onClick = { vm.syncNow() }, enabled = !vm.syncBusy) { Text("Sync now") }
@@ -186,21 +177,22 @@ private fun Syncing(vm: BoardViewModel) {
     status.lastError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
     vm.syncMessage?.takeIf { it != status.lastError }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
 
-    if (vm.syncNeedsToken || status.lastError?.contains("sign-in") == true || status.lastError?.contains("Sign in") == true) {
+    val signIn = backend?.token
+    if (signIn != null && (vm.syncNeedsSignIn || status.lastError?.contains("sign-in") == true || status.lastError?.contains("Sign in") == true)) {
         var token by remember { mutableStateOf("") }
         val context = LocalContext.current
-        Text("Sign in to GitHub again", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SyncHub.NEW_TOKEN_URL))) }) { Text("Make a new token") }
-        TokenField(token) { token = it }
+        Text("Sign in to ${signIn.site} again", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        OutlinedButton(onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(signIn.url))) }) { Text("Make a new token") }
+        TokenField(signIn, token) { token = it }
         OutlinedButton(onClick = {
-            vm.turnOnSync(SyncSettings.GIST, token, vm.syncLibrary)
+            vm.turnOnSync(backend.id, token, vm.syncLibrary)
             token = ""
         }, enabled = token.isNotBlank()) { Text("Use this token") }
     }
 
     HorizontalDivider()
     Heading("Your other devices")
-    if (status.devices.isEmpty()) Hint("None yet. On a computer, open Onething › Sync and choose GitHub gist with the same library name.")
+    if (status.devices.isEmpty()) Hint("None yet. On a computer, open Onething › Sync and choose ${backend?.name ?: "the same place"} with the same library name.")
     status.devices.forEach { d ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -250,7 +242,7 @@ private fun Syncing(vm: BoardViewModel) {
         AlertDialog(
             onDismissRequest = { turningOff = false },
             title = { Text("Turn sync off?") },
-            text = { Text("Your tasks stay on this phone as they are. Changes here no longer reach your other devices, and theirs no longer come here. The GitHub token is forgotten on this phone.") },
+            text = { Text("Your tasks stay on this phone as they are. Changes here no longer reach your other devices, and theirs no longer come here." + if (backend?.token != null) " The ${backend.token.label} is forgotten on this phone." else "") },
             confirmButton = { TextButton(onClick = { vm.turnOffSync(); turningOff = false }) { Text("Turn off") } },
             dismissButton = { TextButton(onClick = { turningOff = false }) { Text("Cancel") } },
         )

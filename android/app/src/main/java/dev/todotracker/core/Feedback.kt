@@ -28,7 +28,7 @@ object Feedback {
     const val SENT_TEXT = "Thanks — we read every note."
     const val RETRY_TEXT = "Couldn’t send — check your connection and try again."
     const val FAILED_TEXT = "Couldn’t send your note: something went wrong on our side. Please try again later."
-    const val FINE_PRINT = "We’ll include your app version, device model and language."
+    const val FINE_PRINT = "We’ll include the app version, your OS and its version, device model, language and screen size."
     const val CONTACT_HINT = "Only if you’d like a reply. It’s shown with your note on GitHub."
 
     /** What the note is about: its id (in the label) and what the sheet and the title say. */
@@ -76,6 +76,18 @@ object Feedback {
         return trimmed.substring(0, trimmed.offsetByCodePoints(0, max)).trim()
     }
 
+    /** How long the address for a reply can be. */
+    const val MAX_CONTACT = 200
+
+    /** The address for a reply as sent: every control character removed, trimmed, cut to [MAX_CONTACT] code points, trimmed again. */
+    fun cleanContact(text: String?): String {
+        val kept = StringBuilder()
+        text.orEmpty().codePoints().forEach { cp -> if (Character.getType(cp) != Character.CONTROL.toInt()) kept.appendCodePoint(cp) }
+        val trimmed = kept.toString().trim()
+        if (trimmed.codePointCount(0, trimmed.length) <= MAX_CONTACT) return trimmed
+        return trimmed.substring(0, trimmed.offsetByCodePoints(0, MAX_CONTACT)).trim()
+    }
+
     /** How long the message is, as the relay counts it (code points). */
     fun length(text: String): Int = cleanMessage(text, Int.MAX_VALUE).let { it.codePointCount(0, it.length) }
 
@@ -84,7 +96,7 @@ object Feedback {
         val message = cleanMessage(draft.message, maxMessage)
         if (message.isEmpty()) return null
         val platform = device.platform.lowercase()
-        val contact = draft.contact?.trim().orEmpty()
+        val contact = cleanContact(draft.contact)
         val version = device.appVersion?.takeIf { it.isNotBlank() }?.let { v -> device.build?.takeIf { it.isNotBlank() }?.let { "$v ($it)" } ?: v }
         return buildJsonObject {
             put("message", message)

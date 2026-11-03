@@ -14,21 +14,20 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import dev.todotracker.BuildConfig
 import dev.todotracker.core.LocalBoard
-import dev.todotracker.core.sync.FolderRemote
-import dev.todotracker.core.sync.GistRemote
 import dev.todotracker.core.sync.PhoneSync
 import dev.todotracker.core.sync.PhoneSyncOutcome
-import dev.todotracker.core.sync.SyncRemote
+import dev.todotracker.core.sync.SyncBackend
+import dev.todotracker.core.sync.SyncBackends
 import dev.todotracker.core.sync.SyncSettings
 import dev.todotracker.core.sync.UrlConnectionTransport
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
  * Sync on this phone, for the whole app (Settings › Sync with your other devices): one [PhoneSync] over the one tasks
- * folder ([BoardHub.store]), every sync on one background thread, one at a time. While the app is open its view model
+ * folder ([BoardHub.store]) and the backends this build offers ([backends]), every sync on one background thread, one
+ * at a time. While the app is open its view model
  * says when ([dev.todotracker.core.sync.SyncSchedule]); with the app closed, WorkManager does (every 15 minutes or so
  * with a network, and a few seconds after a change made from a notification).
  */
@@ -49,7 +48,7 @@ object SyncHub {
         val store = BoardHub.store(app) ?: return null
         val settings = SyncSettings(PrefsValues(app.getSharedPreferences("sync", Context.MODE_PRIVATE)), KeystoreBox("sync-token"))
         PhoneSync(
-            store, settings, File(app.filesDir, "sync"), { PhoneConnection.phoneName(app) }, { s -> remote(app, s) },
+            store, settings, File(app.filesDir, "sync"), { DeviceName.of(app) }, backends(app),
             { LocalBoard.legacyFile(app.filesDir).takeIf { it.exists() } },
             installId(app),
         ).also { sync = it }
@@ -67,15 +66,22 @@ object SyncHub {
         return id
     }
 
-    /** Debug builds can sync through a folder on the phone (to try it against a computer without a GitHub account). */
-    val folderAllowed: Boolean get() = BuildConfig.DEBUG
-
-    /** The folder a debug build syncs through: `Android/data/dev.todotracker/files/TodoTrackerSync/<library>`. */
-    fun debugFolder(context: Context, library: String): File = File(File(context.getExternalFilesDir(null) ?: context.filesDir, "TodoTrackerSync"), library)
-
-    private fun remote(context: Context, s: SyncSettings): SyncRemote = when (s.place) {
-        SyncSettings.FOLDER -> if (folderAllowed) FolderRemote(debugFolder(context, s.library)) else throw IllegalStateException("Folder sync is for debug builds only.")
-        else -> GistRemote(UrlConnectionTransport, { s.token ?: throw IOException("Sign in to GitHub again (Settings › Sync with your other devices).") }, { s.gistId }, { s.gistId = it }, s.library)
+    /**
+     * The ways this phone can sync, the first offered first: a private GitHub gist and, in debug builds, a folder on the
+     * phone (to try sync against a computer without a GitHub account). Another backend is added here.
+     */
+    fun backends(context: Context): SyncBackends {
+        val gist = SyncBackend.gist(UrlConnectionTransport, NEW_TOKEN_URL)
+        if (!BuildConfig.DEBUG) return SyncBackends(gist)
+        val app = context.applicationContext
+        val root = File(app.getExternalFilesDir(null) ?: app.filesDir, "TodoTrackerSync")
+        return SyncBackends(
+            gist,
+            SyncBackend.folder(
+                "a folder (test builds)",
+                "Syncs through ${root.path}/<library> (copy it to and from a computer's Apps/TodoTrackerSync folder to try sync).",
+            ) { library -> File(root, library) },
+        )
     }
 
     /** Runs [work] on the sync thread, then [done] on the main thread with its result. */
@@ -90,7 +96,7 @@ object SyncHub {
     /** One sync on the calling thread (a worker's). */
     fun syncHere(context: Context): PhoneSyncOutcome? {
         val s = get(context) ?: return null
-        if (!s.on || PhoneConnection(context).load() != null) return null
+        if (!s.on) return null
         return worker.submit<PhoneSyncOutcome> { s.sync() }.get()
     }
 
@@ -123,7 +129,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : Worker(context, p
     override fun doWork(): Result {
         val app = applicationContext
         val sync = SyncHub.get(app)
-        if (sync == null || !sync.on || PhoneConnection(app).load() != null) {
+        if (sync == null || !sync.on) {
             SyncHub.stopBackground(app)
             return Result.success()
         }

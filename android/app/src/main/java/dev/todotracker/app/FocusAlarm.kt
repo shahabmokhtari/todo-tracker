@@ -12,7 +12,6 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.todotracker.R
-import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.Breaks
 import dev.todotracker.core.PhaseEnd
 import dev.todotracker.core.Reminders
@@ -105,14 +104,6 @@ class RestartReceiver : BroadcastReceiver() {
         Thread {
             var delivering = false
             try {
-                val connection = PhoneConnection(context)
-                if (connection.load() != null) {
-                    // Connected to a computer: its tasks (the last read), not this phone's own board.
-                    connection.cached()?.let { runCatching { BoardCodec.decode(it.text) }.getOrNull() }?.let { FocusAlarm.schedule(context, Breaks.phaseEnds(it.pomodoro)) }
-                    delivering = true
-                    RemoteAlarm.due(context.applicationContext, connection) { pending.finish() }
-                    return@Thread
-                }
                 // Syncing on its own: the checks with the app closed go on after a restart (WorkManager keeps them anyway).
                 if (SyncHub.get(context)?.on == true) SyncHub.startBackground(context)
                 val board = runCatching { BoardHub.store(context)?.snapshot() }.getOrNull() ?: return@Thread

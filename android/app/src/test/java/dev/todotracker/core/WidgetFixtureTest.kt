@@ -127,19 +127,3 @@ class WidgetDoneTest {
         assertFalse(WidgetSnapshot.canMarkDone(board, parent.id, start))
     }
 }
-
-class WidgetRemoteDoneTest {
-    @Test
-    fun a_repeating_task_done_from_the_widget_on_a_connected_phone_is_not_done_again_before_the_computer_answers() {
-        val now = Instant.parse("2026-11-02T09:00:00Z")
-        val board = TaskBoard()
-        val task = board.addTask(NewTask("Water the plants"), now = now.minusSeconds(3600))
-        board.update(task.id, TaskChanges(repeat = "every day"), now = now.minusSeconds(3600))
-        val cached = BoardCodec.encode(board)
-        assertEquals(true, WidgetSnapshot.canMarkDone(BoardCodec.decode(cached), task.id, now))
-
-        // Sent to the computer: the board as last read moves on too, so a second tap finds nothing to do.
-        val after = WidgetSnapshot.markedDone(cached, task.id, now)!!
-        assertFalse(WidgetSnapshot.canMarkDone(BoardCodec.decode(after), task.id, now))
-    }
-}

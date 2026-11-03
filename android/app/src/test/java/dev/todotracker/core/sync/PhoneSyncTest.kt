@@ -50,6 +50,12 @@ class PhoneSyncTest {
             if (!works || !sealed.startsWith("sealed:")) null else String(Base64.getDecoder().decode(sealed.removePrefix("sealed:"))).reversed()
     }
 
+    /** Every place the phone knows (a gist, signed in with a token, and a folder) meets in [remote]. */
+    private fun places(remote: (SyncSettings) -> SyncRemote) = SyncBackends(
+        SyncBackend(SyncSettings.GIST, "a gist", "", TokenSignIn("GitHub", "GitHub token", "https://github.test/token", "", "Paste a token first."), remote),
+        SyncBackend(SyncSettings.FOLDER, "a folder", "", token = null, remote),
+    )
+
     /** A computer: its tasks folder and the C#-equivalent engine, through the same shared folder. */
     private inner class Laptop {
         val store = VaultStore.open(File(dir, "laptop/vault"), ZoneOffset.UTC, { now })
@@ -70,7 +76,7 @@ class PhoneSyncTest {
         init {
             files.mkdirs()
             store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
-            sync = PhoneSync(store, SyncSettings(values, box), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, { LocalBoard.legacyFile(files).takeIf { it.exists() } }) { now }
+            sync = PhoneSync(store, SyncSettings(values, box), File(files, "sync"), { "Pixel" }, places { FolderRemote(shared) }, { LocalBoard.legacyFile(files).takeIf { it.exists() } }) { now }
         }
 
         fun sync() = sync.sync().also { tick() }
@@ -170,7 +176,6 @@ class PhoneSyncTest {
         val rules = listOf(File("src/main/res/xml/backup_rules.xml"), File("src/main/res/xml/data_extraction_rules.xml")).map { it.readText() }
         for (r in rules) {
             assertTrue(r, r.contains("""domain="sharedpref" path="sync.xml""""))
-            assertTrue(r, r.contains("""domain="sharedpref" path="phone.xml""""))
             assertTrue(r, r.contains("""domain="file" path="sync/""""))
             assertFalse(r, r.contains("""path="vault"""))
         }
@@ -189,7 +194,7 @@ class PhoneSyncTest {
 
         writeLegacy(File(dir, "phone"), "Call the dentist")
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         val joined = phone.sync()
         assertTrue(joined.joined)
         assertTrue(joined.changed)
@@ -214,7 +219,7 @@ class PhoneSyncTest {
         val laptop = Laptop()
         laptop.sync()
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         phone.sync()
 
         val id = phone.store.update { it.addTask(NewTask("Renew passport", groupId = it.groups[0].id), Actor.USER, now).id }
@@ -239,7 +244,7 @@ class PhoneSyncTest {
         File(shared, "blobs").walkTopDown().filter { it.isFile }.first { it.readText().contains("# On the laptop") }.delete()
 
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         val first = phone.sync()
         assertFalse(first.joined)
         assertFalse(phone.sync.settings.joined)
@@ -259,7 +264,7 @@ class PhoneSyncTest {
         val laptop = Laptop()
         laptop.sync()
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         phone.sync()
         assertEquals(1, phone.sync.status().devices.size)
         phone.sync.forget(laptop.engine.state.deviceId)
@@ -269,11 +274,24 @@ class PhoneSyncTest {
     // ---- Modes ----
 
     @Test
-    fun syncCantBeTurnedOnWhileConnectedToAComputer() {
+    fun syncIsNotTurnedOnThroughAPlaceThisPhoneDoesNotKnow() {
         val phone = Phone()
-        val e = assertThrows(IllegalStateException::class.java) { phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = true) }
-        assertTrue(e.message!!.contains("Disconnect"))
+        assertThrows(IllegalStateException::class.java) { phone.sync.turnOn("somewhere-else", null, "Todo Tracker") }
         assertFalse(phone.sync.on)
+        assertNull(phone.sync.backend)
+    }
+
+    @Test
+    fun aPlaceThatSignsInWithATokenIsNotTurnedOnWithoutOne() {
+        val phone = Phone()
+        val e = assertThrows(IllegalStateException::class.java) { phone.sync.turnOn(SyncSettings.GIST, null, "Todo Tracker") }
+        assertEquals("Paste a token first.", e.message)
+        assertFalse(phone.sync.on)
+
+        // A folder asks for nothing: on, through the backend its id names.
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
+        assertEquals(SyncSettings.FOLDER, phone.sync.backend?.id)
+        assertFalse(phone.sync.needsSignIn)
     }
 
     @Test
@@ -281,7 +299,7 @@ class PhoneSyncTest {
         val laptop = Laptop()
         laptop.sync()
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         phone.store.update { it.addTask(NewTask("Mine", groupId = it.groups[0].id), Actor.USER, now) }
         phone.sync()
         phone.sync.turnOff()
@@ -292,7 +310,7 @@ class PhoneSyncTest {
         laptop.sync()
         laptop.store.update { it.addTask(NewTask("Theirs", groupId = it.groups[0].id), Actor.USER, now) }
         laptop.sync()
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         assertFalse(phone.sync.settings.joined)
         assertTrue(phone.sync().joined)
         assertEquals(listOf("Mine", "Theirs"), phone.titles())
@@ -303,7 +321,7 @@ class PhoneSyncTest {
     @Test
     fun anotherLibraryIsJoinedAfresh() {
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.GIST, "t", "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.GIST, "t", "Todo Tracker")
         phone.sync.settings.gistId = "g1"
         phone.sync.settings.joinedTo = "gist|Todo Tracker"
         assertTrue(phone.sync.settings.joined)
@@ -318,7 +336,7 @@ class PhoneSyncTest {
     @Test
     fun theTokenIsKeptSealedAndForgottenWhenSyncIsTurnedOff() {
         val phone = Phone()
-        phone.sync.turnOn(SyncSettings.GIST, "  ghp_secret123  ", "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.GIST, "  ghp_secret123  ", "Todo Tracker")
         val kept = phone.values.map["token"]!!
         assertFalse(kept.contains("ghp_secret123"))
         assertEquals("ghp_secret123", phone.sync.settings.token)
@@ -347,10 +365,8 @@ class PhoneSyncTest {
         val values = MapValues()
         val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
         val settings = SyncSettings(values, FakeBox())
-        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, { s ->
-            GistRemote(github, { s.token ?: throw java.io.IOException("Sign in to GitHub again.") }, { s.gistId }, { s.gistId = it }, s.library)
-        }) { now }
-        sync.turnOn(SyncSettings.GIST, "ghp_phone", "Todo Tracker", connected = false)
+        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, SyncBackends(SyncBackend.gist(github, "https://github.com/settings/tokens/new"))) { now }
+        sync.turnOn(SyncSettings.GIST, "ghp_phone", "Todo Tracker")
         store.update { it.addTask(NewTask("From the phone", groupId = it.groups[0].id), Actor.USER, now) }
         assertTrue(sync.sync().joined)
         assertEquals(laptopGist, settings.gistId)
@@ -375,8 +391,8 @@ class PhoneSyncTest {
         val files = File(dir, "phone").also { it.mkdirs() }
         val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
         val settings = SyncSettings(MapValues(), FakeBox())
-        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, { s -> GistRemote(github, { s.token!! }, { s.gistId }, { s.gistId = it }, s.library) }) { now }
-        sync.turnOn(SyncSettings.GIST, "wrong", "Todo Tracker", connected = false)
+        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, SyncBackends(SyncBackend.gist(github, "https://github.com/settings/tokens/new"))) { now }
+        sync.turnOn(SyncSettings.GIST, "wrong", "Todo Tracker")
         assertThrows(GitHubException::class.java) { sync.sync() }
         assertTrue(sync.status().lastError!!.contains("sign-in"))
         assertFalse(settings.joined)
@@ -396,7 +412,7 @@ class PhoneSyncTest {
         board.addTask(NewTask("Water the plants", groupId = board.groups[0].id), Actor.USER, now)
         LocalBoard.legacyFile(files).writeText(BoardCodec.encode(board))
         val phone = Phone(files)
-        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        phone.sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         repeat(3) {
             phone.sync()
             laptop.sync()
@@ -415,9 +431,9 @@ class PhoneSyncTest {
         val files = File(dir, "phone").also { it.mkdirs() }
         val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
         val values = MapValues()
-        fun phoneSync(install: String) = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = install) { now }
+        fun phoneSync(install: String) = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, places { FolderRemote(shared) }, installId = install) { now }
         val first = phoneSync("install-1")
-        first.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        first.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         first.sync()
         val id = first.deviceId
         assertTrue(first.settings.joined)
@@ -437,9 +453,9 @@ class PhoneSyncTest {
         val files = File(dir, "phone").also { it.mkdirs() }
         val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
         val values = MapValues()
-        val a = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = "same") { now }
+        val a = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, places { FolderRemote(shared) }, installId = "same") { now }
         val id = a.deviceId
-        val b = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }, installId = "same") { now }
+        val b = PhoneSync(store, SyncSettings(values, FakeBox()), File(files, "sync"), { "Pixel" }, places { FolderRemote(shared) }, installId = "same") { now }
         assertEquals(id, b.deviceId)
     }
 
@@ -447,8 +463,8 @@ class PhoneSyncTest {
     fun anotherLibraryStartsWithNothingRememberedButTheSameDevice() {
         val files = File(dir, "phone").also { it.mkdirs() }
         val store = LocalBoard.open(files, ZoneOffset.UTC) { now }.store!!
-        val sync = PhoneSync(store, SyncSettings(MapValues(), FakeBox()), File(files, "sync"), { "Pixel" }, { s -> FolderRemote(File(dir, "lib/" + s.library)) }) { now }
-        sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker", connected = false)
+        val sync = PhoneSync(store, SyncSettings(MapValues(), FakeBox()), File(files, "sync"), { "Pixel" }, places { s -> FolderRemote(File(dir, "lib/" + s.library)) }) { now }
+        sync.turnOn(SyncSettings.FOLDER, null, "Todo Tracker")
         val id = store.update { it.addTask(NewTask("Gone soon", groupId = it.groups[0].id), Actor.USER, now).id }
         sync.sync().also { tick() }
         store.update { it.delete(id, Actor.USER, now) }
@@ -475,8 +491,8 @@ class PhoneSyncTest {
             override fun open(sealed: String): String? = null
         }
         val settings = SyncSettings(MapValues(), broken)
-        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, { FolderRemote(shared) }) { now }
-        assertThrows(IllegalStateException::class.java) { sync.turnOn(SyncSettings.GIST, "ghp_x", "Todo Tracker", connected = false) }
+        val sync = PhoneSync(store, settings, File(files, "sync"), { "Pixel" }, places { FolderRemote(shared) }) { now }
+        assertThrows(IllegalStateException::class.java) { sync.turnOn(SyncSettings.GIST, "ghp_x", "Todo Tracker") }
         assertFalse(sync.on)
     }
 }

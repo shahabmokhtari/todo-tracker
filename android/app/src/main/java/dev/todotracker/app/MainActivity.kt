@@ -15,6 +15,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: BoardViewModel by viewModels()
@@ -42,6 +46,8 @@ class MainActivity : ComponentActivity() {
         // hands back the old link).
         val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
         if (savedInstanceState == null && !fromHistory) vm.openLink(intent?.dataString)
+        // The clocks, the lists and sync move on only while the app is on screen (WorkManager syncs when it isn't).
+        lifecycleScope.launch { repeatOnLifecycle(Lifecycle.State.STARTED) { vm.whileOnScreen() } }
     }
 
     // A link clicked while the app runs (singleTask: links always come to this one board, never a second copy).

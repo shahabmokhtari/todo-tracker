@@ -51,9 +51,7 @@ import androidx.work.WorkManager
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dev.todotracker.core.Actor
-import dev.todotracker.core.BoardCodec
 import dev.todotracker.core.BoardException
-import dev.todotracker.core.RemoteAction
 import dev.todotracker.core.TaskLinks
 import dev.todotracker.core.WidgetItem
 import dev.todotracker.core.WidgetSnapshot
@@ -77,7 +75,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * The home-screen widgets (Now and Today). They run in the app's process, so they read the board the app uses: this
- * phone's tasks folder ([BoardHub.store]), or while connected to a computer its board as last read. What they show
+ * phone's tasks folder ([BoardHub.store]). What they show
  * comes from [WidgetSnapshot] (the agenda's own rules, the same as the iPhone's and the Mac's widgets), and they're
  * updated when the board changes and again when the list next changes on its own (a snooze ends, midnight…).
  */
@@ -88,11 +86,6 @@ object Widgets {
     /** What the widgets show now (null: the tasks can't be read yet). */
     fun snapshot(context: Context, now: Instant): WidgetSnapshot? {
         val zone = ZoneId.systemDefault()
-        val connection = PhoneConnection(context)
-        if (connection.load() != null) {
-            val text = connection.cached()?.text ?: return null
-            return runCatching { WidgetSnapshot.build(BoardCodec.decode(text), now, zone) }.getOrNull()
-        }
         val store = BoardHub.store(context) ?: return null
         return store.read { WidgetSnapshot.build(it, now, zone) }
     }
@@ -125,38 +118,19 @@ object Widgets {
 
     /**
      * Done on a widget: the same change as Mark done on a reminder (the person did it: it's theirs on the timeline),
-     * made on this phone's tasks folder (through the running app when it's open) or sent to the connected computer.
-     * When it can't be made here (the computer can't be reached, the task has open subtasks), the app opens on the
-     * task and says why: nothing is changed behind the person's back, and nothing is done twice.
+     * made on this phone's tasks folder (through the running app when it's open). When it can't be made here (the task
+     * has open subtasks), the app opens on the task and says why: nothing is changed behind the person's back, and
+     * nothing is done twice.
      */
     suspend fun markDone(context: Context, id: UUID) {
         val app = context.applicationContext
         val problem = doing.withLock {
-            val connection = PhoneConnection(app)
-            val pairing = connection.load()
-            if (pairing != null) {
-                // The board as last read: a task done (or moved on) since the widget drew it isn't done again.
-                val board = connection.cached()?.text?.let { runCatching { BoardCodec.decode(it) }.getOrNull() }
-                if (board != null && !WidgetSnapshot.canMarkDone(board, id, Instant.now())) {
-                    board.find(id)?.takeIf { it.hasOpenChildren }?.let { "“${it.title}” has open subtasks: finish them here." }
-                } else {
-                    val error = suspendCancellableCoroutine { done -> RemoteAlarm.perform(app, pairing, RemoteAction.Complete(id)) { done.resume(it) } }
-                    // Done there: the board as last read moves on too, so a second tap before it's read again does nothing.
-                    if (error == null) connection.cached()?.let { cached ->
-                        WidgetSnapshot.markedDone(cached.text, id, Instant.now())?.let { connection.cache(it, null, cached.at) }
-                    }
-                    // Read again (the app does it itself when it's open), so the widget shows what the computer has now.
-                    if (error == null && BoardHub.live == null) withContext(Dispatchers.IO) { RemoteAlarm.readAndDeliver(app, connection) }
-                    error
-                }
-            } else {
-                suspendCancellableCoroutine { done ->
-                    BoardHub.change(app, { board, now ->
-                        val item = board.get(id)
-                        if (item.hasOpenChildren) throw BoardException("“${item.title}” has open subtasks: finish them here.")
-                        if (WidgetSnapshot.canMarkDone(board, id, now)) board.complete(id, Actor.USER, now)
-                    }) { result -> done.resume(result.exceptionOrNull()?.let { it.message ?: "Couldn't mark it done." }) }
-                }
+            suspendCancellableCoroutine { done ->
+                BoardHub.change(app, { board, now ->
+                    val item = board.get(id)
+                    if (item.hasOpenChildren) throw BoardException("“${item.title}” has open subtasks: finish them here.")
+                    if (WidgetSnapshot.canMarkDone(board, id, now)) board.complete(id, Actor.USER, now)
+                }) { result -> done.resume(result.exceptionOrNull()?.let { it.message ?: "Couldn't mark it done." }) }
             }
         }
         if (problem != null) {

@@ -20,21 +20,18 @@ interface SecretBox {
     fun open(sealed: String): String?
 }
 
-/** How this phone gets its tasks: only on it, syncing on its own with the other devices, or a connected computer's. */
-enum class PhoneMode { ON_THIS_PHONE, SYNCING, CONNECTED }
-
-/** What sync is set to on this phone: where it meets the other devices, the library, and the GitHub sign-in (sealed). */
+/** What sync is set to on this phone: where it meets the other devices (a [SyncBackend]'s id), the library, and its sign-in (sealed). */
 class SyncSettings(private val values: KeyValues, private val box: SecretBox) {
     companion object {
         /** The same default as the computers (their tasks folder's name), so a new phone meets them. */
         const val DEFAULT_LIBRARY = "Todo Tracker"
         const val GIST = "gist"
 
-        /** A folder on the phone (debug builds only: to try sync against a computer without GitHub). */
+        /** A folder the phone writes to directly (debug builds only: to try sync against a computer without GitHub). */
         const val FOLDER = "folder"
     }
 
-    /** Where it syncs ([GIST], [FOLDER]); null: sync is off. */
+    /** The [SyncBackend] it syncs through ([GIST], [FOLDER]); null: sync is off. */
     var place: String?
         get() = values["place"]
         set(value) {
@@ -56,7 +53,7 @@ class SyncSettings(private val values: KeyValues, private val box: SecretBox) {
             values["gistId"] = value
         }
 
-    /** The GitHub token (with the gist scope), or null (none, or it can't be read on this phone any more). */
+    /** The backend's token (GitHub: with the gist scope), or null (none, or it can't be read on this phone any more). */
     var token: String?
         get() = values["token"]?.let(box::open)
         set(value) {
@@ -92,7 +89,7 @@ data class PhoneSyncOutcome(val changed: Boolean, val joined: Boolean, val resul
 
 /**
  * Sync on a phone, on its own (phase 2 of docs/design/phone-sync.md): the phone's tasks folder ([store], the one the
- * app uses) syncs through a gist with the user's other devices. The first sync with a place joins it
+ * app uses) syncs with the user's other devices through one of [backends] (a GitHub gist). The first sync with a place joins it
  * ([SyncEngine.join]: everything from the others comes in before anything is published). What sync remembers lives
  * in [stateDir] (`filesDir/sync`), never in the tasks folder. Calls block (network): run them off the main thread.
  */
@@ -101,7 +98,8 @@ class PhoneSync(
     val settings: SyncSettings,
     private val stateDir: File,
     private val deviceName: () -> String,
-    private val remoteFor: (SyncSettings) -> SyncRemote,
+    /** The ways this phone can sync; [SyncSettings.place] names the one in use. */
+    val backends: SyncBackends,
     /** The board.json an older version kept, if it's still there (brought in beside what came, at the first join). */
     private val legacyBoard: () -> File? = { null },
     /**
@@ -121,6 +119,12 @@ class PhoneSync(
     private var engineKey: String? = null
 
     val on: Boolean get() = settings.enabled
+
+    /** The backend in use (null: sync is off, or it names one this app doesn't offer). */
+    val backend: SyncBackend? get() = backends[settings.place]
+
+    /** The backend signs in with a token, and there's none this phone can read (restored to another phone): sign in again. */
+    val needsSignIn: Boolean get() = backend?.token != null && settings.token == null
 
     init {
         val owner = settings.installId
@@ -153,24 +157,25 @@ class PhoneSync(
         val place = settings.place ?: throw IllegalStateException("Sync is off on this phone.")
         val key = "$place|${settings.library}|${deviceName()}"
         engine?.takeIf { engineKey == key }?.let { return it }
-        return SyncEngine(store, remoteFor(settings), state(place), clock).also {
+        return SyncEngine(store, backends.of(place).remote(settings), state(place), clock).also {
             engine = it
             engineKey = key
         }
     }
 
     /** How the last sync went (kept while sync is off, for when it's on again). Read without waiting for a sync. */
-    fun status(): SyncStatus = state(settings.place ?: SyncSettings.GIST).status
+    fun status(): SyncStatus = state(settings.place ?: backends.default.id).status
 
     /** This phone's id among the devices. */
-    val deviceId: String get() = state(settings.place ?: SyncSettings.GIST).deviceId
+    val deviceId: String get() = state(settings.place ?: backends.default.id).deviceId
 
     /**
-     * Turns sync on (or signs in again): [token] is kept sealed. Not while the phone uses a computer's tasks
-     * ([connected]): the two are exclusive. The next [sync] joins: it pulls first and publishes after.
+     * Turns sync on through the backend [place] names (or signs in again): [token] is kept sealed. The next [sync]
+     * joins: it pulls first and publishes after.
      */
-    fun turnOn(place: String, token: String?, library: String, connected: Boolean) = synchronized(lock) {
-        check(!connected) { "This phone uses a computer's tasks. Disconnect it first (Settings › Connect to a computer), then turn on sync." }
+    fun turnOn(place: String, token: String?, library: String) = synchronized(lock) {
+        val backend = backends.of(place)
+        backend.token?.let { signIn -> check(token != null || settings.token != null) { signIn.missing } }
         val clean = library.trim().ifEmpty { SyncSettings.DEFAULT_LIBRARY }
         // Sealed first: if the keystore fails, sync stays off (never on without its token).
         if (token != null) settings.token = token.trim()
@@ -191,7 +196,7 @@ class PhoneSync(
         engine = null
     }
 
-    /** Stops syncing: the tasks stay on this phone as they are, and the GitHub sign-in is forgotten here. */
+    /** Stops syncing: the tasks stay on this phone as they are, and the sign-in (a GitHub token) is forgotten here. */
     fun turnOff() = synchronized(lock) {
         settings.place = null
         settings.token = null

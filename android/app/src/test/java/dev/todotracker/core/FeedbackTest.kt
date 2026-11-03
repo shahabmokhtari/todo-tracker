@@ -44,6 +44,7 @@ class FeedbackTest {
         assertEquals(relay.text("url"), Feedback.RELAY_URL)
         assertEquals(relay.text("publicKey"), Feedback.PUBLIC_KEY)
         assertEquals(relay["maxMessage"]!!.jsonPrimitive.int, Feedback.MAX_MESSAGE)
+        assertEquals(relay["maxContact"]!!.jsonPrimitive.int, Feedback.MAX_CONTACT)
         val texts = f["texts"]!!.jsonObject
         assertEquals(texts.text("sent"), Feedback.SENT_TEXT)
         assertEquals(texts.text("retry"), Feedback.RETRY_TEXT)

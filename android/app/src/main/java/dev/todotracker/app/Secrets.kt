@@ -13,7 +13,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Seals secrets (a computer's key, a GitHub token) with AES-GCM under a key that never leaves the phone's keystore
+ * Seals secrets (a sync sign-in such as a GitHub token) with AES-GCM under a key that never leaves the phone's keystore
  * ([alias] names it): what's kept in the app's settings can't be read anywhere else, not even from a backup.
  */
 class KeystoreBox(private val alias: String) : SecretBox {
