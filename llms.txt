@@ -25,6 +25,6 @@ time with a reminder.
 
 - [README](https://github.com/shahabmokhtari/todo-tracker/blob/master/README.md): what it does, screenshots, install
 - [Sync](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/sync.md): OneDrive, iCloud Drive, a GitHub gist
-- [Connectors](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/connectors.md): Notion, Microsoft To Do, GitHub Issues (a repository per group), Loop
+- [Connectors](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/connectors.md): Notion, Microsoft To Do, GitHub Issues (a repository per group, or one shared by several groups), Loop
 - [Plugins](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/plugins.md): every extra and how to switch it off
 - [Browser extension](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/browser-extension.md)

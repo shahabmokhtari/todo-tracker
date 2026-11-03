@@ -25,7 +25,7 @@
     <Using Remove="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" />
+    <PackageReference Include="CommunityToolkit.WinUI.Notifications" />
     <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\OneThing.Server\OneThing.Server.csproj" />
     <ProjectReference Include="..\OneThing.Desktop\OneThing.Desktop.csproj" />

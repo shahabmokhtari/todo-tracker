@@ -83,10 +83,12 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
   every change is a version. Don't add a path that destroys user data without an explicit, human-only action.
 - **Every change says who made it.** Mutations go through `TaskBoard` with an `Actor` (user, agent, connector, vault,
   system); the timeline and hooks show it. Use the `X-OneThing-Actor` header / `--as` / the MCP client name.
-- **The same rules on every platform.** Agenda, snooze choices, repeat rules, energy, deep links and the export format
-  are implemented in C#, Swift and Kotlin with shared cases in `tests/fixtures` (`scenarios/`, `snooze.json`,
-  `breaks.json`, `repeat.json`, `energy.json`, `export.json`, `board-moves.json`, `widget.json`, `feedback.json`). Change one, change all three and the fixture. The tasks
-  folder format and sync have generated fixtures too (`vault/`, `sync/`) for the phones that sync on their own
+- **The same rules on every platform.** Agenda, quick capture, snooze choices, repeat rules, energy, search, deep links,
+  board moves, the plan, reports, widgets and the export format are implemented in C#, Swift and Kotlin with shared
+  cases in `tests/fixtures` (`scenarios/`, `quick-capture.json`, `snooze.json`, `breaks.json`, `repeat.json`,
+  `energy.json`, `search.json`, `undo.json`, `links.json`, `board-moves.json`, `plan.json`, `reports.json`,
+  `widget.json`, `feedback.json`, `export.json`). Change one, change all three and the fixture. The tasks folder format
+  and sync have generated fixtures too (`vault/`, `sync/`) for the phones that sync on their own
   ([docs/design/phone-sync.md](docs/design/phone-sync.md)).
 - **Every feature on every platform, docs in the same PR.** A user-facing change lands in the web app, the Windows
   sidebar, Mac/iPhone (SwiftUI) and Android where it applies (the Linux tray is quick add only), and the docs it touches
@@ -118,7 +120,7 @@ Generated files (commit them after regenerating):
 ```bash
 ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
 ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
-ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync (then build again: tests read the copies in bin/)
+ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, from a made-up demo board (quit the app first on Windows)
 python3 build/icons.py                      # the app icon on every platform (pip install cairosvg pillow); the tray icons draw the same shapes in code
 ```
@@ -139,3 +141,7 @@ python3 build/icons.py                      # the app icon on every platform (pi
 
 One topic per PR, a short description of what changes for the user, tests for the change, docs updated, all seven CI
 jobs green. Commit messages: a short summary line, then what and why.
+
+Releases: push a version tag (`git tag v2.0.0 && git push origin v2.0.0`). `.github/workflows/release.yml` runs the
+whole CI workflow on it and publishes a GitHub Release with the apps it built. Actions in the workflows are pinned to
+commit SHAs (the version in a comment); `npx` tools to a version.

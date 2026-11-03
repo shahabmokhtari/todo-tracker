@@ -1,0 +1,51 @@
+name: Release
+
+# Push a version tag (git tag v2.0.0 && git push origin v2.0.0): everything is built and tested as on every pull
+# request (ci.yml), then a GitHub Release for the tag gets the apps it built.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and test (CI)
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: built
+      - name: Gather what the release carries
+        run: |
+          set -euo pipefail
+          mkdir release
+          cp built/linux-tray/onething-linux-x64.tar.gz release/
+          cp built/android-app/app-debug.apk release/OneThing-Android.apk
+          cp built/browser-extension/*.zip release/
+          cp built/ai-connectors/*.mcpb built/ai-connectors/onething-cli-*.zip built/ai-connectors/nuget/*.nupkg release/
+          (cd built/windows-sidebar/windows && zip -qr ../../../release/OneThing-Windows-x64.zip .)
+          # The Mac app and the Safari extension, whatever their packages are called.
+          for dir in built/macos-app built/safari-extension; do
+            find "$dir" -maxdepth 1 -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.pkg' \) -exec cp {} release/ \;
+          done
+          ls -l release
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "One Thing $TAG" --generate-notes
