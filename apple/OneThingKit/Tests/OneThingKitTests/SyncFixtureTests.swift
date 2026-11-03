@@ -43,14 +43,14 @@ final class SyncFixtureTests: XCTestCase {
         XCTAssertEqual(result.text, expected.joined())
     }
 
-    func testFilesTooDifferentToMatchAreKeptWholeAsAConflict() {
+    func testFilesTooDifferentToMatchAreTooLargeAndKeptWhole() {
         let base = (0..<2500).map { "line \($0)\n" }.joined()
         let first = (0..<2500).map { "first \($0)\n" }.joined()
         let second = (0..<2500).map { "second \($0)\n" }.joined()
         let result = TextMerge.merge(base: base, first: first, second: second)
+        XCTAssertTrue(result.tooLarge)
         XCTAssertTrue(result.conflicted)
-        XCTAssertEqual(result.text, first + second, "both sides' lines, nothing lost")
-        XCTAssertEqual(TextMerge.merge(base: base, first: base, second: second).text, second, "only one side changed: that change")
+        XCTAssertEqual(result.text, first, "the first side; the planner keeps both versions whole")
     }
 
     private func entries(_ list: Any?) -> (SyncEntries, [String: Data]) {
@@ -79,13 +79,14 @@ final class SyncFixtureTests: XCTestCase {
     func testSyncPlans() throws {
         let fixture = try Fixtures.json("sync/planner.json")
         let cases = fixture["cases"] as! [[String: Any]]
-        XCTAssertEqual(cases.count, 44)
+        XCTAssertEqual(cases.count, 48)
         let tz = TimeZone(secondsFromGMT: -18000)!
         for c in cases {
             let name = c["name"] as! String
             let (base, baseContents) = entries(c["base"])
             let deleted = Set((c["deleted"] as? [[String: String]] ?? []).map { "\($0["key"]!)|\($0["hash"]!)" })
-            var options = SyncPlanOptions(deleted: { deleted.contains("\($0.key)|\($0.hash)") })
+            let held = (c["held"] as? [[String: String]] ?? []).map { SyncHeld(key: $0["key"]!, path: $0["path"]!, reason: "") }
+            var options = SyncPlanOptions(deleted: { deleted.contains("\($0.key)|\($0.hash)") }, held: held)
             if c["validateTasks"] as? Bool == true {
                 options.isValidTask = { path, text in
                     let context = TaskMarkdownContext(timeZone: tz, now: Date(), fileDirectory: VaultFiles.directory(path), idSeed: path)

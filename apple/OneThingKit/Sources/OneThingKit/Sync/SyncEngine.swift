@@ -168,6 +168,8 @@ public actor SyncEngine {
     }
 
     private func syncOnce(publish: Bool) async throws -> SyncResult {
+        // This device's identity can't be read: paused, never joining as a new device.
+        if let problem = state.problem { throw SyncDataError(problem) }
         let now = Instant(clock())
 
         // A new place (another folder, another gist): everything is published there again.
@@ -212,32 +214,31 @@ public actor SyncEngine {
 
         var changes = 0
         var conflicts: [SyncConflictRecord] = []
-        var problems: [String] = []
+        var problems = local.held.map { "\"\($0.path)\" doesn't sync for now: \($0.reason). Your other devices keep their copy." }
         var complete = !(remoteSnapshot?.partial ?? false)
         for peer in peers {
             do {
-                guard let accepted = Self.accepted(peer) else { continue }
-                var entries = accepted.entries
+                let state = self.state
+                var withheld: [SyncHeld] = []
+                guard var entries = Self.valid(peer, &withheld) else { continue }
+                problems += withheld.map { "\"\($0.path)\" on \(peer.name) doesn't sync here: \($0.reason). The copy here stays as it is." }
                 let fetched = try await fetch(peer, entries, local)
                 if !fetched.ok {
                     if let problem = fetched.problem { problems.append(problem) }
                     complete = false
                     continue
                 }
+                // Contents this device won't take (too big, or damaged where they're kept) are held like a name it
+                // can't use: left as they are here, never taken as deleted.
+                for e in fetched.refused {
+                    entries[OrdinalString(e.key)] = nil
+                    let held = SyncHeld(key: e.key, path: e.path, reason: "it's too big to sync, or damaged where it's kept")
+                    withheld.append(held)
+                    problems.append("\"\(held.path)\" on \(peer.name) doesn't sync here: \(held.reason). The copy here stays as it is.")
+                }
                 let base = try state.loadBase(peer.device)
-                // What this device can't take (a name other systems can't use, a broken entry, too big) is never a
-                // delete: it stays as both devices last had it, and that's said.
-                let refused = accepted.refused + fetched.refused
-                for key in refused {
-                    let kind = SyncKeys.kind(of: key)
-                    // A file stays as both last had it (unchanged there: nothing to do here); settings, order and the
-                    // activity log are only ever merged, never deleted, so they're simply left out.
-                    entries[OrdinalString(key)] = kind == .task || kind == .rich || kind == .file ? base[OrdinalString(key)] : nil
-                }
-                if !refused.isEmpty {
-                    problems.append("\(peer.name) has \(refused.count == 1 ? "a file" : "\(refused.count) files") this device can't take (a name other systems can't use, or too big); \(refused.count == 1 ? "it's" : "they're") left as \(refused.count == 1 ? "it is" : "they are") here.")
-                }
-                let state = self.state
+                var planOptions = options
+                planOptions.held = local.held + withheld
                 let plan = try SyncPlanner.plan(
                     local: SyncSide(device: state.deviceId, name: state.deviceName, entries: local.entries, read: local.read),
                     peer: SyncSide(device: peer.device, name: peer.name, entries: entries) { e in
@@ -246,7 +247,7 @@ public actor SyncEngine {
                     },
                     base: base,
                     readBase: { state.readBlob($0) },
-                    options: options)
+                    options: planOptions)
 
                 // Both versions of a clash stay available (to keep one of them).
                 for conflict in plan.conflicts { try state.writeBlob(conflict.mine, try local.read(local.entries[OrdinalString(conflict.key)]!)) }
@@ -284,24 +285,37 @@ public actor SyncEngine {
         let fingerprint = Self.fingerprint(local)
         if publish && (fingerprint != state.published || heartbeatDue || remoteSnapshot?.selfMissing == true) {
             // What disappeared since the last publish was deleted here: say so (for months) so it stays gone everywhere.
+            // What's here but held back isn't deleted: it's listed as held (and as last published, for older versions).
+            let state = self.state
+            let held = Set(local.held.map { OrdinalString($0.key) })
             var tombstones: [SyncTombstone] = []
             var seen = Set<TombstoneKey>()
-            let gone = state.tombstones.filter { now.seconds(since: $0.at) < Double(SyncLimits.memorySeconds) && local.entries[OrdinalString($0.key)] == nil }
-                + state.publishedEntries.filter { e in
-                    let kind = SyncKeys.kind(of: e.key)
-                    // A file that is still there (unreadable for now, or an iCloud placeholder) wasn't deleted.
-                    return local.entries[OrdinalString(e.key)] == nil && (kind == .task || kind == .rich || kind == .file) && !store.isPresent(e.path)
-                }.map { SyncTombstone(key: $0.key, hash: $0.hash, at: now) }
+            let gone = state.tombstones.filter {
+                now.seconds(since: $0.at) < Double(SyncLimits.memorySeconds) && local.entries[OrdinalString($0.key)] == nil && !held.contains(OrdinalString($0.key))
+            } + state.publishedEntries.filter { e in
+                let kind = SyncKeys.kind(of: e.key)
+                // A file that is still there (an iCloud placeholder, say) wasn't deleted either.
+                return local.entries[OrdinalString(e.key)] == nil && !held.contains(OrdinalString(e.key)) && (kind == .task || kind == .rich || kind == .file)
+                    && !store.isPresent(e.path)
+            }.map { SyncTombstone(key: $0.key, hash: $0.hash, at: now) }
             for t in gone where seen.insert(TombstoneKey(t.key, t.hash)).inserted { tombstones.append(t) }
-            let entriesNow = local.entries.values.map { e -> SyncEntry in
+            let entriesNow = (local.entries.values.map { e -> SyncEntry in
                 var copy = e
                 copy.since = publishedSince[TombstoneKey(e.key, e.hash)] ?? now
                 return copy
-            }.sorted { Ordinal.less($0.key, $1.key) }
-            let mine = DeviceSnapshot(device: state.deviceId, name: state.deviceName, at: now, entries: entriesNow, deleted: tombstones)
+            } + state.publishedEntries.filter { held.contains(OrdinalString($0.key)) && local.entries[OrdinalString($0.key)] == nil && state.hasBlob($0.hash) })
+                .sorted { Ordinal.less($0.key, $1.key) }
+            let heldKeys = held.map(\.value).sorted(by: Ordinal.less)
+            let mine = DeviceSnapshot(device: state.deviceId, name: state.deviceName, at: now, entries: entriesNow, deleted: tombstones, held: heldKeys.isEmpty ? nil : heldKeys)
+            let read = local.read
+            let readPublished: (SyncEntry) throws -> Data = { e in
+                guard held.contains(OrdinalString(e.key)) else { return try read(e) }
+                guard let data = state.readBlob(e.hash) else { throw SyncStaleError("\(e.path) is missing.") }
+                return data
+            }
             // Sync turned off meanwhile: what came in stays, nothing goes out.
             try Task.checkCancellation()
-            let version = try await remote.publish(mine, read: local.read, readVersion: state.remoteVersion)
+            let version = try await remote.publish(mine, read: readPublished, readVersion: state.remoteVersion)
             state.tombstones = tombstones
             state.publishedEntries = entriesNow
             state.published = fingerprint
@@ -317,9 +331,9 @@ public actor SyncEngine {
     }
 
     /// Brings the peer's contents we don't have yet into the local cache. Not ok if some haven't arrived; `refused`:
-    /// the keys whose contents this device won't take (too big, or damaged where they're kept).
-    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?, refused: [String]) {
-        var refused: [String] = []
+    /// the entries whose contents this device won't take (too big, or damaged where they're kept).
+    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?, refused: [SyncEntry]) {
+        var refused: [SyncEntry] = []
         for entry in entries.values {
             if local.entries[OrdinalString(entry.key)]?.hash == entry.hash || state.hasBlob(entry.hash) { continue }
             let content: Data
@@ -328,15 +342,15 @@ public actor SyncEngine {
             } catch is CancellationError {
                 throw CancellationError()
             } catch is SyncDataError {
-                // Too big to sync (or damaged where it's kept): never taken as a delete; the rest syncs.
-                refused.append(entry.key)
+                // Too big to sync (or damaged where it's kept): held, never taken as a delete; the rest syncs.
+                refused.append(entry)
                 continue
             } catch {
                 // Not there yet, still downloading (iCloud placeholders): this device is merged later.
                 return (false, nil, [])
             }
             if Int64(content.count) > SyncLimits.maxFileBytes {
-                refused.append(entry.key)
+                refused.append(entry)
                 continue
             }
             // Still being written (or damaged): said, and tried again next time (that device rewrites it when it syncs).
@@ -347,26 +361,30 @@ public actor SyncEngine {
     }
 
     /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere).
-    static func valid(_ peer: DeviceSnapshot) -> SyncEntries? { accepted(peer)?.entries }
+    static func valid(_ peer: DeviceSnapshot) -> SyncEntries? {
+        var withheld: [SyncHeld] = []
+        return valid(peer, &withheld)
+    }
 
-    /// The peer's entries we accept, and the keys of those we don't (kept as they are here, never taken as deletes).
-    static func accepted(_ peer: DeviceSnapshot) -> (entries: SyncEntries, refused: [String])? {
+    /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere). Entries it lists
+    /// that can't be taken here (and those it says it holds back) go to `withheld`: left alone here, never taken as
+    /// deleted. Nil: not a device snapshot at all. As C#'s `SyncEngine.Valid`.
+    static func valid(_ peer: DeviceSnapshot, _ withheld: inout [SyncHeld]) -> SyncEntries? {
         guard peer.device.utf16.count > 1, peer.device.utf16.count <= 64, Ordinal.isAsciiLetterOrDigit(peer.device) else { return nil }
         var entries: SyncEntries = [:]
-        var refused: [String] = []
         for e in peer.entries {
-            guard e.hash.utf16.count == 64, Ordinal.isLowerHex(e.hash) else {
-                refused.append(e.key)
-                continue
-            }
             let ok: Bool
-            switch SyncKeys.kind(of: e.key) {
-            case .config: ok = e.path == SyncKeys.configPath
-            case .order: ok = e.path == SyncKeys.orderPath
-            case .activity: ok = e.path == SyncKeys.activityPath
-            case .task: ok = e.path.oEndsIgnoreCase(".md") && VaultFiles.isSyncablePath(e.path) && parseGuidN(e.key.sub(2)) != nil
-            case .rich: ok = e.path.oEndsIgnoreCase(".html") && VaultFiles.isSyncablePath(e.path) && parseGuidN(e.key.sub(2)) != nil
-            case .file: ok = e.key.oEq(SyncKeys.file(e.path)) && VaultFiles.isSyncablePath(e.path)
+            if e.hash.utf16.count != 64 || !Ordinal.isLowerHex(e.hash) {
+                ok = false
+            } else {
+                switch SyncKeys.kind(of: e.key) {
+                case .config: ok = e.path == SyncKeys.configPath
+                case .order: ok = e.path == SyncKeys.orderPath
+                case .activity: ok = e.path == SyncKeys.activityPath
+                case .task: ok = e.path.oEndsIgnoreCase(".md") && VaultFiles.isSyncablePath(e.path) && parseGuidN(e.key.sub(2)) != nil
+                case .rich: ok = e.path.oEndsIgnoreCase(".html") && VaultFiles.isSyncablePath(e.path) && parseGuidN(e.key.sub(2)) != nil
+                case .file: ok = e.key.oEq(SyncKeys.file(e.path)) && VaultFiles.isSyncablePath(e.path)
+                }
             }
             if ok {
                 // Older devices don't say since when they have a version: oldest possible (a later delete wins).
@@ -374,20 +392,27 @@ public actor SyncEngine {
                 if entry.since == nil { entry.since = .minValue }
                 entries[OrdinalString(e.key)] = entry
             } else {
-                refused.append(e.key)
+                withheld.append(SyncHeld(key: e.key, path: e.path, reason: "its name can't be used on this device; rename it there to sync it"))
             }
         }
-        // A key both accepted and refused (listed twice): its accepted entry stays.
-        return (entries, refused.filter { entries[OrdinalString($0)] == nil })
+        for key in peer.held ?? [] {
+            let kept = entries.removeValue(forKey: OrdinalString(key))
+            if !withheld.contains(where: { $0.key.oEq(key) }) {
+                withheld.append(SyncHeld(key: key, path: kept?.path ?? key, reason: "it can't sync from there right now"))
+            }
+        }
+        return entries
     }
-
     private static func needsBase(_ key: String) -> Bool {
         let kind = SyncKeys.kind(of: key)
         return kind == .task || kind == .rich || kind == .config || kind == .order
     }
 
+    /// What's here to publish: every entry, then a `held|<key>` line per held key (as C#).
     static func fingerprint(_ snapshot: SyncSnapshot) -> String {
-        SyncHash.of(snapshot.entries.values.sorted { Ordinal.less($0.key, $1.key) }.map { "\($0.key)|\($0.path)|\($0.hash)" }.joined(separator: "\n"))
+        let entries = snapshot.entries.values.sorted { Ordinal.less($0.key, $1.key) }.map { "\($0.key)|\($0.path)|\($0.hash)" }
+        let held = snapshot.held.map { "held|\($0.key)" }.sorted(by: Ordinal.less)
+        return SyncHash.of((entries + held).joined(separator: "\n"))
     }
 
     private func collectBlobs(_ fresh: [SyncConflictRecord]) {

@@ -74,12 +74,13 @@ public enum Feedback {
             metadata: metadata)
     }
 
-    /// The issue's title: "<Kind> · <Platform>: " and the note's first line, at most `maxTitle` code points, trimmed.
+    /// The issue's title: "<Kind> · <Platform>: " and the note's first line, trimmed; longer than `maxTitle` code
+    /// points: cut to one less, trimmed, and ended with "…" (C# Feedback.Title). The whole note is in the body.
     public static func title(_ kind: FeedbackKind, platform: String, message: String) -> String {
-        let firstLine = text(message.unicodeScalars.prefix { $0 != "\n" && $0 != "\r" })
+        let firstLine = text(message.unicodeScalars.prefix { $0 != "\n" })
         let full = "\(kind.label) · \(platform): \(trim(firstLine))"
         guard full.unicodeScalars.count > maxTitle else { return full }
-        return trim(text(full.unicodeScalars.prefix(maxTitle)))
+        return trim(text(full.unicodeScalars.prefix(maxTitle - 1))) + "…"
     }
 
     /// What an answer means: 2xx sent; no answer, 408, 429 or 5xx try again (same clientID); anything else failed.

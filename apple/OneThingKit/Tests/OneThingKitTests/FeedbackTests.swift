@@ -97,6 +97,7 @@ final class FeedbackTests: XCTestCase {
         let long = Feedback.title(.idea, platform: "macOS", message: String(repeating: "😀", count: 300))
         XCTAssertEqual(long.unicodeScalars.count, 256)
         XCTAssertTrue(long.hasPrefix("Idea · macOS: 😀"))
+        XCTAssertTrue(long.hasSuffix("😀…"), "cut to 255, then an ellipsis")
     }
 
     func testAReplyAddressLosesControlCharactersAndIsCutTo200CodePoints() {

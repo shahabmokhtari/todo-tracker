@@ -29,6 +29,10 @@ public final class VaultStore {
     /// Tabs in config.json without a folder here, each with the ids of the config tabs before it (nearest first).
     private var dormantGroups: [(group: ConfigGroup, before: [UUID])] = []
     private var configText = ""
+    /// The settings as last read well (their unknown fields are written back from here).
+    private var lastConfig = Config()
+    /// Why config.json can't be read right now (then it's never written, and doesn't sync).
+    private var configProblem: VaultProblem?
     private var stateText = ""
     private var activity: [ActivityEntry] = []
     private var activityLength: Int64 = 0
@@ -246,6 +250,8 @@ public final class VaultStore {
         var id: UUID
         var folder: String
         var color: String?
+        /// What a newer version keeps about the tab (kept as it is).
+        var extra: [(String, JSONValue)] = []
     }
 
     private struct VaultConflict: Error, LocalizedError {
@@ -261,14 +267,16 @@ public final class VaultStore {
 
     /// Cheap check (names, sizes, times) for changes since the last read.
     private func diskDiffers() -> Bool {
-        let taskFiles = enumerateTaskFiles()
+        var unreadable: [String] = []
+        let taskFiles = topFolders().flatMap { enumerateTaskFiles(in: $0, unreadable: &unreadable) }
         for file in taskFiles {
             guard let state = caches.files[OIKey(file)], state.stamp == stamp(file) else { return true }
         }
-        if taskFiles.count != caches.files.count { return true }
+        if !unreadable.isEmpty || taskFiles.count != caches.files.count { return true }
         if Set(topFolders().map(OIKey.init)) != Set(caches.groupFolders.values.map(OIKey.init)) { return true }
         guard let config = try? readOrEmpty(metaPath("config.json")), let state = try? readOrEmpty(metaPath("state.json")) else { return true }
         return !config.oEq(configText) || !state.oEq(stateText) || fileLength(metaPath("activity.jsonl")) != activityLength
+            || (activityLength > 0 && !activityTailMatches(metaPath("activity.jsonl")))
     }
 
     /// Rebuilds the board from disk. Returns whether anything changed.
@@ -278,7 +286,7 @@ public final class VaultStore {
         let before = try BoardCodec.encode(board)
         let oldBoard = board
         let oldCaches = caches
-        let config = try readConfig()
+        let config = readConfig()
         let folders = topFolders()
 
         // Read every task file (unchanged files come from the cache).
@@ -287,11 +295,25 @@ public final class VaultStore {
         for folder in folders { parsedByFolder[OIKey(folder)] = [] }
         var problems: [VaultProblem] = []
         for folder in folders {
-            for rel in enumerateTaskFiles(in: folder) {
+            var unreadable: [String] = []
+            for rel in enumerateTaskFiles(in: folder, unreadable: &unreadable) {
                 let state = readFile(rel, oldCaches, force)
                 files[OIKey(rel)] = state
                 if let error = state.error { problems.append(VaultProblem(path: rel, message: error)) }
                 if let good = state.good, let parsed = try? parseText(good, rel) { parsedByFolder[OIKey(folder)]!.append((rel, parsed)) }
+            }
+            for dir in unreadable {
+                // A folder that can't be listed right now (offline, no permission): its tasks stay as last read, and it
+                // counts as a file that can't be read (sync waits, so the other devices keep its tasks).
+                let error = "This folder can't be opened right now. Its tasks are shown as they were, and it's read again shortly."
+                let prefix = Ordinal.upper(dir + "/")
+                for (key, old) in oldCaches.files.sorted(by: { Ordinal.less($0.key.value, $1.key.value) })
+                    where Ordinal.upper(key.value).oStarts(prefix) && files[key] == nil {
+                    files[key] = FileState(text: old.text, good: old.good, stamp: Self.unreadableStamp, error: error)
+                    if let good = old.good, let parsed = try? parseText(good, key.value) { parsedByFolder[OIKey(folder)]!.append((key.value, parsed)) }
+                }
+                files[OIKey(dir)] = FileState(text: "", good: nil, stamp: Self.unreadableStamp, error: error)
+                problems.append(VaultProblem(path: dir, message: error))
             }
         }
 
@@ -382,6 +404,7 @@ public final class VaultStore {
         var signatures: [UUID: String] = [:]
         for item in next.items { signatures[item.id] = signature(item) }
         caches = Caches(files: files, paths: paths, groupFolders: groupFolders, fileIds: fileIds, layouts: layouts, signatures: signatures, blocked: blocked)
+        if let configProblem { problems.append(configProblem) }
         problemList = problems
 
         // Tasks waiting for one finished or deleted elsewhere come back with a reminder.
@@ -462,7 +485,7 @@ public final class VaultStore {
 
         var undo: [() throws -> Void] = []
         let previous = caches
-        let previousMeta = (configText, stateText, activity, activityLength)
+        let previousMeta = (configText, stateText, activity, activityLength, activityTail)
         do {
             for op in plan.operations { try op(&undo) }
             // Metadata (groups, order) describes the new state, so it is written from the new caches.
@@ -473,7 +496,7 @@ public final class VaultStore {
             _ = try writeMetadataIfChanged(&undo)
         } catch {
             caches = previous
-            (configText, stateText, activity, activityLength) = previousMeta
+            (configText, stateText, activity, activityLength, activityTail) = previousMeta
             for step in undo.reversed() { try? step() }
             throw error
         }
@@ -749,43 +772,119 @@ public final class VaultStore {
 
     private struct Config {
         var groups: [ConfigGroup] = []
-        var labels: [(name: String, color: String)] = []
+        var labels: [ConfigLabel] = []
         var order: [UUID] = []
         var energyPerDay: Int?
+        /// Settings a newer version keeps here (kept as they are, so they aren't lost when this one saves).
+        var extra: [(String, JSONValue)] = []
     }
 
-    private func readConfig() throws -> Config {
-        let text = try readOrEmpty(metaPath("config.json"))
+    struct ConfigLabel {
+        var name: String
+        var color: String
+        var extra: [(String, JSONValue)] = []
+    }
+
+    private struct ConfigUnreadable: Error {}
+
+    private static let configProblemText = "Your tabs and labels settings can't be read, so they're used as they were and left as they are. Fix the file (or put back an earlier version) to change them again."
+
+    /// Reads config.json. Locked or offline right now, or not readable as settings: the last good settings stay, and
+    /// the file is never written over (`configProblem`) nor synced, as C#'s `ReadConfig`.
+    private func readConfig() -> Config {
+        let text: String
+        do {
+            text = try readOrEmpty(metaPath("config.json"))
+        } catch {
+            configProblem = VaultProblem(path: SyncKeys.configPath, message: "Your tabs and labels settings can't be opened right now. They're read again shortly.")
+            configText = ""
+            return lastConfig
+        }
         configText = text
-        guard !text.isEmpty, let doc = (try? JSONText.parse(text))?.objectValue else { return Config() }
+        configProblem = nil
+        if text.oTrim().isEmpty {
+            lastConfig = Config()
+            return lastConfig
+        }
+        do {
+            lastConfig = try Self.parseConfig(text)
+        } catch {
+            // Never replaced by an empty one (that would lose the tabs' order, colours and labels everywhere it syncs).
+            configProblem = VaultProblem(path: SyncKeys.configPath, message: Self.configProblemText)
+        }
+        return lastConfig
+    }
+
+    /// The settings in config.json; throws when the file isn't settings this version can read. Entries that aren't
+    /// there (null, or without a folder or name) are skipped; fields it doesn't know are kept.
+    private static func parseConfig(_ text: String) throws -> Config {
+        guard case .object(let doc) = try JSONText.parse(text) else { throw ConfigUnreadable() }
+        func string(_ value: JSONValue?) throws -> String? {
+            guard let value, !value.isNull else { return nil }
+            guard let s = value.stringValue else { throw ConfigUnreadable() }
+            return s
+        }
+        func list(_ value: JSONValue?) throws -> [JSONValue] {
+            guard let value, !value.isNull else { return [] }
+            guard let items = value.arrayValue else { throw ConfigUnreadable() }
+            return items
+        }
+        func int(_ value: JSONValue?) throws -> Int? {
+            guard let value, !value.isNull else { return nil }
+            guard let n = value.int64Value, n >= Int64(Int32.min), n <= Int64(Int32.max) else { throw ConfigUnreadable() }
+            return Int(n)
+        }
+        func extra(_ o: JSONObject, _ known: [String]) -> [(String, JSONValue)] {
+            o.pairs.filter { pair in !known.contains { Ordinal.equalIgnoreCase($0, pair.0) } }
+        }
         var config = Config()
-        for g in doc.get("groups")?.arrayValue ?? [] {
-            guard let o = g.objectValue, let id = parseGuid(o.get("id")?.stringValue), let folder = o.get("folder")?.stringValue else { return Config() }
-            config.groups.append(ConfigGroup(id: id, folder: folder, color: o.get("color")?.stringValue))
+        _ = try int(doc.get("schemaVersion"))
+        for g in try list(doc.get("groups")) {
+            if g.isNull { continue }
+            guard let o = g.objectValue else { throw ConfigUnreadable() }
+            let id: UUID
+            if let text = try string(o.get("id")) {
+                guard let parsed = parseGuid(text) else { throw ConfigUnreadable() }
+                id = parsed
+            } else {
+                id = emptyGuid
+            }
+            let color = try string(o.get("color"))
+            guard let folder = try string(o.get("folder")) else { continue }
+            config.groups.append(ConfigGroup(id: id, folder: folder, color: color, extra: extra(o, ["id", "folder", "color"])))
         }
-        for l in doc.get("labels")?.arrayValue ?? [] {
-            guard let o = l.objectValue, let name = o.get("name")?.stringValue else { return Config() }
-            config.labels.append((name, o.get("color")?.stringValue ?? "#64748b"))
+        for l in try list(doc.get("labels")) {
+            if l.isNull { continue }
+            guard let o = l.objectValue else { throw ConfigUnreadable() }
+            guard let name = try string(o.get("name")), let color = try string(o.get("color")) else { continue }
+            config.labels.append(ConfigLabel(name: name, color: color, extra: extra(o, ["name", "color"])))
         }
-        for id in doc.get("order")?.arrayValue ?? [] {
-            guard let g = parseGuid(id.stringValue) else { return Config() }
+        for id in try list(doc.get("order")) {
+            guard let g = parseGuid(id.stringValue) else { throw ConfigUnreadable() }
             config.order.append(g)
         }
-        config.energyPerDay = doc.get("energyPerDay")?.int64Value.map { Int($0) }
+        config.energyPerDay = try int(doc.get("energyPerDay"))
+        config.extra = extra(doc, ["schemaVersion", "groups", "labels", "order", "energyPerDay"])
         return config
     }
 
-    static func configText(groups: [ConfigGroup], labels: [(name: String, color: String)], order: [UUID], energyPerDay: Int?) -> String {
+    static func configText(groups: [ConfigGroup], labels: [ConfigLabel], order: [UUID], energyPerDay: Int?, extra: [(String, JSONValue)] = []) -> String {
         var doc = JSONObject()
         doc["schemaVersion"] = .int(2)
         doc["groups"] = .array(groups.map { g in
             var o = JSONObject([("id", .string(guidD(g.id))), ("folder", .string(g.folder))])
             if let color = g.color { o["color"] = .string(color) }
+            o.pairs += g.extra
             return .object(o)
         })
-        doc["labels"] = .array(labels.map { .object(JSONObject([("name", .string($0.name)), ("color", .string($0.color))])) })
+        doc["labels"] = .array(labels.map { l -> JSONValue in
+            var o = JSONObject([("name", .string(l.name)), ("color", .string(l.color))])
+            o.pairs += l.extra
+            return .object(o)
+        })
         doc["order"] = .array(order.map { .string(guidD($0)) })
         if let energyPerDay { doc["energyPerDay"] = .int(energyPerDay) }
+        doc.pairs += extra
         return JSONText.write(.object(doc), indented: true) + "\n"
     }
 
@@ -814,9 +913,16 @@ public final class VaultStore {
 
     private func currentConfigText() -> String {
         let folders = caches.groupFolders
-        let live = board.groups.compactMap { g in folders[g.id].map { ConfigGroup(id: g.id, folder: $0, color: g.color) } }
+        let known = lastConfig
+        // What a newer version keeps about a tab or a label goes back with it (the first one read for each).
+        var groupExtra: [UUID: [(String, JSONValue)]] = [:]
+        for g in known.groups where !g.extra.isEmpty && groupExtra[g.id] == nil { groupExtra[g.id] = g.extra }
+        var labelExtra: [OIKey: [(String, JSONValue)]] = [:]
+        for l in known.labels where !l.extra.isEmpty && labelExtra[OIKey(l.name)] == nil { labelExtra[OIKey(l.name)] = l.extra }
+        let live = board.groups.compactMap { g in folders[g.id].map { ConfigGroup(id: g.id, folder: $0, color: g.color, extra: groupExtra[g.id] ?? []) } }
         let groups = Self.groupsInOrder(live, dormantGroups)
-        return Self.configText(groups: groups, labels: board.labels.map { ($0.name, $0.color) }, order: board.items.map(\.id), energyPerDay: board.energyPerDay)
+        let labels = board.labels.map { ConfigLabel(name: $0.name, color: $0.color, extra: labelExtra[OIKey($0.name)] ?? []) }
+        return Self.configText(groups: groups, labels: labels, order: board.items.map(\.id), energyPerDay: board.energyPerDay, extra: known.extra)
     }
 
     private func writeMetadataIfChanged() throws -> Bool {
@@ -825,7 +931,8 @@ public final class VaultStore {
     }
 
     private func writeMetadataIfChanged(_ undo: inout [() throws -> Void]) throws -> Bool {
-        var changed = try writeIfChanged(metaPath("config.json"), currentConfigText(), &configText, &undo)
+        // Settings that can't be read are never written over.
+        var changed = configProblem == nil ? try writeIfChanged(metaPath("config.json"), currentConfigText(), &configText, &undo) : false
         changed = try writeIfChanged(metaPath("state.json"), currentStateText(), &stateText, &undo) || changed
         return try appendActivity(&undo) || changed
     }
@@ -892,28 +999,48 @@ public final class VaultStore {
         return JSONText.write(.object(o))
     }
 
-    /// Reads only what was appended since the last read; a shorter file means it was replaced.
+    /// Reads only what was appended since the last read (counted in bytes, a byte-order mark skipped). A shorter file,
+    /// or one whose bytes before that point aren't the ones read (replaced by a sync client, a restored copy), is read
+    /// again from the start (as C#'s `LoadActivity`).
     private func loadActivity(_ b: TaskBoard) {
         let path = metaPath("activity.jsonl")
         let length = fileLength(path)
-        if length < activityLength {
+        if length < activityLength || (activityLength > 0 && !activityTailMatches(path)) {
             activity = []
             activityLength = 0
+            activityTail = Data()
         }
         if length > activityLength, let handle = FileHandle(forReadingAtPath: path) {
             defer { try? handle.close() }
             try? handle.seek(toOffset: UInt64(activityLength))
             let data = (try? handle.readToEnd()) ?? Data()
-            if let complete = data.lastIndex(of: 0x0A) {
-                let whole = data[data.startIndex...complete]
-                for line in String(decoding: whole, as: UTF8.self).oSplit("\n") where !line.isEmpty {
-                    if let entry = Self.parseActivity(line) { activity.append(entry) }
+            let start = data.startIndex + (activityLength == 0 && data.starts(with: [0xEF, 0xBB, 0xBF]) ? 3 : 0)
+            if let complete = data.lastIndex(of: 0x0A), complete >= start {
+                for line in String(decoding: data[start..<complete], as: UTF8.self).oSplit("\n") {
+                    let text = line.oTrimEnd("\r")
+                    if !text.isEmpty, let entry = Self.parseActivity(text) { activity.append(entry) }
                 }
-                activityLength += Int64(whole.count)
+                activityLength += Int64(complete - data.startIndex + 1)
+                activityTail = readActivityTail(path) ?? Data()
             }
         }
         for entry in activity { b.appendLoaded(activity: entry) }
     }
+
+    /// The last bytes read of the activity log (up to 4 KB before `activityLength`): if they're different now, it was replaced.
+    private var activityTail = Data()
+    private static let activityTailBytes: Int64 = 4096
+
+    private func readActivityTail(_ path: String) -> Data? {
+        let size = min(Self.activityTailBytes, activityLength)
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        guard (try? handle.seek(toOffset: UInt64(activityLength - size))) != nil,
+              let tail = try? handle.read(upToCount: Int(size)) ?? Data(), tail.count == Int(size) else { return nil }
+        return tail
+    }
+
+    private func activityTailMatches(_ path: String) -> Bool { readActivityTail(path) == activityTail }
 
     static func parseActivity(_ line: String) -> ActivityEntry? {
         guard let o = (try? JSONText.parse(line))?.objectValue,
@@ -939,6 +1066,7 @@ public final class VaultStore {
         undo.append { try self.truncate(path, to: length) }
         activity.append(contentsOf: pending)
         activityLength = fileLength(path)
+        activityTail = readActivityTail(path) ?? Data()
         return true
     }
 
@@ -984,11 +1112,24 @@ public final class VaultStore {
         var memory: [OKey: Data] = [:]
         var covered = Set<OIKey>()
         var seen = Set<OIKey>()
+        var held: [SyncHeld] = []
         func add(_ key: String, _ rel: String) throws {
             let path = full(rel)
-            guard let attributes = try? fm.attributesOfItem(atPath: path), attributes[.type] as? FileAttributeType == .typeRegular,
-                  (attributes[.size] as? Int64 ?? 0) <= SyncLimits.maxFileBytes else { return }
-            let s = Stamp(time: attributes[.modificationDate] as? Date, size: attributes[.size] as? Int64 ?? 0)
+            guard let attributes = try? fm.attributesOfItem(atPath: path) else { return }
+            let type = attributes[.type] as? FileAttributeType
+            guard type == .typeRegular || type == .typeSymbolicLink else { return }
+            let size = attributes[.size] as? Int64 ?? 0
+            // Here but not shareable: listed as held, so the other devices keep theirs (left out, it would look deleted).
+            let why: String? = !VaultFiles.isSyncablePath(rel) ? "its name has characters other devices can't use; rename it to sync it again"
+                : size > SyncLimits.maxFileBytes ? "it's bigger than 50 MB"
+                : type == .typeSymbolicLink ? "it's a link to somewhere else"
+                : nil
+            if let why {
+                held.append(SyncHeld(key: key, path: rel, reason: why))
+                covered.insert(OIKey(rel))
+                return
+            }
+            let s = Stamp(time: attributes[.modificationDate] as? Date, size: size)
             var known = syncHashes[OIKey(rel)]
             if known == nil || known!.stamp != s {
                 let read: Data?
@@ -1011,12 +1152,17 @@ public final class VaultStore {
             entries[OKey(key)] = SyncEntry(key: key, path: path, hash: SyncHash.of(bytes))
             memory[OKey(key)] = bytes
         }
-        if let config = try readData(metaPath("config.json")) { remember(SyncKeys.config, SyncKeys.configPath, config) }
+        if configProblem != nil {
+            // Settings that can't be read don't sync (another device would take them, or merge against nothing).
+            held.append(SyncHeld(key: SyncKeys.config, path: SyncKeys.configPath, reason: "your tabs and labels settings can't be read"))
+        } else if let config = try readData(metaPath("config.json")) {
+            remember(SyncKeys.config, SyncKeys.configPath, config)
+        }
         remember(SyncKeys.order, SyncKeys.orderPath, Self.orderBytes(board.nowOrder))
         if let log = try readData(metaPath("activity.jsonl")) { remember(SyncKeys.activity, SyncKeys.activityPath, log) }
         for key in syncHashes.keys where !seen.contains(key) { syncHashes[key] = nil }
 
-        return SyncSnapshot(entries: entries) { [weak self] e in
+        return SyncSnapshot(entries: entries, held: held) { [weak self] e in
             if let bytes = memory[OKey(e.key)] { return bytes }
             guard let self else { throw SyncStaleError("The tasks folder was closed.") }
             return try self.withLock {
@@ -1240,7 +1386,19 @@ public final class VaultStore {
     private func enumerateTaskFiles() -> [String] { topFolders().flatMap { enumerateTaskFiles(in: $0) } }
 
     private func enumerateTaskFiles(in folder: String) -> [String] {
-        guard let names = try? fm.contentsOfDirectory(atPath: full(folder)) else { return [] }
+        var unreadable: [String] = []
+        return enumerateTaskFiles(in: folder, unreadable: &unreadable)
+    }
+
+    /// The task files under a folder; folders that can't be listed right now go to `unreadable`.
+    private func enumerateTaskFiles(in folder: String, unreadable: inout [String]) -> [String] {
+        let names: [String]
+        do {
+            names = try fm.contentsOfDirectory(atPath: full(folder))
+        } catch {
+            if dirExists(full(folder)) { unreadable.append(folder) }
+            return []
+        }
         var files: [String] = []
         var dirs: [String] = []
         for name in names {
@@ -1251,7 +1409,8 @@ public final class VaultStore {
                 files.append(rel)
             }
         }
-        return files + dirs.flatMap { enumerateTaskFiles(in: $0) }
+        for dir in dirs { files += enumerateTaskFiles(in: dir, unreadable: &unreadable) }
+        return files
     }
 
     private func stamp(_ rel: String) -> Stamp {

@@ -6,10 +6,14 @@ public struct SyncPlanOptions {
     public var deleted: (SyncEntry) -> Bool = { _ in false }
     /// Whether merged text is still a valid task file (else both versions are kept whole).
     public var isValidTask: (String, String) -> Bool = { _, _ in true }
+    /// Entries one side can't sync right now: left as they are here (never written, moved or deleted), and their paths
+    /// count as taken.
+    public var held: [SyncHeld] = []
 
-    public init(deleted: @escaping (SyncEntry) -> Bool = { _ in false }, isValidTask: @escaping (String, String) -> Bool = { _, _ in true }) {
+    public init(deleted: @escaping (SyncEntry) -> Bool = { _ in false }, isValidTask: @escaping (String, String) -> Bool = { _, _ in true }, held: [SyncHeld] = []) {
         self.deleted = deleted
         self.isValidTask = isValidTask
+        self.held = held
     }
 }
 
@@ -20,8 +24,11 @@ public enum SyncPlanner {
     public static func plan(local: SyncSide, peer: SyncSide, base: SyncEntries, readBase: @escaping (String) -> Data?, options: SyncPlanOptions = SyncPlanOptions()) throws -> SyncPlan {
         let ctx = Context(local: local, peer: peer, base: base, readBase: readBase, options: options)
         var files: [(key: String, l: SyncEntry?, p: SyncEntry, b: SyncEntry?)] = []
+        let held = Set(options.held.map { OrdinalString($0.key) })
         let keys = Set(local.entries.keys).union(peer.entries.keys).union(base.keys).sorted()
         for okey in keys {
+            // Here (or there) but can't sync right now: left as it is, never taken as deleted.
+            if held.contains(okey) { continue }
             let key = okey.value
             let l = local.entries[okey], p = peer.entries[okey], b = base[okey]
             let kind = SyncKeys.kind(of: key)
@@ -92,7 +99,7 @@ public enum SyncPlanner {
             self.base = base
             self.readBase = readBase
             self.options = options
-            taken = Set(local.entries.values.map { OIKey($0.path) })
+            taken = Set(local.entries.values.map { OIKey($0.path) } + options.held.map { OIKey($0.path) })
             localWins = Ordinal.compare(local.device, peer.device) < 0
             localByKey = local.entries.sorted { $0.key < $1.key }.map(\.value)
         }
@@ -193,7 +200,7 @@ public enum SyncPlanner {
             let merged = TextMerge.merge(base: utf8(baseBytes), first: utf8(winner), second: utf8(loser), lineKeys: kind == .task ? taskLineKeys : nil)
 
             // A merge that isn't a valid task any more isn't written: both versions are kept whole instead.
-            if kind != .task || ctx.options.isValidTask(current.path, merged.text) {
+            if !merged.tooLarge && (kind != .task || ctx.options.isValidTask(current.path, merged.text)) {
                 let text = Data(merged.text.utf8)
                 if merged.conflicted {
                     ctx.conflicts.append(SyncConflict(key: key, path: current.path, peer: ctx.peer.device, peerName: ctx.peer.name, mine: l.hash, theirs: p.hash, base: b?.hash, result: SyncHash.of(text)))
@@ -280,11 +287,13 @@ public enum SyncPlanner {
         let content: Data
         if l == nil || (b.map { l!.hash == $0.hash } ?? false) {
             content = try ctx.peer.read(p)
+            // Settings another device can't read itself aren't taken here either.
+            if parseJSON(content) == nil { return }
         } else if let b, p.hash == b.hash {
             return
         } else {
-            guard let mine = try? JSONText.parse(ctx.local.read(l!)), let theirs = try? JSONText.parse(ctx.peer.read(p)) else { return }
-            let old = b.flatMap { ctx.readBase($0.hash) }.flatMap { try? JSONText.parse($0) }
+            guard let mine = parseJSON(try ctx.local.read(l!)), let theirs = parseJSON(try ctx.peer.read(p)) else { return }
+            let old = b.flatMap { ctx.readBase($0.hash) }.flatMap { parseJSON($0) }
             var merged = try ctx.localWins ? mergeNode(old, mine, theirs) : mergeNode(old, theirs, mine)
             if kind == .setConfig { merged = oneTabPerFolder(merged) }
             let text = merged.map { JSONText.write($0, indented: indented) } ?? "null"
@@ -293,6 +302,12 @@ public enum SyncPlanner {
         if l == nil || SyncHash.of(content) != l!.hash {
             ctx.ops.append(SyncOp(kind, kind == .setOrder ? SyncKeys.orderPath : SyncKeys.configPath, l?.hash, content: content))
         }
+    }
+
+    /// The JSON in `data`, or nil when it isn't JSON (or is just `null`, as `JsonNode.Parse` reads it).
+    private static func parseJSON(_ data: Data) -> JSONValue? {
+        guard let value = try? JSONText.parse(data), !value.isNull else { return nil }
+        return value
     }
 
     /// Three-way merge of JSON: objects by property, lists of objects by "id" (or "name"), plain lists as ordered sets.

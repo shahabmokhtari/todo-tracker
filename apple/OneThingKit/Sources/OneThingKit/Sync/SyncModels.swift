@@ -126,19 +126,25 @@ public struct DeviceSnapshot: Sendable {
     public var schema = 1
     /// What this device deleted lately (so a device that comes back with old copies doesn't bring them back).
     public var deleted: [SyncTombstone] = []
+    /// Keys this device still has but can't share right now (too big, a link, a name other devices can't use, a file
+    /// it can't read): the others leave theirs as they are, and never take them as deleted. Nil (left out) when none.
+    public var held: [String]?
 
-    public init(device: String, name: String, at: Instant, entries: [SyncEntry], deleted: [SyncTombstone] = []) {
+    public init(device: String, name: String, at: Instant, entries: [SyncEntry], deleted: [SyncTombstone] = [], held: [String]? = nil) {
         self.device = device
         self.name = name
         self.at = at
         self.entries = entries
         self.deleted = deleted
+        self.held = held
     }
 
-    /// The device file's JSON, exactly as C# writes it (System.Text.Json web defaults).
+    /// The device file's JSON, exactly as C# writes it (System.Text.Json web defaults; "held" only when there are some).
     var json: JSONValue {
-        .object(JSONObject([("device", .string(device)), ("name", .string(name)), ("at", .instant(at)),
-                            ("entries", .array(entries.map(\.json))), ("schema", .int(schema)), ("deleted", .array(deleted.map(\.json)))]))
+        var pairs: [(String, JSONValue)] = [("device", .string(device)), ("name", .string(name)), ("at", .instant(at)),
+                                            ("entries", .array(entries.map(\.json))), ("schema", .int(schema)), ("deleted", .array(deleted.map(\.json)))]
+        if let held { pairs.append(("held", .array(held.map { .string($0) }))) }
+        return .object(JSONObject(pairs))
     }
 
     public func encoded() -> Data { Data(JSONText.write(json).utf8) }
@@ -157,6 +163,7 @@ public struct DeviceSnapshot: Sendable {
         guard parsed.count == entries.count else { throw JSONError(description: "A device file has damaged entries.") }
         var snapshot = DeviceSnapshot(device: device, name: o.get("name")?.stringValue ?? "", at: at, entries: parsed)
         snapshot.deleted = deleted
+        snapshot.held = o.get("held")?.arrayValue?.compactMap { $0.stringValue }
         return snapshot
     }
 
@@ -186,6 +193,28 @@ public struct SyncSide {
 public struct SyncSnapshot {
     public var entries: SyncEntries
     public var read: (SyncEntry) throws -> Data
+    /// Entries that are here but can't sync right now: left alone on every device until they can.
+    public var held: [SyncHeld] = []
+
+    public init(entries: SyncEntries, held: [SyncHeld] = [], read: @escaping (SyncEntry) throws -> Data) {
+        self.entries = entries
+        self.held = held
+        self.read = read
+    }
+}
+
+/// An entry one side has but can't sync right now, and why (shown to the person). It's never written, moved or
+/// deleted by a sync, on either side, and never counts as deleted.
+public struct SyncHeld: Equatable, Sendable {
+    public var key: String
+    public var path: String
+    public var reason: String
+
+    public init(key: String, path: String, reason: String) {
+        self.key = key
+        self.path = path
+        self.reason = reason
+    }
 }
 
 /// Raised when the vault changed while a sync was being worked out; the sync starts over.

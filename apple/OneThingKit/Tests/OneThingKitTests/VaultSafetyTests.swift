@@ -78,7 +78,7 @@ final class VaultSafetyTests: XCTestCase {
 
     private let planText = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan\n"
 
-    func testNumbersTooBigInATaskFileAreAProblemWithThatFileNotACrash() throws {
+    func testDurationsLongerThanTenYearsAreTenYearsAndNumbersTooBigAreAProblemWithThatFile() throws {
         let temp = TempDir()
         let work = temp.url.appendingPathComponent("Work")
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
@@ -88,11 +88,17 @@ final class VaultSafetyTests: XCTestCase {
             .write(to: work.appendingPathComponent("Wait a lot.md"), atomically: true, encoding: .utf8)
         try "---\nid: 7b0c2f9e-0000-4000-8000-000000000003\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Steps\n\n## Steps\n\n1. [ ] First %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"delay\":\(huge)}%%\n"
             .write(to: work.appendingPathComponent("Steps.md"), atomically: true, encoding: .utf8)
+        try "---\nstep-delay: 99999999999999999999d\n---\n# Huge\n".write(to: work.appendingPathComponent("Huge.md"), atomically: true, encoding: .utf8)
+        try "---\ndue: 9999-12-31T23:30\n---\n# End\n".write(to: work.appendingPathComponent("End.md"), atomically: true, encoding: .utf8)
 
         let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
 
-        XCTAssertEqual(try store.read { $0.items.map(\.title) }, ["Plan"], "the other tasks open as usual")
-        XCTAssertEqual(Set(store.problems.map { ($0.path as NSString).lastPathComponent }), ["Wait a lot.md", "Steps.md"])
+        let tenYears: TimeInterval = 3650 * 86_400
+        XCTAssertEqual(try store.read { $0.items.map(\.title).sorted() }, ["Plan", "Steps", "Wait a lot"])
+        XCTAssertEqual(try store.read { $0.items.first(where: { $0.title == "Wait a lot" })?.stepDelay }, tenYears)
+        XCTAssertEqual(try store.read { $0.items.first(where: { $0.title == "Steps" })?.children.first?.stepDelay }, tenYears)
+        XCTAssertEqual(Set(store.problems.map { ($0.path as NSString).lastPathComponent }), ["Huge.md", "End.md"],
+                       "a number past 64 bits and a date past year 9999 (in UTC) are files to fix, never a crash")
     }
 
     func testAFileThatCantBeReadIsNeverLeftOutOfSyncOrWrittenOver() throws {
@@ -185,5 +191,35 @@ final class VaultSafetyTests: XCTestCase {
         XCTAssertThrowsError(try store.applySync(ops))
         // The reload after undoing writes the settings it has again; never the half-applied ones.
         XCTAssertNotEqual(try? String(contentsOf: config, encoding: .utf8), "{}\n")
+    }
+
+    func testSettingsThatCantBeReadAreNeverWrittenOverAndDontSync() throws {
+        let temp = TempDir()
+        let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+        let config = temp.url.appendingPathComponent(".onething/config.json")
+        let broken = "{\"groups\": [ not json"
+        try broken.write(to: config, atomically: true, encoding: .utf8)
+
+        try store.update { _ = try $0.addTask(NewTask("Plan"), now: self.now) }
+
+        XCTAssertEqual(try String(contentsOf: config, encoding: .utf8), broken)
+        XCTAssertTrue(store.problems.contains { $0.path == SyncKeys.configPath })
+        let snapshot = try store.readSync()
+        XCTAssertNil(snapshot.entries[OrdinalString(SyncKeys.config)])
+        XCTAssertEqual(snapshot.held.map(\.key), [SyncKeys.config])
+    }
+
+    func testSettingsANewerVersionKeepsInConfigAreKept() throws {
+        let temp = TempDir()
+        let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+        let config = temp.url.appendingPathComponent(".onething/config.json")
+        let text = try String(contentsOf: config, encoding: .utf8)
+        XCTAssertTrue(text.contains("\"schemaVersion\": 2,"))
+        try text.replacingOccurrences(of: "\"schemaVersion\": 2,", with: "\"schemaVersion\": 2,\n  \"theme\": \"dark\",")
+            .write(to: config, atomically: true, encoding: .utf8)
+
+        try store.update { _ = try $0.addTask(NewTask("Plan"), now: self.now) }
+
+        XCTAssertTrue(try String(contentsOf: config, encoding: .utf8).contains("\"theme\": \"dark\""))
     }
 }

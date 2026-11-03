@@ -178,7 +178,35 @@ final class SyncEngineTests: XCTestCase {
         let result = try await b.engine.sync()
         XCTAssertEqual(try b.titles(), ["Plan the trip"], "kept: a name it can't take isn't a delete")
         XCTAssertNotNil(b.text(rel))
-        XCTAssertTrue(result.problem?.contains("can't take") == true, result.problem ?? "")
+        XCTAssertTrue(result.problem?.contains("doesn't sync here") == true, result.problem ?? "")
+    }
+
+    func testATaskFileThatCantSyncIsHeldOnEveryDeviceAndNeverPublishedAsDeleted() async throws {
+        let temp = TempDir()
+        let shared = temp.url.appendingPathComponent("shared")
+        let (a, b) = try pair(temp) { FolderRemote(root: shared) }
+        let id = try a.store.update { try $0.addTask(NewTask("Plan the trip"), now: self.now).id }
+        let rel = try XCTUnwrap(a.store.path(of: id))
+        try await a.engine.sync()
+        try await b.engine.sync()
+        XCTAssertEqual(try b.titles(), ["Plan the trip"])
+
+        // Renamed by hand to a name other systems can't use (a colon): still here, so held back, not deleted.
+        try FileManager.default.moveItem(at: a.vault.appendingPathComponent(rel), to: a.vault.appendingPathComponent(VaultFiles.directory(rel) + "/Plan: the trip.md"))
+        let held = try await a.engine.sync()
+        XCTAssertTrue(held.published)
+        XCTAssertTrue(held.problem?.contains("doesn't sync for now") == true, held.problem ?? "")
+        let devices = shared.appendingPathComponent("devices")
+        let laptopFile = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: devices, includingPropertiesForKeys: nil)
+            .first { (try? String(contentsOf: $0, encoding: .utf8))?.contains("\"Laptop\"") == true })
+        let snapshot = try XCTUnwrap(try DeviceSnapshot.decode(Data(contentsOf: laptopFile)))
+        XCTAssertEqual(snapshot.held, [SyncKeys.task(id)])
+        XCTAssertTrue(snapshot.deleted.isEmpty, "held is never deleted")
+
+        let other = try await b.engine.sync()
+        XCTAssertEqual(try b.titles(), ["Plan the trip"], "held there: kept here")
+        XCTAssertNotNil(b.text(rel))
+        XCTAssertTrue(other.problem?.contains("doesn't sync here") == true, other.problem ?? "")
     }
 
     func testADamagedContentIsSaidAndWrittenAgainByTheDeviceThatHasIt() async throws {
