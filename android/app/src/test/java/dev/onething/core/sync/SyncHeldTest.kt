@@ -58,6 +58,13 @@ class SyncHeldTest {
     }
 
     @Test
+    fun whatAPeerHoldsBackIsWithheldEvenIfItStillListsIt() {
+        val checked = SyncEngine.check(DeviceSnapshot("bbbbbbbb", "Laptop", now, listOf(entry), held = listOf(entry.key)))!!
+        assertTrue(checked.entries.isEmpty())
+        assertEquals(listOf(SyncHeld(entry.key, photo, "it can't sync from there right now")), checked.rejected)
+    }
+
+    @Test
     fun heldKeysAreWrittenOnlyWhenThereAreSomeAndReadBack() {
         val plain = SyncJson.snapshot(DeviceSnapshot("bbbbbbbb", "Laptop", now, listOf(entry)))
         assertFalse(plain.containsKey("held"))
@@ -78,6 +85,19 @@ class SyncHeldTest {
     }
 
     @Test
+    fun settingsAPeerCantReadArentTakenHere() {
+        val bad = "{ not json".toByteArray()
+        val config = SyncEntry(SyncKeys.CONFIG, SyncKeys.CONFIG_PATH, SyncHash.of(bad))
+        val plan = SyncPlanner.plan(
+            SyncSide("aaaa", "Phone", emptyMap()) { bad },
+            SyncSide("bbbb", "Laptop", mapOf(config.key to config)) { bad },
+            emptyMap(),
+            { null },
+        )
+        assertTrue(plan.ops.isEmpty())
+    }
+
+    @Test
     fun aHugeTextIsntDiffedButKeptWhole() {
         val base = (1..3000).joinToString("") { "line $it\n" }
         val first = base.replace("line 10\n", "line ten\n")
@@ -85,8 +105,8 @@ class SyncHeldTest {
         val started = System.nanoTime()
         val result = TextMerge.merge(base, first, second)
         assertTrue(result.conflicted)
-        assertTrue(result.text.startsWith("line 1\n"))
-        assertTrue(result.text.contains("line ten\n") && result.text.contains("line two thousand nine hundred ninety\n"))
+        assertTrue(result.tooLarge)
+        assertEquals(first, result.text)
         assertTrue("took ${(System.nanoTime() - started) / 1_000_000} ms", System.nanoTime() - started < 5_000_000_000L)
         // One side's change alone is simply taken.
         assertEquals(TextMergeResult(first, false), TextMerge.merge(base, first, base))

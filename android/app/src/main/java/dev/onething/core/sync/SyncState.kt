@@ -35,19 +35,47 @@ class SyncState(private val dir: File, deviceDirectory: File, deviceName: String
     val deviceId: String
     val deviceName: String
 
+    /** Why sync can't run with this state (its identity can't be read), or null. */
+    val problem: String?
+
     init {
         dir.mkdirs()
         deviceDirectory.mkdirs()
         // One id per vault on this device, shared by every place it syncs with.
         val deviceFile = File(deviceDirectory, "device.json")
-        var device = read(deviceFile) as? JsonObject
-        val id = NetJson.str(device?.get("id"))
-        if (device == null || id == null || !isSafeId(id)) {
-            device = JsonObject(linkedMapOf("id" to JsonPrimitive(UUID.randomUUID().toString().replace("-", "")), "name" to JsonPrimitive(deviceName ?: "Android")))
-            write(deviceFile, device)
+        val text = if (deviceFile.exists()) VaultFiles.readText(deviceFile) else null
+        var device = text?.let(::readDevice)
+        if (device == null && text != null) {
+            idInText.find(text)?.let { found ->
+                // Damaged, but the id is still there: this device stays who it was (a new id would merge it as a stranger).
+                device = deviceInfo(found.groupValues[1], deviceName ?: "Android")
+                write(deviceFile, device!!)
+            }
         }
-        deviceId = NetJson.str(device["id"])!!
-        this.deviceName = deviceName ?: NetJson.str(device["name"]) ?: "Android"
+        if (device == null && text != null) {
+            problem = "This phone's sync identity (${deviceFile.path}) can't be read, so sync is paused rather than joining as a new device. Put back an earlier copy of the file, or remove it to join as a new device."
+            deviceId = ""
+            this.deviceName = deviceName ?: "Android"
+        } else {
+            problem = null
+            if (device == null) {
+                device = deviceInfo(UUID.randomUUID().toString().replace("-", ""), deviceName ?: "Android")
+                write(deviceFile, device!!)
+            }
+            deviceId = NetJson.str(device!!["id"])!!
+            this.deviceName = deviceName ?: NetJson.str(device!!["name"]) ?: "Android"
+        }
+    }
+
+    private fun deviceInfo(id: String, name: String) = JsonObject(linkedMapOf("id" to JsonPrimitive(id), "name" to JsonPrimitive(name)))
+
+    /** device.json's id and name, if it's whole and its id is one (2 to 64 letters and digits). */
+    private fun readDevice(text: String): JsonObject? {
+        val o = NetJson.parseOrNull(text) as? JsonObject ?: return null
+        val id = NetJson.str(o.entries.firstOrNull { it.key.equals("id", ignoreCase = true) }?.value) ?: return null
+        if (id.length !in 2..64 || !id.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }) return null
+        val name = NetJson.str(o.entries.firstOrNull { it.key.equals("name", ignoreCase = true) }?.value)
+        return JsonObject(linkedMapOf("id" to JsonPrimitive(id), "name" to (name?.let(::JsonPrimitive) ?: JsonNull)))
     }
 
     private val marksFile get() = File(dir, "marks.json")
@@ -178,4 +206,8 @@ class SyncState(private val dir: File, deviceDirectory: File, deviceName: String
     private fun read(file: File): JsonElement? = if (file.exists()) NetJson.parseOrNull(file.readText()) else null
 
     private fun write(file: File, value: JsonElement) = VaultFiles.writeAtomic(file, NetJson.write(value, JsonEscaping.DEFAULT, indented = true))
+
+    private companion object {
+        val idInText = Regex("\"id\"\\s*:\\s*\"([0-9a-fA-F]{32})\"")
+    }
 }

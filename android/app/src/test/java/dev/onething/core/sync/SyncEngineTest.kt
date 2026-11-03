@@ -187,6 +187,57 @@ class SyncEngineTest {
     }
 
     @Test
+    fun aTaskThatCantSyncIsListedAsHeldAndTheOthersKeepTheirCopy() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        val task = a.store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        b.sync()
+        a.sync()
+        // A name other devices can't use (longer than 255 bytes): held, not deleted.
+        File(a.root, "Work/Plan.md").renameTo(File(a.root, "Work/" + "任".repeat(90) + ".md"))
+        a.store.markDirty()
+        val result = a.sync()
+        assertTrue(result.problem!!.contains("doesn't sync for now"))
+        val published = SyncJson.readSnapshot(File(shared, "devices/${a.state.deviceId}.json").readText())
+        val key = SyncKeys.task(task.id)
+        assertEquals(listOf(key), published.held)
+        // Its last published version stays listed (its contents are still here to give).
+        assertEquals("Work/Plan.md", published.entries.single { it.key == key }.path)
+        b.sync()
+        assertEquals(listOf("Plan"), b.titles())
+        assertTrue(File(b.root, "Work/Plan.md").exists())
+    }
+
+    @Test
+    fun aDamagedIdentityKeepsItsIdOrPausesSyncInsteadOfJoiningAsANewDevice() {
+        val a = folderDevice("Laptop")
+        val id = a.state.deviceId
+        val file = File(dir, "Laptop/device/device.json")
+        file.writeText("{\"id\":\"$id\",\"name\":")
+        assertEquals(id, SyncState(File(dir, "Laptop/sync"), File(dir, "Laptop/device"), "Laptop").deviceId)
+
+        file.writeText("{ damaged")
+        val damaged = SyncState(File(dir, "Laptop/sync"), File(dir, "Laptop/device"), "Laptop")
+        assertTrue(damaged.problem!!.contains("sync is paused"))
+        assertEquals("{ damaged", file.readText())
+        val engine = SyncEngine(a.store, FolderRemote(shared), damaged) { now }
+        assertTrue(runCatching { engine.sync() }.exceptionOrNull()!!.message!!.contains("sync is paused"))
+        assertFalse(File(shared, "devices").exists() && File(shared, "devices").list()!!.isNotEmpty())
+    }
+
+    @Test
+    fun aDeviceFileFromANewerVersionMakesTheReadPartial() {
+        val devices = File(shared, "devices")
+        devices.mkdirs()
+        File(devices, "bbbbbbbb.json").writeText("{\"device\":\"bbbbbbbb\",\"name\":\"Laptop\",\"at\":\"2026-01-05T14:00:00+00:00\",\"entries\":[],\"schema\":2}")
+        File(devices, "cccccccc.json").writeText("{\"device\":\"cccccccc\",\"name\":\"Mac\",\"at\":\"2026-01-05T14:00:00+00:00\"}")
+        val read = FolderRemote(shared).read("aaaaaaaa", null)!!
+        assertTrue(read.partial)
+        assertEquals(emptyList<DeviceSnapshot>(), read.devices)
+    }
+
+    @Test
     fun theTokenNeverFollowsARedirectAwayFromGitHub() {
         val seen = mutableListOf<HttpRequest>()
         val http = HttpTransport { r ->
