@@ -417,6 +417,35 @@ public class TaskMarkdownTests
         Assert.Throws<VaultFormatException>(() => TaskMarkdown.Parse("---\nid: [unclosed\n---\n# T\n", "T", Utc));
     }
 
+    [Theory]
+    [InlineData("---\nstep-delay: 99999999999999999999d\n---\n# T\n")]
+    [InlineData("---\ndue: 9999-12-31T23:30\n---\n# T\n")]
+    [InlineData("# T\n\n## Steps\n\n- [ ] Step 📅 9999-12-31 %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\"}%%\n")]
+    public void A_value_too_big_to_use_is_a_file_to_fix_not_a_crash(string text)
+    {
+        var west = TimeZoneInfo.CreateCustomTimeZone("UTC-08:00", TimeSpan.FromHours(-8), "UTC-08:00", "UTC-08:00");
+
+        Assert.Throws<VaultFormatException>(() => TaskMarkdown.Parse(text, "T", Utc with { TimeZone = west }));
+    }
+
+    [Theory]
+    [InlineData("step-delay: 99999999999999")]
+    [InlineData("step-delay: 9999999999d 9999999999h")]
+    public void A_step_delay_longer_than_ten_years_is_read_as_ten_years(string line)
+    {
+        var root = TaskMarkdown.Parse($"---\nsequential: true\n{line}\n---\n# T\n", "T", Utc).Root;
+
+        Assert.Equal(TimeSpan.FromDays(3650), root.StepDelay);
+    }
+
+    [Fact]
+    public void A_steps_hidden_delay_longer_than_ten_years_is_read_as_ten_years()
+    {
+        var text = "# T\n\n## Steps\n\n- [ ] Step %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000002\",\"delay\":99999999999999}%%\n";
+
+        Assert.Equal(TimeSpan.FromDays(3650), TaskMarkdown.Parse(text, "T", Utc).Root.Children[0].StepDelay);
+    }
+
     [Fact]
     public void Done_root_tasks_record_status_and_completion()
     {

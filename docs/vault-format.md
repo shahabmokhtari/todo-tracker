@@ -90,6 +90,11 @@ comments) is kept exactly as written and in place. An owned property whose value
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
 example a Zettelkasten id), it stays and the app keeps its id in `onething-id`.
 
+Durations (`step-delay`, `planned-length`, a step's `delay`) are read as at most ten years (3650 days, either way): a
+longer one counts as ten years and stays as typed until the task changes. A value too big to be a number at all, or a
+date past the last moment there is (`9999-12-31` late in the day west of Greenwich), makes the file one to fix (shown
+under the files that need fixing, never written over).
+
 ### Subtasks
 
 * `## Subtasks` (or `## Steps`, `## Tasks`, `## Checklist`) holds checkbox list items. Nest them with tabs or spaces,
