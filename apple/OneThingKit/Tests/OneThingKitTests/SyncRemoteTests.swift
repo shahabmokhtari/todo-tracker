@@ -105,6 +105,29 @@ final class SyncRemoteTests: XCTestCase {
         XCTAssertEqual(content, contents[entry.hash])
     }
 
+    func testOldContentsStayWhileADevicesListIsntDownloaded() async throws {
+        let (snapshot, contents, _) = try fixtureSnapshot()
+        let temp = TempDir()
+        let remote = FolderRemote(root: temp.url)
+        _ = try await remote.publish(snapshot, read: { contents[$0.hash]! }, readVersion: nil)
+        // Contents only another device lists, and that device's list is still an iCloud placeholder.
+        let unlisted = Data("from the laptop".utf8)
+        let hash = SyncHash.of(unlisted)
+        let blob = try remote.blobPath(hash)
+        try FileManager.default.createDirectory(at: blob.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try unlisted.write(to: blob)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-30 * 86_400)], ofItemAtPath: blob.path)
+        let placeholder = temp.url.appendingPathComponent("devices/.eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.json.icloud")
+        try Data().write(to: placeholder)
+
+        try remote.collect()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blob.path), "kept: the list not downloaded yet may name it")
+
+        try FileManager.default.removeItem(at: placeholder)
+        try remote.collect()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: blob.path), "no device lists it")
+    }
+
     func testAGistGetsTheBundleAndTheMarker() async throws {
         let (snapshot, contents, fixture) = try fixtureSnapshot()
         let gistFixture = fixture["gist"] as! [String: Any]

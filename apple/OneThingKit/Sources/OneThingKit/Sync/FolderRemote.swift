@@ -250,7 +250,10 @@ public final class FolderRemote: SyncRemote {
     public func collect(minimumAge: TimeInterval = 7 * 86_400) throws {
         let blobs = root.appendingPathComponent("blobs")
         var used = Set<String>()
-        for name in try access.list(devicesDir) where name.hasSuffix(".json") && !name.hasPrefix(".") {
+        let names = try access.list(devicesDir)
+        // A device's list iCloud hasn't downloaded yet (`.<id>.json.icloud`) may name any of them: keep everything.
+        if names.contains(where: { $0.hasPrefix(".") && $0.hasSuffix(".json.icloud") }) { return }
+        for name in names where name.hasSuffix(".json") && !name.hasPrefix(".") {
             // A device file that can't be read now: keep everything.
             guard let data = try? access.read(devicesDir.appendingPathComponent(name)), let snapshot = try? DeviceSnapshot.decode(data) else { return }
             used.formUnion(snapshot.entries.map(\.hash))
