@@ -1,5 +1,5 @@
 using System.Windows;
-using Microsoft.Toolkit.Uwp.Notifications;
+using CommunityToolkit.WinUI.Notifications;
 using OneThing.Core;
 using OneThing.Desktop;
 using OneThing.Server.Hooks;
