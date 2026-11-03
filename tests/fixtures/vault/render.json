@@ -396,6 +396,15 @@
           },
           {
             "at": "2026-01-05T09:00:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000019",
+            "kind": "updated",
+            "summary": "Set a day's energy to 10 ⚡",
+            "actor": {
+              "kind": "user"
+            }
+          },
+          {
+            "at": "2026-01-05T09:00:00.000Z",
             "itemId": "00000000-0000-4000-8000-000000000003",
             "kind": "created",
             "summary": "Created \"Ship release 2.3\"",
@@ -535,6 +544,15 @@
             "itemId": "00000000-0000-4000-8000-000000000003",
             "kind": "focusStarted",
             "summary": "Focus started on \"Ship release 2.3\"",
+            "actor": {
+              "kind": "user"
+            }
+          },
+          {
+            "at": "2026-01-05T12:20:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000003",
+            "kind": "timeLogged",
+            "summary": "Paused focus on \"Ship release 2.3\"",
             "actor": {
               "kind": "user"
             }
@@ -695,6 +713,15 @@
               "kind": "vault",
               "name": "Obsidian"
             }
+          },
+          {
+            "at": "2026-01-05T13:00:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000013",
+            "kind": "moved",
+            "summary": "Arranged Do now (\"Call the bank\" first)",
+            "actor": {
+              "kind": "user"
+            }
           }
         ],
         "pomodoro": {
@@ -721,7 +748,7 @@
         "Work"
       ],
       "files": {
-        ".onething/activity.jsonl": "{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000019\",\"kind\":\"labelChanged\",\"summary\":\"Added label \\u0022Deep work\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"created\",\"summary\":\"Created \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"created\",\"summary\":\"Added \\u0022Roll out A\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"created\",\"summary\":\"Added \\u0022Roll out B\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Roll out A\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"scheduled\",\"summary\":\"Unlocks 2026-01-06 10:00:00Z (24h after previous step)\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"updated\",\"summary\":\"Updated \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"scheduled\",\"summary\":\"Next action 2026-01-06 15:00:00Z\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"updated\",\"summary\":\"Labels on \\u0022Roll out B\\u0022: Deep work\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000f\",\"kind\":\"created\",\"summary\":\"Added \\u0022Check dashboards\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000010\",\"kind\":\"created\",\"summary\":\"Added \\u0022Tell support\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"noteAdded\",\"summary\":\"deployed ring 0\\nsecond line\",\"actorKind\":\"agent\",\"actor\":\"copilot\"}\n{\"at\":\"2026-01-05T11:30:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"noteAdded\",\"summary\":\"looks good\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"reminderAdded\",\"summary\":\"Reminder at 2026-01-06 09:00:00Z: Check the rollout\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:25:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"timeLogged\",\"summary\":\"Logged 25 min on \\u0022Roll out A\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"timeLogged\",\"summary\":\"Logged 1 h 55 min on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"focusStarted\",\"summary\":\"Focus started on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T13:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"timeLogged\",\"summary\":\"Started the timer on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"attachmentAdded\",\"summary\":\"Attached \\u0022plan v2.pdf\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"attachmentAdded\",\"summary\":\"Attached \\u0022screenshot (1).png\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"browser\",\"actor\":\"edge\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"scheduled\",\"summary\":\"Planned \\u0022Ship release 2.3\\u0022 Tue 6 Jan 09:00, 90 min\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000011\",\"kind\":\"created\",\"summary\":\"Created \\u0022Water the plants\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T11:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000011\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Water the plants\\u0022 (repeats: next Thu 8 Jan)\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"created\",\"summary\":\"Created \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"archived\",\"summary\":\"Archived \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000013\",\"kind\":\"created\",\"summary\":\"Created \\u0022Call the bank\\u0022\",\"actorKind\":\"teams\",\"actor\":\"Teams\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000013\",\"kind\":\"scheduled\",\"summary\":\"Waits until \\u0022Ship release 2.3\\u0022 is done\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000014\",\"kind\":\"created\",\"summary\":\"Created \\u0022Plan the party\\u0022\",\"actorKind\":\"connector\",\"actor\":\"Notion\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"created\",\"summary\":\"Added \\u0022Book venue\\u0022 to \\u0022Plan the party\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"scheduled\",\"summary\":\"Planned \\u0022Book venue\\u0022 Thu 8 Jan 10:30, 45 min\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"reminderAdded\",\"summary\":\"Reminder at 2026-01-07 14:00:00Z: Ask about 50% off\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:30:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"noteAdded\",\"summary\":\"They said: call back [after] lunch | maybe\",\"actorKind\":\"system\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000018\",\"kind\":\"created\",\"summary\":\"Added \\u0022Pick music\\u0022 to \\u0022Plan the party\\u0022\",\"actorKind\":\"vault\",\"actor\":\"Obsidian\"}\n",
+        ".onething/activity.jsonl": "{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000019\",\"kind\":\"labelChanged\",\"summary\":\"Added label \\u0022Deep work\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000019\",\"kind\":\"updated\",\"summary\":\"Set a day\\u0027s energy to 10 \\u26A1\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"created\",\"summary\":\"Created \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"created\",\"summary\":\"Added \\u0022Roll out A\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"created\",\"summary\":\"Added \\u0022Roll out B\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Roll out A\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"scheduled\",\"summary\":\"Unlocks 2026-01-06 10:00:00Z (24h after previous step)\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"updated\",\"summary\":\"Updated \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"scheduled\",\"summary\":\"Next action 2026-01-06 15:00:00Z\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"updated\",\"summary\":\"Labels on \\u0022Roll out B\\u0022: Deep work\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000f\",\"kind\":\"created\",\"summary\":\"Added \\u0022Check dashboards\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000010\",\"kind\":\"created\",\"summary\":\"Added \\u0022Tell support\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"noteAdded\",\"summary\":\"deployed ring 0\\nsecond line\",\"actorKind\":\"agent\",\"actor\":\"copilot\"}\n{\"at\":\"2026-01-05T11:30:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"noteAdded\",\"summary\":\"looks good\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"reminderAdded\",\"summary\":\"Reminder at 2026-01-06 09:00:00Z: Check the rollout\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:25:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000a\",\"kind\":\"timeLogged\",\"summary\":\"Logged 25 min on \\u0022Roll out A\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"timeLogged\",\"summary\":\"Logged 1 h 55 min on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"focusStarted\",\"summary\":\"Focus started on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:20:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"timeLogged\",\"summary\":\"Paused focus on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T13:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"timeLogged\",\"summary\":\"Started the timer on \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"attachmentAdded\",\"summary\":\"Attached \\u0022plan v2.pdf\\u0022 to \\u0022Ship release 2.3\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-00000000000d\",\"kind\":\"attachmentAdded\",\"summary\":\"Attached \\u0022screenshot (1).png\\u0022 to \\u0022Roll out B\\u0022\",\"actorKind\":\"browser\",\"actor\":\"edge\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000003\",\"kind\":\"scheduled\",\"summary\":\"Planned \\u0022Ship release 2.3\\u0022 Tue 6 Jan 09:00, 90 min\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000011\",\"kind\":\"created\",\"summary\":\"Created \\u0022Water the plants\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T11:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000011\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Water the plants\\u0022 (repeats: next Thu 8 Jan)\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"created\",\"summary\":\"Created \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"completed\",\"summary\":\"Completed \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T12:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000012\",\"kind\":\"archived\",\"summary\":\"Archived \\u0022Pay rent\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000013\",\"kind\":\"created\",\"summary\":\"Created \\u0022Call the bank\\u0022\",\"actorKind\":\"teams\",\"actor\":\"Teams\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000013\",\"kind\":\"scheduled\",\"summary\":\"Waits until \\u0022Ship release 2.3\\u0022 is done\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000014\",\"kind\":\"created\",\"summary\":\"Created \\u0022Plan the party\\u0022\",\"actorKind\":\"connector\",\"actor\":\"Notion\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"created\",\"summary\":\"Added \\u0022Book venue\\u0022 to \\u0022Plan the party\\u0022\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"scheduled\",\"summary\":\"Planned \\u0022Book venue\\u0022 Thu 8 Jan 10:30, 45 min\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"reminderAdded\",\"summary\":\"Reminder at 2026-01-07 14:00:00Z: Ask about 50% off\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T09:30:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000015\",\"kind\":\"noteAdded\",\"summary\":\"They said: call back [after] lunch | maybe\",\"actorKind\":\"system\"}\n{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000018\",\"kind\":\"created\",\"summary\":\"Added \\u0022Pick music\\u0022 to \\u0022Plan the party\\u0022\",\"actorKind\":\"vault\",\"actor\":\"Obsidian\"}\n{\"at\":\"2026-01-05T13:00:00+00:00\",\"itemId\":\"00000000-0000-4000-8000-000000000013\",\"kind\":\"moved\",\"summary\":\"Arranged Do now (\\u0022Call the bank\\u0022 first)\",\"actorKind\":\"user\"}\n",
         ".onething/config.json": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Personal\",\n      \"color\": \"#22c55e\"\n    }\n  ],\n  \"labels\": [\n    {\n      \"name\": \"Deep work\",\n      \"color\": \"#7c3aed\"\n    }\n  ],\n  \"order\": [\n    \"00000000-0000-4000-8000-000000000003\",\n    \"00000000-0000-4000-8000-000000000011\",\n    \"00000000-0000-4000-8000-000000000012\",\n    \"00000000-0000-4000-8000-000000000013\",\n    \"00000000-0000-4000-8000-000000000014\"\n  ],\n  \"energyPerDay\": 10\n}\n",
         ".onething/state.json": "{\n  \"settings\": {\n    \"focusMinutes\": 25,\n    \"shortBreakMinutes\": 5,\n    \"longBreakMinutes\": 15,\n    \"focusesBeforeLongBreak\": 4\n  },\n  \"phase\": \"focus\",\n  \"pausedRemainingSeconds\": 300,\n  \"itemId\": \"00000000-0000-4000-8000-000000000003\",\n  \"completedFocusCount\": 0,\n  \"nowOrder\": [\n    \"00000000-0000-4000-8000-000000000013\",\n    \"00000000-0000-4000-8000-000000000003\"\n  ],\n  \"nowArrangedAt\": \"2026-01-05T13:00:00+00:00\"\n}\n",
         "Personal/Call the bank.md": "---\nid: 00000000-0000-4000-8000-000000000013\nstatus: open\nboard: inbox\ncreated: 2026-01-05T09:00:00.000Z\nafter: 00000000-0000-4000-8000-000000000003\n---\n# Call the bank\n",
@@ -734,7 +761,7 @@
         {
           "key": "activity",
           "path": ".onething/activity.jsonl",
-          "hash": "b19b1e8344ba053ab30a5318982c0de866f8c8734c198598065232222efa71be"
+          "hash": "945de3b0f115106e69e47ffb0285f302b9c10e61ac7d09acca4feed1744acfa1"
         },
         {
           "key": "config",
@@ -1036,6 +1063,15 @@
           },
           {
             "at": "2026-01-05T09:00:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000019",
+            "kind": "updated",
+            "summary": "Set a day's energy to 10 ⚡",
+            "actor": {
+              "kind": "user"
+            }
+          },
+          {
+            "at": "2026-01-05T09:00:00.000Z",
             "itemId": "00000000-0000-4000-8000-000000000003",
             "kind": "created",
             "summary": "Created \"Ship release 2.3\"",
@@ -1175,6 +1211,15 @@
             "itemId": "00000000-0000-4000-8000-000000000003",
             "kind": "focusStarted",
             "summary": "Focus started on \"Ship release 2.3\"",
+            "actor": {
+              "kind": "user"
+            }
+          },
+          {
+            "at": "2026-01-05T12:20:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000003",
+            "kind": "timeLogged",
+            "summary": "Paused focus on \"Ship release 2.3\"",
             "actor": {
               "kind": "user"
             }
@@ -1334,6 +1379,15 @@
             "actor": {
               "kind": "vault",
               "name": "Obsidian"
+            }
+          },
+          {
+            "at": "2026-01-05T13:00:00.000Z",
+            "itemId": "00000000-0000-4000-8000-000000000013",
+            "kind": "moved",
+            "summary": "Arranged Do now (\"Call the bank\" first)",
+            "actor": {
+              "kind": "user"
             }
           }
         ],

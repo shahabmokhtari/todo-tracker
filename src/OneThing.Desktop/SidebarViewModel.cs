@@ -378,7 +378,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task SetDailyEnergy(int? perDay) => Run(async () =>
     {
-        await _store.UpdateAsync(b => b.SetEnergyPerDay(perDay is > 0 ? perDay : null)).ConfigureAwait(true);
+        await _store.UpdateAsync(b => b.SetEnergyPerDay(perDay is > 0 ? perDay : null, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
         return $"Energy in a day: {perDay ?? Core.Energy.DefaultPerDay}";
     });
 
@@ -458,7 +458,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     {
         await _store.UpdateAsync(b =>
         {
-            b.ArrangeNow(ids, _time.GetUtcNow());
+            b.ArrangeNow(ids, Actor.User, _time.GetUtcNow());
             return true;
         }).ConfigureAwait(true);
         return null;
@@ -639,7 +639,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             var now = _time.GetUtcNow();
             if (b.RunningTimer(now) is { } running && running.Item.Id == card.Id)
             {
-                b.StopTimer(now);
+                b.StopTimer(Actor.User, now);
                 return false;
             }
 
@@ -652,18 +652,18 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task StopTimer() => Run(async () =>
     {
-        await _store.UpdateAsync(b => b.StopTimer(_time.GetUtcNow())).ConfigureAwait(true);
+        await _store.UpdateAsync(b => b.StopTimer(Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
         return "Timer stopped";
     });
 
     [RelayCommand]
-    private Task PausePomodoro() => Pomo(b => b.PauseFocus(_time.GetUtcNow()));
+    private Task PausePomodoro() => Pomo(b => b.PauseFocus(Actor.User, _time.GetUtcNow()));
 
     [RelayCommand]
-    private Task ResumePomodoro() => Pomo(b => b.ResumeFocus(_time.GetUtcNow()));
+    private Task ResumePomodoro() => Pomo(b => b.ResumeFocus(Actor.User, _time.GetUtcNow()));
 
     [RelayCommand]
-    private Task SkipPomodoro() => Pomo(b => b.SkipFocus(_time.GetUtcNow()));
+    private Task SkipPomodoro() => Pomo(b => b.SkipFocus(Actor.User, _time.GetUtcNow()));
 
     /// <summary>The next focus session (from the break screen or a notification): on the last task, else the top one.</summary>
     private Task StartNextFocus() => Run(async () =>
@@ -673,7 +673,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     });
 
     [RelayCommand]
-    private Task ResetPomodoro() => Pomo(b => b.ResetFocus(_time.GetUtcNow()));
+    private Task ResetPomodoro() => Pomo(b => b.ResetFocus(Actor.User, _time.GetUtcNow()));
 
     /// <summary>The whole app: in the app window when there is one, else in the browser.</summary>
     [RelayCommand]

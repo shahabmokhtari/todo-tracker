@@ -178,7 +178,7 @@ public sealed class VaultStoreTests : IDisposable
         var step = await Add(store, "Roll out A", task.Id);
         await store.UpdateAsync(b => b.StartTimer(step.Id, Actor.User, T0, "laptop"));
         _time.Advance(TimeSpan.FromMinutes(25));
-        await store.UpdateAsync(b => b.StopTimer(_time.GetUtcNow()));
+        await store.UpdateAsync(b => b.StopTimer(Actor.User, _time.GetUtcNow()));
         await store.UpdateAsync(b => b.Complete(task.Id, Actor.User, _time.GetUtcNow()));
         await store.UpdateAsync(b => b.Archive(task.Id, Actor.User, _time.GetUtcNow()));
 
@@ -1194,7 +1194,7 @@ public sealed class VaultStoreTests : IDisposable
 
         await a.UpdateAsync(x =>
         {
-            x.ArrangeNow([second.Id, first.Id], T0);
+            x.ArrangeNow([second.Id, first.Id], Actor.User, T0);
             return true;
         });
 

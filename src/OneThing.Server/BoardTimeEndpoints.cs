@@ -107,11 +107,11 @@ internal static class BoardTimeEndpoints
                 return Wire.Timer(b, now);
             }));
 
-        api.MapPost("/timer/stop", (IBoardStore store, TimeProvider time) =>
+        api.MapPost("/timer/stop", (HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
             {
                 var now = time.GetUtcNow();
-                b.StopTimer(now);
+                b.StopTimer(Security.ActorOf(http), now);
                 return Wire.Timer(b, now);
             }));
 

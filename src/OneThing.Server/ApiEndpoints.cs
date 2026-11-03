@@ -273,10 +273,10 @@ internal static class ApiEndpoints
         api.MapGet("/energy", (IBoardStore store, TimeProvider time, OneThingServerOptions options) =>
             store.ReadAsync(b => Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone)));
 
-        api.MapPut("/energy", (EnergyRequest request, IBoardStore store, TimeProvider time, OneThingServerOptions options) =>
+        api.MapPut("/energy", (EnergyRequest request, HttpContext http, IBoardStore store, TimeProvider time, OneThingServerOptions options) =>
             store.UpdateAsync(b =>
             {
-                b.SetEnergyPerDay(request.PerDay);
+                b.SetEnergyPerDay(request.PerDay, Security.ActorOf(http), time.GetUtcNow());
                 return Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone);
             }));
 
@@ -373,11 +373,11 @@ internal static class ApiEndpoints
             }));
 
         // Manual order: the Do now list as someone arranged it (drag, arrows), "put first", and sibling order.
-        api.MapPost("/now/order", async (OrderRequest request, IBoardStore store, TimeProvider time) =>
+        api.MapPost("/now/order", async (OrderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b =>
             {
-                b.ArrangeNow(request.Ids ?? [], time.GetUtcNow());
+                b.ArrangeNow(request.Ids ?? [], Security.ActorOf(http), time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return Results.NoContent();
@@ -394,15 +394,15 @@ internal static class ApiEndpoints
         });
 
         api.MapPost("/items/{id:guid}/reorder", (Guid id, ReorderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
-            Mutate(store, time, http, (b, _, _) =>
+            Mutate(store, time, http, (b, now, actor) =>
             {
                 if (request.After is { } after)
                 {
-                    b.ReorderAfter(id, after);
+                    b.ReorderAfter(id, after, actor, now);
                 }
                 else
                 {
-                    b.Reorder(id, request.Before);
+                    b.Reorder(id, request.Before, actor, now);
                 }
 
                 return b.Get(id);
@@ -472,16 +472,16 @@ internal static class ApiEndpoints
                         b.StartFocus(request?.ItemId, Security.ActorOf(http), now);
                         break;
                     case "pause":
-                        b.PauseFocus(now);
+                        b.PauseFocus(Security.ActorOf(http), now);
                         break;
                     case "resume":
-                        b.ResumeFocus(now);
+                        b.ResumeFocus(Security.ActorOf(http), now);
                         break;
                     case "skip":
-                        b.SkipFocus(now);
+                        b.SkipFocus(Security.ActorOf(http), now);
                         break;
                     case "reset":
-                        b.ResetFocus(now);
+                        b.ResetFocus(Security.ActorOf(http), now);
                         break;
                     case "next":
                         // The last session's task; else the one asked for; else today's top task.
@@ -635,6 +635,9 @@ internal static class ApiEndpoints
 
         api.MapPost("/history/commit", async (HistoryService history) =>
             new { committed = await history.Required.CommitAsync().ConfigureAwait(false) });
+
+        // Folders that are git repositories of their own: their tasks aren't in history, and the app says so.
+        api.MapGet("/history/skipped", (HistoryService history) => history.History?.Skipped ?? []);
 
         api.MapGet("/items/{id:guid}/history", async (Guid id, HistoryService history, IBoardStore store) =>
         {

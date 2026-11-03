@@ -130,7 +130,7 @@ public class TaskMarkdownTimeTests
         var board = new TaskBoard();
         var item = board.AddTask(new NewTask("A"), Actor.User, Now);
         board.StartTimer(item.Id, Actor.User, Now.AddSeconds(10), "laptop");
-        board.StopTimer(Now.AddSeconds(50));
+        board.StopTimer(Actor.User, Now.AddSeconds(50));
 
         var text = TaskMarkdown.Render(item, Utc);
         var parsed = TaskMarkdown.Parse(text, "A", Utc);

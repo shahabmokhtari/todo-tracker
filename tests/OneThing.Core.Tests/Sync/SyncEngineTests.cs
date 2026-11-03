@@ -91,7 +91,7 @@ public sealed class SyncEngineTests : IDisposable
         await a.AddTask("Write the design doc");
         await Settle();
 
-        await a.Store.UpdateAsync(board => board.SetEnergyPerDay(6));
+        await a.Store.UpdateAsync(board => board.SetEnergyPerDay(6, Actor.User, DateTimeOffset.UnixEpoch));
         await Settle();
 
         Assert.Equal(6, await b.Store.ReadAsync(board => board.DailyEnergy));

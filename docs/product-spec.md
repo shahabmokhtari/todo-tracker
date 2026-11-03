@@ -66,7 +66,8 @@ apple/           – OneThingKit (Swift port of Core) + SwiftUI apps for iOS and
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
 * **History.** Every change is kept as a version in a private git repository on this device (local app data, never in the synced vault), saved a
   few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
-  viewed or restored from its history. Off when git isn't installed.
+  viewed or restored from its history. Off when git isn't installed. A folder that is a git repository of its own is
+  left out, and a task's History says which. Each version says who made the changes in it (you, an agent, the app).
 * **Data folder.** `%LOCALAPPDATA%\OneThing` (override with `ONETHING_DATA` or `--data`) holds
   `settings.json` (Teams webhook, vault folder), `api-token`, and `desktop.json` (window placement).
 

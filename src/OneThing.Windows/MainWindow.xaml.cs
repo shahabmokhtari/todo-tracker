@@ -811,7 +811,18 @@ public partial class MainWindow : Window
             var item = new MenuItem { Header = info.Name, ToolTip = info.Description, IsCheckable = true, IsChecked = host.Settings.IsEnabled(info) };
             item.Click += (_, _) =>
             {
-                host.Settings.SetEnabled(info.Id, item.IsChecked);
+                try
+                {
+                    host.Settings.SetEnabled(info.Id, item.IsChecked);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // plugins.json can't be read: nothing changed, and the message says how to fix it.
+                    item.IsChecked = !item.IsChecked;
+                    _vm.StatusMessage = ex.Message;
+                    return;
+                }
+
                 if (host.IsRunning(info.Id) != item.IsChecked
                     && MessageBox.Show(this, $"{info.Name} is turned {(item.IsChecked ? "on" : "off")} from the next start. Restart One Thing now?", "Plugins", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                 {

@@ -417,7 +417,7 @@ public sealed class VaultFixtureTests
         var work = board.Groups[0].Id;
         var personal = board.Groups[1].Id;
         board.DefineLabel("Deep work", "#7c3aed", user, T0);
-        board.SetEnergyPerDay(10);
+        board.SetEnergyPerDay(10, Actor.User, T0);
 
         // Due 2026-01-07 at 17:00 local (22:00Z); a deadline at 03:00Z is still the 6th locally.
         var release = board.AddTask(new NewTask("Ship release 2.3")
@@ -448,7 +448,7 @@ public sealed class VaultFixtureTests
         board.AddTime(steps[0].Id, T0, T0.AddMinutes(25), user, T0.AddMinutes(25));
         board.AddTime(release.Id, T0.AddHours(-12), T0.AddHours(-10).AddMinutes(-5), user, T0);
         board.StartFocus(release.Id, user, T0.AddHours(3), "laptop-1");
-        board.PauseFocus(T0.AddHours(3).AddMinutes(20));
+        board.PauseFocus(Actor.User, T0.AddHours(3).AddMinutes(20));
         board.StartTimer(release.Id, user, T0.AddHours(4), "phone-1");
         board.AddAttachment(release.Id, "plan v2.pdf", "_attachments/release/plan v2.pdf", 42, user, T0);
         board.AddAttachment(steps[1].Id, "screenshot (1).png", "_attachments/release/screenshot (1).png", 7, new Actor(ActorKind.Browser, "edge"), T0);
@@ -471,7 +471,7 @@ public sealed class VaultFixtureTests
         board.AddNote(venue.Id, "They said: call back [after] lunch | maybe", new Actor(ActorKind.System), T0.AddMinutes(30));
         board.AddTask(new NewTask("Pick music") { ParentId = party.Id, Sequential = true }, new Actor(ActorKind.Vault, "Obsidian"), T0);
 
-        board.ArrangeNow([bank.Id, release.Id], T0.AddHours(4));
+        board.ArrangeNow([bank.Id, release.Id], Actor.User, T0.AddHours(4));
         return board;
     }
 

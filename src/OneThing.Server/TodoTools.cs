@@ -135,10 +135,10 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "set_daily_energy"), Description("How much energy the user has in a day (1 to 100 ⚡; 10 unless set). A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; a task without one counts as 1): use it to warn about a day that's too full. Omit perDay to go back to 10. Returns what there is and what today's plan takes.")]
-    public Task<EnergyDto> SetDailyEnergy([Description("Energy in a day, 1 to 100; omit for the default (10).")] int? perDay = null) =>
+    public Task<EnergyDto> SetDailyEnergy(McpServer server, [Description("Energy in a day, 1 to 100; omit for the default (10).")] int? perDay = null) =>
         Guard(() => store.UpdateAsync(b =>
         {
-            b.SetEnergyPerDay(perDay);
+            b.SetEnergyPerDay(perDay, ActorOf(server), time.GetUtcNow());
             return Wire.EnergyToday(b, time.GetUtcNow(), options.TimeZone);
         }));
 
@@ -365,11 +365,11 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         }));
 
     [McpServerTool(Name = "stop_timer", Idempotent = true), Description("Stop the timer (whatever task it is on).")]
-    public Task<TimerDto> StopTimer() =>
+    public Task<TimerDto> StopTimer(McpServer server) =>
         Guard(() => store.UpdateAsync(b =>
         {
             var now = time.GetUtcNow();
-            b.StopTimer(now);
+            b.StopTimer(ActorOf(server), now);
             return Wire.Timer(b, now);
         }));
 

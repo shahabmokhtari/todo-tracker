@@ -21,11 +21,12 @@ public sealed partial class TaskBoard
     public int CloseForgottenTimers(DateTimeOffset now)
     {
         var closed = 0;
-        foreach (var entry in AllItems().SelectMany(i => i.TimeEntryList))
+        foreach (var item in AllItems())
         {
-            if (entry.IsRunning && now - entry.Start > ForgottenAfter)
+            foreach (var entry in item.TimeEntryList.Where(e => e.IsRunning && now - e.Start > ForgottenAfter))
             {
                 entry.End = entry.Start + ForgottenAfter;
+                Log(now, item.Id, ActivityKind.TimeLogged, $"Stopped a timer left running on \"{item.Title}\" (counted {Minutes(ForgottenAfter)})", Actor.System);
                 closed++;
             }
         }
@@ -79,11 +80,17 @@ public sealed partial class TaskBoard
         return entry;
     }
 
-    /// <summary>Stops the timer (every running one, if sync brought two together); the newest is returned.</summary>
-    public (WorkItem Item, TimeEntry Entry)? StopTimer(DateTimeOffset now)
+    /// <summary>Stops the timer (every running one, if sync brought two together); the newest is returned. The timeline says who stopped it.</summary>
+    public (WorkItem Item, TimeEntry Entry)? StopTimer(Actor actor, DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         var newest = RunningTimer();
         StopTimers(AllItems(), now);
+        if (newest is { } stopped)
+        {
+            Log(now, stopped.Item.Id, ActivityKind.TimeLogged, $"Stopped the timer on \"{stopped.Item.Title}\" ({Minutes(stopped.Entry.Duration(now))})", actor);
+        }
+
         return newest;
     }
 
@@ -125,11 +132,12 @@ public sealed partial class TaskBoard
     public int CloseAbandonedTimers(string device, DateTimeOffset lastSeen)
     {
         var closed = 0;
-        foreach (var entry in AllItems().SelectMany(i => i.TimeEntryList))
+        foreach (var item in AllItems())
         {
-            if (entry.IsRunning && entry.Device == device && entry.Start <= lastSeen)
+            foreach (var entry in item.TimeEntryList.Where(e => e.IsRunning && e.Device == device && e.Start <= lastSeen))
             {
                 entry.End = lastSeen;
+                Log(lastSeen, item.Id, ActivityKind.TimeLogged, $"Stopped the timer on \"{item.Title}\" when the app closed", Actor.System);
                 closed++;
             }
         }
