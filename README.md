@@ -143,12 +143,13 @@ git clone https://github.com/shahabmokhtari/todo-tracker && cd todo-tracker
 dotnet run --project src/OneThing.Windows
 ```
 
-The sidebar docks on the right (move it with **⋯ › Position**). Ready-built apps for every platform are attached to each
-[CI run](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml) (sign in to GitHub to download):
-`windows-sidebar` (the Windows app), `linux-tray`, `macos-app`, `android-app`, `browser-extension`,
-`safari-extension`, and `ai-connectors` (`ot` and the Claude Desktop extension).
+The sidebar docks on the right (move it with **⋯ › Position**). Ready-built apps for every platform are on the
+[Releases page](https://github.com/shahabmokhtari/todo-tracker/releases): the Windows app, the Linux tray app, the Mac
+app, the Android app, the browser extensions (Edge/Chrome and Safari), and `onething`/`ot` with the Claude Desktop
+extension. Every change's builds are also attached to its
+[CI run](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml) (sign in to GitHub to download).
 
-**Linux.** Unpack `linux-tray` and run `./install.sh` (add `--autostart` to start with your session).
+**Linux.** Unpack `onething-linux-x64.tar.gz` and run `./install.sh` (add `--autostart` to start with your session).
 
 **macOS / iOS.** `cd apple && brew install xcodegen && xcodegen generate && open OneThing.xcodeproj`.
 
@@ -193,4 +194,13 @@ alike: the map of the code, how to build and test, and the rules that keep users
 dotnet build OneThing.slnx -c Release -warnaserror
 dotnet test --solution OneThing.slnx -c Release --no-build
 node --test tests/web/*.test.mjs extension/tests/*.test.mjs
+```
+
+### Publishing a release
+
+Push a version tag and the [Release workflow](.github/workflows/release.yml) builds and tests everything as CI does,
+then publishes a GitHub Release with the apps attached:
+
+```bash
+git tag v2.0.0 && git push origin v2.0.0
 ```

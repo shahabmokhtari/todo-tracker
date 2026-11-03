@@ -5,6 +5,8 @@ on:
   push:
     branches: [master, main]
   workflow_dispatch:
+  # The release workflow (release.yml) runs all of this on a version tag, then publishes what it built.
+  workflow_call:
 
 permissions:
   contents: read

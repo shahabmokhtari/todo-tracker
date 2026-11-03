@@ -138,3 +138,7 @@ python3 build/icons.py                      # the app icon on every platform (pi
 
 One topic per PR, a short description of what changes for the user, tests for the change, docs updated, all seven CI
 jobs green. Commit messages: a short summary line, then what and why.
+
+Releases: push a version tag (`git tag v2.0.0 && git push origin v2.0.0`). `.github/workflows/release.yml` runs the
+whole CI workflow on it and publishes a GitHub Release with the apps it built. Actions in the workflows are pinned to
+commit SHAs (the version in a comment); `npx` tools to a version.
