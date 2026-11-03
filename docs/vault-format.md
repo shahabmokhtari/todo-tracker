@@ -8,7 +8,7 @@ of existing notes is left as it is).
 ## Layout
 
 ```
-OneThing/                        ← the vault (default: Documents/OneThing)
+OneThing/                           ← the vault (default: Documents/OneThing)
   AGENTS.md                         ← format guide for AI tools (not a task)
   Work/                             ← a group (tab). Create a folder to add a group.
     Ship release 2.3.md             ← a top-level task. Create a file to add a task.
@@ -16,7 +16,7 @@ OneThing/                        ← the vault (default: Documents/OneThing)
     Clients/Acme onboarding.md      ← subfolders are fine; the task belongs to the top folder's group
   Personal/
   _attachments/7b0c2f9e/plan.pdf    ← files attached in the app
-  .onething/                    ← app data (hidden in Obsidian)
+  .onething/                        ← app data (hidden in Obsidian)
     config.json                     ← group ids/colors/order, label colors, task order, energy in a day (synced)
     state.json                      ← focus timer, Do now order
     activity.jsonl                  ← audit log (append-only)
@@ -153,8 +153,10 @@ under the files that need fixing, never written over).
 * **Saves are all-or-nothing.** Before writing, every file is compared (by content) with what the app last read; if
   someone saved in between, the app re-reads and re-applies its change. If a save fails part-way, every file is put
   back. A task moved between files is written to its new file first, so a crash can only duplicate, never lose it.
-* **Broken files are shown, not guessed.** A file with invalid frontmatter is listed as a problem. Its last good
-  version stays visible, and the app never writes to it until it's fixed.
+* **Broken files are shown, not guessed.** A file with invalid frontmatter, or one that can't be opened (locked by
+  another app, or not downloaded yet from a cloud folder), is listed as a problem. Its last good version stays
+  visible, the app never writes to it until it's fixed, and it's read again on the next look. A folder that can't be
+  listed keeps its tasks as last read, and sync waits, so your other devices keep them too.
 * **Copies get their own identity.** A duplicated task file gets new ids; the original keeps its own.
 * **Several processes, one vault.** The app, the CLI, and MCP servers coordinate with a lock in local app data (not in
   the synced folder). Changes from other devices arrive through your sync service and are picked up like any edit.

@@ -26,16 +26,16 @@ a per-folder lock and re-read the files first). Several AI apps can be connected
 * **Linux app:** the install script puts `onething` and `ot` in `~/.local/bin`.
 * **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
   artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it). A .NET tool has one name: `onething`.
-* **Standalone:** CI publishes self-contained `onething` and `ot` for Windows, macOS and Linux
-  (`onething-cli-<platform>.zip`, no .NET needed).
+* **Standalone:** self-contained `onething` and `ot` for Windows, macOS and Linux (`onething-cli-<platform>.zip`, no
+  .NET needed) are on the Releases page and in every CI run.
 
 `ot` uses the tasks folder the app uses (`Documents/OneThing`, or the folder chosen in the app). Override it with
 `--vault <folder>` or the `ONETHING_VAULT` environment variable.
 
 ## Claude Desktop
 
-**Extension (easiest):** download `onething-<platform>.mcpb` from the CI artifacts and open it; Claude shows an
-install dialog. Leave *Tasks folder* empty to use the app's folder.
+**Extension (easiest):** download `onething-<platform>.mcpb` from the Releases page (or a CI run) and open it; Claude
+shows an install dialog. Leave *Tasks folder* empty to use the app's folder.
 
 **Or by hand:** Settings → Developer → Edit config, then add (with the path from "Connect an AI app"):
 
@@ -94,7 +94,8 @@ While the app runs, its MCP endpoint is `http://127.0.0.1:5317/mcp` with the hea
 Anything with the token (an agent, a script) reads and changes tasks; its changes show as `Agent: <name>` (the
 `X-OneThing-Actor: agent:<name>` header, or the MCP client's name; without one, `Agent: API client`). Some things are
 yours only and answer 403 to the token alone: deleting, Ask AI, switching extras, moving the tasks folder, the Teams
-webhook, sync and connected-app settings, approving or trying hooks, and switching off or removing hooks it didn't add.
+webhook, sync and connected-app settings, approving, turning down or trying hooks, and switching off or removing hooks
+it didn't add.
 
 ## ChatGPT, Claude.ai, Microsoft 365 Copilot and Copilot Studio
 

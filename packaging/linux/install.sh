@@ -28,7 +28,7 @@ xdg-mime default onething.desktop x-scheme-handler/onething 2>/dev/null || true
 update-desktop-database "$apps" 2>/dev/null || true
 
 autostart="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
-# An earlier install's start-with-your-session entry starts the app by its new name too.
+# Keep an earlier start-with-your-session entry pointing at this copy.
 if [ -f "$autostart/onething.desktop" ]; then cp "$apps/onething.desktop" "$autostart/onething.desktop"; fi
 if [ "${1:-}" = "--autostart" ]; then
   mkdir -p "$autostart"
