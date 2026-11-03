@@ -12,6 +12,8 @@ public enum Feedback {
     public static let maxMessage = 2000
     /// The longest reply address, in code points.
     public static let maxContact = 200
+    /// The longest issue title, in code points.
+    public static let maxTitle = 256
     /// Debug builds log the request instead of sending it unless this is "1" (set it in the Xcode scheme).
     public static let sendVariable = "ONETHING_FEEDBACK_SEND"
 
@@ -65,11 +67,19 @@ public enum Feedback {
         ].compactMap { key, value in value.flatMap(nonEmpty).map { (key, $0) } }
         return FeedbackBody(
             message: message,
-            title: "\(draft.kind.label) · \(device.platform): \(message)",
+            title: title(draft.kind, platform: device.platform, message: message),
             contact: contact,
             clientID: draft.clientID,
             labels: ["kind:\(draft.kind.rawValue)", "platform:\(platform)", "source:\(draft.source.rawValue)"],
             metadata: metadata)
+    }
+
+    /// The issue's title: "<Kind> · <Platform>: " and the note's first line, at most `maxTitle` code points, trimmed.
+    public static func title(_ kind: FeedbackKind, platform: String, message: String) -> String {
+        let firstLine = text(message.unicodeScalars.prefix { $0 != "\n" && $0 != "\r" })
+        let full = "\(kind.label) · \(platform): \(trim(firstLine))"
+        guard full.unicodeScalars.count > maxTitle else { return full }
+        return trim(text(full.unicodeScalars.prefix(maxTitle)))
     }
 
     /// What an answer means: 2xx sent; no answer, 408, 429 or 5xx try again (same clientID); anything else failed.
@@ -95,6 +105,12 @@ public enum Feedback {
     }
 
     private static func trim(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    private static func text<S: Sequence>(_ scalars: S) -> String where S.Element == Unicode.Scalar {
+        var view = String.UnicodeScalarView()
+        view.append(contentsOf: scalars)
+        return String(view)
+    }
     private static func nonEmpty(_ text: String) -> String? { text.isEmpty ? nil : text }
 }
 
