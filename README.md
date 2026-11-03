@@ -115,7 +115,8 @@ Documents/OneThing/
 - **Version history:** every change is a version you can look at and restore.
 - **Sync your way:** OneDrive, iCloud Drive or a private GitHub gist, merging changes made on two computers.
 - **Or live on GitHub:** each group can be a private GitHub repository with tasks as issues (snoozes and reminders as
-  labels), made for you with the GitHub CLI. [More](docs/connectors.md#github-issues)
+  labels), made for you with the GitHub CLI. Groups can share one repository too, each telling its issues apart with a
+  `group:` label. [More](docs/connectors.md#github-issues)
 - **Connectors:** keep a group in step with Notion or Microsoft To Do, both ways, never deleting anything.
 
 ## Everywhere you work
