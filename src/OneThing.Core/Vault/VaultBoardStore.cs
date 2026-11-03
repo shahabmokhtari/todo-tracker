@@ -463,9 +463,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return false;
         }
 
+        // Cleared before looking, so a change noticed while we look is looked at again (never lost).
+        _dirty = false;
         if (!_forceContent && !_reactionPending && !DiskDiffers())
         {
-            _dirty = false;
             return false;
         }
 
