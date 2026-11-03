@@ -194,8 +194,11 @@ class SyncEngineTest {
         a.sync()
         b.sync()
         a.sync()
-        // A name other devices can't use (longer than 255 bytes): held, not deleted.
-        File(a.root, "Work/Plan.md").renameTo(File(a.root, "Work/" + "任".repeat(90) + ".md"))
+        // A name this phone's file system takes but other devices can't: on Windows longer than 255 bytes in UTF-8
+        // (Linux, phones and Macs can't), elsewhere a character Windows can't use. Held, not deleted.
+        val windows = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
+        val name = if (windows) "任".repeat(90) + ".md" else "Plan? Now.md"
+        assertTrue("renamed to $name", File(a.root, "Work/Plan.md").renameTo(File(a.root, "Work/$name")))
         a.store.markDirty()
         val result = a.sync()
         assertTrue(result.problem!!.contains("doesn't sync for now"))
