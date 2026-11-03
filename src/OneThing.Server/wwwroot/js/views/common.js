@@ -1,15 +1,23 @@
 // Shared by the views: loads where only the newest answer counts, changes made one at a time (each built from the
 // data as it is when its turn comes), and the request runner with its toast and refresh.
 
-/** Wraps a loader so only the newest call's result is used: an older reply that arrives late is dropped. */
+/** Wraps a loader so only the newest call's result is used: an older reply (or error) that arrives late is dropped. */
 export function latest(load) {
   let seq = 0;
   return async (...args) => {
     const mine = ++seq;
-    const value = await load(...args);
-    return mine === seq ? { current: true, value } : { current: false };
+    try {
+      const value = await load(...args);
+      return mine === seq ? { current: true, value } : { current: false };
+    } catch (err) {
+      if (mine === seq) throw err;
+      return { current: false };
+    }
   };
 }
+
+/** A drag carries a task's id under its own type: dropping a card on a text box must not paste the id. */
+export const DRAG_TYPE = 'application/x-onething-task';
 
 /** Runs jobs one after another (a failed job doesn't stop the next). */
 export function serial() {

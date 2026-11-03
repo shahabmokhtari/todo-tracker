@@ -94,6 +94,12 @@ export function createShell(ctx) {
   }
 
   function show(id) {
+    // A view that's an extra (Plan) switched off isn't there: Today instead (also for an old link or bookmark).
+    const wanted = VIEWS.find((v) => v.id === id);
+    if (wanted?.plugin && !ctx.pluginOn(wanted.plugin)) {
+      id = 'today';
+      if (parseRoute(location.hash).view === wanted.id) history.replaceState(null, '', '#/today');
+    }
     const changed = current !== id;
     if (changed && current) ctx.views[current]?.hide?.();
     current = id;
@@ -358,6 +364,14 @@ export function createShell(ctx) {
   }
 
   palette.addEventListener('mousedown', (e) => { if (e.target === palette) closePalette(); });
+  // Focus stays in the palette while it's open (Esc or a choice closes it).
+  palette.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const items = [...palette.querySelectorAll('input, button, [tabindex="0"]')].filter((el) => !el.disabled && el.offsetParent !== null);
+    const i = items.indexOf(document.activeElement);
+    e.preventDefault();
+    items[(i + (e.shiftKey ? -1 : 1) + items.length) % items.length]?.focus();
+  });
   $('#palette-btn').addEventListener('click', openPalette);
 
   // ---- keyboard --------------------------------------------------------------------------------------------------

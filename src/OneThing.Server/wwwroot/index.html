@@ -23,7 +23,7 @@
       </a>
       <nav class="nav-views" id="nav-views" aria-label="Views"></nav>
       <div class="nav-heading">Groups</div>
-      <nav id="tabs" class="tabs" role="tablist" aria-label="Task groups" aria-orientation="vertical"></nav>
+      <nav id="tabs" class="tabs" aria-label="Task groups"></nav>
       <div class="nav-foot">
         <button id="palette-btn" class="nav-link" type="button" title="Find anything (Ctrl+K)"><span class="nav-icon" id="palette-icon"></span><span class="nav-label">Search</span><kbd>Ctrl K</kbd></button>
         <button id="plugins-btn" class="nav-link" type="button" aria-label="Plugins" title="Plugins: switch features on or off"></button>
@@ -43,9 +43,11 @@
           <div id="filter-menu" class="menu filter-menu" role="dialog" aria-label="Tags and labels" hidden></div>
         </div>
         <div id="timer" class="timer-chip" hidden></div>
-        <div id="pomodoro" class="pomodoro" aria-live="polite"></div>
+        <div id="pomodoro" class="pomodoro" aria-live="off"></div>
+        <div id="pomodoro-said" class="visually-hidden" role="status"></div>
         <div id="plugin-buttons" class="plugin-buttons"></div>
       </header>
+      <div id="offline" class="notice warn offline" role="status" hidden></div>
 
       <main class="layout" id="main" tabindex="-1">
         <section id="login" class="panel login" hidden>
@@ -132,7 +134,7 @@
   </div>
 
   <div id="scrim" class="scrim" hidden></div>
-  <aside id="drawer" class="drawer" hidden aria-label="Task details"></aside>
+  <div id="drawer" class="drawer" hidden role="dialog" aria-modal="true" aria-label="Task details" tabindex="-1"></div>
   <div id="palette" class="palette" hidden role="dialog" aria-modal="true" aria-label="Search and commands"></div>
   <div id="break" class="break-screen" hidden role="dialog" aria-modal="true" aria-labelledby="break-title"></div>
   <div id="toast" class="toast" role="status" hidden></div>

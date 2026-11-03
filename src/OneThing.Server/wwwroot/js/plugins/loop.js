@@ -205,15 +205,19 @@ export function activate(host) {
     let includeDone = false;
     const output = h('textarea', { class: 'loop-output', readonly: true, rows: 14, 'aria-label': 'Checklist to paste' });
     const copied = h('span', { class: 'muted small', role: 'status' });
+    // Switching the group (or Include finished) quickly: only the newest list is shown.
+    let asked = 0;
 
     async function fill() {
+      const mine = ++asked;
       try {
-        const nodes = await host.api(`/api/tree${group ? `?group=${group}` : ''}`);
+        const nodes = await host.api(`/api/tree${group ? `?group=${encodeURIComponent(group)}` : ''}`);
+        if (mine !== asked) return;
         const name = groups.find((g) => g.id === group)?.name ?? null;
         output.value = loopMarkdown(nodes, { title: name, includeDone });
         copied.textContent = '';
       } catch (err) {
-        host.toast(err.message, 'error');
+        if (mine === asked) host.toast(err.message, 'error');
       }
     }
 

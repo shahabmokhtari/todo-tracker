@@ -104,6 +104,12 @@ test('metaChips turn card facts into short, toned chips', () => {
   ]);
 });
 
+test('the planned chip shows only while the Plan extra is on', () => {
+  const card = { plannedAt: '2026-01-05T10:00:00Z', plannedMinutes: 30 };
+  assert.ok(metaChips(card, { now }).some((c) => c.text.startsWith('🗓')));
+  assert.ok(!metaChips(card, { now, plan: false }).some((c) => c.text.startsWith('🗓')));
+});
+
 test('summaryLine describes the board in a calm sentence', () => {
   assert.equal(summaryLine({ now: [], waiting: [] }), 'All clear. Nothing needs you right now.');
   assert.equal(summaryLine({ now: [{}], waiting: [] }), '1 thing to do now.');

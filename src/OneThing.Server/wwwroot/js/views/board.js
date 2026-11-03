@@ -3,7 +3,7 @@
 
 import { COLUMNS, WIP_LIMIT, columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../boardmodel.js';
 import { duration } from '../timefmt.js';
-import { latest, serial, sameAs, send, treeUrl } from './common.js';
+import { latest, serial, sameAs, send, treeUrl, DRAG_TYPE } from './common.js';
 import { enablePan } from '../pan.js';
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
@@ -96,7 +96,7 @@ export function createBoardView(ctx) {
         dragging = node;
         el.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', node.id);
+        e.dataTransfer.setData(DRAG_TYPE, node.id);
       },
       ondragend: () => { dragging = null; el.classList.remove('dragging'); clearMarks(); },
     },

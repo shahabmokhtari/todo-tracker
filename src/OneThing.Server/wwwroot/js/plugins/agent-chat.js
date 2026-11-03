@@ -68,8 +68,14 @@ export function activate(host) {
   let chatsVersion = -1;
   let models = [];
   let view = 'chat'; // chat | chats | add-model
+  let opening = 0;
+  let panelOpen = false;
 
-  const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
+  // A log: screen readers read what's added. Entries are patched in place (see showEntries), so an answer streaming
+  // in isn't read again from the start of the chat on every update.
+  const log = h('div', { class: 'chat-log', role: 'log', 'aria-live': 'polite' });
+  /** What each shown entry was drawn from, by id: an entry that didn't change keeps its node. */
+  let drawn = new Map();
   const status = h('div', { class: 'chat-status muted small', role: 'status' });
   const notice = h('div', { class: 'chat-notice muted small', hidden: true });
   const picker = h('select', {
@@ -307,6 +313,32 @@ export function activate(host) {
     }
   }
 
+  /** Draws the chat, touching only entries that are new or changed (the log is read out as it grows). */
+  function showEntries(entries) {
+    const next = new Map();
+    const nodes = entries.map((e, i) => {
+      const key = e.id ?? `#${i}`;
+      const text = JSON.stringify(e);
+      const was = drawn.get(key);
+      if (was && was.text === text) {
+        next.set(key, was);
+        return was.node;
+      }
+      // A message still coming in: only its words change, in the same place.
+      if (was && was.kind === e.kind && (e.kind === 'agent' || e.kind === 'user')) {
+        was.node.textContent = e.text;
+        next.set(key, { ...was, text });
+        return was.node;
+      }
+      const node = entry(e);
+      next.set(key, { node, text, kind: e.kind });
+      return node;
+    });
+    drawn = next;
+    nodes.forEach((node, i) => { if (log.children[i] !== node) log.insertBefore(node, log.children[i] ?? null); });
+    while (log.children.length > nodes.length) log.lastElementChild.remove();
+  }
+
   function renderPicker(state) {
     const { agents, models: apiModels } = groupAgents(state.agents);
     const option = (a) => h('option', { value: a.id, selected: a.id === state.agent }, a.name);
@@ -338,14 +370,16 @@ export function activate(host) {
     notice.textContent = note ?? '';
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
     if (!available.length) {
+      drawn = new Map();
       log.replaceChildren(h('div', { class: 'note' }, 'To chat, install one of these (then reopen this panel), or add a model with an API key:'),
         ...state.agents.filter((a) => a.kind !== 'api').map((a) => h('div', { class: 'note' }, h('strong', null, a.name), ' – ', a.hint ?? '')),
         h('button', { class: 'btn', type: 'button', onclick: () => show('add-model') }, icon('plus', { size: 14 }), 'Add a model'));
     } else if (!state.entries.length) {
+      drawn = new Map();
       const name = selected?.name ?? 'the agent';
       log.replaceChildren(h('div', { class: 'note muted' }, `Tell ${name} what's on your mind. It can add, find, organize and finish tasks – you'll be asked before it changes anything. Your chats are kept (Chats).`));
     } else {
-      log.replaceChildren(...state.entries.map(entry));
+      showEntries(state.entries);
     }
     if (atBottom) log.scrollTop = log.scrollHeight;
     busy = state.status === 'busy' || state.status === 'starting';
@@ -369,15 +403,20 @@ export function activate(host) {
   }
 
   async function open() {
+    // The newest opening wins; one closed (or replaced by another panel) before it's ready starts nothing.
+    const mine = ++opening;
     const opened = await host.openPanel('Ask AI', panel, {
       iconName: 'chat',
-      onClose: () => { source?.close(); source = null; },
+      onClose: () => { panelOpen = false; source?.close(); source = null; },
     });
-    if (!opened) return;
+    if (!opened || mine !== opening) return;
+    panelOpen = true;
     source?.close();
+    source = null;
     shown = 0;
     show('chat');
     await loadModels();
+    if (mine !== opening || !panelOpen) return;
     run(host.api(base)); // also looks for newly installed agents
     source = new EventSource(`${base}/stream`);
     source.addEventListener('state', (e) => render(JSON.parse(e.data)));
