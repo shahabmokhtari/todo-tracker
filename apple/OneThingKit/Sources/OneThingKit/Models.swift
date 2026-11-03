@@ -306,9 +306,12 @@ public struct NewTask {
     public var stepDelay: TimeInterval?
     /// Where a top-level task starts on the board (nil: the inbox).
     public var stage: Stage?
+    /// Its tags ("deep work", "errands"), as typed (each once, ignoring case).
+    public var tags: [String] = []
 
     public init(_ title: String, parentId: UUID? = nil, groupId: UUID? = nil, priority: Priority = .normal,
-                details: String? = nil, deadline: Date? = nil, sequential: Bool = false, stepDelay: TimeInterval? = nil, stage: Stage? = nil) {
+                details: String? = nil, deadline: Date? = nil, sequential: Bool = false, stepDelay: TimeInterval? = nil, stage: Stage? = nil,
+                tags: [String] = []) {
         self.title = title
         self.parentId = parentId
         self.groupId = groupId
@@ -318,6 +321,7 @@ public struct NewTask {
         self.sequential = sequential
         self.stepDelay = stepDelay
         self.stage = stage
+        self.tags = tags
     }
 }
 

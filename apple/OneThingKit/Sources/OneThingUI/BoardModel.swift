@@ -437,7 +437,7 @@ public final class BoardModel: ObservableObject {
         }
         mutate("Added") {
             let capture = try QuickCaptureParser.parse(text, now: $0)
-            let item = try board.addTask(NewTask(capture.title, groupId: selectedGroupId, priority: capture.priority, deadline: capture.deadline), now: $0)
+            let item = try board.addTask(NewTask(capture.title, groupId: selectedGroupId, priority: capture.priority, deadline: capture.deadline, tags: capture.tags), now: $0)
             if let at = capture.nextActionAt { try board.scheduleNextAction(item.id, at: at, notify: true, now: $0) }
             quickText = ""
         }
