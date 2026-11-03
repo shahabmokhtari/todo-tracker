@@ -66,7 +66,12 @@ final class VaultFormatFixtureTests: XCTestCase {
         let tz = Fixtures.zone(fixture["timeZoneOffsetMinutes"] as! Int)
         let now = Fixtures.date(fixture["now"] as! String)
         let cases = fixture["cases"] as! [[String: Any]]
-        XCTAssertEqual(cases.count, 12)
+        XCTAssertGreaterThanOrEqual(cases.count, 15)
+        // The cases for numbers too big, durations clamped to ten years and dates past year 9999 are there (and run below).
+        let names = Set(cases.compactMap { $0["name"] as? String })
+        for name in ["step-delay-longer-than-ten-years-is-ten-years", "duration-too-big-for-a-number", "date-past-the-last-moment-there-is"] {
+            XCTAssertTrue(names.contains(name), name)
+        }
         for c in cases {
             let name = c["name"] as! String
             let path = c["path"] as! String
