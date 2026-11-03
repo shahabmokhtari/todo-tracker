@@ -303,7 +303,7 @@ public static partial class SyncPlanner
 
             // A merge that isn't a valid task any more (say, both changed the same frontmatter) isn't written: both
             // versions are kept whole instead.
-            if (kind != SyncKind.Task || ctx.Options.IsValidTask(current.Path, merged.Text))
+            if (!merged.TooLarge && (kind != SyncKind.Task || ctx.Options.IsValidTask(current.Path, merged.Text)))
             {
                 var text = Encoding.UTF8.GetBytes(merged.Text);
                 if (merged.Conflicted)
@@ -548,6 +548,26 @@ public static partial class SyncPlanner
 
     private static JsonArray MergeList(JsonArray? b, JsonArray winner, JsonArray loser)
     {
+        if ((b ?? []).Concat(winner).Concat(loser).All(x => x is JsonValue))
+        {
+            // Plain values (ids, names): compared by their JSON text in sets, so a long list merges in linear time.
+            static string K(JsonNode? x) => x!.ToJsonString();
+            var inWinner = winner.Select(K).ToHashSet(StringComparer.Ordinal);
+            var inLoser = loser.Select(K).ToHashSet(StringComparer.Ordinal);
+            var gone = (b ?? []).Select(K).Where(x => !inWinner.Contains(x) || !inLoser.Contains(x)).ToHashSet(StringComparer.Ordinal);
+            var added = new HashSet<string>(StringComparer.Ordinal);
+            var plain = new JsonArray();
+            foreach (var item in winner.Concat(loser.Where(l => !inWinner.Contains(K(l)))))
+            {
+                if (!gone.Contains(K(item)) && added.Add(K(item)))
+                {
+                    plain.Add(item?.DeepClone());
+                }
+            }
+
+            return plain;
+        }
+
         var removed = (b ?? []).Where(x => !winner.Any(w => JsonNode.DeepEquals(w, x)) || !loser.Any(l => JsonNode.DeepEquals(l, x))).ToList();
         var result = new JsonArray();
         foreach (var item in winner.Concat(loser.Where(l => !winner.Any(w => JsonNode.DeepEquals(w, l)))))
@@ -564,9 +584,22 @@ public static partial class SyncPlanner
     private static JsonArray MergeKeyed(JsonArray? b, JsonArray winner, JsonArray loser, string keyName)
     {
         static string Key(JsonNode? node, string keyName) => node![keyName]!.ToJsonString();
-        var old = (b ?? []).Where(x => x is JsonObject o && o[keyName] is JsonValue).ToDictionary(x => Key(x, keyName));
-        var w = winner.ToDictionary(x => Key(x, keyName));
-        var l = loser.ToDictionary(x => Key(x, keyName));
+
+        // Two entries with the same id (a hand edit, an older version): the first is kept, never a failed sync.
+        static Dictionary<string, JsonNode?> ByKey(IEnumerable<JsonNode?> nodes, string keyName)
+        {
+            var byKey = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                byKey.TryAdd(Key(node, keyName), node);
+            }
+
+            return byKey;
+        }
+
+        var old = ByKey((b ?? []).Where(x => x is JsonObject o && o[keyName] is JsonValue), keyName);
+        var w = ByKey(winner, keyName);
+        var l = ByKey(loser, keyName);
         var result = new JsonArray();
         foreach (var key in w.Keys.Concat(l.Keys.Where(k => !w.ContainsKey(k))))
         {

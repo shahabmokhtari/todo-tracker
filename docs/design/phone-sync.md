@@ -190,6 +190,13 @@ conflict policies, the same line added or removed on both sides where the diffs 
   a plain `Match`). Ties break like the plain LCS backtrack (skip a base line first).
 * In a stretch where both changed, lines both sides have at its start or end are kept once (with the base lines
   both kept there), after one-by-one keyed merging of the whole stretch was tried, and the rest is merged as before.
+* Size limit: lines all three share at the start and the end are set aside first, but only lines that appear nowhere
+  in the stretch between (on any side); a line that does goes back into the stretch with every earlier copy of it at
+  that edge (repeat until nothing moves). If then `(n + 1) × (m + 1)` is over 4,000,000 for base×first, base×second
+  or first×second, nothing is matched: the result is `TooLarge` (text = the first side, conflicted), and the planner
+  keeps both versions whole as for an invalid merge.
+* Settings lists: two entries with the same `id`/`name` keep the first; lists of plain values are compared by their
+  JSON text (same result as comparing values).
 
 **Applying** (`VaultBoardStore.ApplySyncAsync` + `Verify`): before anything is written, check every op against the
 files as they are (a write's `expected` hash, `null` = must not exist; a move's target must be free unless only the

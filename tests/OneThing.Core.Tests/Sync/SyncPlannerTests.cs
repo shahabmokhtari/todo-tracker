@@ -31,6 +31,34 @@ public class SyncPlannerTests
     private static string Text(SyncOp op) => Encoding.UTF8.GetString(op.Content!);
 
     [Fact]
+    public void Settings_with_two_tabs_of_the_same_id_still_merge()
+    {
+        var old = System.Text.Json.Nodes.JsonNode.Parse("""{"groups":[{"id":"1","folder":"Work"}]}""");
+        var mine = System.Text.Json.Nodes.JsonNode.Parse("""{"groups":[{"id":"1","folder":"Work"},{"id":"1","folder":"Copy"}]}""");
+        var theirs = System.Text.Json.Nodes.JsonNode.Parse("""{"groups":[{"id":"1","folder":"Work","color":"#ef4444"}]}""");
+
+        var merged = SyncPlanner.MergeNode(old, mine, theirs);
+
+        Assert.Equal("""{"groups":[{"id":"1","folder":"Work","color":"#ef4444"}]}""", merged!.ToJsonString());
+    }
+
+    [Fact]
+    public void A_long_list_of_ids_merges_quickly()
+    {
+        var ids = Enumerable.Range(0, 40_000).Select(i => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create($"id-{i}")).ToList();
+        var old = new System.Text.Json.Nodes.JsonArray([.. ids.Select(i => i!.DeepClone())]);
+        var mine = new System.Text.Json.Nodes.JsonArray([.. ids.Skip(1).Select(i => i!.DeepClone())]);
+        var theirs = new System.Text.Json.Nodes.JsonArray([.. ids.Select(i => i!.DeepClone()), System.Text.Json.Nodes.JsonValue.Create("new")]);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var merged = (System.Text.Json.Nodes.JsonArray)SyncPlanner.MergeNode(old, mine, theirs)!;
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"Took {clock.Elapsed}.");
+        Assert.Equal(40_000, merged.Count);
+        Assert.Equal("new", merged[^1]!.GetValue<string>());
+    }
+
+    [Fact]
     public void A_task_only_the_peer_has_is_created_here()
     {
         var plan = Plan(Side("a"), Side("b", E(TaskKey, "Work/Plan.md", "# Plan\n")));
