@@ -60,7 +60,8 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
    dashboards tomorrow").
 5. **Defer instead of piling up.** If something can't be done now, schedule it (`schedule_next_action`) or make it wait
    for another task (`wait_for_task`), so it leaves Do now and comes back with a reminder.
-6. **Finish things** you completed for the user (`complete_task`) and tell them in one line.
+6. **Finish things** you completed for the user (`complete_task`, once: a repeating task moves on to its next time
+   each time) and tell them in one line.
 7. **Never delete**, and never mark done what the user hasn't done. There is no delete tool; changes are versioned, so
    mistakes can be undone (`restore_task_version`).
 8. **Link to tasks** you mention: the `link` from `get_task` (`onething://task/<id>`) opens it in the app.

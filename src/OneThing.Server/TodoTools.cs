@@ -160,7 +160,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "complete_task", Idempotent = true), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that).")]
+    [McpServerTool(Name = "complete_task"), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that), so don't call it twice for one repeating task.")]
     public Task<ItemDto> CompleteTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
@@ -458,6 +458,8 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         hooks.Remove(hookId, AuthorOf(server));
         return Task.FromResult(new Hooks.HookRemoved(hookId));
     });
+
+    private static Hooks.HookAuthor AuthorOf(McpServer server) => new(ActorOf(server).Name ?? "agent", Trusted: false);
 
     /// <summary>Turns domain validation errors into MCP tool errors with a readable message for the agent.</summary>
     private static async Task<T> Guard<T>(Func<Task<T>> action)
