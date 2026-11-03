@@ -100,8 +100,9 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
 - **Local only, owner first.** The server binds to loopback, checks the Host header and a bearer token. Things only the
   person at the computer may do (approve hooks, move where tasks live, delete) check `Security.IsAppSession` (on an
   endpoint: `.OwnerOnly("…")`); the Mac app counts as the owner by sending the owner key with the token.
-- **Extras are plugins** (`src/OneThing.Server/Plugins`): each can be switched off; new ones are registered in
-  `Plugins.BuiltIn` (and listed in `tests/.../PluginApiTests.cs`).
+- **Extras are plugins** (`src/OneThing.Server/Plugins`; GitHub Issues in `src/OneThing.Server/GitHub`): each can be
+  switched off; new ones are registered in `PluginHost.BuiltIn` (`Plugins/Plugins.cs`) and listed in
+  `tests/OneThing.Server.Tests/AgentChat/PluginApiTests.cs`.
 
 ## Changing things: where else to look
 
@@ -119,7 +120,7 @@ Generated files (commit them after regenerating):
 
 ```bash
 ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
-ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
+ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json (PlanFixtureTests, ReportFixtureTests, WidgetFixtureTests: plan.json, reports.json, widget.json)
 ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, og.png and the website's WebP copies, from a made-up demo board (quit the app first on Windows for the sidebar; --web-only skips it, --only <names> picks some)
 # The iPhone pictures (macos-ios-light/-dark): run the Screenshots workflow (.github/workflows/screenshots.yml; also on a push to a branch named screenshots), then unzip its artifact at the repo root

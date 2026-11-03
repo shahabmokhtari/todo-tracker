@@ -239,7 +239,8 @@ event at `GET /api/events`. See [hooks.md](hooks.md).
 
 ## Linux
 
-CI builds `onething-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
+Get `onething-linux-x64.tar.gz` from the Releases page (CI builds it too, as the **linux-tray** artifact; no .NET
+needed). Unpack it and run `./install.sh`
 (add `--autostart` to start it with your session): it puts One Thing in your app menu, and `onething-tray` (the app) and
 the `onething` and `ot` commands in `~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the
 AppIndicator extension. A second start opens the running one's window.
@@ -331,7 +332,7 @@ your other devices** and pick one place.
 
 The first sync brings everything from your other devices in before anything of this device goes out, so your tasks
 from before are added to theirs, never copied twice. Then it syncs when you open the app, a few seconds after a change,
-every minute while it's open, and now and then in the background. The Sync screen shows when it last synced (and
+every minute while it's open, when you pull the list down, and now and then in the background. The Sync screen shows when it last synced (and
 **Sync now**), your **other devices** (**Forget** one you no longer use), problems (say, changes iCloud hasn't
 downloaded yet: they come in on a later sync), and tasks **changed on both** (both versions stay in the task; open it
 on a computer to choose one). **Turn sync off** keeps your tasks on the device as they are. More in
