@@ -206,6 +206,12 @@ data class NewTask(
     val deadline: Instant? = null,
     val sequential: Boolean = false,
     val stepDelay: Duration? = null,
+    /** Its id, chosen up front (so the same change made twice makes the same task); null: a new one. */
+    val id: UUID? = null,
+    /** Tags without the leading # ("deep work"); each is checked like the other apps check them. */
+    val tags: List<String> = emptyList(),
+    /** Where it starts on the board (top-level tasks); null: the inbox. */
+    val stage: Stage? = null,
 )
 
 /**
