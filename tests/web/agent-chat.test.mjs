@@ -1,6 +1,73 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { presets, groupAgents, ago, privacyNote } from '../../src/TodoTracker.Server/wwwroot/js/plugins/agent-chat.js';
+import { presets, groupAgents, ago, privacyNote, activate } from '../../src/OneThing.Server/wwwroot/js/plugins/agent-chat.js';
+
+/** A stand-in for a DOM element: any property or method works (and does nothing), what's set is kept. */
+function fakeElement(tag = 'div', attrs = {}) {
+  const store = { tag, attrs, value: attrs.value ?? '' };
+  const handler = {
+    get(_, key) {
+      if (key in store) return store[key];
+      if (key === 'then' || typeof key === 'symbol') return undefined;
+      store[key] = fakeElement();
+      return store[key];
+    },
+    set(_, key, value) { store[key] = value; return true; },
+    apply: () => fakeElement(),
+  };
+  return new Proxy(function element() {}, handler);
+}
+
+/** Ask AI with a host and browser that are only pretend; returns what a test needs to drive it. */
+function chatWithFakeHost({ post = async () => ({}), api = async () => [] } = {}) {
+  const made = [];
+  const toasts = [];
+  const streams = [];
+  const panel = { onClose: null };
+  let openChat = null;
+  globalThis.window = { addEventListener() {} };
+  globalThis.location = { hash: '', search: '' };
+  globalThis.EventSource = class { constructor(url) { this.url = url; streams.push(this); } addEventListener() {} close() { this.closed = true; } };
+  const host = {
+    h: (tag, attrs, ...children) => { const el = fakeElement(tag, attrs ?? {}); el.children = children; made.push(el); return el; },
+    icon: () => fakeElement('svg'),
+    toast: (message, tone) => toasts.push({ message, tone }),
+    api, post, put: async () => ({}), del: async () => ({}), refresh() {},
+    openPanel: async (title, content, { onClose }) => { panel.onClose = onClose; return true; },
+    addHeaderButton: ({ onClick }) => { openChat = onClick; },
+    on: () => true,
+  };
+  activate(host);
+  const input = made.find((el) => el.attrs.class === 'chat-input');
+  return { open: () => openChat(), input, toasts, streams, panel };
+}
+
+const tick = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+test('Ask AI closed before it finished opening starts no live updates', async () => {
+  let modelsAnswered;
+  const chat = chatWithFakeHost({ api: (url) => (url.endsWith('/models') ? new Promise((resolve) => { modelsAnswered = () => resolve([]); }) : Promise.resolve(null)) });
+
+  const opening = chat.open();
+  await tick();
+  chat.panel.onClose(); // closed (or another panel opened) while the models were still loading
+  modelsAnswered();
+  await opening;
+
+  assert.equal(chat.streams.length, 0);
+});
+
+test('a message the agent can’t take now (busy or gone) stays in the box', async () => {
+  const busy = Object.assign(new Error('The agent is busy. Wait for its answer, or stop it.'), { status: 409 });
+  const chat = chatWithFakeHost({ post: async () => { throw busy; } });
+
+  chat.input.value = 'add: call the bank';
+  chat.input.attrs.onkeydown({ key: 'Enter', shiftKey: false, isComposing: false, preventDefault() {} });
+  await tick();
+
+  assert.equal(chat.input.value, 'add: call the bank');
+  assert.deepEqual(chat.toasts, [{ message: busy.message, tone: 'error' }]);
+});
 
 test('the picker shows installed agents, then API models', () => {
   const groups = groupAgents([

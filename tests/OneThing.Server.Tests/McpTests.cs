@@ -1,0 +1,325 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using OneThing.Core;
+
+namespace OneThing.Server.Tests;
+
+public sealed class McpTests : IAsyncLifetime
+{
+    private ServerFixture _server = null!;
+    private McpClient _mcp = null!;
+
+    public async ValueTask InitializeAsync()
+    {
+        _server = await ServerFixture.StartAsync();
+        var http = _server.Client();
+        var transport = new HttpClientTransport(
+            new HttpClientTransportOptions { Endpoint = new Uri(http.BaseAddress!, "/mcp"), TransportMode = HttpTransportMode.StreamableHttp },
+            http,
+            ownsHttpClient: true);
+        _mcp = await McpClient.CreateAsync(transport, new McpClientOptions { ClientInfo = new Implementation { Name = "copilot-test", Version = "1.0" } });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _mcp.DisposeAsync();
+        await _server.DisposeAsync();
+    }
+
+    private async Task<JsonElement> Call(string tool, Dictionary<string, object?> args)
+    {
+        var result = await _mcp.CallToolAsync(tool, args);
+        var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text));
+        Assert.False(result.IsError ?? false, text);
+        return JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task Exposes_task_tools_without_destructive_delete()
+    {
+        var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();
+
+        Assert.Contains("get_dashboard", tools);
+        Assert.Contains("create_task", tools);
+        Assert.Contains("add_steps", tools);
+        Assert.Contains("add_note", tools);
+        Assert.Contains("schedule_next_action", tools);
+        Assert.Contains("complete_task", tools);
+        Assert.Contains("get_report", tools);
+        Assert.DoesNotContain(tools, t => t.Contains("delete", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Agent_can_plan_a_rollout_and_log_progress_with_attribution()
+    {
+        var feature = await Call("create_task", new() { ["title"] = "Roll out feature X", ["priority"] = "high", ["group"] = "work" });
+        var featureId = feature.GetProperty("id").GetString()!;
+        var steps = await Call("add_steps", new() { ["parentId"] = featureId, ["steps"] = new[] { "Ring 0", "Ring 1" }, ["stepDelayHours"] = 24 });
+        var ring0 = steps[0].GetProperty("id").GetString()!;
+
+        await Call("add_note", new() { ["taskId"] = ring0, ["text"] = "Deployed ring 0", ["sourceUrl"] = "https://dev.example/pr/7" });
+        await Call("complete_task", new() { ["taskId"] = ring0 });
+        var dashboard = await Call("get_dashboard", new());
+
+        Assert.Equal("Ring 1", dashboard.GetProperty("waiting")[0].GetProperty("title").GetString());
+        var note = await _server.Store.ReadAsync(b => b.Get(Guid.Parse(ring0)).Notes.Single());
+        Assert.Equal(ActorKind.Agent, note.Author.Kind);
+        Assert.Equal("copilot-test", note.Author.Name);
+    }
+
+    [Fact]
+    public async Task Agent_can_put_what_matters_most_first()
+    {
+        await Call("create_task", new() { ["title"] = "Urgent", ["priority"] = "critical" });
+        var bank = await Call("create_task", new() { ["title"] = "Call the bank" });
+
+        var dashboard = await Call("put_first", new() { ["taskIds"] = new[] { bank.GetProperty("id").GetString() } });
+
+        Assert.Equal("Call the bank", dashboard.GetProperty("focus").GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task Agent_can_schedule_follow_up_with_reminder()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Check canary" });
+
+        var scheduled = await Call("schedule_next_action", new() { ["taskId"] = task.GetProperty("id").GetString(), ["inMinutes"] = 90, ["message"] = "Canary results" });
+
+        Assert.Equal(ServerFixture.T0.AddMinutes(90), scheduled.GetProperty("nextActionAt").GetDateTimeOffset());
+        Assert.Equal("Canary results", scheduled.GetProperty("reminders")[0].GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Agent_can_snooze_in_words_or_until_another_task_is_done()
+    {
+        var keys = await Call("create_task", new() { ["title"] = "Get the keys" });
+        var move = await Call("create_task", new() { ["title"] = "Move in" });
+        var trip = await Call("create_task", new() { ["title"] = "Plan trip" });
+
+        var later = await Call("schedule_next_action", new() { ["taskId"] = trip.GetProperty("id").GetString(), ["when"] = "next week" });
+        var waiting = await Call("wait_for_task", new() { ["taskId"] = move.GetProperty("id").GetString(), ["afterTaskId"] = keys.GetProperty("id").GetString() });
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), later.GetProperty("nextActionAt").GetDateTimeOffset());
+        Assert.Equal("waiting", waiting.GetProperty("state").GetString());
+        Assert.Equal("Get the keys", waiting.GetProperty("waitingForTitle").GetString());
+    }
+
+    [Fact]
+    public async Task Agent_can_add_a_hook_that_waits_for_the_users_approval()
+    {
+        var hook = await Call("add_hook", new() { ["event"] = "taskCompleted", ["bash"] = "cat >> done.jsonl", ["powershell"] = "$input | Add-Content done.jsonl", ["groups"] = new[] { "Work" } });
+        var id = hook.GetProperty("id").GetString()!;
+
+        Assert.Equal("needs approval", hook.GetProperty("state").GetString());
+        Assert.Equal(id, (await Call("list_hooks", new())).EnumerateArray().Single().GetProperty("id").GetString());
+        Assert.Equal("needs approval", (await Call("set_hook_enabled", new() { ["hookId"] = id, ["enabled"] = true })).GetProperty("state").GetString());
+        await Call("remove_hook", new() { ["hookId"] = id });
+        Assert.Empty((await Call("list_hooks", new())).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Agent_can_plan_a_block_of_time_for_a_task()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Deep work" });
+
+        var planned = await Call("plan_task", new() { ["taskId"] = task.GetProperty("id").GetString(), ["start"] = "2026-01-05T13:00:00Z", ["minutes"] = 60 });
+        var off = await Call("plan_task", new() { ["taskId"] = task.GetProperty("id").GetString() });
+
+        Assert.Equal((new DateTimeOffset(2026, 1, 5, 13, 0, 0, TimeSpan.Zero), 60), (planned.GetProperty("plannedAt").GetDateTimeOffset(), planned.GetProperty("plannedMinutes").GetInt32()));
+        Assert.True(!off.TryGetProperty("plannedAt", out var cleared) || cleared.ValueKind == System.Text.Json.JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Agent_can_say_how_much_energy_a_task_takes_and_how_much_there_is_in_a_day()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Write the design doc", ["energy"] = 3 });
+        var id = task.GetProperty("id").GetString();
+        Assert.Equal(3, task.GetProperty("energy").GetInt32());
+        await Call("plan_task", new() { ["taskId"] = id, ["start"] = "2026-01-05T10:00:00Z", ["minutes"] = 120 });
+
+        var energy = await Call("set_daily_energy", new() { ["perDay"] = 5 });
+        Assert.Equal((5, 6.0), (energy.GetProperty("perDay").GetInt32(), energy.GetProperty("plannedToday").GetDouble()));
+        Assert.Equal(6.0, (await Call("get_dashboard", new())).GetProperty("energy").GetProperty("plannedToday").GetDouble());
+
+        var cleared = await Call("update_task", new() { ["taskId"] = id, ["energy"] = 0 });
+        Assert.True(!cleared.TryGetProperty("energy", out var none) || none.ValueKind == JsonValueKind.Null);
+        Assert.Equal(10, (await Call("set_daily_energy", new())).GetProperty("perDay").GetInt32());
+    }
+
+    [Fact]
+    public async Task Agent_can_move_cards_time_work_and_read_the_time_report()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Write report" });
+        var id = task.GetProperty("id").GetString()!;
+        Assert.Equal("inbox", task.GetProperty("stage").GetString());
+
+        var moved = await Call("move_card", new() { ["taskId"] = id, ["stage"] = "next" });
+        var timer = await Call("start_timer", new() { ["taskId"] = id });
+        _server.Time.Advance(TimeSpan.FromMinutes(30));
+        var stopped = await Call("stop_timer", new());
+        await Call("log_time", new() { ["taskId"] = id, ["start"] = ServerFixture.T0.AddHours(-2), ["minutes"] = 45 });
+        var report = await Call("get_time_report", new() { ["from"] = "2026-01-05", ["to"] = "2026-01-05" });
+
+        Assert.Equal("next", moved.GetProperty("stage").GetString());
+        Assert.True(timer.GetProperty("running").GetBoolean());
+        Assert.False(stopped.GetProperty("running").GetBoolean());
+        Assert.Equal((30 + 45) * 60, report.GetProperty("trackedSeconds").GetInt64());
+    }
+
+    [Fact]
+    public async Task Agent_can_archive_finished_tasks()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Old trip" });
+        var id = task.GetProperty("id").GetString()!;
+        await Call("complete_task", new() { ["taskId"] = id });
+
+        var archived = await Call("archive_task", new() { ["taskId"] = id });
+        var back = await Call("unarchive_task", new() { ["taskId"] = id });
+
+        Assert.Equal(JsonValueKind.String, archived.GetProperty("archivedAt").ValueKind);
+        Assert.False(back.TryGetProperty("archivedAt", out var cleared) && cleared.ValueKind != JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Tool_errors_are_reported_not_thrown()
+    {
+        var result = await _mcp.CallToolAsync("complete_task", new Dictionary<string, object?> { ["taskId"] = Guid.NewGuid().ToString() });
+
+        Assert.True(result.IsError);
+        Assert.Contains("not found", string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Report_contains_timeline_entries()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Feature B" });
+        await Call("add_note", new() { ["taskId"] = task.GetProperty("id").GetString(), ["text"] = "Halfway" });
+
+        var report = await Call("get_report", new() { ["taskId"] = task.GetProperty("id").GetString() });
+
+        Assert.Equal("Halfway", report.GetProperty("timeline")[0].GetProperty("summary").GetString());
+        Assert.Equal("Agent: copilot-test", report.GetProperty("timeline")[0].GetProperty("actor").GetString());
+    }
+
+    [Fact]
+    public async Task Unknown_group_or_priority_is_an_error()
+    {
+        var badGroup = await _mcp.CallToolAsync("create_task", new Dictionary<string, object?> { ["title"] = "x", ["group"] = "nope" });
+        var badPriority = await _mcp.CallToolAsync("create_task", new Dictionary<string, object?> { ["title"] = "x", ["priority"] = "meh" });
+
+        Assert.True(badGroup.IsError);
+        Assert.True(badPriority.IsError);
+    }
+
+    [Fact]
+    public async Task Agents_organize_with_tags_labels_search_and_moves()
+    {
+        var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();
+        Assert.Contains("search_tasks", tools);
+        Assert.Contains("move_task", tools);
+        Assert.Contains("list_labels", tools);
+
+        var project = await Call("create_task", new() { ["title"] = "Upgrade cluster", ["tags"] = new[] { "infra/k8s" }, ["labels"] = new[] { "Deep work" } });
+        var idea = await Call("create_task", new() { ["title"] = "Drain nodes first" });
+        await Call("move_task", new() { ["taskId"] = idea.GetProperty("id").GetString(), ["parentId"] = project.GetProperty("id").GetString() });
+        var updated = await Call("update_task", new() { ["taskId"] = idea.GetProperty("id").GetString(), ["tags"] = new[] { "risky" } });
+        var found = await Call("search_tasks", new() { ["query"] = "#infra" });
+
+        Assert.Equal("infra/k8s", project.GetProperty("tags")[0].GetString());
+        Assert.Equal("Deep work", project.GetProperty("labels")[0].GetProperty("name").GetString());
+        Assert.Equal("risky", updated.GetProperty("tags")[0].GetString());
+        Assert.Equal(["Upgrade cluster", "Drain nodes first"], found.EnumerateArray().Select(t => t.GetProperty("title").GetString()));
+        Assert.Equal("Deep work", (await Call("list_labels", new()))[0].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Moving_a_subtask_with_only_a_position_reorders_it_under_its_parent_instead_of_promoting_it()
+    {
+        var trip = await Call("create_task", new() { ["title"] = "Plan the trip" });
+        var tripId = trip.GetProperty("id").GetString();
+        await Call("create_task", new() { ["title"] = "Book flights", ["parentId"] = tripId });
+        var hotel = await Call("create_task", new() { ["title"] = "Book the hotel", ["parentId"] = tripId });
+
+        var moved = await Call("move_task", new() { ["taskId"] = hotel.GetProperty("id").GetString(), ["index"] = 0 });
+
+        Assert.Equal(tripId, moved.GetProperty("parentId").GetString());
+        var children = (await Call("get_task", new() { ["taskId"] = tripId })).GetProperty("children");
+        Assert.Equal(["Book the hotel", "Book flights"], children.EnumerateArray().Select(c => c.GetProperty("title").GetString()));
+    }
+
+    [Fact]
+    public async Task Agents_can_attach_text_and_keep_a_rich_html_version()
+    {
+        var tools = (await _mcp.ListToolsAsync()).Select(t => t.Name).ToList();
+        Assert.DoesNotContain("attach_file", tools);
+        var task = await Call("create_task", new() { ["title"] = "Incident review" });
+        var id = task.GetProperty("id").GetString();
+
+        var attachment = await Call("attach_text", new() { ["taskId"] = id, ["fileName"] = "timeline.md", ["text"] = "# Timeline\n- 10:00 alert" });
+        await Call("set_rich_html", new() { ["taskId"] = id, ["html"] = "<table><tr><td>MTTR</td><td>42m</td></tr></table>" });
+        var rich = await _mcp.CallToolAsync("get_rich_html", new Dictionary<string, object?> { ["taskId"] = id });
+
+        Assert.Equal("timeline.md", attachment.GetProperty("fileName").GetString());
+        Assert.Contains("MTTR", string.Concat(rich.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        var stored = await _server.Store.ReadAsync(b => b.Get(Guid.Parse(id!)).Attachments.Single());
+        Assert.Equal(ActorKind.Agent, stored.AddedBy.Kind);
+    }
+
+    [Fact]
+    public async Task Vault_info_teaches_agents_the_file_format()
+    {
+        var info = await Call("vault_info", new());
+
+        Assert.Equal(_server.VaultDirectory, info.GetProperty("path").GetString());
+        Assert.Contains("One Thing vault", info.GetProperty("guide").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_agent_can_not_switch_off_or_remove_the_users_own_hooks()
+    {
+        var yours = _server.App.Services.GetRequiredService<Hooks.HookStore>().Add("taskCompleted", new Hooks.HookSpec { Powershell = "exit 0", Bash = "exit 0" }, Hooks.HookAuthor.You, ServerFixture.T0);
+
+        var off = await _mcp.CallToolAsync("set_hook_enabled", new Dictionary<string, object?> { ["hookId"] = yours.Id, ["enabled"] = false });
+        var removed = await _mcp.CallToolAsync("remove_hook", new Dictionary<string, object?> { ["hookId"] = yours.Id });
+
+        Assert.True(off.IsError);
+        Assert.True(removed.IsError);
+        Assert.Contains("only switch on or off hooks it added", string.Concat(off.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        Assert.Equal("on", Assert.Single((await Call("list_hooks", new())).EnumerateArray()).GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task Completing_a_task_is_not_marked_safe_to_repeat()
+    {
+        // A repeating task moves on to its next time each time it's completed: a retry would skip one.
+        var complete = (await _mcp.ListToolsAsync()).Single(t => t.Name == "complete_task");
+
+        Assert.NotEqual(true, complete.ProtocolTool.Annotations?.IdempotentHint);
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_while_version_history_is_switched_off_says_so()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Draft" });
+        _server.App.Services.GetRequiredService<Plugins.PluginHost>().Settings.SetEnabled("history", false);
+
+        var result = await _mcp.CallToolAsync("restore_task_version", new Dictionary<string, object?> { ["taskId"] = task.GetProperty("id").GetString(), ["versionId"] = "abc123" });
+
+        Assert.True(result.IsError);
+        Assert.Contains("Version history is switched off", string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Putting_tasks_first_is_credited_to_the_agent()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Call the bank" });
+
+        await Call("put_first", new() { ["taskIds"] = new[] { task.GetProperty("id").GetString() } });
+
+        var report = await Call("get_report", new() { ["taskId"] = task.GetProperty("id").GetString() });
+        var entry = report.GetProperty("timeline").EnumerateArray().Single(e => e.GetProperty("summary").GetString() == "Put \"Call the bank\" first");
+        Assert.Equal("Agent: copilot-test", entry.GetProperty("actor").GetString());
+    }
+}

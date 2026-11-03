@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <!-- The product version: the apps, ot, the MCP server and the AI plugins (IntegrationFilesTests checks they match). -->
+    <Version>2.0.0</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

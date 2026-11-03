@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeHook, nextToAsk } from '../../src/TodoTracker.Server/wwwroot/js/hook-prompt.js';
+import { describeHook, nextToAsk } from '../../src/OneThing.Server/wwwroot/js/hook-prompt.js';
 
 const waiting = { id: 'a1', version: 'v1', event: 'taskCompleted', state: 'needs approval', hook: { bash: 'echo hi' } };
 

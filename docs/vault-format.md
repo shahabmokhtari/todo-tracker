@@ -1,14 +1,14 @@
 # Vault format (v2)
 
-Onething stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
-Obsidian vault, in a git repository, or in any sync service. People, the apps, the `tt` CLI, and AI agents all edit
+One Thing stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
+Obsidian vault, in a git repository, or in any sync service. People, the apps, the `ot` CLI, and AI agents all edit
 the same files. A vault the app creates gets a copy of this guide for agents in `AGENTS.md` at the vault root (a folder
 of existing notes is left as it is).
 
 ## Layout
 
 ```
-Todo Tracker/                       ← the vault (default: Documents/Todo Tracker)
+OneThing/                        ← the vault (default: Documents/OneThing)
   AGENTS.md                         ← format guide for AI tools (not a task)
   Work/                             ← a group (tab). Create a folder to add a group.
     Ship release 2.3.md             ← a top-level task. Create a file to add a task.
@@ -16,7 +16,7 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
     Clients/Acme onboarding.md      ← subfolders are fine; the task belongs to the top folder's group
   Personal/
   _attachments/7b0c2f9e/plan.pdf    ← files attached in the app
-  .todo-tracker/                    ← app data (hidden in Obsidian)
+  .onething/                    ← app data (hidden in Obsidian)
     config.json                     ← group ids/colors/order, label colors, task order, energy in a day (synced)
     state.json                      ← focus timer, Do now order
     activity.jsonl                  ← audit log (append-only)
@@ -27,6 +27,10 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
 * A task's identity is the `id` in its frontmatter, not its file name. Files are never renamed when a title changes,
   so links to them keep working. Moving a task to another group moves its file and keeps its name and subfolder.
 * Renaming a group folder in Obsidian keeps the group (recognized by the tasks inside it).
+* `config.json` fields this version doesn't know (from a newer one) are kept when it saves. If the file can't be read
+  (broken JSON, or locked), the tabs and labels stay as last read, the file is never written over and it doesn't
+  sync until it's fixed; the app lists it under the files that need fixing. An empty entry (`null`, a tab without a
+  `folder`, a label without a `name` or `color`) is skipped.
 
 ## A task file
 
@@ -83,12 +87,17 @@ Free-form details in markdown. Any other headings, tables, embeds, or sections b
 
 ### Properties
 
-The app owns `id` (or `tt-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
+The app owns `id` (or `onething-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
 `scheduled`, `sequential`, `step-delay`, `icon`, `color`, `repeat`, `planned`, `planned-length`, `energy`, `tags`, `labels`,
 and `reminders`. A subtask keeps the same in its `%%{…}%%` (`energy`, `plan`, `planMin`…). Everything else (`aliases`, `cssclasses`, plugin properties,
 comments) is kept exactly as written and in place. An owned property whose value hasn't changed is written back
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
-example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
+example a Zettelkasten id), it stays and the app keeps its id in `onething-id`.
+
+Durations (`step-delay`, `planned-length`, a step's `delay`) are read as at most ten years (3650 days, either way): a
+longer one counts as ten years and stays as typed until the task changes. A value too big to be a number at all, or a
+date past the last moment there is (`9999-12-31` late in the day west of Greenwich), makes the file one to fix (shown
+under the files that need fixing, never written over).
 
 ### Subtasks
 
@@ -126,7 +135,7 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
 
 * Notes are callouts with the local time, the author (`You`, `Agent: <name>`, `Browser`, `Teams`, `Edited in files`),
   and an optional link to a subtask. The last line `🔗 [title](url)` is the source. Notes are editable;
-  `.todo-tracker/activity.jsonl` is the audit trail.
+  `.onething/activity.jsonl` is the audit trail.
 * Attachments are links in `## Attachments` (or `- 📎` items under a subtask). Markdown links, embeds, and Obsidian
   wiki links (`![[file.png|300]]`) all work and keep their form. When the tasks folder is inside an Obsidian vault, wiki
   links also find files elsewhere in that vault (where Obsidian puts pasted images). Links that point outside the vault
@@ -152,4 +161,5 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
 * **History.** Every change, in the app or outside it, is kept as a version in a private git repository on this device
   (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
   versioned). Any task can be viewed or restored from its history; a
-  restore is itself a version. Needs `git`.
+  restore is itself a version. Needs `git`. A `.gitignore` in the folder doesn't keep tasks out of it; a folder that
+  is a git repository of its own (it has a `.git`) is left out, and the app says which (in a task's History).

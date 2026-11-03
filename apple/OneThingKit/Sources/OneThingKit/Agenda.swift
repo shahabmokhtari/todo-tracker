@@ -1,0 +1,239 @@
+import Foundation
+
+public struct AgendaEntry: Identifiable {
+    public var id: UUID { item.id }
+    public let item: WorkItem
+    public let state: ItemState
+    public let effectivePriority: Priority
+    public let needsAttention: Bool
+    public let dueReminder: Reminder?
+    public let wakeAt: Date?
+    public let isOverdue: Bool
+    public let breadcrumb: [String]
+    /// The open task it waits for ("after task X"), itself or through a parent.
+    public var waitingFor: WorkItem? = nil
+
+    /// "Step 2 of 10" for steps of a sequential parent.
+    public var stepLabel: String? {
+        guard let parent = item.parent, parent.sequential, let index = parent.children.firstIndex(where: { $0 === item }) else { return nil }
+        return "Step \(index + 1) of \(parent.children.count)"
+    }
+}
+
+public struct OverviewEntry: Identifiable {
+    public var id: UUID { item.id }
+    public let item: WorkItem
+    public let doneLeaves: Int
+    public let totalLeaves: Int
+    public let actionableCount: Int
+    public let waitingCount: Int
+    public let nextWakeAt: Date?
+    public let topPriority: Priority
+}
+
+public struct RecentNote: Identifiable {
+    public var id: UUID { note.id }
+    public let item: WorkItem
+    public let note: Note
+}
+
+public struct GroupCount: Equatable {
+    public let now: Int
+    public let waiting: Int
+    public let attention: Int
+}
+
+public struct Dashboard {
+    public let focus: AgendaEntry?
+    public let now: [AgendaEntry]
+    public let waiting: [AgendaEntry]
+    public let overview: [OverviewEntry]
+    public let recentNotes: [RecentNote]
+    public let groupCounts: [UUID: GroupCount]
+}
+
+/// Time-aware projection of the board. Must match OneThing.Core.Agenda (see shared scenarios).
+public enum Agenda {
+    public static func state(of item: WorkItem, now: Date) -> ItemState {
+        if item.isDone { return .done }
+        if isLocked(item) { return .locked }
+        if waits(item, now) || item.ancestors.contains(where: { waits($0, now) }) { return .waiting }
+        return item.hasOpenChildren ? .container : .actionable
+    }
+
+    /// What got done since midnight (in `timeZone`), newest first. A parent finished together with its subtasks is one
+    /// entry (the subtasks it closed aren't repeated); steps done on their own count. Same rule as the C# core.
+    public static func doneToday(_ board: TaskBoard, now: Date, timeZone: TimeZone = .current, groupId: UUID? = nil, query: String? = nil) -> [WorkItem] {
+        let search = TaskSearch(query)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let start = calendar.startOfDay(for: now)
+        // Finished by itself (its own "completed" entry), not closed along with its parent: the last step of an
+        // in-order task counts though it finishes the task at the same moment.
+        let own = Set(board.activity.filter { $0.kind == "completed" && $0.at >= start }.map { "\($0.itemId)|\($0.at.timeIntervalSince1970)" })
+        return board.allItems.enumerated()
+            .compactMap { offset, item -> (offset: Int, item: WorkItem, at: Date)? in
+                if item.isArchived { return nil }
+                if let groupId, item.groupId != groupId { return nil }
+                if !search.isEmpty && !search.matches(item, in: board) { return nil }
+                if let at = item.completedAt {
+                    guard at >= start, at <= now else { return nil }
+                    return item.parent?.completedAt != at || own.contains("\(item.id)|\(at.timeIntervalSince1970)") ? (offset: offset, item: item, at: at) : nil
+                }
+                // A repeating task done today has moved on to its next time (open again): its "completed" entry tells.
+                guard let at = Agenda.doneAt(board, item), at >= start, at <= now else { return nil }
+                return (offset: offset, item: item, at: at)
+            }
+            // Newest first; at the same moment (a task and its last step) in the order of the tree.
+            .sorted { a, b in a.at == b.at ? a.offset < b.offset : a.at > b.at }
+            .map(\.item)
+    }
+
+    /// When it was done: when it was finished, or for a repeating task that moved on, when its last time was done.
+    public static func doneAt(_ board: TaskBoard, _ item: WorkItem) -> Date? {
+        if let at = item.completedAt { return at }
+        guard board.wasRolledForward(item) else { return nil }
+        return board.activity.last(where: { $0.itemId == item.id && $0.kind == "completed" })?.at
+    }
+
+    /// A line to feel good about what got done today (null until something is done); the other apps say the same.
+    public static func cheer(_ count: Int) -> String? {
+        switch count {
+        case ...0: return nil
+        case 1: return "First one done. Nice start!"
+        case ..<5: return "\(count) done today. Keep it going!"
+        case ..<10: return "\(count) done today. You are on a roll!"
+        default: return "\(count) done today. What a day!"
+        }
+    }
+
+    public static func effectivePriority(_ item: WorkItem) -> Priority {
+        (item.ancestors.map(\.priority) + [item.priority]).max() ?? item.priority
+    }
+
+    /// `query`: only tasks whose title, details or notes have these words are listed (TaskSearch); the group counts
+    /// keep their totals.
+    public static func build(_ board: TaskBoard, now: Date, recentNoteCount: Int = 5, groupId: UUID? = nil, query: String? = nil) -> Dashboard {
+        let search = TaskSearch(query)
+        let openItems = board.allItems.filter { !$0.isDone && !$0.isArchived }.enumerated().map { (offset: $0.offset, entry: describe($0.element, now: now)) }
+        let nowAll = openItems.filter { $0.entry.state == .actionable || ($0.entry.needsAttention && ($0.entry.state == .waiting || $0.entry.state == .container)) }
+        let waitingAll = openItems.filter {
+            $0.entry.state == .waiting && !$0.entry.needsAttention && waits($0.entry.item, now)
+                && !$0.entry.item.ancestors.contains(where: { waits($0, now) })
+        }
+
+        var counts: [UUID: GroupCount] = [:]
+        for g in board.groups {
+            counts[g.id] = GroupCount(
+                now: nowAll.filter { $0.entry.item.groupId == g.id }.count,
+                waiting: waitingAll.filter { $0.entry.item.groupId == g.id }.count,
+                attention: nowAll.filter { $0.entry.item.groupId == g.id && $0.entry.needsAttention }.count)
+        }
+
+        func inScope(_ item: WorkItem) -> Bool { (groupId == nil || item.groupId == groupId) && (search.isEmpty || search.matches(item, in: board)) }
+
+        // A due reminder comes first; then the person's own order; then tasks they never placed, by the automatic rules
+        // (priority, overdue, deadline, age). Same rules as OneThing.Core.Agenda.
+        var rank: [UUID: Int] = [:]
+        for (i, id) in board.nowOrder.enumerated() where rank[id] == nil { rank[id] = i }
+        let scoped = nowAll.filter { inScope($0.entry.item) }
+        // After a due reminder: what's planned for now (its block in the Plan view is on), ahead of the arranged order.
+        // A reminder that just went off comes first: its task was never placed, or the reminder went off after Do now
+        // was last arranged (one seen then stays where the task was put).
+        let arranged = board.nowArrangedAt
+        func fresh(_ e: AgendaEntry) -> Bool {
+            guard e.needsAttention else { return false }
+            guard rank[e.item.id] != nil, let arranged else { return true }
+            return e.item.reminders.contains { $0.isDue(now) && $0.dueAt > arranged }
+        }
+        let first = scoped.filter { fresh($0.entry) }
+        let firstIds = Set(first.map { $0.entry.item.id })
+        let planned = scoped.filter { !$0.entry.needsAttention && $0.entry.item.isPlanned(at: now) }
+            .sorted { ($0.entry.item.plannedAt ?? now) < ($1.entry.item.plannedAt ?? now) }
+        let plannedIds = Set(planned.map { $0.entry.item.id })
+        let nowList = arrange(first, rank: rank) + planned.map(\.entry)
+            + arrange(scoped.filter { !firstIds.contains($0.entry.item.id) && !plannedIds.contains($0.entry.item.id) }, rank: rank)
+
+        let waitingList = waitingAll.filter { inScope($0.entry.item) }.sorted { a, b in
+            let x = a.entry, y = b.entry
+            let wx = x.wakeAt ?? .distantFuture, wy = y.wakeAt ?? .distantFuture
+            if wx != wy { return wx < wy }
+            if x.effectivePriority != y.effectivePriority { return x.effectivePriority > y.effectivePriority }
+            if x.item.createdAt != y.item.createdAt { return x.item.createdAt < y.item.createdAt }
+            return a.offset < b.offset
+        }.map(\.entry)
+
+        let overview = board.items.filter { !$0.isDone && inScope($0) }.map { summarize($0, now: nowList, waiting: waitingList) }
+
+        let notes: [RecentNote] = recentNoteCount <= 0 ? [] : Array(
+            board.allItems.filter { !$0.isArchived && inScope($0) }
+                .flatMap { item in item.notes.map { RecentNote(item: item, note: $0) } }
+                .enumerated()
+                .sorted { $0.element.note.at != $1.element.note.at ? $0.element.note.at > $1.element.note.at : $0.offset < $1.offset }
+                .map(\.element)
+                .prefix(recentNoteCount))
+
+        return Dashboard(focus: nowList.first, now: nowList, waiting: waitingList, overview: overview, recentNotes: notes, groupCounts: counts)
+    }
+
+    /// Negative when `x` comes first by the automatic rules, zero when they tie.
+    private static func compareAutomatic(_ x: AgendaEntry, _ y: AgendaEntry) -> Int {
+        if x.effectivePriority != y.effectivePriority { return x.effectivePriority > y.effectivePriority ? -1 : 1 }
+        if x.isOverdue != y.isOverdue { return x.isOverdue ? -1 : 1 }
+        let dx = x.item.deadline ?? .distantFuture, dy = y.item.deadline ?? .distantFuture
+        if dx != dy { return dx < dy ? -1 : 1 }
+        if x.item.createdAt != y.item.createdAt { return x.item.createdAt < y.item.createdAt ? -1 : 1 }
+        return 0
+    }
+
+    /// Placed tasks in the person's order, then the others in the automatic order.
+    private static func arrange(_ entries: [(offset: Int, entry: AgendaEntry)], rank: [UUID: Int]) -> [AgendaEntry] {
+        let placed = entries.filter { rank[$0.entry.item.id] != nil }.sorted { (rank[$0.entry.item.id] ?? 0) < (rank[$1.entry.item.id] ?? 0) }
+        let others = entries.filter { rank[$0.entry.item.id] == nil }.sorted { a, b in
+            let c = compareAutomatic(a.entry, b.entry)
+            return c != 0 ? c < 0 : a.offset < b.offset
+        }
+        return placed.map(\.entry) + others.map(\.entry)
+    }
+
+    /// Snoozed until a later time, or until another task is done.
+    private static func waits(_ item: WorkItem, _ now: Date) -> Bool { isAfter(item.nextActionAt, now) || item.waitingFor != nil }
+
+    private static func isAfter(_ date: Date?, _ now: Date) -> Bool {
+        guard let date else { return false }
+        return date > now
+    }
+
+    private static func describe(_ item: WorkItem, now: Date) -> AgendaEntry {
+        let state = state(of: item, now: now)
+        let due = (state == .locked || state == .done) ? nil : item.reminders.filter { $0.isDue(now) }.min { $0.dueAt < $1.dueAt }
+        let wake: Date? = state == .waiting ? (item.ancestors.compactMap(\.nextActionAt) + [item.nextActionAt].compactMap { $0 }).filter { $0 > now }.max() : nil
+        return AgendaEntry(
+            item: item,
+            state: state,
+            effectivePriority: effectivePriority(item),
+            needsAttention: due != nil,
+            dueReminder: due,
+            wakeAt: wake,
+            isOverdue: item.deadline.map { $0 < now } ?? false,
+            breadcrumb: item.ancestors.reversed().map(\.title),
+            waitingFor: state == .waiting ? item.waitingFor ?? item.ancestors.lazy.compactMap(\.waitingFor).first : nil)
+    }
+
+    private static func isLocked(_ item: WorkItem) -> Bool { TaskBoard.findBlockingStep(item) != nil }
+
+    private static func summarize(_ root: WorkItem, now: [AgendaEntry], waiting: [AgendaEntry]) -> OverviewEntry {
+        let subtree = root.selfAndDescendants
+        let ids = Set(subtree.map(\.id))
+        let leaves = subtree.filter { $0.children.isEmpty }
+        let waitingHere = waiting.filter { ids.contains($0.item.id) }
+        return OverviewEntry(
+            item: root,
+            doneLeaves: leaves.filter(\.isDone).count,
+            totalLeaves: leaves.count,
+            actionableCount: now.filter { ids.contains($0.item.id) }.count,
+            waitingCount: waitingHere.count,
+            nextWakeAt: waitingHere.compactMap(\.wakeAt).min(),
+            topPriority: subtree.filter { !$0.isDone }.map(effectivePriority).max() ?? root.priority)
+    }
+}

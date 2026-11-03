@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cleanMessage, messageLength, counterText, classify, sourceOf, KINDS, TEXTS, MAX_MESSAGE } from '../../src/TodoTracker.Server/wwwroot/js/plugins/feedback.js';
+import { cleanMessage, messageLength, counterText, classify, sourceOf, KINDS, TEXTS, MAX_MESSAGE } from '../../src/OneThing.Server/wwwroot/js/plugins/feedback.js';
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/feedback.json', import.meta.url), 'utf8'));
 
@@ -14,7 +14,7 @@ test('the sheet cleans the note the way every app does (tests/fixtures/feedback.
 
 test('each answer means what the shared fixture says: sent, try again, or failed', () => {
   for (const o of fixture.outcomes) assert.equal(classify(o.status), o.outcome, String(o.status));
-  // Onething on this computer couldn't be reached at all (fetch threw): try again too.
+  // One Thing on this computer couldn't be reached at all (fetch threw): try again too.
   assert.equal(classify(undefined), 'retry');
 });
 

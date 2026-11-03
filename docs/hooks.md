@@ -1,29 +1,31 @@
 # Hooks and events
 
-Run your own script, or call a web address, when something happens in Onething: a task done, a reminder going off,
+Run your own script, or call a web address, when something happens in One Thing: a task done, a reminder going off,
 a break starting. Extensions and scripts can also listen to everything as it happens.
 
 ## Where hooks live
 
 Hooks are in `hooks.json` in the app's data folder. Settings › Hooks shows the exact path. On Windows it's
-`%LOCALAPPDATA%\TodoTracker\hooks.json`; the `TODOTRACKER_DATA` environment variable moves the folder.
+`%LOCALAPPDATA%\OneThing\hooks.json`; the `ONETHING_DATA` environment variable moves the folder.
 
 The file is on this computer only (it isn't in the synced tasks folder). Changes apply at once (no restart). There are
 four ways to change it:
 
 * **Settings › Hooks** in the app: add, change, switch on or off, remove, approve.
-* **`tt hooks`**: `list`, `add <event> --powershell … --bash … | --url …`, `edit <id>`, `enable`/`disable <id>`,
-  `approve <id> <version>`, `remove <id>`, `test [event]`, `path` (`tt help hooks` for the options).
+* **`ot hooks`**: `list`, `add <event> --powershell … --bash … | --url …`, `edit <id>`, `enable`/`disable <id>`,
+  `approve <id> <version>`, `remove <id>`, `test [event]`, `path` (`ot help hooks` for the options).
 * **AI agents**: the MCP tools `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook`; or the REST API
   (`POST /api/hooks`, `PUT /api/hooks/{id}`, `POST /api/hooks/{id}/enabled`, `DELETE /api/hooks/{id}`).
 * By hand: edit the file.
 
-**Approval.** A hook runs code on your computer, so what an AI agent (or anything else with the API token, or `tt` run
-with `--as`/`TT_AGENT`) adds or changes is saved with `"needsApproval": true` and doesn't run until you approve it: in
-Settings › Hooks (it shows everything it would do) or with `tt hooks approve <id> <version>` (`tt hooks list` shows
+**Approval.** A hook runs code on your computer, so what an AI agent (or anything else with the API token, or `ot` run
+with `--as`/`ONETHING_AGENT`) adds or changes is saved with `"needsApproval": true` and doesn't run until you approve it: in
+Settings › Hooks (it shows everything it would do) or with `ot hooks approve <id> <version>` (`ot hooks list` shows
 everything it would do and its version). Approving names the version you looked at: if it changed since, it isn't
 approved (each change gets a new random revision, so a version can't be matched by trying). Changing a hook that waits for approval keeps it waiting;
-only approving approves. Switching a hook off or removing it needs no approval.
+only approving approves. Switching a hook off or removing it needs no approval, but an agent can only switch on or off,
+or remove, the hooks it added itself: yours stay yours (`hooks.json` keeps no versions, so a removed hook would be gone).
+Only you can turn one down (**Don't allow**) or try hooks (**Test**, `POST /api/hooks/test`).
 
 **You're asked.** You don't have to go looking: on Windows a notification says *"Claude wants to run a hook"* with what
 it would run. When that line is all of it (a short, plain command or address with nothing else set), it has **Allow**;
@@ -33,18 +35,20 @@ shows everything. Each version is asked about once: **Allow** approves exactly w
 just runs, with nothing more to check; **Don't allow** removes it (only if it still waits, in the version you saw);
 *Later* leaves it waiting in Settings › Hooks. If an agent changes it afterwards, you're asked again.
 
-Who is "you": `tt` run without `--as`, and a window the app opened itself (the sidebar, Settings in the app window,
-*Open in browser* from the tray or the Mac app). Those links come from the app's own process, or with the owner key
-(`owner-key` next to `api-token` in the data folder, never sent by the server). A browser signed in by pasting the API
+Who is "you": `ot` run without `--as`, a window the app opened itself (the sidebar, Settings in the app window,
+*Open in browser* from the tray or the Mac app), and an app that sends the owner key with the API token (the Mac app).
+Those links come from the app's own process, or with the owner key (`owner-key` next to `api-token` in the data
+folder, never sent by the server). A browser signed in by pasting the API
 token, or with a link asked for with the token alone, is treated like anything else holding the token: what it adds
 waits for approval and it can't approve (and an ordinary link never replaces an owner's session in that browser).
-Hooks you add from the app or with `tt` run at once.
+Hooks you add from the app or with `ot` run at once.
 
 An agent can't set or change a hook's environment variables or folder (they could make a harmless-looking command run
-something else), and sees the values of headers and variables hidden (`•••`; sent back unchanged, they keep their
-values).
+something else). It sees the values of headers and variables hidden (`•••`), and of a web address only where it goes
+(`https://prod.example.com/•••`: Teams, Slack and Discord put their secret in the rest); sent back unchanged, they keep
+their values. It doesn't see the recent runs (what your commands printed).
 
-A change made in the app, by `tt` or by an agent rewrites the file (it never overwrites a file it can't read: fix that
+A change made in the app, by `ot` or by an agent rewrites the file (it never overwrites a file it can't read: fix that
 first), so comments in a hand-edited file don't survive it. Each hook gets an `id`; one written by hand without it gets
 one from its content.
 
@@ -81,12 +85,12 @@ Each key is an event name, or `*` for every event. A hook is one of these:
 | `cwd` | Working folder (default: the data folder); `%VARS%` are expanded |
 | `env` | Extra environment variables |
 | `timeoutSec` | Stop it after this long (default 30, at most 600); the whole process tree is stopped |
-| `url`, `headers` | Where an `http` hook posts, and extra headers (it also sends `X-Todo-Tracker-Event`) |
+| `url`, `headers` | Where an `http` hook posts, and extra headers (it also sends `X-OneThing-Event`) |
 | `match` | Only for some events: `groups`, `tags`, `labels` (any one of each list given), `actors` (`user`, `agent`, `vault`, `system`, `connector`, or an agent's name). An event without a task (a break) runs a hook only when its `match` doesn't ask about the task |
 | `name` | What Settings shows for it (default: what it runs) |
-| `id`, `enabled`, `needsApproval`, `addedBy`, `addedAt` | Kept by the app: its handle, `false` when switched off, `true` while an agent's hook waits for approval, and who added or changed it when |
+| `id`, `enabled`, `needsApproval`, `addedBy`, `addedAt`, `createdBy` | Kept by the app: its handle, `false` when switched off, `true` while an agent's hook waits for approval, who added or changed it when, and the agent that added it (it may switch it off or remove it; not set for yours) |
 
-A command hook gets the event as JSON on standard input, and `TT_EVENT`, `TT_EVENT_ID`, `TT_TASK_ID` and `TT_TASK_TITLE`
+A command hook gets the event as JSON on standard input, and `ONETHING_EVENT`, `ONETHING_EVENT_ID`, `ONETHING_TASK_ID` and `ONETHING_TASK_TITLE`
 in its environment (PowerShell hooks read and write UTF-8). Hooks run one at a time, in the background, never holding
 up the app; `timeoutSec` covers anything a hook leaves running that keeps its output open. What they print (the start
 of it) and whether they worked shows in Settings › Hooks (the last 50 runs) and in `hooks.log` next to `hooks.json`.
@@ -152,7 +156,7 @@ JSON above, `id:` its id. `?events=taskCompleted,noteAdded` picks some. A commen
 connection open.
 
 ```bash
-curl -N -H "Authorization: Bearer $TT_TOKEN" "http://127.0.0.1:5317/api/events?events=taskCompleted"
+curl -N -H "Authorization: Bearer $ONETHING_TOKEN" "http://127.0.0.1:5317/api/events?events=taskCompleted"
 ```
 
 Plugins inside the server can subscribe to `HookService.Published` instead.

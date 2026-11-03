@@ -1,0 +1,311 @@
+import Foundation
+
+public struct TextMergeResult: Equatable, Sendable {
+    public var text: String
+    public var conflicted: Bool
+    /// Too big to merge line by line (the files differ in too many lines): `text` is the first side, and both versions
+    /// should be kept whole.
+    public var tooLarge = false
+}
+/// What to do where both sides changed the same lines differently.
+public enum ConflictPolicy: Sendable {
+    /// Keep both sides' lines (the first side's first): nothing typed is lost.
+    case both
+    /// Keep only the first side's lines there (everything else still merges).
+    case first
+    /// Keep only the second side's lines there.
+    case second
+}
+
+/// Line-based three-way merge (diff3), a port of C#'s `TextMerge`: changes to different lines are combined; where both
+/// sides changed the same lines differently, both versions' lines are kept (the first side's first). Lines compare
+/// ordinally and keep their own line endings.
+public enum TextMerge {
+    /// The most cells one line-matching table may have (4 million); bigger differences aren't merged line by line.
+    static let maxCells = 4_000_000
+
+    /// `lineKeys` gives each line of a file its identity (or nil), e.g. a step's block id: keyed lines merge one by one.
+    public static func merge(base: String, first: String, second: String, lineKeys: (([String]) -> [String?])? = nil, policy: ConflictPolicy = .both) -> TextMergeResult {
+        let fo = split(base), fa = split(first), fb = split(second)
+        let fko = lineKeys?(fo), fka = lineKeys?(fa), fkb = lineKeys?(fb)
+        // Lines as numbers (equal text, equal number), so comparing is ordinal and cheap.
+        var ids: [OKey: Int] = [:]
+        func number(_ lines: [String]) -> [Int] {
+            lines.map { line in
+                if let n = ids[OKey(line)] { return n }
+                ids[OKey(line)] = ids.count
+                return ids.count - 1
+            }
+        }
+        let nfo = number(fo), nfa = number(fa), nfb = number(fb)
+
+        // Lines all three share at the start and the end are kept as they are; only the stretch between is matched.
+        var head = 0
+        while head < nfo.count && head < nfa.count && head < nfb.count && nfo[head] == nfa[head] && nfo[head] == nfb[head] { head += 1 }
+        var tail = 0
+        while tail < nfo.count - head && tail < nfa.count - head && tail < nfb.count - head
+            && nfo[nfo.count - 1 - tail] == nfa[nfa.count - 1 - tail] && nfo[nfo.count - 1 - tail] == nfb[nfb.count - 1 - tail] {
+            tail += 1
+        }
+
+        // Only lines that appear nowhere in the stretch between: then no line there could pair with them, and the
+        // result is exactly what matching everything gives (repeated lines, like blank ones, stay in the stretch).
+        while true {
+            var middle = Set<Int>()
+            middle.formUnion(nfo[head..<(nfo.count - tail)])
+            middle.formUnion(nfa[head..<(nfa.count - tail)])
+            middle.formUnion(nfb[head..<(nfb.count - tail)])
+            let safeHead = safeEdge(Array(nfo[0..<head]), middle)
+            let safeTail = safeEdge(Array(nfo[(nfo.count - tail)...].reversed()), middle)
+            if safeHead == head && safeTail == tail { break }
+            head = safeHead
+            tail = safeTail
+        }
+
+        func inner<T>(_ lines: [T]) -> [T] { Array(lines[head..<(lines.count - tail)]) }
+        let o = inner(fo), a = inner(fa), b = inner(fb)
+        let no = inner(nfo), na = inner(nfa), nb = inner(nfb)
+        // Matching that many lines would take more memory than a merge is worth: both versions are kept whole.
+        let tooLarge = TextMergeResult(text: first, conflicted: true, tooLarge: true)
+        if cells(no, na) > maxCells || cells(no, nb) > maxCells || cells(na, nb) > maxCells { return tooLarge }
+        let ko = fko.map { inner($0) }, ka = fka.map { inner($0) }, kb = fkb.map { inner($0) }
+        guard let ma = match(no, na), let ab = match(na, nb), let mb = matchAgreeing(no, nb, ma, ab) else { return tooLarge }
+        var output = Array(fo[0..<head])
+        var conflicted = false
+        var io = 0, ia = 0, ib = 0
+        while true {
+            while io < o.count && ma[io] == ia && mb[io] == ib {
+                output.append(o[io])
+                io += 1; ia += 1; ib += 1
+            }
+            if io >= o.count && ia >= a.count && ib >= b.count { break }
+
+            // The next base line both sides kept ends this unstable chunk.
+            var next = io
+            while next < o.count && (ma[next] < 0 || mb[next] < 0) { next += 1 }
+            let ea = next < o.count ? ma[next] : a.count
+            let eb = next < o.count ? mb[next] : b.count
+            let co = Array(no[io..<next]), ca = Array(na[ia..<ea]), cb = Array(nb[ib..<eb])
+            let la = Array(a[ia..<ea]), lb = Array(b[ib..<eb])
+            if co == ca {
+                output.append(contentsOf: lb)
+            } else if co == cb || ca == cb {
+                output.append(contentsOf: la)
+            } else if let ko, let keyed = mergeByKey(Array(o[io..<next]), la, lb, Array(ko[io..<next]), Array(ka![ia..<ea]), Array(kb![ib..<eb]), policy) {
+                output.append(contentsOf: keyed.lines)
+                conflicted = conflicted || keyed.conflicted
+            } else {
+                // Lines both sides have at the start or the end of the stretch are the same change made on both
+                // (say, a note one device added and the other merged before editing next to it): kept once, and
+                // only what's left between them is merged.
+                var p = 0
+                while p < ca.count && p < cb.count && ca[p] == cb[p] { p += 1 }
+                var s = 0
+                while s < ca.count - p && s < cb.count - p && ca[ca.count - 1 - s] == cb[cb.count - 1 - s] { s += 1 }
+                // Base lines there that both kept are trimmed with them.
+                var po = 0
+                while po < p && po < co.count && co[po] == ca[po] { po += 1 }
+                var so = 0
+                while so < s && so < co.count - po && co[co.count - 1 - so] == ca[ca.count - 1 - so] { so += 1 }
+                output.append(contentsOf: la[0..<p])
+                let resolved = resolve(
+                    o: Array(o[(io + po)..<(next - so)]), co: Array(co[po..<(co.count - so)]),
+                    a: Array(la[p..<(la.count - s)]), ca: Array(ca[p..<(ca.count - s)]),
+                    b: Array(lb[p..<(lb.count - s)]), cb: Array(cb[p..<(cb.count - s)]),
+                    ko: ko.map { Array($0[(io + po)..<(next - so)]) },
+                    ka: ka.map { Array($0[(ia + p)..<(ea - s)]) },
+                    kb: kb.map { Array($0[(ib + p)..<(eb - s)]) },
+                    policy: policy)
+                output.append(contentsOf: resolved.lines)
+                output.append(contentsOf: la[(la.count - s)...])
+                conflicted = conflicted || resolved.conflicted
+            }
+            io = next
+            ia = ea
+            ib = eb
+        }
+        output.append(contentsOf: fo[(fo.count - tail)...])
+        return TextMergeResult(text: join(output), conflicted: conflicted)
+    }
+
+    private static func cells(_ x: [Int], _ y: [Int]) -> Int { (x.count + 1) * (y.count + 1) }
+
+    /// How many of `edge`'s lines (from the outside in) can stay set aside: none of them may appear in `middle` or in
+    /// the lines of the edge that go back to it (as C#'s `SafeEdge`).
+    private static func safeEdge(_ edge: [Int], _ middle: Set<Int>) -> Int {
+        var first: [Int: Int] = [:]
+        for (i, line) in edge.enumerated() where first[line] == nil { first[line] = i }
+        var keep = edge.count
+        for line in middle {
+            if let at = first[line] { keep = min(keep, at) }
+        }
+        // Lines that go back to the stretch take their earlier copies with them.
+        var i = edge.count - 1
+        while i >= keep {
+            keep = min(keep, first[edge[i]]!)
+            i -= 1
+        }
+        return keep
+    }
+
+    /// A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict. `co`, `ca`, `cb`
+    /// are the lines as numbers, `o`, `a`, `b` as text.
+    private static func resolve(o: [String], co: [Int], a: [String], ca: [Int], b: [String], cb: [Int], ko: [String?]?, ka: [String?]?, kb: [String?]?, policy: ConflictPolicy) -> (lines: [String], conflicted: Bool) {
+        if co == ca { return (b, false) }
+        if co == cb || ca == cb { return (a, false) }
+        if let ko, let keyed = mergeByKey(o, a, b, ko, ka!, kb!, policy) { return keyed }
+        if ko != nil && co.isEmpty && distinctKeyed(ka!, kb!) {
+            // Both added lines that each carry their own identity (time logged on two devices): both stay.
+            return (a + b, false)
+        }
+        switch policy {
+        case .first: return (a, true)
+        case .second: return (b, true)
+        case .both: return (a + zip(b, cb).filter { !ca.contains($0.1) }.map(\.0), true)
+        }
+    }
+
+    /// Keyed lines merge one by one when the clashing stretch has the same keys in the same order on all three sides.
+    private static func mergeByKey(_ o: [String], _ a: [String], _ b: [String], _ ko: [String?], _ ka: [String?], _ kb: [String?], _ policy: ConflictPolicy) -> (lines: [String], conflicted: Bool)? {
+        guard o.count == a.count, o.count == b.count, !o.isEmpty else { return nil }
+        var lines: [String] = []
+        var conflicted = false
+        for i in 0..<o.count {
+            guard let key = ko[i], ka[i].map({ $0.oEq(key) }) == true, kb[i].map({ $0.oEq(key) }) == true else { return nil }
+            if a[i].oEq(o[i]) || a[i].oEq(b[i]) {
+                lines.append(b[i].oEq(o[i]) ? a[i] : b[i])
+            } else if b[i].oEq(o[i]) {
+                lines.append(a[i])
+            } else {
+                // The same step changed on both sides: one version (a step can't be two lines).
+                conflicted = true
+                lines.append(policy == .second ? b[i] : a[i])
+            }
+        }
+        return (lines, conflicted)
+    }
+
+    private static func distinctKeyed(_ a: [String?], _ b: [String?]) -> Bool {
+        guard !a.isEmpty, !b.isEmpty, a.allSatisfy({ $0 != nil }), b.allSatisfy({ $0 != nil }) else { return false }
+        let sa = Set(a.map { OKey($0!) })
+        return !b.contains { sa.contains(OKey($0!)) }
+    }
+
+    /// Lines with their line endings (the last may have none).
+    static func split(_ text: String) -> [String] {
+        var lines: [String] = []
+        var current: [UInt16] = []
+        for unit in text.utf16 {
+            current.append(unit)
+            if unit == 0x0A {
+                lines.append(String(decoding: current, as: UTF16.self))
+                current.removeAll(keepingCapacity: true)
+            }
+        }
+        if !current.isEmpty { lines.append(String(decoding: current, as: UTF16.self)) }
+        return lines
+    }
+
+    private static func join(_ lines: [String]) -> String {
+        var out = ""
+        for line in lines {
+            // A last line without its newline that ends up in the middle gets one.
+            if !out.isEmpty && out.utf16.last != 0x0A { out += "\n" }
+            out += line
+        }
+        return out
+    }
+
+    /// For each base line, the index of the line it matches in `other` (a longest common subsequence), or -1. Equal
+    /// lines can pair up more than one way ("b" added after "b": the old "b" is the first or the second), and the two
+    /// sides' diffs must agree on which, or a line both sides added (or removed) is counted twice. So among the longest
+    /// ones, this takes the pairing that agrees most with the first side's: base line i pairs with the line of `other`
+    /// that the first side's line for i pairs with (`firstToOther`). As C#'s `TextMerge.MatchAgreeing`.
+    ///
+    /// Lines at the start and the end that are the same on both and where the first side agrees are paired first
+    /// (every longest, most agreeing pairing pairs them, so the result is the same): only what's left between them
+    /// needs the table. Nil when that's more than `maxCells`.
+    private static func matchAgreeing(_ o: [Int], _ other: [Int], _ baseToFirst: [Int], _ firstToOther: [Int]) -> [Int]? {
+        var map = Array(repeating: -1, count: o.count)
+        if o.isEmpty || other.isEmpty { return map }
+        func agrees(_ i: Int, _ j: Int) -> Bool { o[i] == other[j] && baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j }
+        var prefix = 0
+        while prefix < o.count && prefix < other.count && agrees(prefix, prefix) {
+            map[prefix] = prefix
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < o.count - prefix && suffix < other.count - prefix && agrees(o.count - 1 - suffix, other.count - 1 - suffix) {
+            map[o.count - 1 - suffix] = other.count - 1 - suffix
+            suffix += 1
+        }
+        let n = o.count - prefix - suffix, m = other.count - prefix - suffix
+        if n == 0 || m == 0 { return map }
+        guard (n + 1) * (m + 1) <= maxCells else { return nil }
+        // A pair is worth more than every agreement together, so the pairing stays a longest one.
+        let pair = min(n, m) + 1
+        func worth(_ i: Int, _ j: Int) -> Int {
+            o[prefix + i] != other[prefix + j] ? 0 : pair + (agrees(prefix + i, prefix + j) ? 1 : 0)
+        }
+        var best = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                let skip = max(best[i + 1][j], best[i][j + 1])
+                let w = worth(i, j)
+                best[i][j] = w > 0 ? max(w + best[i + 1][j + 1], skip) : skip
+            }
+        }
+        var i = 0, j = 0
+        while i < n && j < m {
+            let w = worth(i, j)
+            if w > 0 && best[i][j] == w + best[i + 1][j + 1] {
+                map[prefix + i] = prefix + j
+                i += 1
+                j += 1
+            } else if best[i + 1][j] >= best[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return map
+    }
+
+    /// For each base line, the index of the line it matches in `other` (longest common subsequence), or -1. Nil when
+    /// what's left between the common start and end is more than `maxCells`.
+    private static func match(_ o: [Int], _ other: [Int]) -> [Int]? {
+        var map = Array(repeating: -1, count: o.count)
+        var prefix = 0
+        while prefix < o.count && prefix < other.count && o[prefix] == other[prefix] {
+            map[prefix] = prefix
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < o.count - prefix && suffix < other.count - prefix && o[o.count - 1 - suffix] == other[other.count - 1 - suffix] {
+            map[o.count - 1 - suffix] = other.count - 1 - suffix
+            suffix += 1
+        }
+        let n = o.count - prefix - suffix, m = other.count - prefix - suffix
+        if n == 0 || m == 0 { return map }
+        guard (n + 1) * (m + 1) <= maxCells else { return nil }
+        var lcs = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in stride(from: n - 1, through: 0, by: -1) {
+            for j in stride(from: m - 1, through: 0, by: -1) {
+                lcs[i][j] = o[prefix + i] == other[prefix + j] ? lcs[i + 1][j + 1] + 1 : max(lcs[i + 1][j], lcs[i][j + 1])
+            }
+        }
+        var i = 0, j = 0
+        while i < n && j < m {
+            if o[prefix + i] == other[prefix + j] {
+                map[prefix + i] = prefix + j
+                i += 1
+                j += 1
+            } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+        return map
+    }
+}

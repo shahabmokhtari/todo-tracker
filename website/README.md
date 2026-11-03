@@ -1,7 +1,7 @@
-# Onething website
+# One Thing website
 
 The public site at <https://onething.awesomehq.app>. Plain HTML and CSS with a little JavaScript, no build step.
-It's served by Cloudflare Workers static assets (the Worker is named `todotracker-site`).
+It's served by Cloudflare Workers static assets (the Worker is named `onething-site`).
 
 | Path | What |
 | --- | --- |
@@ -9,7 +9,7 @@ It's served by Cloudflare Workers static assets (the Worker is named `todotracke
 | `public/styles.css` | All the styles (light and dark follow the system) |
 | `public/main.js` | The small "Do this now" demo card in the hero (the page works without it) |
 | `public/404.html` | Shown for any path that doesn't exist |
-| `public/privacy.html` | Privacy: what Send feedback sends and where (the same as `docs/privacy.md`) |
+| `public/privacy.html` | Privacy: what Send feedback sends and where (the same as `docs/privacy.md`); served at `/privacy` |
 | `public/img/` | Favicon, Open Graph image (`og.png`) and screenshots (WebP copies of `docs/images/*.png`) |
 | `public/_headers` | Security headers and caching |
 | `public/robots.txt`, `public/sitemap.xml` | For search engines |

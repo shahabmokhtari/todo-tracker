@@ -1,0 +1,52 @@
+import XCTest
+@testable import OneThingKit
+
+/// tests/fixtures/export.json is what the app's server sends from /api/export (written and checked by the C# tests):
+/// the Mac app shows that board when it uses the server, so it must read everything in it.
+final class ExportFixtureTests: XCTestCase {
+    private func fixture() throws -> Data {
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { root.deleteLastPathComponent() }
+        return try Data(contentsOf: root.appendingPathComponent("tests/fixtures/export.json"))
+    }
+
+    func testTheServersExportReads() throws {
+        let board = try BoardCodec.decode(try fixture())
+
+        let launch = try XCTUnwrap(board.items.first { $0.title == "Launch the site" })
+        XCTAssertEqual(launch.priority, .high)
+        // Its icon and color (set in the other apps) are read, and written back unchanged.
+        XCTAssertEqual(launch.icon, "🚀")
+        XCTAssertEqual(launch.color, "#0ea5e9")
+        let again = try BoardCodec.decode(try BoardCodec.encode(board))
+        XCTAssertEqual(again.items.first { $0.title == "Launch the site" }?.icon, "🚀")
+        // Energy (per hour, and in a day) too.
+        XCTAssertEqual(launch.energy, 3)
+        XCTAssertEqual(again.items.first { $0.title == "Launch the site" }?.energy, 3)
+        XCTAssertEqual(board.dailyEnergy, 8)
+        XCTAssertEqual(again.dailyEnergy, 8)
+        XCTAssertEqual(launch.children.map(\.title), ["Write the copy", "Pick images"])
+        XCTAssertTrue(launch.children[1].isDone)
+        XCTAssertEqual(board.groups.first { $0.id == launch.groupId }?.name, "Launch team")
+        // Notes from Obsidian and from connected apps.
+        XCTAssertEqual(Set(launch.notes.map(\.author.kind)), [.vault, .connector])
+        XCTAssertTrue(board.items.contains { $0.title == "Old task" && $0.isDone })
+        // Snoozed until another task is done.
+        XCTAssertEqual(board.items.first { $0.title == "Announce it" }?.waitingFor?.id, launch.id)
+        // Time spent (25 minutes on the copy).
+        XCTAssertEqual(launch.children[0].timeSpent(Date(), includeSubtasks: false), 25 * 60)
+        XCTAssertEqual(launch.timeSpent(Date()), 25 * 60)
+    }
+
+    func testAuthorsFromANewerVersionStillRead() throws {
+        let json = #"{"kind":"robot","name":"R2"}"#.data(using: .utf8)!
+        XCTAssertEqual(try JSONDecoder().decode(Actor.self, from: json).kind, .system)
+    }
+
+    func testTheExportMakesAnAgenda() throws {
+        let board = try BoardCodec.decode(try fixture())
+        let agenda = Agenda.build(board, now: BoardCodec.parseDate("2026-01-05T09:30:00.000Z")!)
+        XCTAssertFalse(agenda.now.contains { $0.item.title == "Old task" })
+        XCTAssertEqual(agenda.waiting.first { $0.item.title == "Announce it" }?.waitingFor?.title, "Launch the site")
+    }
+}

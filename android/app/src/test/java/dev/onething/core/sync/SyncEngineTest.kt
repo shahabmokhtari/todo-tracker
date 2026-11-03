@@ -1,0 +1,260 @@
+package dev.onething.core.sync
+
+import dev.onething.core.Actor
+import dev.onething.core.BoardCodec
+import dev.onething.core.NewTask
+import dev.onething.core.TaskBoard
+import dev.onething.core.vault.VaultStore
+import java.io.File
+import java.nio.file.Files
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/** Phones as sync devices of their own: two tasks folders meet through a folder or a gist and end with the same files. */
+class SyncEngineTest {
+    private val dir: File = Files.createTempDirectory("onething-sync").toFile()
+    private var now = Instant.parse("2026-01-05T14:00:00Z")
+
+    @After
+    fun cleanUp() {
+        dir.deleteRecursively()
+    }
+
+    private inner class Device(val name: String, remote: (Device) -> SyncRemote, legacy: TaskBoard? = null) {
+        val root = File(dir, "$name/vault")
+        val store = VaultStore.open(root, ZoneOffset.UTC, { now }, legacy)
+        val state = SyncState(File(dir, "$name/sync"), File(dir, "$name/device"), name)
+        val engine = SyncEngine(store, remote(this), state) { now }
+
+        fun sync(): SyncResult {
+            now = now.plus(Duration.ofSeconds(1))
+            return engine.sync()
+        }
+
+        fun tasks(): Map<String, String> = root.walkTopDown().filter { it.isFile && it.extension == "md" && it.parentFile != root }
+            .associate { it.relativeTo(root).invariantSeparatorsPath to it.readText() }
+
+        fun titles(): List<String> = store.read { b -> b.items.map { it.title }.sorted() }
+    }
+
+    private val shared = File(dir, "shared")
+
+    private fun folderDevice(name: String, legacy: TaskBoard? = null) = Device(name, { FolderRemote(shared) }, legacy)
+
+    @Test
+    fun twoPhonesEndWithTheSameFiles() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        val trip = a.store.update { board ->
+            board.addTask(NewTask("Plan the trip", groupId = board.groups[0].id), Actor.USER, now).also {
+                board.addSteps(it.id, listOf("Book flights", "Book hotel", "Pack"), null, Actor.USER, now)
+            }
+        }
+        a.sync()
+        b.sync()
+        assertEquals(a.tasks(), b.tasks())
+        assertEquals(listOf("Plan the trip"), b.titles())
+        a.sync()
+
+        // One checks a step, the other renames another: both changes land on both.
+        val steps = trip.children.map { it.id }
+        a.store.update { it.complete(steps[0], Actor.USER, now) }
+        b.store.update { it.update(steps[2], title = "Pack light", actor = Actor.USER, now = now) }
+        a.sync()
+        b.sync()
+        a.sync()
+        assertEquals(a.tasks(), b.tasks())
+        val (done, packed) = b.store.read { board -> board.get(steps[0]).isDone to board.get(steps[2]).title }
+        assertTrue(done)
+        assertEquals("Pack light", packed)
+        assertEquals(a.engine.state.status.conflicts, emptyList<SyncConflictRecord>())
+    }
+
+    @Test
+    fun aTaskDeletedOnOneGoesToTheOthersTrash() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        val task = a.store.update { it.addTask(NewTask("Old idea", groupId = it.groups[1].id), Actor.USER, now) }
+        a.sync()
+        b.sync()
+        assertEquals(listOf("Old idea"), b.titles())
+        // The laptop hears back from the phone first: a delete counts against what both agreed on.
+        a.sync()
+        a.store.update { it.delete(task.id, Actor.USER, now) }
+        a.sync()
+        b.sync()
+        assertEquals(emptyList<String>(), b.titles())
+        assertTrue(File(b.root, ".onething/trash").list()!!.any { it.endsWith("Old idea.md") })
+        // Nothing changed since: a sync does nothing at all.
+        assertTrue(b.sync().changes == 0)
+    }
+
+    @Test
+    fun aGistIsCheckedWithItsETag() {
+        val github = FakeGitHub()
+        var gistId: String? = null
+        val remote = { _: Device -> GistRemote(github, { "token" }, { gistId }, { gistId = it }) }
+        val a = Device("Laptop", remote)
+        val b = Device("Phone", remote)
+        a.store.update { it.addTask(NewTask("From the laptop", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        b.sync()
+        assertEquals(listOf("From the laptop"), b.titles())
+        a.sync()
+        assertEquals(a.tasks(), b.tasks())
+        val quiet = github.notModified
+        val result = b.sync()
+        assertTrue(result.skipped)
+        assertTrue(github.notModified > quiet)
+        assertEquals(1, github.ids.size)
+    }
+
+    @Test
+    fun theFirstJoinBringsThePhonesOwnTasksInBesideWhatCame() {
+        val a = folderDevice("Laptop")
+        val shared = a.store.update { it.addTask(NewTask("Shared already", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+
+        // The phone used remote mode before: its board.json has a copy of the laptop's task, and one of its own.
+        val legacy = TaskBoard()
+        legacy.items.add(dev.onething.core.WorkItem(shared.id, "Shared already", dev.onething.core.Priority.NORMAL, now, legacy.groups[0].id))
+        legacy.addTask(NewTask("Only on the phone", groupId = legacy.groups[1].id), Actor.USER, now)
+        val boardJson = File(dir, "Phone/board.json")
+        boardJson.parentFile!!.mkdirs()
+        boardJson.writeText(BoardCodec.encode(legacy))
+        File(dir, "Phone/board.json.migrated").writeText("an older backup")
+        val b = folderDevice("Phone")
+        now = now.plus(Duration.ofSeconds(1))
+        val joined = b.engine.join(boardJson)
+        assertTrue(joined.joined)
+        assertEquals(1, joined.imported)
+        assertEquals(listOf("Only on the phone", "Shared already"), b.titles())
+        assertFalse(b.tasks().keys.any { it.contains("from") })
+        assertFalse(boardJson.exists())
+        assertEquals("an older backup", File(dir, "Phone/board.json.migrated").readText())
+        assertTrue(File(dir, "Phone/board.json.migrated 2").exists())
+        a.sync()
+        assertEquals(listOf("Only on the phone", "Shared already"), a.titles())
+        assertEquals(a.tasks(), b.tasks())
+    }
+
+    @Test
+    fun aJoinThatDidntGetEverythingImportsAndPublishesNothingYet() {
+        val a = folderDevice("Laptop")
+        a.store.update { it.addTask(NewTask("On the laptop", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        // One of the laptop's contents hasn't arrived in the shared folder yet.
+        File(shared, "blobs").walkTopDown().filter { it.isFile }.first { it.readText().contains("# On the laptop") }.delete()
+
+        val boardJson = File(dir, "Phone/board.json")
+        boardJson.parentFile!!.mkdirs()
+        val legacy = TaskBoard()
+        legacy.addTask(NewTask("Only on the phone", groupId = legacy.groups[0].id), Actor.USER, now)
+        boardJson.writeText(BoardCodec.encode(legacy))
+        val b = folderDevice("Phone")
+        val joined = b.engine.join(boardJson)
+        assertFalse(joined.joined)
+        assertEquals(0, joined.imported)
+        assertTrue(boardJson.exists())
+        assertEquals(emptyList<String>(), b.titles())
+        assertEquals(listOf(a.state.deviceId + ".json"), File(shared, "devices").list()!!.toList())
+    }
+
+    @Test
+    fun aDamagedContentIsReportedAndWrittenAgainByTheDeviceThatHasIt() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        a.store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        val blob = File(shared, "blobs").walkTopDown().filter { it.isFile }.first { it.readText().contains("# Plan") }
+        blob.writeText("half a download")
+        val first = b.sync()
+        assertTrue(first.problem!!.contains("doesn't match"))
+        assertEquals(emptyList<String>(), b.titles())
+
+        // The laptop's next publish writes it again; then the phone gets it.
+        a.store.update { it.addTask(NewTask("Another", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        assertTrue(blob.readText().contains("# Plan"))
+        b.sync()
+        assertEquals(listOf("Another", "Plan"), b.titles())
+    }
+
+    @Test
+    fun aTaskThatCantSyncIsListedAsHeldAndTheOthersKeepTheirCopy() {
+        val a = folderDevice("Laptop")
+        val b = folderDevice("Phone")
+        val task = a.store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        a.sync()
+        b.sync()
+        a.sync()
+        // A name this phone's file system takes but other devices can't: on Windows longer than 255 bytes in UTF-8
+        // (Linux, phones and Macs can't), elsewhere a character Windows can't use. Held, not deleted.
+        val windows = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
+        val name = if (windows) "任".repeat(90) + ".md" else "Plan? Now.md"
+        assertTrue("renamed to $name", File(a.root, "Work/Plan.md").renameTo(File(a.root, "Work/$name")))
+        a.store.markDirty()
+        val result = a.sync()
+        assertTrue(result.problem!!.contains("doesn't sync for now"))
+        val published = SyncJson.readSnapshot(File(shared, "devices/${a.state.deviceId}.json").readText())
+        val key = SyncKeys.task(task.id)
+        assertEquals(listOf(key), published.held)
+        // Its last published version stays listed (its contents are still here to give).
+        assertEquals("Work/Plan.md", published.entries.single { it.key == key }.path)
+        b.sync()
+        assertEquals(listOf("Plan"), b.titles())
+        assertTrue(File(b.root, "Work/Plan.md").exists())
+    }
+
+    @Test
+    fun aDamagedIdentityKeepsItsIdOrPausesSyncInsteadOfJoiningAsANewDevice() {
+        val a = folderDevice("Laptop")
+        val id = a.state.deviceId
+        val file = File(dir, "Laptop/device/device.json")
+        file.writeText("{\"id\":\"$id\",\"name\":")
+        assertEquals(id, SyncState(File(dir, "Laptop/sync"), File(dir, "Laptop/device"), "Laptop").deviceId)
+
+        file.writeText("{ damaged")
+        val damaged = SyncState(File(dir, "Laptop/sync"), File(dir, "Laptop/device"), "Laptop")
+        assertTrue(damaged.problem!!.contains("sync is paused"))
+        assertEquals("{ damaged", file.readText())
+        val engine = SyncEngine(a.store, FolderRemote(shared), damaged) { now }
+        assertTrue(runCatching { engine.sync() }.exceptionOrNull()!!.message!!.contains("sync is paused"))
+        assertFalse(File(shared, "devices").exists() && File(shared, "devices").list()!!.isNotEmpty())
+    }
+
+    @Test
+    fun aDeviceFileFromANewerVersionMakesTheReadPartial() {
+        val devices = File(shared, "devices")
+        devices.mkdirs()
+        File(devices, "bbbbbbbb.json").writeText("{\"device\":\"bbbbbbbb\",\"name\":\"Laptop\",\"at\":\"2026-01-05T14:00:00+00:00\",\"entries\":[],\"schema\":2}")
+        File(devices, "cccccccc.json").writeText("{\"device\":\"cccccccc\",\"name\":\"Mac\",\"at\":\"2026-01-05T14:00:00+00:00\"}")
+        val read = FolderRemote(shared).read("aaaaaaaa", null)!!
+        assertTrue(read.partial)
+        assertEquals(emptyList<DeviceSnapshot>(), read.devices)
+    }
+
+    @Test
+    fun theTokenNeverFollowsARedirectAwayFromGitHub() {
+        val seen = mutableListOf<HttpRequest>()
+        val http = HttpTransport { r ->
+            seen.add(r)
+            when {
+                r.url.startsWith("https://api.github.com/gists?") -> HttpResponse(200, emptyMap(), "[]".toByteArray())
+                r.url == "https://api.github.com/gists/g1" -> HttpResponse(302, mapOf("Location" to "https://evil.example/steal"), ByteArray(0))
+                else -> HttpResponse(200, emptyMap(), "{\"files\":{}}".toByteArray())
+            }
+        }
+        val gist = GistRemote(http, { "secret" }, { "g1" }, {})
+        gist.read("me", null)
+        val redirected = seen.single { it.url == "https://evil.example/steal" }
+        assertEquals(null, redirected.headers["Authorization"])
+        assertTrue(seen.filter { it.url.startsWith("https://api.github.com/") }.all { it.headers["Authorization"] == "Bearer secret" })
+    }
+}

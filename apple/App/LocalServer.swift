@@ -1,11 +1,11 @@
 #if os(macOS)
 import AppKit
 import Foundation
-import TodoTrackerKit
-import TodoTrackerUI
+import OneThingKit
+import OneThingUI
 
-/// Runs Onething's server (it comes inside the app) in the background on this Mac, so the app uses the same tasks
-/// folder as the browser and the other computers: `~/Documents/Todo Tracker`, synced through OneDrive or iCloud Drive.
+/// Runs One Thing's server (it comes inside the app) in the background on this Mac, so the app uses the same tasks
+/// folder as the browser and the other computers: `~/Documents/OneThing`, synced through OneDrive or iCloud Drive.
 /// It starts with the app, is started again if it stops, and stops when the app quits (`--parent-pid` covers a crash).
 /// The first time, it moves the tasks this Mac kept on its own into the folder.
 @MainActor
@@ -75,7 +75,7 @@ final class LocalServer {
         reconnecting = true
         restarts += 1
         guard restarts <= 3 else {
-            model.reportLocalOnly("Onething's server keeps stopping; see ~/Library/Logs/TodoTracker/server.log, then quit and open the app again")
+            model.reportLocalOnly("One Thing's server keeps stopping; see ~/Library/Logs/OneThing/server.log, then quit and open the app again")
             return
         }
         model.serverLost("Reconnecting to your tasks folder…")
@@ -99,8 +99,32 @@ final class LocalServer {
             }
         }
     }
+    /// The server this app started, if it still runs (it stopped answering): ended before another one starts, so two
+    /// never hold the port and the tasks folder. Asked to stop first; after 5 s, made to.
+    private func endStartedServer() async {
+        guard let old = process else { return }
+        process = nil
+        // Its end isn't a loss to reconnect from: this is the reconnecting.
+        old.terminationHandler = nil
+        guard old.isRunning else { return }
+        old.terminate()
+        var waited = 0
+        while old.isRunning && waited < 20 {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            waited += 1
+        }
+        guard old.isRunning else { return }
+        kill(old.processIdentifier, SIGKILL)
+        waited = 0
+        while old.isRunning && waited < 8 {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            waited += 1
+        }
+    }
+
     private func start() async -> Result<ServerClient, Failure> {
         #if arch(arm64)
+        await endStartedServer()
         let probe = ServerClient(baseURL: Self.base, token: "")
         if await probe.isUp() {
             // Most likely the server of this app's last run, stopping (its app is gone): give it time.
@@ -115,7 +139,7 @@ final class LocalServer {
             }
         }
 
-        guard let executable = Bundle.main.resourceURL?.appendingPathComponent("Server/TodoTracker.Web"),
+        guard let executable = Bundle.main.resourceURL?.appendingPathComponent("Server/OneThing.Web"),
               FileManager.default.isExecutableFile(atPath: executable.path) else { return .failure(.notBundled) }
         // A server that just stopped may still hold the folder for a moment: a few tries.
         for _ in 0..<3 {
@@ -138,7 +162,7 @@ final class LocalServer {
             }
             try? await Task.sleep(nanoseconds: 1_500_000_000)
         }
-        return .failure(.didNotStart("it stopped; see ~/Library/Logs/TodoTracker/server.log"))
+        return .failure(.didNotStart("it stopped; see ~/Library/Logs/OneThing/server.log"))
         #else
         return .failure(.didNotStart("it needs a Mac with Apple silicon"))
         #endif
@@ -149,8 +173,13 @@ final class LocalServer {
         process.executableURL = executable
         var arguments = ["--port", String(port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier), "--import-legacy"]
         if !hasGit { arguments.append("--no-history") }
-        process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
+        if let given = givenDataFolder {
+            // The folder this app reads the token from (`~` expanded), named outright: the server doesn't expand `~`.
+            arguments += ["--data", given.path]
+            environment["ONETHING_DATA"] = given.path
+        }
+        process.arguments = arguments
         // Apps opened from the Finder get a short PATH: add where git usually is.
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (environment["PATH"] ?? "/usr/bin:/bin")
         process.environment = environment
@@ -178,17 +207,21 @@ final class LocalServer {
         return token.isEmpty ? nil : ServerClient(baseURL: base, token: token, ownerKey: ownerKey?.isEmpty == false ? ownerKey : nil)
     }
 
-    /// The server's data folder: `TODOTRACKER_DATA` when set (the server it starts inherits it), else the usual one.
+    /// The server's data folder: `ONETHING_DATA` when set (passed to the server it starts), else the usual one.
     nonisolated static var dataFolder: URL {
-        if let given = ProcessInfo.processInfo.environment["TODOTRACKER_DATA"]?.trimmingCharacters(in: .whitespaces), !given.isEmpty {
-            return URL(fileURLWithPath: (given as NSString).expandingTildeInPath, isDirectory: true)
-        }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker")
+        givenDataFolder ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/OneThing")
+    }
+
+    /// `ONETHING_DATA`, with `~` expanded (nil: not set). Only then is `--data` passed: without it the server keeps
+    /// its own default, which also decides where the tasks folder is.
+    nonisolated static var givenDataFolder: URL? {
+        guard let given = ProcessInfo.processInfo.environment["ONETHING_DATA"]?.trimmingCharacters(in: .whitespaces), !given.isEmpty else { return nil }
+        return URL(fileURLWithPath: (given as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
     }
 
     /// `server.log` (this run of the app) and `server.previous.log` (the run before: why it stopped, after a crash).
     private static var logURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/TodoTracker/server.log")
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OneThing/server.log")
     }
 
     private static func rotateLog() {

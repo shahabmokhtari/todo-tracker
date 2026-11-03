@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText, taskLink, energyMarks, energyLine } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { relativeTime, priorityMeta, snoozeOptions, groupByDay, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, cleanIcon, hexColor, plannedText, taskLink, energyMarks, energyLine } from '../../src/OneThing.Server/wwwroot/js/format.js';
 
 const now = new Date('2026-01-05T09:00:00Z');
 const plus = (minutes) => new Date(now.getTime() + minutes * 60000);
@@ -104,6 +104,12 @@ test('metaChips turn card facts into short, toned chips', () => {
   ]);
 });
 
+test('the planned chip shows only while the Plan extra is on', () => {
+  const card = { plannedAt: '2026-01-05T10:00:00Z', plannedMinutes: 30 };
+  assert.ok(metaChips(card, { now }).some((c) => c.text.startsWith('🗓')));
+  assert.ok(!metaChips(card, { now, plan: false }).some((c) => c.text.startsWith('🗓')));
+});
+
 test('summaryLine describes the board in a calm sentence', () => {
   assert.equal(summaryLine({ now: [], waiting: [] }), 'All clear. Nothing needs you right now.');
   assert.equal(summaryLine({ now: [{}], waiting: [] }), '1 thing to do now.');
@@ -201,9 +207,9 @@ test('plannedText says the block short: today just the times, another day with i
 
 test('taskLink opens the app on the task and pastes as a link named after it', () => {
   const link = taskLink('4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f', 'Fix <the> "bug" & ship');
-  assert.equal(link.text, 'todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f');
-  assert.equal(link.html, '<a href="todotracker://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f">Fix &lt;the&gt; &quot;bug&quot; &amp; ship</a>');
-  assert.equal(taskLink('x', '  ').html, '<a href="todotracker://task/x">Task</a>');
+  assert.equal(link.text, 'onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f');
+  assert.equal(link.html, '<a href="onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f">Fix &lt;the&gt; &quot;bug&quot; &amp; ship</a>');
+  assert.equal(taskLink('x', '  ').html, '<a href="onething://task/x">Task</a>');
 });
 
 test('energy: lightning per hour, and what the plan takes today against what there is', () => {

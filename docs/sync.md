@@ -16,7 +16,7 @@ turn sync off.
 
 ## How it works
 
-* On OneDrive and iCloud Drive, computers meet in **`Apps/TodoTrackerSync/<library>`**. Each computer writes only its own files
+* On OneDrive and iCloud Drive, computers meet in **`Apps/OneThingSync/<library>`**. Each computer writes only its own files
   there: `devices/<id>.json` (what its tasks folder holds) and `blobs/` (the contents, named by their hash; contents are
   written first, the list last, so a half-uploaded change is never read).
 * A gist (one per library) holds one file per computer (`device-<id>.json`, up to 9 MB including attachments: bigger tasks folders should sync through OneDrive or iCloud Drive). Each check sends the gist's **ETag**
@@ -31,7 +31,7 @@ turn sync off.
 
 ## Libraries and computers
 
-* A **library** is a set of tasks that syncs together. It is named after the tasks folder (`Todo Tracker` by default), so the usual folder on every computer meets the others, and a second tasks folder with another name stays separate. Change the name in the Sync panel to join or split them.
+* A **library** is a set of tasks that syncs together. It is named after the tasks folder (`One Thing` by default), so the usual folder on every computer meets the others, and a second tasks folder with another name stays separate. Change the name in the Sync panel to join or split them.
 * The Sync panel lists the **other computers** and when each last synced. **Forget** one you no longer use (or an old tasks folder of this computer) and it's no longer merged.
 
 ## Changes on more than one computer
@@ -48,7 +48,7 @@ Every computer remembers what it last agreed on with each other computer, and me
 * **Two versions that can't be merged** (a task created on both before they ever synced, a binary attachment changed
   on both): the other one is kept next to it as *"Title (from <computer>)"*.
 * **Deleted on one computer, changed on another:** the change wins (nothing you typed is lost). Deleted files go to
-  the tasks folder's `.todo-tracker/trash` (kept for 30 days).
+  the tasks folder's `.onething/trash` (kept for 30 days).
 * A computer remembers what it deleted for 180 days, so an old computer that comes back can't bring deleted tasks
   back. Computers not heard from for 180 days are no longer merged.
 
@@ -72,42 +72,37 @@ them). Places read come first in each sync, so the places written get what they 
 writing every place keeps them all the same (with a place only read or only written, a clash there can be settled right away, but later edits on both sides keep being merged against the last version both had). A place this computer stops writing to loses its copy of this computer's tasks, so nobody merges an old copy later. Choosing a single place again in **Sync with** goes back to one place.
 ## On a Mac
 
-The Mac app comes with Onething's server inside. It starts in the background with the app (and stops when the app
-quits), so the Mac uses the same tasks folder as everywhere else, `~/Documents/Todo Tracker`, and syncs it like a
+The Mac app comes with One Thing's server inside. It starts in the background with the app (and stops when the app
+quits), so the Mac uses the same tasks folder as everywhere else, `~/Documents/OneThing`, and syncs it like a
 Windows computer does:
 
 * **With Windows:** both need the same cloud. Install OneDrive on the Mac (it's used first, a work or school account
-  before a personal one), or iCloud for Windows on the PC. Both meet in `Apps/TodoTrackerSync/<library>`.
+  before a personal one), or iCloud for Windows on the PC. Both meet in `Apps/OneThingSync/<library>`.
 * **The first time,** the tasks the Mac app kept on its own (before it synced) move into the tasks folder and sync
   from there. They are added to the other computers' tasks, never replace them (a task already there stays as it
   is). The old file is kept as `board.json.migrated`. While the folder opens, changes wait a moment.
 * Version history needs git (Xcode's command line tools, or Homebrew's git); without it, history is off on the Mac.
-* **More:** the menu bar glance shows where the tasks are and **Open Onething…** opens the full window in the
+* **More:** the menu bar glance shows where the tasks are and **Open One Thing…** opens the full window in the
   browser (board, reports, Settings, the Sync panel).
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
-  (`~/Library/Logs/TodoTracker/server.log` says why). A downloaded, unsigned app may need
-  `xattr -dr com.apple.quarantine "/Applications/TodoTracker.app"` once.
+  (`~/Library/Logs/OneThing/server.log` says why). A downloaded, unsigned app may need
+  `xattr -dr com.apple.quarantine "/Applications/OneThing.app"` once.
 * **Android** syncs on its own, no computer needed: in the app, **Settings › Sync with your other devices** with a
   GitHub token (gist scope) and the same library name; on the computers, choose **GitHub gist** here. The phone is a
   device like any other in the gist (its own `device-<id>.json`) and is listed under the other devices
   ([guide](guide.md#sync-android-with-your-other-devices)).
-* **iPhone and iPad** sync on their own too ([below](#iphone-and-ipad)). Or (and Android) with the **Phones** extra they use a computer's: turn on
-  **Settings › Phones › Let phones connect** there, choose **Connect a phone**, and scan the QR code in the phone app
-  (on iPhone and iPad: **Settings › Computer › Connect to a computer…**; on Android: **Settings › Connect to a
-  computer**; [plugins.md](plugins.md#phones)). The phone then works on that computer's tasks folder (over Wi-Fi, or
-  anywhere with Tailscale), so it's in step with everything this page syncs. Away from both, a phone shows the tasks
-  as last read and changes wait ([iPhone and iPad](guide.md#use-your-computers-tasks-on-an-iphone-or-ipad),
-  [Android](guide.md#use-your-computers-tasks-on-android)). Without it, a phone keeps its tasks on the device (and keeps them, untouched,
-  while it's connected).
+* **iPhone and iPad** sync on their own too, through iCloud Drive or a gist ([below](#iphone-and-ipad)). Phones never
+  connect to a computer directly: they sync through the same places your computers do. Without sync, a phone keeps
+  its tasks on the device.
 
 ## iPhone and iPad
 
 An iPhone or iPad is a device like any computer here: it keeps a tasks folder of its own (inside the app, in
-`Application Support/TodoTracker/vault`), and syncs it with no computer running. Turn it on in **Settings › Sync ›
+`Application Support/OneThing/vault`), and syncs it with no computer running. Turn it on in **Settings › Sync ›
 Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-your-other-devices)):
 
-* **iCloud Drive:** you pick **iCloud Drive › Apps › TodoTrackerSync** once (or a folder holding it, or **Create it
-  here**); the app keeps access to it and meets the others in `TodoTrackerSync/<library>`, writing only its own
+* **iCloud Drive:** you pick **iCloud Drive › Apps › OneThingSync** once (or a folder holding it, or **Create it
+  here**); the app keeps access to it and meets the others in `OneThingSync/<library>`, writing only its own
   `devices/<id>.json` and `blobs/`. Files iCloud hasn't downloaded yet are asked for, and merged on a later sync.
   (OneDrive's folder in the Files app may work the same way; it isn't tried yet.)
 * **A gist:** a pasted GitHub token with the `gist` scope (kept in the Keychain), the same gist per library as the
@@ -131,7 +126,9 @@ Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-you
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,
-  `.todo-tracker` except the settings, order and activity), links that lead outside the folder, or files over 50 MB.
+  `.onething` except the settings, order and activity), links that lead outside the folder, or files over 50 MB.
+  A task that can't sync for now (over 50 MB, a link, or a name another computer can't use) stays on every computer
+  as it is: the Sync panel says which one and why, and it syncs again once it's fixed.
 * Paths and contents from other computers are checked (no `..`, contents must match their hash) before anything is
   written, and a file is only changed if it is still exactly what the merge was worked out from.
 * What sync remembers (the device id, what it agreed on, the contents a merge needs) is kept in the app's local data

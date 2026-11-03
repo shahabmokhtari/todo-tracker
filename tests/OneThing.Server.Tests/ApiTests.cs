@@ -1,0 +1,648 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json.Nodes;
+using OneThing.Core;
+
+namespace OneThing.Server.Tests;
+
+public sealed class ApiTests : IAsyncLifetime
+{
+    private ServerFixture _server = null!;
+    private HttpClient _client = null!;
+
+    public async ValueTask InitializeAsync()
+    {
+        _server = await ServerFixture.StartAsync();
+        _client = _server.OwnerClient();
+    }
+
+    public async ValueTask DisposeAsync() => await _server.DisposeAsync();
+
+    private Task<JsonNode> Dashboard(string? group = null) => _client.GetJson(group is null ? "/api/dashboard" : $"/api/dashboard?group={group}");
+
+    [Fact]
+    public async Task Created_task_shows_up_as_focus_on_dashboard()
+    {
+        var created = await _client.PostAsJsonAsync("/api/items", new { title = "Roll out feature X", priority = "critical", details = "A then B" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var item = await created.Json();
+
+        var dashboard = await Dashboard();
+
+        Assert.Equal("Roll out feature X", item["title"]!.GetValue<string>());
+        Assert.Equal("critical", item["priority"]!.GetValue<string>());
+        Assert.Equal(item.Id(), dashboard["focus"]!.Id());
+        Assert.Equal(["Roll out feature X"], dashboard["now"].Titles());
+        Assert.Equal(ServerFixture.T0, dashboard["serverTime"]!.GetValue<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task Invalid_input_maps_to_problem_details()
+    {
+        var blank = await _client.PostAsJsonAsync("/api/items", new { title = " " });
+        var missing = await _client.PostAsJsonAsync($"/api/items/{Guid.NewGuid()}/complete", new { });
+        var badPriority = await _client.PostAsJsonAsync("/api/items", new { title = "x", priority = "urgent-ish" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+        Assert.Equal("application/problem+json", blank.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, badPriority.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rollout_steps_are_gated_and_out_of_order_completion_conflicts()
+    {
+        var feature = await _client.PostJson("/api/items", new { title = "Feature A" });
+        var steps = await _client.PostJson($"/api/items/{feature.Id()}/steps", new { titles = new[] { "Ring 0", "Ring 1", "Ring 2" }, stepDelayMinutes = 1440 });
+        var ids = steps.AsArray().Select(s => s!.Id()).ToList();
+
+        var conflict = await _client.PostAsJsonAsync($"/api/items/{ids[1]}/complete", new { });
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+
+        await _client.PostJson($"/api/items/{ids[0]}/complete");
+        var dashboard = await Dashboard();
+        Assert.Empty(dashboard["now"]!.AsArray());
+        var waiting = Assert.Single(dashboard["waiting"]!.AsArray())!;
+        Assert.Equal("Ring 1", waiting["title"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddDays(1), waiting["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(["Feature A"], waiting["breadcrumb"]!.AsArray().Select(b => b!.GetValue<string>()));
+
+        _server.Time.Advance(TimeSpan.FromDays(1));
+        Assert.Equal(["Ring 1"], (await Dashboard())["now"].Titles());
+    }
+
+    [Fact]
+    public async Task Schedule_defers_with_reminder_and_clear_brings_it_back()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Feature B" });
+
+        var scheduled = await _client.PostJson($"/api/items/{item.Id()}/schedule", new { inMinutes = 60, notify = true, message = "Continue B" });
+
+        Assert.Equal(ServerFixture.T0.AddHours(1), scheduled["nextActionAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal("Continue B", scheduled["reminders"]![0]!["message"]!.GetValue<string>());
+        Assert.Equal(["Feature B"], (await Dashboard())["waiting"].Titles());
+
+        await _client.PostJson($"/api/items/{item.Id()}/schedule", new { clear = true });
+        Assert.Equal(["Feature B"], (await Dashboard())["now"].Titles());
+    }
+
+    [Fact]
+    public async Task Schedule_requires_a_time()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Feature B" });
+        var response = await _client.PostAsJsonAsync($"/api/items/{item.Id()}/schedule", new { notify = true });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Snooze_choices_and_rule_preview_come_from_the_server_clock()
+    {
+        var snooze = await _client.GetJson("/api/snooze?rule=fri%2014:30");
+
+        var ids = snooze["choices"]!.AsArray().Select(c => c!["id"]!.GetValue<string>()).ToList();
+        Assert.Equal(["15m", "1h", "3h", "evening", "tomorrow", "2d", "monday", "week", "month"], ids);
+        var week = snooze["choices"]!.AsArray().Single(c => c!["id"]!.GetValue<string>() == "week")!;
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), week["at"]!.GetValue<DateTimeOffset>());
+        Assert.Equal("In a week", week["label"]!.GetValue<string>());
+        Assert.False(string.IsNullOrEmpty(week["in"]!.GetValue<string>()));
+        Assert.Equal(new DateTimeOffset(2026, 1, 9, 14, 30, 0, TimeSpan.Zero), snooze["ruleAt"]!.GetValue<DateTimeOffset>());
+        Assert.Null(snooze["ruleProblem"]);
+    }
+
+    [Fact]
+    public async Task Snooze_preview_explains_a_rule_it_cannot_read()
+    {
+        var snooze = await _client.GetJson("/api/snooze?rule=someday%20maybe");
+
+        Assert.Null(snooze["ruleAt"]);
+        Assert.Contains("someday maybe", snooze["ruleProblem"]!.GetValue<string>());
+        Assert.Contains("next week", snooze["ruleProblem"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Schedule_takes_a_choice_or_a_typed_rule()
+    {
+        var a = await _client.PostJson("/api/items", new { title = "A" });
+        var b = await _client.PostJson("/api/items", new { title = "B" });
+
+        var byChoice = await _client.PostJson($"/api/items/{a.Id()}/schedule", new { choice = "week" });
+        var byRule = await _client.PostJson($"/api/items/{b.Id()}/schedule", new { rule = "next week" });
+
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), byChoice["nextActionAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(new DateTimeOffset(2026, 1, 12, 9, 0, 0, TimeSpan.Zero), byRule["nextActionAt"]!.GetValue<DateTimeOffset>());
+    }
+
+    [Fact]
+    public async Task Schedule_rejects_an_unknown_choice_or_unreadable_rule()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "A" });
+
+        var choice = await _client.PostAsJsonAsync($"/api/items/{item.Id()}/schedule", new { choice = "fortnight" });
+        var rule = await _client.PostAsJsonAsync($"/api/items/{item.Id()}/schedule", new { rule = "when pigs fly" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, choice.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, rule.StatusCode);
+        Assert.Contains("when pigs fly", await rule.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task After_another_task_waits_and_shows_what_it_waits_for_until_that_is_done()
+    {
+        var first = await _client.PostJson("/api/items", new { title = "Get the keys" });
+        var then = await _client.PostJson("/api/items", new { title = "Move in" });
+
+        var waiting = await _client.PostJson($"/api/items/{then.Id()}/after", new { afterId = first.Id() });
+        Assert.Equal(first.Id(), waiting["afterId"]!.GetValue<string>());
+
+        var dashboard = await Dashboard();
+        var card = Assert.Single(dashboard["waiting"]!.AsArray())!;
+        Assert.Equal("Move in", card["title"]!.GetValue<string>());
+        Assert.Equal(first.Id(), card["waitingForId"]!.GetValue<string>());
+        Assert.Equal("Get the keys", card["waitingForTitle"]!.GetValue<string>());
+
+        await _client.PostJson($"/api/items/{first.Id()}/complete");
+
+        var after = await Dashboard();
+        Assert.Contains("Move in", after["now"].Titles());
+        Assert.Empty(after["waiting"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task After_rejects_itself_cycles_and_a_missing_task()
+    {
+        var a = await _client.PostJson("/api/items", new { title = "A" });
+        var b = await _client.PostJson("/api/items", new { title = "B" });
+        await _client.PostJson($"/api/items/{a.Id()}/after", new { afterId = b.Id() });
+
+        var self = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { afterId = a.Id() });
+        var cycle = await _client.PostAsJsonAsync($"/api/items/{b.Id()}/after", new { afterId = a.Id() });
+        var missing = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { afterId = Guid.NewGuid() });
+        var none = await _client.PostAsJsonAsync($"/api/items/{a.Id()}/after", new { });
+
+        Assert.True(self.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict, self.StatusCode.ToString());
+        Assert.True(cycle.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict, cycle.StatusCode.ToString());
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+    }
+
+    [Fact]
+    public async Task Wait_candidates_are_only_tasks_it_can_wait_for()
+    {
+        var project = await _client.PostJson("/api/items", new { title = "Move house" });
+        var keys = await _client.PostJson("/api/items", new { title = "Get the keys" });
+        var box = await _client.PostJson("/api/items", new { title = "Pack a box", parentId = project.Id() });
+        var paint = await _client.PostJson("/api/items", new { title = "Paint the walls" });
+        await _client.PostJson($"/api/items/{paint.Id()}/after", new { afterId = project.Id() });
+
+        var nearby = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+        var found = (await _client.GetJson($"/api/items/{project.Id()}/wait-candidates?q=keys")).AsArray().Select(t => t!["title"]!.GetValue<string>()).ToList();
+
+        // Not itself, its subtask, or a task already waiting for it.
+        Assert.Equal(["Get the keys"], nearby);
+        Assert.Equal(["Get the keys"], found);
+        Assert.DoesNotContain(box["title"]!.GetValue<string>(), nearby);
+        Assert.NotNull(keys);
+    }
+
+    [Fact]
+    public async Task A_subtask_of_a_snoozed_task_says_its_parent_holds_it()
+    {
+        var trip = await _client.PostJson("/api/items", new { title = "Trip" });
+        var book = await _client.PostJson("/api/items", new { title = "Book hotel", parentId = trip.Id() });
+        await _client.PostJson($"/api/items/{trip.Id()}/schedule", new { inMinutes = 120 });
+
+        var item = await _client.GetJson($"/api/items/{book.Id()}");
+        var parent = await _client.GetJson($"/api/items/{trip.Id()}");
+
+        Assert.Equal("waiting", item["state"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), item["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), item["heldById"]!.GetValue<string>());
+        Assert.Equal("Trip", item["heldByTitle"]!.GetValue<string>());
+        Assert.Equal(ServerFixture.T0.AddHours(2), parent["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Null(parent["heldById"]);
+
+        // Its own snooze too: that's what it shows, and the parent still holds it.
+        await _client.PostJson($"/api/items/{book.Id()}/schedule", new { inMinutes = 30 });
+        var both = await _client.GetJson($"/api/items/{book.Id()}");
+        Assert.Equal(ServerFixture.T0.AddMinutes(30), both["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.Equal(trip.Id(), both["heldById"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Reminders_can_be_added_and_dismissed()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Feature B" });
+        var reminder = await _client.PostJson($"/api/items/{item.Id()}/reminders", new { at = ServerFixture.T0.AddMinutes(-1), message = "Now!" });
+
+        var dashboard = await Dashboard();
+        Assert.True(dashboard["focus"]!["needsAttention"]!.GetValue<bool>());
+        Assert.Equal("Now!", dashboard["focus"]!["reminderMessage"]!.GetValue<string>());
+
+        await _client.PostJson($"/api/items/{item.Id()}/reminders/{reminder.Id()}/dismiss");
+        Assert.False((await Dashboard())["focus"]!["needsAttention"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Notes_record_actor_and_source_and_appear_in_recent_notes()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Research" });
+        var browser = _server.Client(actor: "browser-extension");
+
+        var note = await browser.PostJson($"/api/items/{item.Id()}/notes", new { text = "Found the doc", sourceUrl = "https://learn.example/doc", sourceTitle = "Doc" });
+
+        Assert.Equal("browser", note["authorKind"]!.GetValue<string>());
+        var recent = (await Dashboard())["recentNotes"]![0]!;
+        Assert.Equal("Found the doc", recent["text"]!.GetValue<string>());
+        Assert.Equal("Research", recent["itemTitle"]!.GetValue<string>());
+        Assert.Equal("https://learn.example/doc", recent["sourceUrl"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Agent_actor_header_is_attributed()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Research" });
+        var agent = _server.Client(actor: "agent:copilot-cli");
+
+        var note = await agent.PostJson($"/api/items/{item.Id()}/notes", new { text = "Opened PR" });
+
+        Assert.Equal("agent", note["authorKind"]!.GetValue<string>());
+        Assert.Equal("Agent: copilot-cli", note["author"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task A_task_gets_an_icon_and_a_color_and_cards_show_them_or_the_first_labels_color()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Launch", icon = "🚀", labels = new[] { "Urgent" } });
+        var labelColor = (await Dashboard())["now"]![0]!["labels"]![0]!["color"]!.GetValue<string>();
+
+        var card = (await Dashboard())["now"]![0]!;
+        Assert.Equal(("🚀", null, labelColor), (card["icon"]!.GetValue<string>(), card["color"]?.GetValue<string>(), card["accent"]!.GetValue<string>()));
+
+        var colored = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { color = "#3B82F6" })).Json();
+        Assert.Equal(("#3b82f6", "#3b82f6"), (colored["color"]!.GetValue<string>(), colored["accent"]!.GetValue<string>()));
+
+        var bad = await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { color = "blue" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { icon = "", color = "" })).Json();
+        Assert.Null(cleared["icon"]);
+        Assert.Null(cleared["color"]);
+        Assert.Equal(labelColor, cleared["accent"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task The_plan_shows_blocks_deadlines_and_what_is_not_planned_and_keeps_its_settings_per_group()
+    {
+        var report = await _client.PostJson("/api/items", new { title = "Write the report", deadline = ServerFixture.T0.AddDays(1) });
+        await _client.PostJson("/api/items", new { title = "Answer mail" });
+
+        var planned = await _client.PostJson($"/api/items/{report.Id()}/plan", new { start = ServerFixture.T0.AddHours(2), minutes = 90 });
+        Assert.Equal(90, planned["plannedMinutes"]!.GetValue<int>());
+
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=7");
+        Assert.Equal("Write the report", plan["blocks"]![0]!["title"]!.GetValue<string>());
+        Assert.Equal(90, plan["blocks"]![0]!["minutes"]!.GetValue<int>());
+        Assert.Equal("Write the report", plan["deadlines"]![0]!["title"]!.GetValue<string>());
+        Assert.Equal(["Answer mail"], plan["unplanned"]!.AsArray().Select(t => t!["title"]!.GetValue<string>()));
+        Assert.Equal("week", plan["settings"]!["view"]!.GetValue<string>());
+
+        var saved = await (await _client.PutAsJsonAsync("/api/plan/settings", new { view = "day", hours = "full", workStart = 480, workEnd = 960, workDays = new[] { 1, 2, 3, 4 } })).Json();
+        Assert.Equal("day", saved["view"]!.GetValue<string>());
+        Assert.Equal("day", (await _client.GetJson("/api/plan"))["settings"]!["view"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/plan/settings", new { view = "month" })).StatusCode);
+
+        var off = await _client.PostJson($"/api/items/{report.Id()}/plan", new { });
+        Assert.Null(off["plannedAt"]);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync($"/api/items/{report.Id()}/plan", new { start = ServerFixture.T0, minutes = 1 })).StatusCode);
+    }
+
+    [Fact]
+    public async Task The_plan_lists_tasks_for_later_too_snoozed_and_repeating_with_when_they_come_back()
+    {
+        await _client.PostJson("/api/items", new { title = "Answer mail" });
+        var snoozed = await _client.PostJson("/api/items", new { title = "Renew passport" });
+        await _client.PostJson($"/api/items/{snoozed.Id()}/schedule", new { at = ServerFixture.T0.AddDays(2) });
+        var weekly = await _client.PostJson("/api/items", new { title = "Water the plants", repeat = "weekly" });
+        await _client.PostJson($"/api/items/{weekly.Id()}/complete", new { });
+
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=7");
+
+        Assert.Equal(["Answer mail"], plan["unplanned"]!.AsArray().Select(t => t!["title"]!.GetValue<string>()));
+        var later = plan["later"]!.AsArray();
+        Assert.Equal(["Renew passport", "Water the plants"], later.Select(t => t!["title"]!.GetValue<string>()));
+        Assert.Equal(ServerFixture.T0.AddDays(2), later[0]!["wakeAt"]!.GetValue<DateTimeOffset>());
+        Assert.StartsWith("every week", later[1]!["repeat"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.True(later[1]!["wakeAt"]!.GetValue<DateTimeOffset>() > ServerFixture.T0);
+    }
+
+    [Fact]
+    public async Task Energy_is_set_on_a_task_and_for_the_day_and_the_plan_and_dashboard_add_it_up()
+    {
+        var doc = await _client.PostJson("/api/items", new { title = "Design doc", energy = 2 });
+        Assert.Equal(2, doc["energy"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PatchAsJsonAsync($"/api/items/{doc.Id()}", new { energy = 4 })).StatusCode);
+        await _client.PostJson($"/api/items/{doc.Id()}/plan", new { start = ServerFixture.T0.AddHours(1), minutes = 90 });
+
+        var set = await (await _client.PutAsJsonAsync("/api/energy", new { perDay = 6 })).Json();
+        Assert.Equal((6, 3.0), (set["perDay"]!.GetValue<int>(), set["plannedToday"]!.GetValue<double>()));
+        Assert.Equal(3.0, (await Dashboard())["energy"]!["plannedToday"]!.GetValue<double>());
+        var plan = await _client.GetJson("/api/plan?from=2026-01-05&days=2");
+        Assert.Equal(6, plan["energy"]!["perDay"]!.GetValue<int>());
+        Assert.Equal(3.0, plan["energy"]!["days"]!["2026-01-05"]!.GetValue<double>());
+        Assert.Equal(2, plan["blocks"]![0]!["energy"]!.GetValue<int>());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/energy", new { perDay = 0 })).StatusCode);
+
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{doc.Id()}", new { energy = 0 })).Json();
+        Assert.Null(cleared["energy"]);
+        Assert.Equal(1.5, (await _client.GetJson("/api/energy"))["plannedToday"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public async Task A_repeating_task_moves_on_when_done_and_its_rule_can_change()
+    {
+        var bad = await _client.PostAsJsonAsync("/api/items", new { title = "Plants", repeat = "now and then" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var item = await _client.PostJson("/api/items", new { title = "Plants", repeat = "every 3 days", deadline = ServerFixture.T0.AddHours(2) });
+        Assert.Equal("every 3 days", item["repeat"]!.GetValue<string>());
+
+        var done = await _client.PostJson($"/api/items/{item.Id()}/complete", new { });
+        Assert.Null(done["completedAt"]);
+        Assert.True(done["deadline"]!.GetValue<DateTimeOffset>() > ServerFixture.T0.AddDays(2));
+        Assert.Equal(item.Id(), (await Dashboard())["doneToday"]![0]!["id"]!.GetValue<string>());
+
+        var weekly = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { repeat = "weekly" })).Json();
+        Assert.Equal("every week", weekly["repeat"]!.GetValue<string>());
+        var stopped = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { repeat = "" })).Json();
+        Assert.Null(stopped["repeat"]);
+    }
+
+    [Fact]
+    public async Task Patch_can_clear_step_delay_and_rejects_zero()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Rollout", sequential = true, stepDelayMinutes = 60 });
+
+        var zero = await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { stepDelayMinutes = 0 });
+        var cleared = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { clearStepDelay = true })).Json();
+
+        Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
+        Assert.Null(cleared["stepDelayMinutes"]);
+    }
+
+    [Fact]
+    public async Task Patch_updates_fields_and_delete_removes()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Draft", deadline = ServerFixture.T0.AddDays(1) });
+
+        var patched = await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}", new { title = "Final", priority = "high", clearDeadline = true })).Json();
+        Assert.Equal("Final", patched["title"]!.GetValue<string>());
+        Assert.Equal("high", patched["priority"]!.GetValue<string>());
+        Assert.Null(patched["deadline"]);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/items/{item.Id()}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/items/{item.Id()}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Complete_and_reopen_round_trip()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Ship" });
+
+        var done = await _client.PostJson($"/api/items/{item.Id()}/complete");
+        Assert.Equal("done", done["state"]!.GetValue<string>());
+        Assert.Empty((await Dashboard())["now"]!.AsArray());
+
+        var reopened = await _client.PostJson($"/api/items/{item.Id()}/reopen");
+        Assert.Equal("actionable", reopened["state"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Item_detail_includes_children_notes_and_path()
+    {
+        var parent = await _client.PostJson("/api/items", new { title = "Feature X" });
+        var child = await _client.PostJson("/api/items", new { title = "Feature A", parentId = parent.Id() });
+        await _client.PostJson($"/api/items/{child.Id()}/notes", new { text = "started" });
+
+        var detail = await _client.GetJson($"/api/items/{parent.Id()}");
+        var tree = await _client.GetJson("/api/items");
+
+        Assert.Equal("container", detail["state"]!.GetValue<string>());
+        var overview = (await _client.GetJson("/api/dashboard"))["overview"]!.AsArray();
+        Assert.True(overview.Single(o => o!["title"]!.GetValue<string>() == "Feature X")!["hasChildren"]!.GetValue<bool>());
+        Assert.Equal(["Feature A"], detail["children"].Titles());
+        Assert.Equal("started", detail["children"]![0]!["notes"]![0]!["text"]!.GetValue<string>());
+        Assert.Equal(["Feature X", "Feature A"], detail["children"]![0]!["path"]!.AsArray().Select(p => p!.GetValue<string>()));
+        Assert.Equal(["Feature X"], tree.Titles());
+    }
+
+    [Fact]
+    public async Task Quick_capture_parses_priority_and_defer()
+    {
+        var item = await _client.PostJson("/api/capture", new { text = "Check canary !! @2h #release" });
+
+        Assert.Equal("Check canary", item["title"]!.GetValue<string>());
+        Assert.Equal("critical", item["priority"]!.GetValue<string>());
+        Assert.Equal(["release"], item["tags"]!.AsArray().Select(t => t!.GetValue<string>()));
+        Assert.Equal(ServerFixture.T0.AddHours(2), item["nextActionAt"]!.GetValue<DateTimeOffset>());
+        Assert.Single(item["reminders"]!.AsArray());
+    }
+
+    [Fact]
+    public async Task Groups_filter_dashboard_and_support_crud_and_move()
+    {
+        var dashboard = await Dashboard();
+        var groups = dashboard["groups"]!.AsArray();
+        Assert.Equal(["Work", "Personal"], groups.Select(g => g!["name"]!.GetValue<string>()));
+        var work = groups[0]!.Id();
+        var personal = groups[1]!.Id();
+
+        await _client.PostJson("/api/items", new { title = "Work thing" });
+        var dentist = await _client.PostJson("/api/items", new { title = "Dentist", groupId = personal });
+        var hobby = await _client.PostJson("/api/groups", new { name = "Hobby", color = "#f97316" });
+
+        Assert.Equal(["Dentist"], (await Dashboard(personal))["now"].Titles());
+        Assert.Equal(1, (await Dashboard())["groups"]![1]!["now"]!.GetValue<int>());
+
+        await _client.PostJson($"/api/items/{dentist.Id()}/move", new { groupId = hobby.Id() });
+        Assert.Empty((await Dashboard(personal))["now"]!.AsArray());
+
+        var renamed = await (await _client.PatchAsJsonAsync($"/api/groups/{hobby.Id()}", new { name = "Fun", color = "#f97316" })).Json();
+        Assert.Equal("Fun", renamed["name"]!.GetValue<string>());
+
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync($"/api/groups/{hobby.Id()}?moveTo={work}")).StatusCode);
+        Assert.Equal(["Dentist", "Work thing"], (await Dashboard(work))["now"].Titles().Order().ToList());
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/groups", new { name = "work" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Timeline_lists_activity_newest_first_for_item_or_board()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Feature X" });
+        _server.Time.Advance(TimeSpan.FromMinutes(1));
+        await _client.PostJson($"/api/items/{item.Id()}/notes", new { text = "did a thing" });
+
+        var timeline = await _client.GetJson($"/api/items/{item.Id()}/timeline");
+        var all = await _client.GetJson("/api/timeline?limit=1");
+
+        Assert.Equal(["noteAdded", "created"], timeline.AsArray().Select(t => t!["kind"]!.GetValue<string>()));
+        Assert.Equal("Feature X", timeline[0]!["itemTitle"]!.GetValue<string>());
+        Assert.Single(all.AsArray());
+    }
+
+    [Fact]
+    public async Task Pomodoro_can_be_driven_through_the_api()
+    {
+        var item = await _client.PostJson("/api/items", new { title = "Deep work" });
+
+        var started = await _client.PostJson("/api/pomodoro/start", new { itemId = item.Id() });
+        Assert.Equal("focus", started["phase"]!.GetValue<string>());
+        Assert.Equal("Deep work", started["itemTitle"]!.GetValue<string>());
+        Assert.Equal(1500, started["remainingSeconds"]!.GetValue<int>());
+        // The web app predicts the break that follows; it needs the same rule as the timer.
+        Assert.Equal(4, started["focusesBeforeLongBreak"]!.GetValue<int>());
+
+        _server.Time.Advance(TimeSpan.FromMinutes(5));
+        var paused = await _client.PostJson("/api/pomodoro/pause");
+        Assert.False(paused["running"]!.GetValue<bool>());
+        Assert.Equal(1200, paused["remainingSeconds"]!.GetValue<int>());
+
+        Assert.True((await _client.PostJson("/api/pomodoro/resume"))["running"]!.GetValue<bool>());
+        Assert.Equal("shortBreak", (await _client.PostJson("/api/pomodoro/skip"))["phase"]!.GetValue<string>());
+        Assert.Equal("idle", (await _client.PostJson("/api/pomodoro/reset"))["phase"]!.GetValue<string>());
+        Assert.Equal("idle", (await Dashboard())["pomodoro"]!["phase"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Export_returns_the_versioned_board_document()
+    {
+        await _client.PostJson("/api/items", new { title = "Backup me" });
+
+        var export = await _client.GetJson("/api/export");
+
+        Assert.Equal(1, export["schemaVersion"]!.GetValue<int>());
+        Assert.Equal(["Backup me"], export["items"].Titles());
+    }
+
+    [Fact]
+    public async Task Teams_settings_are_validated_and_masked()
+    {
+        var bad = await _client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "http://insecure.example/hook" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        var saved = await (await _client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "https://prod.example.webhook.office.com/hook?sig=secret" })).Json();
+        var read = await _client.GetJson("/api/settings");
+
+        Assert.True(saved["teamsConfigured"]!.GetValue<bool>());
+        Assert.True(read["teamsConfigured"]!.GetValue<bool>());
+        Assert.DoesNotContain("secret", read.ToJsonString(), StringComparison.Ordinal);
+
+        var cleared = await (await _client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "" })).Json();
+        Assert.False(cleared["teamsConfigured"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Tags_in_use_are_listed_with_how_many_open_tasks_have_them()
+    {
+        await _client.PostJson("/api/items", new { title = "A", tags = new[] { "deep work", "q3" } });
+        await _client.PostJson("/api/items", new { title = "B", tags = new[] { "Deep Work" } });
+        var done = await _client.PostJson("/api/items", new { title = "C", tags = new[] { "old" } });
+        await _client.PostJson($"/api/items/{done.Id()}/complete");
+
+        var tags = (await _client.GetJson("/api/tags")).AsArray();
+
+        Assert.Equal([("deep work", 2), ("q3", 1)], tags.Select(t => (t!["name"]!.GetValue<string>(), t!["count"]!.GetValue<int>())));
+    }
+
+    [Fact]
+    public async Task The_theme_is_one_choice_for_every_window()
+    {
+        var store = _server.App.Services.GetRequiredService<SettingsStore>();
+        var told = new List<string>();
+        store.ThemeChanged += (_, theme) => told.Add(theme);
+        Assert.Equal("system", (await _client.GetJson("/api/settings"))["theme"]!.GetValue<string>());
+
+        var saved = await (await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "dark" })).Json();
+
+        Assert.Equal("dark", saved["theme"]!.GetValue<string>());
+        Assert.Equal("dark", (await _client.GetJson("/api/settings"))["theme"]!.GetValue<string>());
+        Assert.Equal(["dark"], told); // the desktop sidebar follows
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "purple" })).StatusCode);
+        // Changing the theme leaves other settings alone.
+        await _client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "https://prod.example.webhook.office.com/hook" });
+        await _client.PutAsJsonAsync("/api/settings/theme", new { theme = "light" });
+        Assert.True((await _client.GetJson("/api/settings"))["teamsConfigured"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Connection_info_exposes_mcp_config_for_agents()
+    {
+        var info = await _client.GetJson("/api/connection");
+
+        Assert.EndsWith("/mcp", info["mcpUrl"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Contains(ServerFixture.Token, info["mcpConfig"]!.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Connect_lists_ready_made_setups_for_ai_apps()
+    {
+        await using var server = await ServerFixture.StartAsync(o => o.CliPath = @"C:\Program Files\One Thing\cli\onething.exe");
+        using var client = server.OwnerClient();
+
+        var connect = await client.GetJson("/api/plugins/connect-ai");
+
+        var setups = connect["setups"]!.AsArray().ToDictionary(s => s!["id"]!.GetValue<string>(), s => s!);
+        Assert.Contains("claude-code", setups.Keys);
+        Assert.Equal("claude mcp add onething --scope user -- \"C:\\Program Files\\One Thing\\cli\\onething.exe\" mcp", setups["claude-code"]["snippet"]!.GetValue<string>());
+
+        // JSON snippets are valid JSON with the path escaped.
+        foreach (var id in new[] { "copilot-cli", "claude-desktop", "vscode" })
+        {
+            var snippet = System.Text.Json.Nodes.JsonNode.Parse(setups[id]["snippet"]!.GetValue<string>())!;
+            Assert.Contains("onething.exe", snippet.ToJsonString(), StringComparison.Ordinal);
+        }
+
+        Assert.Contains(ServerFixture.Token, setups["http"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+        var terminal = setups["terminal"]["snippet"]!.GetValue<string>();
+        Assert.Contains("add 'Renew passport !! due:7d #admin'", terminal, StringComparison.Ordinal);
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.StartsWith("& \"C:\\Program Files", terminal, StringComparison.Ordinal);
+        }
+        Assert.Contains("/openapi/swagger2.json", setups["cloud"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_command_next_to_the_app_is_preferred_over_the_path()
+    {
+        var dir = Directory.CreateTempSubdirectory("onething-find-").FullName;
+        string Exe(string folder, string name) => Path.Combine(folder, OperatingSystem.IsWindows() ? name + ".exe" : name);
+        try
+        {
+            Assert.Equal("onething", AiSetups.FindCli(dir));
+
+            // The short name alone works, the full name wins, and the cli folder (where the Windows app keeps it) comes first.
+            File.WriteAllText(Exe(dir, "ot"), string.Empty);
+            Assert.Equal(Exe(dir, "ot"), AiSetups.FindCli(dir));
+            File.WriteAllText(Exe(dir, "onething"), string.Empty);
+            Assert.Equal(Exe(dir, "onething"), AiSetups.FindCli(dir));
+            var cli = Directory.CreateDirectory(Path.Combine(dir, "cli")).FullName;
+            File.WriteAllText(Exe(cli, "onething"), string.Empty);
+            Assert.Equal(Exe(cli, "onething"), AiSetups.FindCli(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Board_is_persisted_to_the_data_directory()
+    {
+        await _client.PostJson("/api/items", new { title = "Durable" });
+
+        var json = await _server.Store.ReadAsync(BoardSerializer.Serialize);
+
+        Assert.Contains("Durable", json, StringComparison.Ordinal);
+        Assert.Contains("# Durable", await File.ReadAllTextAsync(Path.Combine(_server.VaultDirectory, "Work", "Durable.md")), StringComparison.Ordinal);
+    }
+}

@@ -1,5 +1,5 @@
 // A stand-in for a full-screen window, compiled by fullscreen.system-test.ps1 (Windows PowerShell's C# 5 compiler).
-// Usage: tt-fake-rdp.exe <class> <x> <y> <width> <height> [resist]
+// Usage: onething-fake-rdp.exe <class> <x> <y> <width> <height> [resist]
 //   class "rdp": registers TscShellContainerClass, the Remote Desktop clients' top-level window class.
 //   resist: refuses to be resized (like a client that goes straight back to full screen).
 using System;

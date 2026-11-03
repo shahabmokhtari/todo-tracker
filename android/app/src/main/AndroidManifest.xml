@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Reaching a connected computer (its HTTPS phone port, on Wi-Fi or Tailscale). -->
+    <!-- Sync with your other devices (GitHub), and Send feedback. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Reminders, and when a focus session or a break ends with the app closed (asked for at the first snooze or focus). -->
@@ -21,7 +20,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
-        android:theme="@style/Theme.TodoTracker">
+        android:theme="@style/Theme.OneThing">
         <activity
             android:name=".app.MainActivity"
             android:exported="true"
@@ -31,19 +30,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- todotracker://task/<id> links open the task (TaskLinks); todotracker://pair?… connects to a computer (PhoneLink). -->
+            <!-- onething://task/<id> links open the task (TaskLinks). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="todotracker" />
+                <data android:scheme="onething" />
             </intent-filter>
         </activity>
-        <!-- Scanning a computer's pairing code (Settings › Connect to a computer), upright or sideways. -->
-        <activity
-            android:name="com.journeyapps.barcodescanner.CaptureActivity"
-            android:screenOrientation="fullSensor"
-            tools:replace="screenOrientation" />
         <receiver android:name=".app.FocusAlarmReceiver" android:exported="false" />
         <!-- A reminder is due (or a snooze ends), and Mark done / In an hour on its notification. -->
         <receiver android:name=".app.ReminderAlarmReceiver" android:exported="false" />
@@ -66,6 +60,12 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <!-- The phone's time zone changed (a trip): the tasks' local times and the reminders follow. -->
+        <receiver android:name=".app.TimeZoneReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

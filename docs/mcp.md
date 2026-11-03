@@ -1,14 +1,14 @@
 # MCP tools
 
-<!-- Made from the code by tests/TodoTracker.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/TodoTracker.Cli.Tests --filter ReferenceDocsTests`. -->
+<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->
 
-Onething's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
+One Thing's MCP server is `onething mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
 the app runs (with the API token). Setup for each AI app: [ai-connectors.md](ai-connectors.md). Changes are
 attributed to the agent and versioned; there is deliberately no tool that deletes a task.
 
 ## What the server tells agents when they connect
 
-> Onething is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.
+> One Thing is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.
 > - Start with get_dashboard (what to do now, what's waiting). Find tasks with search_tasks (#tag, label:x, group:work, is:done).
 > - Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.
 > - Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).
@@ -16,7 +16,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 > - Groups are tabs such as Work and Personal. Tags are free-form; labels are a curated colored set (list_labels).
 > - Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).
 > - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.
-> - Every task has a link (todotracker://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
+> - Every task has a link (onething://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
 > - Hooks (add_hook) run commands when things happen; one you add waits until the user allows it: tell them so.
 > - Tasks are markdown files in a folder the user may also open in Obsidian; vault_info explains the format.
 
@@ -27,7 +27,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`get_dashboard`](#get_dashboard) | What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes). |
 | [`list_tasks`](#list_tasks) | Full task tree (optionally for one group), including ids needed by the other tools. |
 | [`search_tasks`](#search_tasks) | Find tasks and subtasks. |
-| [`get_task`](#get_task) | One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (todotracker://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). |
+| [`get_task`](#get_task) | One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (onething://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). |
 | [`create_task`](#create_task) | Create a task (or a subtask when parentId is set). |
 | [`add_steps`](#add_steps) | Add ordered steps under a task. |
 | [`add_note`](#add_note) | Log progress on a task ("did X, next Y"). |
@@ -56,10 +56,10 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`stop_timer`](#stop_timer) | Stop the timer (whatever task it is on). |
 | [`log_time`](#log_time) | Record time already spent on a task (e.g. a meeting): when it started and for how many minutes (at most 24 hours). |
 | [`get_time_report`](#get_time_report) | Where the time went between two local dates (yyyy-MM-dd, inclusive; default the last 4 weeks): seconds tracked per day, group and task, focus sessions, tasks done, streaks, and a timeline. |
-| [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in Onething, and whether each is on, off or waiting for approval. |
+| [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in One Thing, and whether each is on, off or waiting for approval. |
 | [`add_hook`](#add_hook) | Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. |
 | [`set_hook_enabled`](#set_hook_enabled) | Switch a hook on or off (by its id from list_hooks). |
-| [`remove_hook`](#remove_hook) | Remove a hook (by its id from list_hooks). |
+| [`remove_hook`](#remove_hook) | Remove a hook you added (by its id from list_hooks). |
 
 ### `get_dashboard`
 
@@ -89,7 +89,7 @@ Find tasks and subtasks. Words match title or details; #tag (nested tags too), l
 
 ### `get_task`
 
-One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (todotracker://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). *(read-only)*
+One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (onething://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). *(read-only)*
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -187,7 +187,7 @@ Add a reminder without deferring the task.
 
 ### `complete_task`
 
-Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that). *(idempotent)*
+Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that), so don't call it twice for one repeating task.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -359,11 +359,11 @@ Where the time went between two local dates (yyyy-MM-dd, inclusive; default the 
 
 ### `list_hooks`
 
-The hooks set up on this computer: what runs (a command or a web address) when something happens in Onething, and whether each is on, off or waiting for approval. *(read-only)*
+The hooks set up on this computer: what runs (a command or a web address) when something happens in One Thing, and whether each is on, off or waiting for approval. *(read-only)*
 
 ### `add_hook`
 
-Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: Onething asks them (a notification or a prompt in the app; also Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
+Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: One Thing asks them (a notification or a prompt in the app; also Settings › Hooks, or ot hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -380,17 +380,17 @@ Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event
 
 ### `set_hook_enabled`
 
-Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.
+Switch a hook on or off (by its id from list_hooks). You can only switch hooks you added yourself; the user's own hooks are theirs to switch. A hook waiting for approval still needs the user's approval to run.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| `hookId` | text | required | The hook's id, from list_hooks. |
+| `hookId` | text | required | The hook's id, from list_hooks (one you added). |
 | `enabled` | true/false | required | On (true) or off (false). |
 
 ### `remove_hook`
 
-Remove a hook (by its id from list_hooks). *(removes something)*
+Remove a hook you added (by its id from list_hooks). The user's own hooks can only be removed by them, in Settings › Hooks. *(removes something)*
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| `hookId` | text | required | The hook's id, from list_hooks. |
+| `hookId` | text | required | The hook's id, from list_hooks (one you added). |

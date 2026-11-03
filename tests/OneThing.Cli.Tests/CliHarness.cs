@@ -1,0 +1,145 @@
+using System.Text.Json.Nodes;
+using Microsoft.Extensions.Time.Testing;
+
+namespace OneThing.Cli.Tests;
+
+public sealed record CliResult(int ExitCode, string Out, string Error)
+{
+    public JsonNode Json => JsonNode.Parse(Out) ?? throw new InvalidOperationException("no JSON output");
+}
+
+/// <summary>Runs <c>ot</c> in-process against a temp data folder (vault in <c>&lt;data&gt;/vault</c>).</summary>
+public sealed class CliHarness : IDisposable
+{
+    public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
+
+    public CliHarness(bool history = false)
+    {
+        DataDirectory = Path.Combine(Path.GetTempPath(), "onething-cli-" + Guid.NewGuid().ToString("N"));
+        History = history;
+    }
+
+    public string DataDirectory { get; }
+
+    public string VaultDirectory => Path.Combine(DataDirectory, "vault");
+
+    public FakeTimeProvider Time { get; } = new(T0);
+
+    public bool History { get; }
+
+    public string WorkingDirectory { get; set; } = Path.GetTempPath();
+
+    /// <summary>Locks and history live here instead of the real local app data.</summary>
+    public string StateDirectory => Path.Combine(DataDirectory, "local");
+
+    public string Git { get; init; } = "git";
+
+    /// <summary>Links <c>ot open</c> asked the system to open.</summary>
+    public List<string> OpenedLinks { get; } = [];
+
+    public Task<CliResult> Run(params string[] args) => RunWithInput(string.Empty, args);
+
+    public async Task<CliResult> RunWithInput(string input, params string[] args)
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        using var reader = new StringReader(input);
+        var context = new CliContext
+        {
+            Out = output,
+            Error = error,
+            In = reader,
+            Time = Time,
+            TimeZone = TimeZoneInfo.Utc,
+            DataDirectory = DataDirectory,
+            VaultPath = VaultDirectory,
+            History = History,
+            WorkingDirectory = WorkingDirectory,
+            LockDirectory = StateDirectory,
+            Git = Git,
+            Agent = null,
+            OpenLink = OpenedLinks.Add,
+        };
+        var code = await CliApp.RunAsync(args, context);
+        return new CliResult(code, output.ToString(), error.ToString());
+    }
+
+    /// <summary>Runs a command that must succeed and returns its JSON output.</summary>
+    public async Task<JsonNode> Json(params string[] args)
+    {
+        var result = await Run([.. args, "--json"]);
+        Assert.True(result.ExitCode == 0, $"ot {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
+        return result.Json;
+    }
+
+    public async Task<string> Ok(params string[] args)
+    {
+        var result = await Run(args);
+        Assert.True(result.ExitCode == 0, $"ot {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
+        return result.Out;
+    }
+
+    public void Dispose()
+    {
+        ForgetDefaultLock(VaultDirectory);
+        try
+        {
+            if (Directory.Exists(DataDirectory))
+            {
+                foreach (var file in Directory.EnumerateFiles(DataDirectory, "*", SearchOption.AllDirectories))
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+
+                Directory.Delete(DataDirectory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// A test that starts <c>onething</c> as its own process can't point its locks at a temp folder: removes the lock
+    /// file it left in local app data for this test's (unique, temporary) tasks folder. Same name as VaultFiles.LockPath.
+    /// </summary>
+    public static void ForgetDefaultLock(string vault)
+    {
+        var key = Path.GetFullPath(vault).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!OperatingSystem.IsLinux())
+        {
+            key = key.ToUpperInvariant();
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)))[..16];
+        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var path = Path.Combine(root, "OneThing", "locks", $"vault-{hash}.lock");
+        try
+        {
+            if (!string.IsNullOrEmpty(root))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+}
+
+internal static class JsonExtensions
+{
+    public static string Str(this JsonNode? node, string name) => node![name]!.GetValue<string>();
+
+    public static Guid Id(this JsonNode? node) => Guid.Parse(node.Str("id"));
+
+    public static List<string> Strings(this JsonNode? node) => node!.AsArray().Select(n => n!.GetValue<string>()).ToList();
+
+    public static List<string> Titles(this JsonNode? node) => node!.AsArray().Select(n => n.Str("title")).ToList();
+}

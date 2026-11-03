@@ -2,7 +2,7 @@
 # real Windows shell. A stand-in full-screen window (FakeFullScreen.cs) plays the part of the other app; the app is told
 # that only the stand-in is a Remote Desktop client, so a real session on the test machine is never resized.
 # It covers the primary screen and takes the keyboard focus for about half a minute: don't run it while you work.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-fullscreen-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("onething-fullscreen-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -22,11 +22,11 @@ public static class Native {
   public struct RECT { public int L, T, R, B; }
   // Top-level windows, frontmost first.
   public static List<IntPtr> ZOrder() { var list = new List<IntPtr>(); EnumWindows((h, l) => { list.Add(h); return true; }, IntPtr.Zero); return list; }
-  // The process's top-level window titled "Onething", shown or hidden.
+  // The process's top-level window titled "One Thing", shown or hidden.
   public static IntPtr Sidebar(int pid) {
     var found = IntPtr.Zero;
     EnumWindows((h, l) => { int p; GetWindowThreadProcessId(h, out p); var s = new System.Text.StringBuilder(64); GetWindowText(h, s, 64);
-      if (p == pid && s.ToString() == "Onething") { found = h; return false; } return true; }, IntPtr.Zero);
+      if (p == pid && s.ToString() == "One Thing") { found = h; return false; } return true; }, IntPtr.Zero);
     return found;
   }
 }
@@ -52,7 +52,7 @@ function TryFind($scope, $name, $type, $tries) {
 function SidebarElement($proc) {
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)),
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Onething sidebar')))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'One Thing sidebar')))
   for ($i = 0; $i -lt 100; $i++) { $w = (Root).FindFirst([System.Windows.Automation.TreeScope]::Children, $cond); if ($w) { return $w }; Start-Sleep -Milliseconds 200 }
   throw 'Sidebar window did not appear'
 }
@@ -81,9 +81,9 @@ function ForeignFullScreen($exclude) {
 }
 
 # The stand-in full-screen app (Windows PowerShell compiles it; PowerShell 7's Add-Type can't make an exe).
-$fakeDir = Join-Path $env:TEMP ("tt-fake-" + [guid]::NewGuid().ToString('N'))
+$fakeDir = Join-Path $env:TEMP ("onething-fake-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $fakeDir | Out-Null
-$fakeExe = Join-Path $fakeDir 'tt-fake-rdp.exe'
+$fakeExe = Join-Path $fakeDir 'onething-fake-rdp.exe'
 $source = Join-Path $PSScriptRoot 'FakeFullScreen.cs'
 powershell.exe -NoProfile -Command "Add-Type -Path '$source' -OutputAssembly '$fakeExe' -OutputType ConsoleApplication"
 if (-not (Test-Path $fakeExe)) { throw 'Could not build the stand-in full-screen app' }
@@ -107,8 +107,8 @@ function CloseApp($proc) {
 
 $original = WorkArea; $screen = Bounds
 Write-Host "Primary screen $screen, work area $original"
-$env:TODOTRACKER_CLOUD = 'off'
-$env:TODOTRACKER_REMOTE_DESKTOP_CLIENTS = 'tt-fake-rdp'
+$env:ONETHING_CLOUD = 'off'
+$env:ONETHING_REMOTE_DESKTOP_CLIENTS = 'onething-fake-rdp'
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = SidebarElement $proc

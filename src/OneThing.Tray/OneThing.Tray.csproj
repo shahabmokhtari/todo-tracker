@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- One Thing in the system tray on Linux (it also runs on Windows and macOS): runs the server, opens the full
+       window in the browser, quick add, the focus timer. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Not "onething": that is the command line (onething, or ot for short), shipped next to it. -->
+    <AssemblyName>onething-tray</AssemblyName>
+    <RootNamespace>OneThing.Tray</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <ProjectReference Include="..\OneThing.Server\OneThing.Server.csproj" />
+    <ProjectReference Include="..\OneThing.Desktop\OneThing.Desktop.csproj" />
+    <!-- The onething command (and ot) next to the app, so AI apps can launch "onething mcp". -->
+    <ProjectReference Include="..\OneThing.Cli\OneThing.Cli.csproj" />
+    <InternalsVisibleTo Include="OneThing.Tray.Tests" />
+  </ItemGroup>
+</Project>

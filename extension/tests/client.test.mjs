@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { browserName, createClient, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
+import { browserName, connect, connectionLost, createClient, feedbackOn, newest, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
 
 function fakeFetch(responses = {}) {
   const calls = [];
@@ -28,7 +28,18 @@ test('client sends bearer token and browser actor on every request', async () =>
   const { url, init } = fetch.calls[0];
   assert.equal(url, 'http://127.0.0.1:5317/api/dashboard');
   assert.equal(init.headers.Authorization, 'Bearer abc');
-  assert.equal(init.headers['X-TodoTracker-Actor'], 'browser-extension');
+  assert.equal(init.headers['X-OneThing-Actor'], 'browser-extension');
+});
+
+test('Send feedback shows only while the feedback extra is on in One Thing', async () => {
+  const on = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 200, body: [{ id: 'teams', enabled: true }, { id: 'feedback', enabled: true }] } }) });
+  const off = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 200, body: [{ id: 'feedback', enabled: false }] } }) });
+  // An older One Thing that doesn't let the browser read its extras: no button that might lead nowhere.
+  const older = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 403, body: {} } }) });
+
+  assert.equal(await feedbackOn(on), true);
+  assert.equal(await feedbackOn(off), false);
+  assert.equal(await feedbackOn(older), false);
 });
 
 test('dashboard can be filtered by group', async () => {
@@ -105,7 +116,7 @@ test('pageSource only attaches http(s) pages', () => {
 
 test('extension format.js and icons.js are exact copies of the web ones (no drift)', () => {
   for (const file of ['format.js', 'icons.js']) {
-    const web = readFileSync(new URL(`../../src/TodoTracker.Server/wwwroot/js/${file}`, import.meta.url), 'utf8');
+    const web = readFileSync(new URL(`../../src/OneThing.Server/wwwroot/js/${file}`, import.meta.url), 'utf8');
     const ext = readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8');
     assert.equal(ext.replace(/\r\n/g, '\n'), web.replace(/\r\n/g, '\n'), file);
   }
@@ -118,17 +129,17 @@ test('manifest only requests loopback host access', () => {
   assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
 });
 
-test('pairing trades the code shown in Onething for the token (no token to copy)', async () => {
+test('pairing trades the code shown in One Thing for the token (no token to copy)', async () => {
   const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 200, body: { token: 'tok-123' } } });
 
   const token = await pair({ serverUrl: 'http://127.0.0.1:5317/', code: ' 123 456 ', name: 'Edge on Windows', fetch });
 
   assert.equal(token, 'tok-123');
   assert.equal(fetch.calls[0].url, 'http://127.0.0.1:5317/api/plugins/browser-extension/claim');
-  // The name is what Onething lists under paired browsers (to take one back).
+  // The name is what One Thing lists under paired browsers (to take one back).
   assert.deepEqual(fetch.calls[0].body, { code: '123456', name: 'Edge on Windows' });
   // A custom header: a web page can't send it without the server's permission, so it can't claim codes.
-  assert.equal(fetch.calls[0].init.headers['X-TodoTracker-Client'], 'browser-extension');
+  assert.equal(fetch.calls[0].init.headers['X-OneThing-Client'], 'browser-extension');
 });
 
 test('a wrong or old pairing code says what to do', async () => {
@@ -136,4 +147,36 @@ test('a wrong or old pairing code says what to do', async () => {
 
   await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '000000', fetch }), /didn.t work/);
   await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '12', fetch }), /6 digits/);
+});
+test('pairing while the Browser extension extra is off says to switch it on', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 404, body: { detail: 'The Browser extension extra is off.' } } });
+
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '123456', fetch }), /switched off in One Thing.*Settings › Extras/);
+});
+
+test('a pasted token is checked with One Thing before it is kept', async () => {
+  const rejected = fakeFetch({ 'GET /api/dashboard': { status: 401 } });
+  await assert.rejects(connect({ serverUrl: 'http://127.0.0.1:5317', token: 'wrong', fetch: rejected }), /didn’t accept that token/);
+  assert.equal(rejected.calls.length, 1);
+
+  const fine = fakeFetch({ 'GET /api/dashboard': { status: 200, body: { now: [] } } });
+  const client = await connect({ serverUrl: 'http://127.0.0.1:5317', token: 'right', fetch: fine });
+  assert.equal(typeof client.dashboard, 'function');
+  assert.equal(fine.calls[0].init.headers.Authorization, 'Bearer right');
+});
+
+test('a late answer to an older refresh is dropped, and so is its error', async () => {
+  const later = (ms, value, fail = false) => new Promise((resolve, reject) => { setTimeout(() => (fail ? reject(new Error(value)) : resolve(value)), ms); });
+  const load = newest(later);
+  const old = load(30, 'All');
+  const failing = load(20, 'gone', true);
+  const fresh = load(1, 'Work');
+  assert.deepEqual(await fresh, { current: true, value: 'Work' });
+  assert.deepEqual(await old, { current: false });
+  assert.deepEqual(await failing, { current: false });
+});
+
+test('a connection that stopped working says what to check', () => {
+  assert.match(connectionLost(), /Browser extension extra/);
+  assert.match(connectionLost(), /new pairing code/);
 });

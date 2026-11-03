@@ -1,5 +1,5 @@
 // Pure formatting helpers shared by the dashboard, report page, and browser extension.
-// Keep in sync with TodoTracker.Core.RelativeTime (C#) and RelativeTime.swift.
+// Keep in sync with OneThing.Core.RelativeTime (C#) and RelativeTime.swift.
 
 const PRIORITIES = {
   low: { label: 'Low', color: '#94a3b8', rank: 0 },
@@ -130,7 +130,8 @@ export function energyLine(energy) {
     : `⚡ ${n(energy.plannedToday)} of ${energy.perDay} planned today.`;
 }
 
-export function metaChips(card, { waiting = false, now = new Date(), energy = false, notes = true } = {}) {
+/** A card's facts as chips. `plan: false` (the Plan extra is off) leaves out when it's planned. */
+export function metaChips(card, { waiting = false, now = new Date(), energy = false, notes = true, plan = true } = {}) {
   const chips = [];
   if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
   const step = stepLabel(card);
@@ -142,7 +143,7 @@ export function metaChips(card, { waiting = false, now = new Date(), energy = fa
       ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }
       : { text: `due ${relativeTime(card.deadline, now)}`, tone: 'warn' });
   }
-  if (card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
+  if (plan && card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
   if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
   if (energy && card.energy) chips.push({ text: energyMarks(card.energy), tone: 'energy' });
   if (notes && card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });
@@ -222,7 +223,7 @@ export function obsidianLink({ url, installed, userAgent = '', touchPoints = 0 }
  * pasting into chat, mail, or a note shows its title.
  */
 export function taskLink(id, title = '') {
-  const url = `todotracker://task/${encodeURIComponent(id)}`;
+  const url = `onething://task/${encodeURIComponent(id)}`;
   const name = (title || '').trim() || 'Task';
   const escaped = name.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   return { url, text: url, html: `<a href="${url}">${escaped}</a>` };

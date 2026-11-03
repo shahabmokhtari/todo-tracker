@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { moveTo, step, drop, beforeOf, changed } from '../../src/TodoTracker.Server/wwwroot/js/order.js';
+import { moveTo, step, drop, beforeOf, changed } from '../../src/OneThing.Server/wwwroot/js/order.js';
 
 const ids = ['a', 'b', 'c', 'd'];
 

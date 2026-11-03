@@ -1,12 +1,12 @@
 {
   "manifest_version": "0.3",
-  "name": "todo-tracker",
-  "display_name": "Onething",
-  "version": "1.0.0",
+  "name": "onething",
+  "display_name": "One Thing",
+  "version": "2.0.0",
   "description": "Your ADHD-friendly task list: see what to do now, capture and organize tasks, log progress, defer work.",
-  "long_description": "Onething keeps your tasks as markdown files (an Obsidian vault works) and helps you focus on one next action. This extension lets Claude read your dashboard, capture tasks you mention, break work into steps, log progress, defer what can wait, and finish what is done. Every change is attributed to Claude and versioned, so it can be undone. It uses the same tasks as the Onething app, whether or not the app is running.",
+  "long_description": "One Thing keeps your tasks as markdown files (an Obsidian vault works) and helps you focus on one next action. This extension lets Claude read your dashboard, capture tasks you mention, break work into steps, log progress, defer what can wait, and finish what is done. Every change is attributed to Claude and versioned, so it can be undone. It uses the same tasks as the One Thing app, whether or not the app is running.",
   "author": {
-    "name": "Onething",
+    "name": "One Thing",
     "url": "https://github.com/shahabmokhtari/todo-tracker"
   },
   "homepage": "https://github.com/shahabmokhtari/todo-tracker",
@@ -14,16 +14,16 @@
   "icon": "icon.png",
   "server": {
     "type": "binary",
-    "entry_point": "server/tt",
+    "entry_point": "server/onething",
     "mcp_config": {
-      "command": "${__dirname}/server/tt",
+      "command": "${__dirname}/server/onething",
       "args": ["mcp"],
       "env": {
-        "TODOTRACKER_VAULT": "${user_config.tasks_folder}"
+        "ONETHING_VAULT": "${user_config.tasks_folder}"
       },
       "platform_overrides": {
         "win32": {
-          "command": "${__dirname}/server/tt.exe"
+          "command": "${__dirname}/server/onething.exe"
         }
       }
     }
@@ -32,7 +32,7 @@
     "tasks_folder": {
       "type": "directory",
       "title": "Tasks folder",
-      "description": "Leave empty to use the folder the Onething app uses (Documents/Todo Tracker by default).",
+      "description": "Leave empty to use the folder the One Thing app uses (Documents/OneThing by default).",
       "required": false
     }
   },
@@ -54,8 +54,8 @@
     { "name": "set_daily_energy", "description": "Set how much energy there is in a day" },
     { "name": "list_hooks", "description": "The hooks: what runs when something happens" },
     { "name": "add_hook", "description": "Run a command or call a web address when something happens (after the user approves it)" },
-    { "name": "set_hook_enabled", "description": "Switch a hook on or off" },
-    { "name": "remove_hook", "description": "Remove a hook" },
+    { "name": "set_hook_enabled", "description": "Switch a hook you added on or off" },
+    { "name": "remove_hook", "description": "Remove a hook you added" },
     { "name": "put_first", "description": "Put tasks at the top of Do now" },
     { "name": "list_labels", "description": "The curated labels" },
     { "name": "attach_text", "description": "Attach a text file to a task" },

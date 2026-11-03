@@ -53,7 +53,7 @@ async Task<JsonNode?> Ask(string sessionId, string title, string kind, JsonObjec
         pending[id] = answer;
     }
 
-    // Like Copilot: the tool_call update names the tool with its server ("todo-tracker-create_task"); the permission
+    // Like Copilot: the tool_call update names the tool with its server ("onething-create_task"); the permission
     // request for the same toolCallId carries only the bare tool name and kind "other".
     var toolCall = new JsonObject { ["toolCallId"] = $"call{id}", ["title"] = title, ["kind"] = kind, ["status"] = "pending" };
     if (rawInput is not null)
@@ -104,7 +104,7 @@ async Task<string> Prompt(string sessionId, string text)
 
     if (text.Contains("sneaky", StringComparison.OrdinalIgnoreCase))
     {
-        // A shell command that mentions one of Onething's tool names must still ask.
+        // A shell command that mentions one of One Thing's tool names must still ask.
         var answer = await Ask(sessionId, "Run shell command", "execute", new JsonObject { ["command"] = "Remove-Item -Recurse $HOME\\Documents  # list_tasks get_dashboard" });
         await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
         return "end_turn";
@@ -113,7 +113,7 @@ async Task<string> Prompt(string sessionId, string text)
     if (text.Contains("mismatch", StringComparison.OrdinalIgnoreCase))
     {
         // The request claims to be one of our tools, but the call was announced as something else.
-        var answer = await Ask(sessionId, "todo-tracker-list_tasks", "other", announced: "Run Remove-Item -Recurse $HOME", announcedKind: "other");
+        var answer = await Ask(sessionId, "onething-list_tasks", "other", announced: "Run Remove-Item -Recurse $HOME", announcedKind: "other");
         await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
         return "end_turn";
     }
@@ -136,14 +136,14 @@ async Task<string> Prompt(string sessionId, string text)
     if (text.Contains("claude", StringComparison.OrdinalIgnoreCase))
     {
         // Claude Code names MCP tools mcp__<server>__<tool>.
-        var answer = await Ask(sessionId, "mcp__todo-tracker__get_dashboard", "other");
+        var answer = await Ask(sessionId, "mcp__onething__get_dashboard", "other");
         await Chunk(sessionId, answer?["outcome"]?["optionId"]?.GetValue<string>() ?? "no answer");
         return "end_turn";
     }
 
     if (text.Contains("badask", StringComparison.OrdinalIgnoreCase))
     {
-        var answer = await Ask(sessionId, "create_task", "other", announced: "todo-tracker-create_task", withOptions: false);
+        var answer = await Ask(sessionId, "create_task", "other", announced: "onething-create_task", withOptions: false);
         await Chunk(sessionId, answer is null ? "refused" : "answered");
         return "end_turn";
     }
@@ -168,7 +168,7 @@ async Task<string> Prompt(string sessionId, string text)
     if (text.IndexOf("add ", StringComparison.OrdinalIgnoreCase) is var at and >= 0)
     {
         var title = text[(at + 4)..].Trim();
-        var answer = await Ask(sessionId, "create_task", "other", new JsonObject { ["title"] = title }, announced: "todo-tracker-create_task", announcedKind: "edit");
+        var answer = await Ask(sessionId, "create_task", "other", new JsonObject { ["title"] = title }, announced: "onething-create_task", announcedKind: "edit");
         var outcome = answer?["outcome"];
         if (outcome?["outcome"]?.GetValue<string>() == "cancelled")
         {
@@ -182,7 +182,7 @@ async Task<string> Prompt(string sessionId, string text)
 
     if (text.Contains("read", StringComparison.OrdinalIgnoreCase))
     {
-        await Ask(sessionId, "get_dashboard", "other", announced: "todo-tracker-get_dashboard", announcedKind: "read");
+        await Ask(sessionId, "get_dashboard", "other", announced: "onething-get_dashboard", announcedKind: "read");
         await Chunk(sessionId, "You have 3 things to do.");
         return "end_turn";
     }

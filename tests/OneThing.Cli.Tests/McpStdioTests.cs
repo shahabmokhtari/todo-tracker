@@ -1,0 +1,91 @@
+using System.Text.Json;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+
+namespace OneThing.Cli.Tests;
+
+/// <summary>
+/// <c>onething mcp</c> as Claude Desktop, Claude Code, Copilot CLI or VS Code launch it: a child process speaking MCP over stdio.
+/// </summary>
+public sealed class McpStdioTests : IDisposable
+{
+    private readonly CliHarness _tt = new();
+
+    public void Dispose() => _tt.Dispose();
+
+    [Fact]
+    public async Task Onething_mcp_serves_the_task_tools_over_stdio()
+    {
+        await using var client = await Connect();
+
+        Assert.Equal("onething", client.ServerInfo.Name);
+        Assert.Contains("get_dashboard", client.ServerInstructions ?? string.Empty, StringComparison.Ordinal);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Contains(tools, t => t.Name == "create_task");
+        Assert.Contains(tools, t => t.Name == "search_tasks");
+        Assert.DoesNotContain(tools, t => t.Name.Contains("delete", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tasks_created_over_mcp_land_in_the_vault_and_are_attributed_to_the_client()
+    {
+        await using var client = await Connect();
+
+        var result = await client.CallToolAsync(
+            "create_task",
+            new Dictionary<string, object?> { ["title"] = "Prepare demo", ["tags"] = new[] { "demo" } },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        var created = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text).RootElement;
+        Assert.Equal("Prepare demo", created.GetProperty("title").GetString());
+        Assert.True(File.Exists(Path.Combine(_tt.VaultDirectory, "Work", "Prepare demo.md")));
+
+        // The CLI (and the app) see it immediately: same vault, shared lock.
+        Assert.Equal(["Prepare demo"], (await _tt.Json("list", "#demo")).Titles());
+        var activity = await File.ReadAllTextAsync(Path.Combine(_tt.VaultDirectory, ".onething", "activity.jsonl"), TestContext.Current.CancellationToken);
+        Assert.Contains("onething-tests", activity, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Changes_made_elsewhere_are_visible_to_the_running_server()
+    {
+        await using var client = await Connect();
+        await _tt.Ok("add", "Added from the terminal");
+
+        // Not caused by the reopen change (failed once on PR #29's Windows CI, "[]"): the running server notices the
+        // new file through the file system's change notifications, which can arrive a moment after `ot add` returns.
+        // "Visible" means shortly after, so the search is retried for a few seconds.
+        var text = string.Empty;
+        for (var attempt = 0; attempt < 20 && !text.Contains("Added from the terminal", StringComparison.Ordinal); attempt++)
+        {
+            if (attempt > 0)
+            {
+                await Task.Delay(250, TestContext.Current.CancellationToken);
+            }
+
+            var result = await client.CallToolAsync("search_tasks", new Dictionary<string, object?> { ["query"] = "terminal" }, cancellationToken: TestContext.Current.CancellationToken);
+            text = ((TextContentBlock)result.Content[0]).Text;
+        }
+
+        Assert.Contains("Added from the terminal", text, StringComparison.Ordinal);
+    }
+
+    private async Task<McpClient> Connect()
+    {
+        var cli = Path.Combine(AppContext.BaseDirectory, "onething.dll");
+        Directory.CreateDirectory(_tt.VaultDirectory);
+        Assert.True(File.Exists(cli), $"{cli} is missing");
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = "onething",
+            Command = "dotnet",
+            Arguments = [cli, "mcp", "--data", _tt.DataDirectory, "--vault", _tt.VaultDirectory, "--no-history"],
+            EnvironmentVariables = new Dictionary<string, string?> { ["ONETHING_VAULT"] = null, ["ONETHING_DATA"] = null, ["ONETHING_AGENT"] = null },
+        });
+        return await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions { ClientInfo = new Implementation { Name = "onething-tests", Version = "1.0" } },
+            cancellationToken: TestContext.Current.CancellationToken);
+    }
+}

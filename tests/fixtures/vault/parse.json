@@ -198,7 +198,7 @@
           }
         ]
       },
-      "rewritten": "---\n# my own note\nid: 202601051200\naliases: [Zettel, Note]\ncssclasses:\n  - wide\ndue: 2026-01-20\ntags: [alpha, \"beta gamma\"]\nstatus: waiting\nboard: in progress\npriority: urgent\narchived: true\nenergy: 3\nplugin-thing: {a: 1}\ntt-id: d26c1617-bfbb-867b-9a8b-174cd05234eb\ncreated: 2026-01-05T14:00:00.000Z\n---\n# A note with its own id\n\n## Notes\n\n> [!note] 2026-01-05 09:00 · You %%{\"id\":\"760f772c-d474-86fb-a720-9fa7f1f2e11f\",\"at\":\"2026-01-05T14:00:00.000Z\"}%%\n> Meeting with Ana\n> She agreed.\n> \uD83D\uDD17 <https://example.com/meeting>\n\n> [!note] 2026-01-05 10:00 · Agent: claude %%{\"id\":\"0bebfc38-08fb-8506-b6fe-309070c5689b\",\"at\":\"2026-01-05T15:00:00.000Z\"}%%\n> Typed by an agent without ids.\n\n## Time\n\n- 2026-01-05 09:00–10:30 · 1 h 30 min · planning %%{\"id\":\"23c1bdfd-49ed-8946-b04e-dbd1814904f3\",\"start\":\"2026-01-05T14:00:00.000Z\",\"end\":\"2026-01-05T15:30:00.000Z\"}%%\n- 2026-01-05 23:30–2026-01-06 00:15 · 45 min %%{\"id\":\"ef89d077-9c6b-8217-a827-5fd1231e1bd9\",\"start\":\"2026-01-06T04:30:00.000Z\",\"end\":\"2026-01-06T05:15:00.000Z\"}%%\n- 2026-01-06 08:00 → running %%{\"id\":\"3cd07f02-e328-841a-a84c-1453c27b4654\",\"start\":\"2026-01-06T13:00:00.000Z\"}%%\n\n- 2026-01-05 24:00–25:00 typo stays text\n\n## Attachments\n\n- [web](https://example.com/not-a-file)\n\n- ![[diagram.png|300]] %%{\"id\":\"054a6bb5-3d79-8af5-a133-0e6a8579232b\",\"size\":0,\"at\":\"2026-01-05T14:00:00.000Z\",\"by\":\"You\"}%%\n- [spec](../../_attachments/spec%20v1.pdf) %%{\"id\":\"758770f2-a343-8320-88dd-bc7f74ca1c97\",\"size\":0,\"at\":\"2026-01-05T14:00:00.000Z\",\"by\":\"You\"}%%\n\n## Ideas\n\nUnknown sections keep their place.\n"
+      "rewritten": "---\n# my own note\nid: 202601051200\naliases: [Zettel, Note]\ncssclasses:\n  - wide\ndue: 2026-01-20\ntags: [alpha, \"beta gamma\"]\nstatus: waiting\nboard: in progress\npriority: urgent\narchived: true\nenergy: 3\nplugin-thing: {a: 1}\nonething-id: d26c1617-bfbb-867b-9a8b-174cd05234eb\ncreated: 2026-01-05T14:00:00.000Z\n---\n# A note with its own id\n\n## Notes\n\n> [!note] 2026-01-05 09:00 · You %%{\"id\":\"760f772c-d474-86fb-a720-9fa7f1f2e11f\",\"at\":\"2026-01-05T14:00:00.000Z\"}%%\n> Meeting with Ana\n> She agreed.\n> \uD83D\uDD17 <https://example.com/meeting>\n\n> [!note] 2026-01-05 10:00 · Agent: claude %%{\"id\":\"0bebfc38-08fb-8506-b6fe-309070c5689b\",\"at\":\"2026-01-05T15:00:00.000Z\"}%%\n> Typed by an agent without ids.\n\n## Time\n\n- 2026-01-05 09:00–10:30 · 1 h 30 min · planning %%{\"id\":\"23c1bdfd-49ed-8946-b04e-dbd1814904f3\",\"start\":\"2026-01-05T14:00:00.000Z\",\"end\":\"2026-01-05T15:30:00.000Z\"}%%\n- 2026-01-05 23:30–2026-01-06 00:15 · 45 min %%{\"id\":\"ef89d077-9c6b-8217-a827-5fd1231e1bd9\",\"start\":\"2026-01-06T04:30:00.000Z\",\"end\":\"2026-01-06T05:15:00.000Z\"}%%\n- 2026-01-06 08:00 → running %%{\"id\":\"3cd07f02-e328-841a-a84c-1453c27b4654\",\"start\":\"2026-01-06T13:00:00.000Z\"}%%\n\n- 2026-01-05 24:00–25:00 typo stays text\n\n## Attachments\n\n- [web](https://example.com/not-a-file)\n\n- ![[diagram.png|300]] %%{\"id\":\"054a6bb5-3d79-8af5-a133-0e6a8579232b\",\"size\":0,\"at\":\"2026-01-05T14:00:00.000Z\",\"by\":\"You\"}%%\n- [spec](../../_attachments/spec%20v1.pdf) %%{\"id\":\"758770f2-a343-8320-88dd-bc7f74ca1c97\",\"size\":0,\"at\":\"2026-01-05T14:00:00.000Z\",\"by\":\"You\"}%%\n\n## Ideas\n\nUnknown sections keep their place.\n"
     },
     {
       "name": "crlf-and-bom-edited-in-windows",
@@ -432,6 +432,35 @@
         "groupId": "00000000-0000-0000-0000-000000000000"
       },
       "rewritten": "---\nid: f2297563-6b01-8aad-9b68-59dfba4ff0ad\nstatus: open\ncreated: 2026-01-05T14:00:00.000Z\n---\n# Rule\n\n---\nnot closed\n"
+    },
+    {
+      "name": "step-delay-longer-than-ten-years-is-ten-years",
+      "path": "Work/Wait.md",
+      "text": "---\nsequential: true\nstep-delay: 99999999999999\n---\n# Wait\n",
+      "needsWrite": true,
+      "hasAppId": false,
+      "item": {
+        "id": "3929bacd-7231-8142-9543-e6ae8717bed3",
+        "title": "Wait",
+        "priority": "normal",
+        "createdAt": "2026-01-05T14:00:00.000Z",
+        "sequential": true,
+        "stepDelayMinutes": 5256000,
+        "groupId": "00000000-0000-0000-0000-000000000000"
+      },
+      "rewritten": "---\nsequential: true\nstep-delay: 99999999999999\nid: 3929bacd-7231-8142-9543-e6ae8717bed3\nstatus: open\ncreated: 2026-01-05T14:00:00.000Z\n---\n# Wait\n"
+    },
+    {
+      "name": "duration-too-big-for-a-number",
+      "path": "Work/Huge.md",
+      "text": "---\nstep-delay: 99999999999999999999d\n---\n# Huge\n",
+      "error": true
+    },
+    {
+      "name": "date-past-the-last-moment-there-is",
+      "path": "Work/End.md",
+      "text": "---\ndue: 9999-12-31T23:30\n---\n# End\n",
+      "error": true
     }
   ]
 }

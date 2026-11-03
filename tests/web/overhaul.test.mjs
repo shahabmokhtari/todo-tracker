@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { duration, clock, byDay, dayKey, dayLabel } from '../../src/TodoTracker.Server/wwwroot/js/timefmt.js';
-import { columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../../src/TodoTracker.Server/wwwroot/js/boardmodel.js';
-import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests as outlineDrop } from '../../src/TodoTracker.Server/wwwroot/js/outlinemodel.js';
-import { breakState, tipFor } from '../../src/TodoTracker.Server/wwwroot/js/breaks.js';
-import { score, rank } from '../../src/TodoTracker.Server/wwwroot/js/palette.js';
-import { niceScale, barLayout, donutSlices, arcPath, ganttLayout, heatLevel } from '../../src/TodoTracker.Server/wwwroot/js/charts.js';
-import { latest, serial, sameAs, treeUrl } from '../../src/TodoTracker.Server/wwwroot/js/views/common.js';
+import { duration, clock, byDay, dayKey, dayLabel } from '../../src/OneThing.Server/wwwroot/js/timefmt.js';
+import { columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../../src/OneThing.Server/wwwroot/js/boardmodel.js';
+import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests as outlineDrop } from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
+import { breakState, tipFor } from '../../src/OneThing.Server/wwwroot/js/breaks.js';
+import { score, rank } from '../../src/OneThing.Server/wwwroot/js/palette.js';
+import { niceScale, barLayout, donutSlices, arcPath, ganttLayout, heatLevel } from '../../src/OneThing.Server/wwwroot/js/charts.js';
+import { latest, serial, sameAs, treeUrl } from '../../src/OneThing.Server/wwwroot/js/views/common.js';
 
 const node = (id, extra = {}) => ({ id, title: id, stage: 'next', done: false, children: [], ...extra });
 
@@ -213,6 +213,16 @@ test('a late answer to an older load is dropped', async () => {
   assert.deepEqual(replies, [{ current: true, value: 'week' }, { current: false }]);
 });
 
+test('an older load that fails after a newer one started is dropped quietly', async () => {
+  const load = latest((ms, fail) => new Promise((resolve, reject) => { setTimeout(() => (fail ? reject(new Error('gone')) : resolve('ok')), ms); }));
+  const old = load(30, true);
+  const fresh = load(1, false);
+  assert.deepEqual(await fresh, { current: true, value: 'ok' });
+  assert.deepEqual(await old, { current: false });
+  // The newest one failing still says so.
+  await assert.rejects(load(1, true), /gone/);
+});
+
 test('changes run one at a time, in order, even when one fails', async () => {
   const run = serial();
   const log = [];
@@ -234,7 +244,7 @@ test('views notice when a refresh brought nothing new, and ask for the group on 
   assert.equal(treeUrl({ state: { group: 'g1' } }, 'archived=true'), '/api/tree?archived=true&group=g1');
 });
 test('routes: views, a task full size, and panels a plugin opens over the view', async () => {
-  const { parseRoute } = await import('../../src/TodoTracker.Server/wwwroot/js/shell.js');
+  const { parseRoute } = await import('../../src/OneThing.Server/wwwroot/js/shell.js');
   assert.deepEqual(parseRoute('#/board'), { view: 'board', task: null });
   assert.deepEqual(parseRoute('#/task/abc'), { view: null, task: 'abc' });
   assert.deepEqual(parseRoute('#/ask'), { view: null, task: null, panel: 'ask' });

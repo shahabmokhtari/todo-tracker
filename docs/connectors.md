@@ -1,6 +1,6 @@
 # Connectors: Notion, Microsoft To Do, GitHub Issues, Loop
 
-Onething can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
+One Thing can keep one of your groups in step with a list in another app. Each connector is a plugin. Notion and
 Microsoft To Do are **off** until you switch them on in **Settings › Connected apps** (or the sidebar's
 **⋯ › Plugins**); they come on at once. Then open **Connectors** (the link button in the app's top bar).
 
@@ -8,7 +8,7 @@ Microsoft To Do are **off** until you switch them on in **Settings › Connected
 |---|---|---|
 | **Notion** | ✓ | title, done, due date, priority, tags (from the database's columns) |
 | **Microsoft To Do** | ✓ | title, done, due date, importance, note |
-| **GitHub Issues** | ✓ | each group in its own private repository: title, done, details, due date, priority, tags, labels, snooze, reminders, board column, icon, color, plan, repeat |
+| **GitHub Issues** | ✓ | each group in a private repository (its own, or one groups share): title, done, details, due date, priority, tags, labels, snooze, reminders, board column, icon, color, plan, repeat |
 | **Loop** | copy and paste | a checklist of a group's tasks (Loop has no API that other apps can write to) |
 
 ## How it stays safe
@@ -16,7 +16,7 @@ Microsoft To Do are **off** until you switch them on in **Settings › Connected
 - **Nothing is ever deleted.** If you delete a task here, its Notion page is archived (it goes to Notion's trash,
   which you can restore from) or its To Do task is marked done. If an item disappears there, the task here stays.
 - **Nothing is copied twice.** Each Notion page and To Do task carries its task's id: Notion stores it in a
-  *Todo Tracker ID* column, which is added for you, and To Do stores it as a linked item. A sync that is cut short
+  *One Thing ID* column, which is added for you, and To Do stores it as a linked item. A sync that is cut short
   can never make a duplicate. Reconnecting links items back to their tasks.
 - **Each field takes the side that changed.** If both sides changed the same field, the task here wins.
 - **You see the first sync before it happens.** **Preview** says how many tasks would be added, sent or updated.
@@ -36,7 +36,7 @@ syncing until you unarchive them.
 1. Go to [notion.so/my-integrations](https://www.notion.so/my-integrations) and create an **internal** integration
    with read and update content capabilities. Copy its token (it starts with `secret_` or `ntn_`).
 2. In Notion, open your tasks database and choose **•••** › **Connections**, then add the integration.
-3. In Onething's **Connectors** panel, paste the token and choose **Connect**. Then pick the database and the
+3. In One Thing's **Connectors** panel, paste the token and choose **Connect**. Then pick the database and the
    group.
 
 Columns are recognized by their type and name:
@@ -55,7 +55,7 @@ Signing in to Microsoft needs an *app registration* (a client id). It's free and
 
 1. Open the [Azure portal](https://portal.azure.com) › **Microsoft Entra ID** › **App registrations** › **New
    registration**.
-2. **Name:** Onething. **Supported account types:** *Accounts in any organizational directory and personal
+2. **Name:** One Thing. **Supported account types:** *Accounts in any organizational directory and personal
    Microsoft accounts*, so that both work and personal accounts can sign in.
 3. **Redirect URI:** choose *Public client/native (mobile & desktop)* and enter
    `https://login.microsoftonline.com/common/oauth2/nativeclient`. Then choose **Register**.
@@ -76,19 +76,43 @@ To Do has no tags and no *critical* importance: tags stay here, and critical tas
 ## GitHub Issues
 
 Each group can live in its own **private GitHub repository**, where every task is an issue. You don't create anything
-by hand: Onething makes the repository with the [GitHub CLI](https://cli.github.com) (`gh repo create`), so the only
+by hand: One Thing makes the repository with the [GitHub CLI](https://cli.github.com) (`gh repo create`), so the only
 setup is signing in once:
 
 1. Install the GitHub CLI (Windows: `winget install GitHub.cli`; macOS: `brew install gh`; Linux: your package
    manager, see cli.github.com) and run `gh auth login`.
 2. Switch on **GitHub Issues** in Settings › Connected apps.
 3. Choose **Make its repository** next to a group, or tick **Every group gets its own private repository**. New groups
-   then get theirs at the next sync. **Use another…** connects a group to a repository you already have (`owner/name`).
+   then get theirs at the next sync. **Use another…** connects a group to a repository you already have (`owner/name`),
+   or to one another group already uses (the list says which groups are in it).
 
 The repository is named after the group (`todo-work`, `todo-side-projects`), is private, and gets the topic
-`todo-tracker` and the description `Todo Tracker: <group>`. If that name is taken by a repository that isn't the
+`onething` and the description `One Thing: <group>`. If that name is taken by a repository that isn't the
 group's, a number is added (`todo-personal-2`). Connecting the group again, on this computer or another, finds the
 repository that was made for it.
+
+Each issue One Thing makes carries a hidden note with its task's id, so the two stay linked. Only notes in issues you
+opened (the account signed in to the GitHub CLI) are believed: an issue someone else opened with a copied note
+becomes a task of its own, and never changes yours.
+
+### Several groups in one repository
+
+Groups can share a repository: personal, work and side projects in one place, told apart by labels. Every group has
+a label in its repository, `group:<name>` (`group:Work`, `group:Personal`; set when it's connected, and at most 50
+characters, GitHub's limit), and every issue it makes gets it. A group only sees the issues with its label, so:
+
+- **Make a task for a group on GitHub:** open an issue in the repository and give it the group's label.
+- **Move a task to another group on GitHub:** swap its `group:` label. The task moves to that group here at the next
+  sync (nothing is deleted on either side; until then it stays where it was).
+- To put **every group in one repository**, enter it (`owner/name`, private) under **Put every group in one
+  repository** next to *Every group gets…*: groups without a repository go into it, each with its label, instead of
+  getting a `todo-<group>` repository each. One Thing adds the `onething` topic to it (its other topics stay), so
+  your other computers find it.
+
+A group that had its repository to itself before labels existed keeps its issues: at its next sync they get its label.
+The same happens when you connect the first group to a repository with issues that have no `group:` label yet; a
+repository other groups already use is never taken over that way. `group:` labels are never tags here, and they're
+never deleted when old labels are tidied away.
 
 | Task | Issue |
 |---|---|
@@ -110,23 +134,25 @@ Change any of these on GitHub (add `snooze:…` to snooze it, close the issue to
 next sync; change the task here and the issue follows. A task deleted here closes its issue as *not planned*. Subtasks,
 notes, time and attachments stay here. Pull requests in the repository are left alone.
 
-Labels that aren't Onething's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
+Labels that aren't One Thing's (`bug`, `priority:p1`, `stage:review`) stay on the issue as they are; ones that
 don't make sense here (`color:red`) are left alone too, and never hold up the rest of the task. Two labels for one
 thing (two `snooze:` labels): the later time wins. A task moved to another group closes its issue (as not planned)
 and gets one in that group's repository. Time labels no issue uses any more are deleted, so the label list doesn't
-keep growing. Repositories must be private: a public one is refused.
+keep growing (labels other groups in the same repository use are kept). Repositories must be private: a public one
+is refused.
 
 ### Keep your tasks on GitHub, without a tasks folder
 
-Tick **Keep my tasks on GitHub, without a tasks folder** (and restart Onething) to make GitHub the place your
+Tick **Keep my tasks on GitHub, without a tasks folder** (and restart One Thing) to make GitHub the place your
 tasks live:
 
-- Every group has its own repository (made for it if it has none), and new groups get theirs.
+- Every group has a repository (its own, made for it if it has none, or the one you chose for every group), and new
+  groups get theirs.
 - The app keeps its working copy in its own data folder (`github-tasks`), so it works offline and stays instant;
   the tasks folder you had is copied in at the next start and then left alone.
-- On another computer, switch on GitHub Issues and tick the same box: every repository Onething made for a group
-  (the `todo-tracker` topic) becomes a group there, and its issues come in as the same tasks (same ids), finished ones
-  too.
+- On another computer, switch on GitHub Issues and tick the same box: in your repositories with the `onething`
+  topic, every `group:` label becomes a group there (a repository from before labels is one group, named in its
+  description), and its issues come in as the same tasks (same ids), finished ones too.
 - It syncs every 2 minutes, and half a minute after you change something.
 - What issues can't hold stays in the app's copy on each computer: subtasks, notes, time and attachments. Sync
   (OneDrive, iCloud Drive or a gist) can still carry those between your computers.
@@ -134,11 +160,11 @@ tasks live:
 Untick it (and restart) to go back: the app's copy goes into your tasks folder, and what that folder had is kept next
 to it (renamed `… .before-github-<date>`). The repositories stay on GitHub.
 
-The tasks move when Onething starts, never before: until then `tt` and AI apps keep using where they are now
-(restart AI apps that keep `tt mcp` running afterwards). If something is in the way (a file in the tasks folder open in
+The tasks move when One Thing starts, never before: until then `ot` and AI apps keep using where they are now
+(restart AI apps that keep `onething mcp` running afterwards). If something is in the way (a file in the tasks folder open in
 another app) the app starts as usual, says so here, and tries again at its next start. Only you can switch it, from the
 app's own window (not an AI app or script with the API token). A group deleted here keeps its repository on GitHub but
-isn't brought back. The tasks folder can't be one that holds Onething's data folder.
+isn't brought back. The tasks folder can't be one that holds One Thing's data folder.
 
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,

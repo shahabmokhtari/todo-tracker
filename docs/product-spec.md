@@ -1,15 +1,10 @@
-# Onething: product plan, design, and specification
+# One Thing: product plan, design, and specification
 
 Traces to the original request in [`request.md`](request.md). Section 12 maps each requirement to its status.
 
-The product was called Todo Tracker. Everything people see says Onething; identifiers keep the old name so updates
-install in place and nothing moves: bundle and package ids, exe and assembly names, `TODOTRACKER_*` variables, data
-folders, the tasks folder (`Documents/Todo Tracker`), sync libraries and gist names, connector markers, `tt`, the
-`todo-tracker` MCP server and skill, the `todotracker://` scheme, headers, and the website's domain.
-
 ## 1. Vision
 
-Onething is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
+One Thing is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
 browser tabs. It answers one question at a glance: *what should I do right now?* Everything that isn't actionable
 yet stays out of the way until it is due, and then it comes back by itself.
 
@@ -44,19 +39,19 @@ Product principles:
 
 ```
 ┌──────────────────────────── Windows ─────────────────────────────┐
-│ TodoTracker.Windows (WPF, AppBar)                                 │
-│   ├─ TodoTracker.Desktop (MVVM view models, platform-neutral)     │
-│   └─ embeds TodoTracker.Server ── 127.0.0.1:5317 ─┬─ Web UI (SPA) │
+│ OneThing.Windows (WPF, AppBar)                                 │
+│   ├─ OneThing.Desktop (MVVM view models, platform-neutral)     │
+│   └─ embeds OneThing.Server ── 127.0.0.1:5317 ─┬─ Web UI (SPA) │
 │                                                   ├─ REST /api    │
 │                                                   └─ MCP  /mcp    │
-│ TodoTracker.Core (domain, agenda, store) ◄── all of the above     │
+│ OneThing.Core (domain, agenda, store) ◄── all of the above     │
 └───────────────────────────────────────────────────────────────────┘
    ▲ REST (loopback + token)            ▲ MCP (streamable HTTP + token)
    │                                    │
  Edge/Chrome side panel extension    Copilot CLI / VS Code / agents
 
-TodoTracker.Web  – the same server as a standalone process (no WPF); used by CI e2e tests.
-apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS and macOS.
+OneThing.Web  – the same server as a standalone process (no WPF); used by CI e2e tests.
+apple/           – OneThingKit (Swift port of Core) + SwiftUI apps for iOS and macOS.
 ```
 
 * **Markdown vault.** The board lives in a folder of markdown files: one folder per group, one file per top-level
@@ -64,15 +59,16 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
   [`vault-format.md`](vault-format.md). In short: reading never writes, a change rewrites only the files it touched,
   saves are verified against the files' content and are all-or-nothing, edits made outside the app (Obsidian,
   editors, agents) are picked up and acted on, and broken files are reported and never overwritten.
-* **Vault location.** `Documents/Todo Tracker` by default, or a folder chosen in the app (for example
-  `<Obsidian vault>/Onething`), `TODOTRACKER_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
+* **Vault location.** `Documents/OneThing` by default, or a folder chosen in the app (for example
+  `<Obsidian vault>/One Thing`), `ONETHING_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
   from earlier versions is imported once (and renamed to `board.json.migrated`).
-* **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
+* **Several processes.** The app, the `ot` CLI, and MCP servers can share a vault; a per-vault lock in local app data
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
 * **History.** Every change is kept as a version in a private git repository on this device (local app data, never in the synced vault), saved a
   few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
-  viewed or restored from its history. Off when git isn't installed.
-* **Data folder.** `%LOCALAPPDATA%\TodoTracker` (override with `TODOTRACKER_DATA` or `--data`) holds
+  viewed or restored from its history. Off when git isn't installed. A folder that is a git repository of its own is
+  left out, and a task's History says which. Each version says who made the changes in it (you, an agent, the app).
+* **Data folder.** `%LOCALAPPDATA%\OneThing` (override with `ONETHING_DATA` or `--data`) holds
   `settings.json` (Teams webhook, vault folder), `api-token`, and `desktop.json` (window placement).
 
 ## 4. Domain model
@@ -107,11 +103,11 @@ container items in *Do now*.
 **Do now** holds actionable items plus attention items. A task whose reminder just went off comes first: one never
 placed, or whose reminder went off after Do now was last arranged (`NowArrangedAt`, kept with the order). After that,
 **the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or Alt+↑/↓ (agents use
-`put_first`, the CLI `tt first`), anywhere in the list: a task whose reminder was already due when they arranged it
+`put_first`, the CLI `ot first`), anywhere in the list: a task whose reminder was already due when they arranged it
 stays where they put it. Tasks they never placed come after
 the ones they did, in the automatic order: effective priority (the maximum of the item and its ancestors), then
 overdue, then deadline, then age, so capturing something new never takes over the chosen focus. The first one is the
-**focus**. The order is shared by every app and process (`.todo-tracker/state.json`); arranging one group's tab keeps
+**focus**. The order is shared by every app and process (`.onething/state.json`); arranging one group's tab keeps
 the other groups' places. In the web task panel, subtasks are reordered the same way among their siblings (never
 changing parent); the API also reorders top-level tasks.
 
@@ -133,13 +129,13 @@ dismisses the previous undelivered schedule reminder and any reminder that is al
   (next 9:00; before 4:00 that's this morning), `2d`, `monday` (next Monday; a week on when it's Monday), `week`, `month`
   (9:00 local on that day; a month from Jan 31 is the end of February). Each shows when it ends: "today 17:00",
   "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".
-* **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `tt snooze`):
+* **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `ot snooze`):
   spans count from now, like `@3d` always has (`45m`, `2h`, `3d`, `2 weeks`, `1 month`); day words land at 9:00 (`fri`, `next fri`; a weekday with a time still ahead today means today: `mon 14:00` on a Monday morning), `tonight`,
   `tomorrow 14:00`, `tomorrow at 9` (after `at`, a bare 1 to 7 is the afternoon and `tonight at 9` is 21:00), `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
   today, or tomorrow when it's past); dates (`2026-03-01`, with an optional time); an optional leading `in` (`in 3 days`). A rule that isn't
   understood is refused with examples; one already past (`tonight` at 19:00) says so. Phones offer the quick choices and a date picker.
 * **After another task** (`after: <id>` in the file; `POST /api/items/{id}/after`, MCP `wait_for_task`,
-  `tt snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
+  `ot snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
   reminder ("X is done: back to Y"). It replaces a snooze until a time (and snoozing or *Do now* replaces it). Refused:
   itself, a done task (either one), its own subtasks or parents, or a circle (also through a parent that can't finish while its subtask waits); the pickers only offer what's allowed (`GET /api/items/{id}/wait-candidates`). It comes back the same way when X is finished outside the app (a box checked in Obsidian, or by sync), and when X is deleted (\"X\" was deleted). In *Waiting*, tasks
   back at a time come first (soonest first), then those waiting for a task.
@@ -150,7 +146,7 @@ blocks the others.
 
 **Quick capture:** `!`/`!high`, `!!`/`!critical`/`!urgent`, `!low`, `@15m`/`@2h`/`@3d`/`@tomorrow` (next 9:00 local; before 4:00 that means this morning; `@3d` is exactly 72h, as before),
 and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@next-week`),
-`due:today`/`due:tomorrow`/`due:3d`/`due:YYYY-MM-DD` (17:00 local; `due:today` after 17:00 means 23:59). Malformed tokens (`due:2026-13-01`, `@+5m`) stay in the title on every platform. Unknown tokens stay in the title.
+`due:today`/`due:tomorrow`/`due:3d`/`due:YYYY-MM-DD` (17:00 local; `due:today` after 17:00 means 23:59). Malformed tokens (`due:2026-13-01`, `@+5m`) stay in the title on every platform. Unknown tokens stay in the title. Shared cases: `tests/fixtures/quick-capture.json` (generated by the C# core, read by Swift and Kotlin).
 
 ## 6. UX specification
 
@@ -175,7 +171,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
     blocks the sidebar. Fitted sessions follow the room whenever the sidebar re-docks (collapsed, opened, other edge, DPI
     or taskbar change), and go back to full screen (on the monitor they're on now) when the sidebar is hidden, floats,
     moves to another monitor, the option is turned off, or the app quits. The app's own window counts like any other:
-    maximized over a full-screen session, the sidebar stays on top next to it. `TODOTRACKER_REMOTE_DESKTOP_CLIENTS` (comma-separated process names)
+    maximized over a full-screen session, the sidebar stays on top next to it. `ONETHING_REMOTE_DESKTOP_CLIENTS` (comma-separated process names)
     replaces the list of clients; system tests use it so a real session is never resized.
   * **Hide the sidebar** (menu, or the tray icon's menu): gives the screen edge back and keeps running in the
     notification area; hidden from its own menu, the tray icon says how to bring it back. It stays hidden after a
@@ -273,17 +269,17 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   done ones included, archived ones not, a block over midnight counting on both days (`Energy.PlannedOn`; same rule in
   Swift and Kotlin, shared fixture `tests/fixtures/energy.json`). Cards show `⚡⚡`; Today's summary says
   "⚡ 4.5 of 10 planned today" (in red, with by how much, past it); each Plan day head has a meter that turns red past it.
-  Set a task's energy in its details (web, Android), ⋯ › Energy (sidebar, Mac/iPhone), `tt edit --energy`, or MCP
-  `update_task`; the day's in Settings › Energy (web, Android), the sidebar menu, ⋯ on Mac/iPhone, `tt energy 8`, `PUT
+  Set a task's energy in its details (web, Android), ⋯ › Energy (sidebar, Mac/iPhone), `ot edit --energy`, or MCP
+  `update_task`; the day's in Settings › Energy (web, Android), the sidebar menu, ⋯ on Mac/iPhone, `ot energy 8`, `PUT
   /api/energy` or MCP `set_daily_energy`. Frontmatter `energy: 2`; GitHub label `energy:2`. Today's line shows once
   something is planned today (every app).
 * **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only; edited in Settings ›
-  Hooks, with `tt hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
+  Hooks, with `ot hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
   or by hand) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
   to a URL when something happens: `taskCompleted`, `reminderDue`, `noteAdded`, `focusEnded`… with filters by group,
   tag, label and who did it. Events come from the activity log (app, agents, Obsidian, sync), each once, also across
   restarts; hooks run one at a time in the background with a timeout. A hook an agent (anything with the API token, or
-  `tt --as`) adds or changes waits for approval (`needsApproval`) that only the signed-in app or `tt` can give; the app
+  `ot --as`) adds or changes waits for approval (`needsApproval`) that only the signed-in app or `ot` can give; the app
   shows exactly what it would run. Settings › Hooks lists the hooks (on, off, needs approval), adds and changes them, shows
   their last runs and tries an event. `GET /api/events` streams every event (server-sent events) to extensions
   and scripts; server plugins subscribe to `HookService.Published`.
@@ -298,28 +294,22 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Card notes save themselves after a short pause and keep updating the same note; Enter finishes it.
 * Cards show labels (colored) and tags. The card menu opens the task in Obsidian or shows its markdown file.
 * Menu › *Tasks folder* shows where tasks live, opens the folder or Obsidian, keeps tasks in an Obsidian vault found on
-  this machine (`<vault>/Onething`), or chooses another folder (the app restarts to switch).
+  this machine (`<vault>/One Thing`), or chooses another folder (the app restarts to switch).
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
-* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`TodoTrackerCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`).
+* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`OneThingCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`).
 * **Board** (`boardmodel.js` ported as `BoardColumns`): Inbox, Next, Doing, Done (cards finished in the last 14 days, newest first); as many columns side by side as fit at about 250 pt, the rest scroll. Cards show title and icon, group color, priority, repeat, labels, three tags, due/overdue, waiting, subtask progress and time; timer, Mark done (Archive in Done) and a Move menu. Drops and Option-arrows make the web's requests (`/stage`, `/complete`, `/reorder`); Doing shows n/3 and the web's message past three. New tasks start in Inbox (as in C#).
 * **Tasks** (`outlinemodel.js` ported as `OutlineMoves`): the tree as rows with disclosure, check box, inline rename, chips and facts, a ⋯ menu (timer, add a subtask, details, up, down, into the task above, out one level); keys as on the web (Return rename/next, Tab/⇧Tab, ⌥↑/↓, Space, ←/→). *Show finished*, expand and collapse all; expanded rows are remembered.
 * **Done**: finished top-level tasks by day (Today, Yesterday, the date) with time spent, Reopen and Archive; the Archive tab with Unarchive; a find box.
-* Moves (`BoardMove`: complete, stage, move, reorder, reorderAfter) run on the device's board in one save, or as the same requests in order on the server; shared cases in `tests/fixtures/board-moves.json` (generated by the C# core). Phones may call `POST /api/items/{id}/stage`.
+* Moves (`BoardMove`: complete, stage, move, reorder, reorderAfter) run on the device's board in one save, or as the same requests in order on the server; shared cases in `tests/fixtures/board-moves.json` (generated by the C# core).
 * Task details edit every field the web drawer has except tags, labels, icon, color, attachments and history (title, details, priority, deadline, repeat, energy, group, steps in order, hours between steps), and offer Later, Remind me, Mark done/Reopen, Time this task, Archive/Unarchive and Delete (asks first). Subtasks open in place at any depth; a waiting task says why. Groups can be renamed, recolored and deleted (tasks move). Search follows `TaskQuery` (shared fixture `tests/fixtures/search.json`). A Settings screen holds appearance, energy in a day, focus lengths and breaks.
-* **Plan** (`PlanView`): the web Plan view's grid (`PlanGrid`: week or day, work hours stretched to show blocks outside them, work days, Monday or Sunday weeks, 15-minute snapping, 15 minutes to 12 hours when resizing; iPhone (compact width) shows a day). Blocks, deadlines, *Not planned* and *Later* come from `PlanDays` (port of `PlanDays.cs`, which `GET /api/plan` uses; shared fixture `tests/fixtures/plan.json`), planning from `TaskBoard.plan/unplan` (5 minutes to 12 hours, 30 kept as none, done tasks refused; same fixture). Drag and drop (touch, pointer), long-press-then-drag to move a block on touch, a resize handle, a context menu, VoiceOver actions and arrow keys; *Plan…* opens a sheet (task, start, length). On the Mac (server) and a connected phone, planning is `POST /api/items/{id}/plan` (`ServerAction.plan/.unplan`; allowed for phones). Plan settings (view, hours, work hours/days, week start) are kept per group on the device (UserDefaults), not in the server's settings.
-* **Reports** (`ReportsView`, Swift Charts): range 7 days / 4 weeks / 3 months / year / custom dates; KPIs, time per day (stacked focus/other, weekly for ranges over 120 days), by group (donut), top tasks, weekday × hour heat map, active-days calendar (90 days or more), and the Timeline (work bars, created→done/due line, ◆ due, ● done; tap a row to open the task). The numbers are `TimeReport` (port of `TimeReport.cs`) computed on the device from the board (its time entries and focus activity are in `/api/export`), so it works the same in all three modes and offline; shared fixture `tests/fixtures/reports.json` (across midnight and the change to winter time, a running timer, focus, archived tasks).
-* The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/TodoTracker/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below), or uses a computer's tasks (below). Settings says which of the three it is (connected to a computer, syncing on its own, only on this device); connecting to a computer turns sync off, and switching never deletes tasks.
-* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › TodoTrackerSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<TodoTrackerSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "Onething" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.todotracker.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
-* **iPhone and iPad: Connect to a computer** (Settings › Computer; the Phones plugin, §8). The `todotracker://pair?v=1&hosts=…&code=…&fp=…&name=…` link (scanned with VisionKit's QR scanner, pasted, or opened) is checked (v=1 only; host:port list; a 32-byte base64url fingerprint); the phone claims a token (`POST /api/phones/claim` with the name typed on the Connect screen, prefilled with the device's and remembered) on each address in turn until one answers, and pins the certificate: TLS is accepted only when SHA-256 of the leaf certificate's DER equals the fingerprint (ATS allows local networking only). The token is kept in the Keychain (this device only); addresses, fingerprint and name in UserDefaults. The app then works through the REST API as the Mac does (only routes in the phone allow-list, Archive included; the browser sign-in isn't offered), and keeps the last `/api/export` on disk. At launch it shows that copy and looks for the computer (`GET /health` with the token, the last good address first). States: connected; unreachable (the copy, read-only, with "Can't reach <computer>. You're seeing your tasks from <time>; changes wait until you're back on its Wi-Fi or Tailscale."; every address retried every 30 s, when the app becomes active, and on pull to refresh); disconnected by the computer (401: the token is forgotten, the device board comes back, *Reconnect*). *Disconnect* forgets the token and the copy; the device board is never written while connected.
+* **Plan** (`PlanView`): the web Plan view's grid (`PlanGrid`: week or day, work hours stretched to show blocks outside them, work days, Monday or Sunday weeks, 15-minute snapping, 15 minutes to 12 hours when resizing; iPhone (compact width) shows a day). Blocks, deadlines, *Not planned* and *Later* come from `PlanDays` (port of `PlanDays.cs`, which `GET /api/plan` uses; shared fixture `tests/fixtures/plan.json`), planning from `TaskBoard.plan/unplan` (5 minutes to 12 hours, 30 kept as none, done tasks refused; same fixture). Drag and drop (touch, pointer), long-press-then-drag to move a block on touch, a resize handle, a context menu, VoiceOver actions and arrow keys; *Plan…* opens a sheet (task, start, length). On the Mac (server), planning is `POST /api/items/{id}/plan` (`ServerAction.plan/.unplan`). Plan settings (view, hours, work hours/days, week start) are kept per group on the device (UserDefaults), not in the server's settings.
+* **Reports** (`ReportsView`, Swift Charts): range 7 days / 4 weeks / 3 months / year / custom dates; KPIs, time per day (stacked focus/other, weekly for ranges over 120 days), by group (donut), top tasks, weekday × hour heat map, active-days calendar (90 days or more), and the Timeline (work bars, created→done/due line, ◆ due, ● done; tap a row to open the task). The numbers are `TimeReport` (port of `TimeReport.cs`) computed on the device from the board (its time entries and focus activity are in `/api/export`), so it works the same in every mode and offline; shared fixture `tests/fixtures/reports.json` (across midnight and the change to winter time, a running timer, focus, archived tasks).
+* The macOS app runs the bundled server (`OneThing.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/OneThing/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below). Settings says which it is (syncing on its own, or only on this device); switching never deletes tasks. Phones don't connect to a computer: they sync through the same places computers do.
+* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › OneThingSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<OneThingSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "One Thing" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.onething.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
 
-* **Widgets** (WidgetKit; extensions `TodoTrackerWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `TodoTrackerWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.todotracker`; on a Mac `$(TeamIdentifierPrefix)group.com.todotracker`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server, a computer over the pinned connection), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the computer isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
-
-### Phones (Settings › Phones)
-* Owner only (the app's own session). **Let phones connect** (restart to open the port), **Connect a phone** (a QR code
-  and a copyable `todotracker://pair` link, valid 10 minutes, once), and **Connected phones** (name, paired, last used,
-  **Disconnect**). The Windows sidebar menu has *Connect a phone…*, which opens this section.
+* **Widgets** (WidgetKit; extensions `OneThingWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `OneThingWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.onething`; on a Mac `$(TeamIdentifierPrefix)group.com.onething`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the Mac's server isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
 
 ### Android (Jetpack Compose)
 * Today: the focus card, Do now, Waiting, Done today (with the time each was done), Workstreams (tasks with subtasks:
@@ -345,25 +335,23 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * *Later* offers the quick choices, *Pick a time…* (a date picker where past days are off, then a time picker that
   won't save a time already past) and *After another task…*. A snooze or wait can be undone from its message, like
   *Mark done*.
-* **Settings** (⚙): sync with your other devices (or a connected computer), theme (System, Light, Dark; kept on the
+* **Settings** (⚙): sync with your other devices, theme (System, Light, Dark; kept on the
   phone), energy in a day, the focus timer's lengths (focus, break, long break; 1–180 minutes, kept with the board), and
   whether notifications and on-time alarms are allowed.
 * **The board is a tasks folder** on the phone (`filesDir/vault`, the vault format of `docs/vault-format.md`, a port of
-  `VaultBoardStore`; [design](design/phone-sync.md)), unless it's connected to a computer (below). One `VaultStore`
+  `VaultBoardStore`; [design](design/phone-sync.md)). One `VaultStore`
   serves the whole app: the screens, the reminder alarm and notification buttons, the restart receiver and sync. A
   change runs on it (only the touched task files are written, all or nothing) and the screen shows a copy. On the first
   start of this version, `board.json` (and its `.bak`) is moved in once when the folder is new, then set aside as
   `board.json.migrated` (never deleted); one left behind by an interrupted move is imported beside (tasks already there
   are skipped). A `board.json` from a newer app version is neither moved nor changed (changes are off).
-* **Three modes, one at a time** (Settings says which): only on this phone, syncing on its own, or a connected
-  computer's tasks. Connecting turns sync off; sync can't be turned on while connected (disconnect first). Switching
-  never deletes tasks.
+* **Two modes** (Settings says which): only on this phone, or syncing on its own. Switching never deletes tasks.
 * **Sync on its own** (Settings › Sync with your other devices; phase 2 of the [phone sync design](design/phone-sync.md)):
   the phone is a sync device of its own through a GitHub gist (`GistRemote`, the same `device-<id>.json` bundles as the
   computers), merging three-way like `SyncPlanner`. Sign-in: a pasted classic token with the `gist` scope (a button opens
-  `github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker`; no OAuth device flow, as there's no OAuth
+  `github.com/settings/tokens/new?scopes=gist&description=One%20Thing`; no OAuth device flow, as there's no OAuth
   app), kept sealed with an Android Keystore AES-GCM key; the gist id in the app's settings; `SyncState` in
-  `filesDir/sync`. The library defaults to *Todo Tracker* (the computers' default) and can be changed (a new library is
+  `filesDir/sync`. The library defaults to *One Thing* (the computers' default) and can be changed (a new library is
   joined afresh). The first sync with a place is `SyncEngine.join`: pull only, then import `board.json` if still there,
   then publish; an incomplete pull publishes nothing (*Waiting for everything from your other devices…*). Syncs: on
   launch and resume, 5 s after the last change (debounced), every minute while open (`SyncSchedule`), and a WorkManager
@@ -372,45 +360,25 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   reminder alarm set again. The Sync screen: last synced, *Sync now*, problems (incl. contents not arrived yet, a token
   GitHub refused, with a field for a new one), other devices with *Forget*, conflicts listed read-only (*open it on a
   computer to choose*; *Got it* hides one), the library, *Turn sync off* (tasks stay; the token is forgotten). Debug
-  builds can also sync through a folder in the app's external files (`TodoTrackerSync/<library>`), to try it against a
-  computer's `Apps/TodoTrackerSync` folder without GitHub.
+  builds can also sync through a folder in the app's external files (`OneThingSync/<library>`), to try it against a
+  computer's `Apps/OneThingSync` folder without GitHub.
 * **Sync identity:** `SyncState` is kept per place and library (`filesDir/sync/<place>-<hash of library>`; the device id
   in `filesDir/sync/device.json` is shared), so another library starts with nothing agreed, published or deleted. Backups
-  and device transfers (`dataExtractionRules`, `fullBackupContent`) leave out `sync.xml`, `files/sync/`, `phone.xml`
-  and the computer's cached board, and keep `files/vault/`. If sync state still arrives from another install (its id is
+  and device transfers (`dataExtractionRules`, `fullBackupContent`) leave out `sync.xml` and `files/sync/`, and keep
+  `files/vault/`. If sync state still arrives from another install (its id is
   kept in no-backup storage), it's set aside as `sync.copied` and the phone joins as a new device.
 * **Opening:** the tasks folder opens off the main thread (*Moving your tasks into a tasks folder on this phone…* the
   first time). The move builds the folder in `vault.moving` and renames it into place; any failure leaves `board.json`
   untouched and turns changes off with why, never a crash.
-* **Connect to a computer** (Settings, or a `todotracker://pair` link: opened, scanned with the camera via ZXing, or
-  pasted; asked first). The code is traded for a phone token (`POST /api/phones/claim` with *This phone's name*: prefilled
-  from the device name, else the model, and kept on the phone), kept
-  encrypted with an Android Keystore key; the computer's certificate is trusted only when its SHA-256 equals the link's
-  `fp` (custom trust manager and host name check; HTTPS only, no cleartext). The link's addresses are tried in order,
-  the one that answered last first. While connected, the board is the computer's: `GET /api/export` (ETag, `304`) every
-  30 s and on resume, kept on disk; each action is the matching REST call on the phone allow-list, shown at once and
-  then read back (one that fails is taken back, with why). The focus timer's lengths (no phone route) are hidden; the
-  theme stays on the phone. The header says *On <computer>*.
-* **Can't reach it:** the last export is shown read-only under a banner (*Can't reach <computer>. You're seeing your
-  tasks from <time>; changes wait until you're back on its Wi-Fi or Tailscale.*, with *Try again*). **401:** the phone
-  was disconnected there; its own board (untouched while connected) comes back, with *Reconnect*. **Disconnect** in
-  Settings does the same on purpose.
-* **Reminders while connected:** the computer reminds on its own; the phone also tells each reminder on the computer's
-  board that comes due after it last looked (once each, whatever `notifiedAt` says; not dismissed, task open), from the
-  export it read (with the app closed, the alarm reads it again briefly, else uses the kept one). *Mark done* / *In an
-  hour* call the API; if the computer can't be reached the notification says so and opens the task. Nothing is
-  written back. With the app closed, a WorkManager check (every 15 minutes or so, network required, only while
-  connected) reads the computer again, so a reminder added there meanwhile still rings.
 * **Widgets** (Jetpack Glance, `Widgets.kt`): **Now** (responsive: small, or wide with the next three and *N more
   today*) and **Today** (resizable, a scrolling list with Done on each, then *Later today* with times). They run in the
-  app's process and read the board the app uses (the tasks folder through `BoardHub.store`, or the computer's last
-  export while connected), shown with `WidgetSnapshot` (the Kotlin port; shared fixture `tests/fixtures/widget.json`).
-  They're updated when the board changes (the app, notification buttons, sync, the remote check) and, with a WorkManager
+  app's process and read the board the app uses (the tasks folder through `BoardHub.store`), shown with `WidgetSnapshot` (the Kotlin port; shared fixture `tests/fixtures/widget.json`).
+  They're updated when the board changes (the app, notification buttons, sync) and, with a WorkManager
   job, when their list next changes on its own (`WidgetSnapshot.nextChange`). **Done** is a Glance action callback doing
   what the notification's *Mark done* does: `BoardHub.change` (through the running app, else the tasks folder) with
-  `complete(id, Actor.USER)`, or `POST /api/items/{id}/complete` to the connected computer (then read again). One at a
+  `complete(id, Actor.USER)`. One at a
   time, and only for a task that's to do now (`WidgetSnapshot.canMarkDone`), so a second tap or an old widget does
-  nothing. A task with open subtasks shows *Open*; when the computer can't be reached or the change is refused, a toast
+  nothing. A task with open subtasks shows *Open*; when the change is refused, a toast
   says why and the app opens on the task.
 
 ### Browser extension (Edge/Chrome side panel)
@@ -442,17 +410,17 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 ### AI apps (MCP, CLI, OpenAPI)
 AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-connectors.md)):
 
-* **`tt mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
+* **`onething mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
   on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, as a
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
-* **`tt`**: the same operations from a terminal (`tt now`, `tt add …`, `tt done …`); `--json` returns the API shapes and
+* **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
 * **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
 * **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
   subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test
   enforces it).
 
-**Connect an AI app** (sidebar menu, ✨ in the web header) lists a ready snippet per app with the real `tt` path.
+**Connect an AI app** (sidebar menu, ✨ in the web header) lists a ready snippet per app with the real path of `onething`.
 A plugin marketplace in this repository (`.claude-plugin/`, `.github/plugin/`) installs the MCP server plus a skill
 that teaches agents how to help (capture in the user's words, make big things small, log progress, defer, never
 delete) in Claude Code and Copilot CLI. Cloud apps (ChatGPT, Claude.ai, Copilot Studio) need a public HTTPS tunnel;
@@ -473,8 +441,9 @@ the docs explain the options and risks. The server sends the same short instruct
 | `task_history`, `restore_task_version` | Versions of a task's file, and going back (itself undoable) |
 | `vault_info` | Where the markdown lives, files that need fixing, and the format guide (for agents with file tools) |
 
-Every change is attributed as `Agent: <client name>`. There is intentionally **no delete tool**, and completion can
-be undone with `reopen_task`. There is no tool that copies arbitrary local files into the vault (that would let a
+Every change is attributed as `Agent: <client name>`. There is intentionally **no delete tool** (and over REST only the
+owner deletes), and completion can be undone with `reopen_task`. An agent can switch off or remove only the hooks it
+added. There is no tool that copies arbitrary local files into the vault (that would let a
 remote connector read files from the machine).
 
 ### Obsidian
@@ -482,12 +451,23 @@ The vault is plain Obsidian-flavored markdown: frontmatter properties, Obsidian 
 links, wiki-link attachments. Point the app at a folder inside an Obsidian vault (Menu › *Tasks folder*) and edit
 tasks in either place. The web UI and sidebar open any task in Obsidian (`obsidian://open?path=…`).
 
+### GitHub Issues connector
+Groups stay in step with private GitHub repositories (issues, both ways; everything else as prefixed labels, see
+`docs/connectors.md`). Each connected group has a label in its repository, `group:<name>` (at most 50 characters, a
+number added when two groups here would get the same one), fixed when it's connected: every issue it makes gets it,
+it lists only issues with it, and an issue relabelled to another group moves its task to that group (never deleted;
+until that group syncs, the task stays where it was). So several groups can share one repository, and "every group"
+can put all of them in one shared repository instead of a `todo-<group>` each. `group:` labels are never tags and
+never pruned; time labels are pruned only when no issue in the repository uses them. A group connected before labels,
+or the first group in a repository without any `group:` labels, labels the issues that have none. With the tasks on
+GitHub, other computers find groups by their `group:` labels in repositories with the `onething` topic.
+
 ### Plugins and Ask AI
 Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, Plan, version history, Obsidian,
 browser extension, sync, connectors, Copy for Loop, Teams, Send feedback) that can be switched off; the choice lives in `plugins.json`.
 Off applies at once everywhere (UI, API, background work); extras without background work also come on at once, the
 others at the next start. Ask AI drives GitHub Copilot
-CLI or Claude Code over the Agent Client Protocol with Onething's MCP tools attached, or a model reached with an API
+CLI or Claude Code over the Agent Client Protocol with One Thing's MCP tools attached, or a model reached with an API
 key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the same tools. Reading needs no permission;
 changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and
 can be searched, reopened (agents resume their session with `session/load` when they can), renamed and deleted with
@@ -496,13 +476,14 @@ undo. A chat stays with the agent or model it began with. Details: [`docs/plugin
 ### Send feedback
 One sheet on every platform (the **Send feedback** plugin): kind chips **Bug**, **Idea**, **Other**; a multiline note
 (at most 2000 code points, a counter in the last 200); an optional email hinted *Only if you’d like a reply. It’s shown with your note on GitHub.*; the fine
-print *We’ll include your app version, device model and language.*; **Send**. Each sheet makes one UUID v4
+print *We’ll include the app version, your OS and its version, device model, language and screen size.*; **Send**. Each sheet makes one UUID v4
 `clientID` and sends it again on every retry, so the relay files a note once.
 
 * **Relay:** `POST https://issues.awesomehq.app/v1/issues` with `Authorization: Bearer pk_…` (the app's public key: it
   can only open issues in this repository; no GitHub token or GitHub API anywhere). Body: `message` (control
   characters except new lines and tabs removed, trimmed, cut to 2000 code points), `title` = `<Kind> · <Platform>:
-  <message>`, `contact` (left out when empty), `clientID`, `labels` = `kind:…`, `platform:…`, `source:button|shake|page|qr`,
+  <message>`, `contact` (every control character removed, trimmed, cut to 200 code points;
+  left out when empty), `clientID`, `labels` = `kind:…`, `platform:…`, `source:button|shake|page|qr` (a button or menu, a shake, a link on a web page, a QR code),
   and `metadata` in this order, leaving out what isn't known: Platform (lowercase), App version (`1.2.3 (45)`), OS,
   Device, Language, Screen, Source. Never ids, IPs, location, screenshots, logs or anything from the tasks.
 * **Answers:** 2xx sent (*Thanks — we read every note.*, close); 408, 429, 5xx or no answer: keep the draft, *Couldn’t
@@ -512,11 +493,12 @@ print *We’ll include your app version, device model and language.*; **Send**. 
   (owner's session only, 403 otherwise); the server adds the platform it runs on (Windows, macOS or Linux), its
   version, `<OS> <version>`, the processor type as Device, and the browser's language and screen size, then sends it
   and answers 202, 503 (try again) or 422 (failed). The sidebar (**⋯ › Send feedback…**), both tray menus and the
-  browser extension open `/?feedback=button`, which opens the sheet. Also: Settings › Feedback and Ctrl K.
+  browser extension open `/?feedback=button`, which opens the sheet (the extension shows its button only while the
+  plugin is on, from `GET /api/plugins`). Also: Settings › Feedback and Ctrl K.
 * **iPhone, iPad, Mac, Android:** a native sheet sending to the relay directly. Settings › Feedback everywhere; Mac
   Help › Send Feedback…; Android ⋮ on Today. Shake to send (iPhone, iPad, Android; source `shake`), on by default with
   a Settings switch, never while another sheet, a dialog or a break is on screen.
-* **Debug builds** log the body instead of sending: `ONETHING_FEEDBACK_SEND=1` (server, Xcode scheme) or
+* **Debug builds** log the body (without `contact`) instead of sending: `ONETHING_FEEDBACK_SEND=1` (server, Xcode scheme) or
   `-PonethingFeedbackSend=true` (Android) sends; `ONETHING_FEEDBACK_URL` points the server at another relay (tests).
 * Privacy: [`docs/privacy.md`](privacy.md) (and the store labels).
 
@@ -531,32 +513,42 @@ with **single-use launch codes**: `POST /api/launch` returns `/auth?code=…&ret
 2 minutes and accepts local paths only. The long-lived API token therefore never appears in URLs, browser history,
 or history sync.
 
-### Task links (`todotracker://task/<id>`)
+### Task links (`onething://task/<id>`)
 Every task has a link that opens the installed app on it (`TaskLinks` in the core, with the same rules in Swift and
-Kotlin; shared test cases). Only two shapes are followed: `todotracker://task/<guid>` (any case, with or without
+Kotlin; shared cases in `tests/fixtures/links.json`). Only two shapes are followed: `onething://task/<guid>` (any case, with or without
 dashes, a trailing `/`, `?…` or `#…` ignored) and the bare scheme (just the app); anything else is ignored, so a
 crafted link can't reach another page or action. Copied from the task header (web) or a sidebar card (Windows) as
-plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `tt show`, opened
-by `tt open`.
+plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `ot show`, opened
+by `ot open`.
 
 * A link is the only argument that counts when the app is started with one: its text can never add options.
-* **Windows**: the app writes `HKCU\Software\Classes\todotracker` at each start (only the user's own instance: the
+* **Windows**: the app writes `HKCU\Software\Classes\onething` at each start (only the user's own instance: the
   default data folder and port). A second launch with a link hands it to the running one over a per-session named
   pipe (`PipeOptions.CurrentUserOnly`, ≤2 KB, validated again on arrival) and exits; the app window opens on the
   task. A link clicked inside the app window opens there.
 * **macOS / iOS**: `CFBundleURLTypes` + `onOpenURL` open the task's details. **Android**: a `VIEW`/`BROWSABLE`
   intent filter (`singleTask`, so a link never starts a second copy of the board) opens the task's details. **Linux**: the `.desktop` file handles
-  `x-scheme-handler/todotracker`; a running tray opens its window on the task through `/api/launch`.
+  `x-scheme-handler/onething`; a running tray opens its window on the task through `/api/launch`.
 
 ## 8. Security (local server)
 
-* Kestrel binds to loopback only (the phone port, below, is the one exception, with rules of its own). Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.
+* Kestrel binds to loopback only. Requests with a non-loopback remote address or `Host` header are rejected, which blocks DNS rebinding.
 * `/api` and `/mcp` require the bearer token (256-bit random, per user; file mode 600 on Unix) or the session cookie
   (`HttpOnly`, `SameSite=Strict`). Tokens are compared in constant time.
 * The API token is never put in a URL. Browsers get the cookie through single-use launch codes, and `return` paths
   must be local and free of control characters.
-* Mutations authenticated by cookie also need the `X-TodoTracker-Client` header. This forces a CORS preflight, so
+* Mutations authenticated by cookie also need the `X-OneThing-Client` header. This forces a CORS preflight, so
   other localhost origins cannot forge writes. No CORS policy is enabled.
+* **The owner and everything else.** The person at this computer is a session the app opened itself (launch links made
+  in its own process, or asked for with the owner key) or a request that sends the owner key with the token (the Mac
+  app; `owner-key` in the data folder, mode 600, never handed out). Anything holding only the token (an AI agent, a
+  script) can read and change tasks, but not: delete anything (tasks, groups, labels, time entries, attachments), use
+  Ask AI, switch extras, move the tasks folder, set the Teams webhook, change sync or connected apps (GitHub, Notion,
+  To Do; reading them is fine), approve, turn down or try hooks, see hook runs or the secret part of a hook's address,
+  or switch off or remove a hook it didn't add. Those answer 403. Its changes are recorded as `Agent: <X-OneThing-Actor>`,
+  or `Agent: API client` when it doesn't say (never as you).
+* Sign-in links asked for with only the token are capped (256 open at once) apart from the owner's, so they can't
+  block the app's own.
 * Strict CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), `nosniff`, `no-referrer`, and
   `Cache-Control: no-store` on the API. The DOM is built with `textContent` only. Links are http(s) only.
 * Input limits: titles ≤300 characters, notes ≤10k, attachments ≤25 MB, rich HTML ≤2 MB. Unknown groups and ids
@@ -566,20 +558,6 @@ by `tt open`.
   removing an attachment only ever deletes (to the trash) files under `_attachments/` that no other task links.
 * Rich HTML is untrusted: it's served with `sandbox; script-src 'none'` and only framed by the app (sandboxed iframe,
   opaque origin, no scripts).
-* **The phone port** (Phones plugin, off by default): a second listener on all interfaces, port 5318, opened at the
-  start only when the plugin and the owner-only *Let phones connect* are both on. HTTPS with a self-signed ECDSA P-256
-  certificate made once (`phone-certificate.pfx` in the data folder, mode 600 on Unix); phones pin its SHA-256
-  fingerprint from the pairing link. On that port none of the loopback rules apply and none of their credentials work
-  (no Host check, no cookie, no API token, no MCP): only `Authorization: Bearer ttp_…` phone tokens (256-bit, stored
-  hashed in `paired-phones.json`, revocable one by one), for an allow-list of task routes; everything else (and every
-  route added later) is 403. Phone tokens are refused on the loopback port. The only anonymous route is
-  `POST /api/phones/claim` (a 144-bit code, single use, 10 minutes; 10 wrong codes a minute per address, 100 claims a
-  minute in all; used up only once the phone is saved). Changes are made as the user, named by the phone. Switching
-  either off refuses phones at once.
-* The phone port only serves this computer, its local networks (RFC 1918, link-local, IPv6 unique-local and
-  link-local) and Tailscale (100.64/10): other addresses are dropped before TLS (and refused with 403 if one gets
-  through). At most 32 connections at once; request bodies at most 4 KB for the claim and 1 MB otherwise; Kestrel's
-  own header and body timeouts apply (they're server-wide, not per port).
 
 ## 9. Platforms and build
 
@@ -598,9 +576,8 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 
 * **Next:**
   * Rotate the API token, and compact the activity log.
-  * Phones away from the computer: cloud sync with conflict-free merges (remote mode over the phone port is in on
-    iPhone, iPad and Android; Android syncs on its own through a gist, iPhone and iPad through iCloud Drive or a gist).
-    Next: Keep mine / Keep theirs on phones, OneDrive on phones.
+  * Phones sync on their own, with conflict-free merges (Android through a gist, iPhone and iPad through iCloud Drive or
+    a gist; they never connect to a computer directly). Next: Keep mine / Keep theirs on phones, OneDrive on phones.
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Recurring tasks.
   * Keyboard navigation of cards.
@@ -623,7 +600,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
 | Feedback | A create-only relay (issues.awesomehq.app) with a public key; the web app goes through the local server | A token that can open issues can also read them, and anything in an app can be extracted; the web app has no fixed origin to put on the relay's list |
-| MCP transport | Streamable HTTP inside the running app, plus `tt mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
+| MCP transport | Streamable HTTP inside the running app, plus `onething mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
 
 ## 12. Requirement traceability
 
@@ -647,11 +624,11 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Sidebar placement: dock left/right on any monitor, float with always-on-top, monitor hot-plug | ✅ follow-up requests |
 | AI-native: data as markdown in folders, HTML version when needed | ✅ vault format v2, rich HTML companion |
 | Obsidian (must) | ✅ the vault *is* Obsidian markdown; open in Obsidian; keep tasks in an Obsidian vault |
-| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); subtasks in the web task panel; `put_first` for agents, `tt first` |
+| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); subtasks in the web task panel; `put_first` for agents, `ot first` |
 | Hierarchy, notes, attachments, tags, labels; intuitive and minimal | ✅ any depth with moves, notes, attachments, tags, colored labels, one filter box |
 | Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
-| Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
+| Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `ot`, `onething mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
 | In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ✅ Ask AI plugin (dashboard panel + sidebar box; Copilot and Claude Code; permissions; warm agent); every optional feature is a switchable plugin ([`docs/plugins.md`](plugins.md)) |
 | Ask AI as a full chat with sessions and history; ACP plus API keys for OpenAI- and Anthropic-compatible APIs | ✅ chats kept, searched, reopened (ACP `session/load` or a primer), renamed, deleted with undo; API models with presets, encrypted keys, same tools and permissions (tested live with Copilot; Claude untested on the dev machine) |
 | Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar; into quick add (they wait under the box and go into the new task's details; a picture alone names the task) and a task's title (goes into its details). A paste counts as a picture unless real text comes with it (an office copy); a link, file name/path, blank text or HTML that's only the image (browser/Teams "Copy image") doesn't count. Sidebar: Ctrl+V, Shift+Insert and right-click › Paste, also image files copied in Explorer |

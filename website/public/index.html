@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Onething: the to-do list that tells you what to do now</title>
+  <title>One Thing: the to-do list that tells you what to do now</title>
   <meta name="description" content="An ADHD-friendly task app. It always shows one thing to do now, keeps later work out of sight until it's due, and lets your AI agents read and change the list. Your tasks are markdown files you own.">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
@@ -12,19 +12,19 @@
   <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Onething">
-  <meta property="og:title" content="Onething: the to-do list that tells you what to do now">
+  <meta property="og:site_name" content="One Thing">
+  <meta property="og:title" content="One Thing: the to-do list that tells you what to do now">
   <meta property="og:description" content="One thing to do now. Later work stays out of sight until it's due. Your AI agents can help. Your tasks are markdown files you own.">
   <meta property="og:url" content="https://onething.awesomehq.app/">
   <meta property="og:image" content="https://onething.awesomehq.app/img/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Onething's Today view: one big card says what to do now, with the rest of the list below.">
+  <meta property="og:image:alt" content="One Thing's Today view: one big card says what to do now, with the rest of the list below.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Onething: the to-do list that tells you what to do now">
+  <meta name="twitter:title" content="One Thing: the to-do list that tells you what to do now">
   <meta name="twitter:description" content="One thing to do now. Later work stays out of sight until it's due. Your AI agents can help. Your tasks are markdown files you own.">
   <meta name="twitter:image" content="https://onething.awesomehq.app/img/og.png">
-  <meta name="twitter:image:alt" content="Onething's Today view: one big card says what to do now, with the rest of the list below.">
+  <meta name="twitter:image:alt" content="One Thing's Today view: one big card says what to do now, with the rest of the list below.">
   <link rel="stylesheet" href="/styles.css">
   <script src="/main.js" defer></script>
 </head>
@@ -33,9 +33,9 @@
 
   <header class="site-header">
     <div class="wrap header-row">
-      <a class="brand" href="/" aria-label="Onething, home">
+      <a class="brand" href="/" aria-label="One Thing, home">
         <img src="/img/favicon.svg" alt="" width="32" height="32">
-        <span>Onething</span>
+        <span>One Thing</span>
       </a>
       <nav aria-label="Main">
         <ul class="nav-links">
@@ -56,11 +56,11 @@
       <div class="hero-copy">
         <p class="eyebrow">For ADHD brains and busy weeks</p>
         <h1 id="hero-title">The to-do list that tells you what to do <em>now</em>.</h1>
-        <p class="lede">Most task apps show you everything, all the time. Onething shows you one thing to do now,
+        <p class="lede">Most task apps show you everything, all the time. One Thing shows you one thing to do now,
           keeps the rest out of sight until it's due, and lets your AI agents help. Your tasks stay plain markdown files
           in a folder you own.</p>
         <p class="hero-actions">
-          <a class="btn btn-primary" href="#get-it">Get Onething</a>
+          <a class="btn btn-primary" href="#get-it">Get One Thing</a>
           <a class="btn" href="https://github.com/shahabmokhtari/todo-tracker">See the code on GitHub</a>
         </p>
       </div>
@@ -246,7 +246,7 @@
           <p>Changed the same task on two computers? Both changes are kept. If the same line changed on both, you pick
             which one to keep, or keep both. Nothing you typed is lost.</p>
           <p class="small">Want your tasks somewhere else too? Connectors keep a group in step with Notion, Microsoft
-            To Do or a private GitHub repository, and never delete anything on either side.</p>
+            To Do or a private GitHub repository (one per group, or one your groups share), and never delete anything on either side.</p>
         </div>
         <ul class="sync-list" aria-label="Places to sync through">
           <li><strong>OneDrive</strong><span>Used first, a work or school account before a personal one.</span></li>
@@ -308,21 +308,19 @@
             <h3>iPhone and iPad</h3>
             <p class="status ok">Available</p>
             <p>A native app with Today, every task's details, snooze, reminders, notes, energy, search and the focus
-              timer. Syncs with your other devices through iCloud Drive or a gist, or uses your computer's tasks.</p>
+              timer. Syncs with your other devices on its own, through iCloud Drive or a gist.</p>
           </li>
           <li>
             <h3>Android</h3>
             <p class="status ok">Available</p>
             <p>A native app: Today, every task's details, reminder notifications, search, task timers, and the focus
-              timer with full-screen breaks. Syncs with your other devices through a gist, or uses your computer's
-              tasks.</p>
+              timer with full-screen breaks. Syncs with your other devices on its own, through a gist.</p>
           </li>
           <li class="wide">
-            <h3>Your phone and your computer, together</h3>
+            <h3>Your phone and your computers, together</h3>
             <p class="status ok">Available</p>
-            <p>Your phone keeps the same list as your computers. Let it sync on its own (iCloud Drive or a private
-              gist, no computer needed), or scan a code on your computer to use its tasks over your Wi-Fi or
-              Tailscale.</p>
+            <p>Your phone keeps the same list as your computers. It syncs on its own through iCloud Drive or a private
+              GitHub gist, the same places your computers use, with no computer needed.</p>
           </li>
         </ul>
 
@@ -365,13 +363,14 @@
         <ul class="ai-grid">
           <li>
             <h3>MCP server</h3>
-            <p><code>tt mcp</code> works with Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor and
+            <p><code>onething mcp</code> works with Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor and
               other MCP apps. It works on your tasks folder directly, even when the app isn't running.</p>
           </li>
           <li>
-            <h3>The <code>tt</code> command</h3>
-            <p>For terminals, scripts and agents that run commands: <code>tt</code>, <code>tt add</code>,
-              <code>tt snooze</code>, <code>tt done</code>. Add <code>--json</code> for scripts.</p>
+            <h3>The <code>ot</code> command</h3>
+            <p>For terminals, scripts and agents that run commands: <code>ot</code>, <code>ot add</code>,
+              <code>ot snooze</code>, <code>ot done</code>. Add <code>--json</code> for scripts. (<code>ot</code> is
+              short for <code>onething</code>: both work.)</p>
           </li>
           <li>
             <h3>Claude Desktop extension</h3>
@@ -385,11 +384,11 @@
         </ul>
 
         <pre class="code" tabindex="0" aria-label="Commands to connect an AI app"><code><span class="c"># Claude Code</span>
-claude mcp add todo-tracker --scope user -- tt mcp
+claude mcp add onething --scope user -- onething mcp
 
 <span class="c"># The plugin, with the skill (Claude Code)</span>
 /plugin marketplace add shahabmokhtari/todo-tracker
-/plugin install todo-tracker@todo-tracker</code></pre>
+/plugin install onething@onething</code></pre>
         <p class="small">Or open <strong>⋯ › Connect an AI app</strong> in the app: pick your app and copy one
           line.</p>
 
@@ -408,7 +407,7 @@ claude mcp add todo-tracker --scope user -- tt mcp
         <div>
           <p class="eyebrow">Your files, your computer</p>
           <h2 id="privacy-title">Local first. Yours always.</h2>
-          <p>Your tasks are markdown files in <code>Documents/Todo Tracker</code>: one folder per group, one file per
+          <p>Your tasks are markdown files in <code>Documents/OneThing</code>: one folder per group, one file per
             task, steps as checkboxes, notes as callouts. Edit them in the app, in Obsidian, in any editor, or with an
             AI agent. The app picks up the changes.</p>
           <ul class="checks">
@@ -418,13 +417,13 @@ claude mcp add todo-tracker --scope user -- tt mcp
             <li><strong>No account, no telemetry.</strong> The app only talks to the services you switch on: sync,
               connectors, an AI model you add.</li>
             <li><strong>Feedback only when you send it.</strong> Send feedback (Settings, the menus, a shake on a
-              phone) sends your note, an email if you add one, and your app version, device model and language.
-              Never your tasks. <a href="/privacy.html">Privacy details</a>.</li>
+              phone) sends your note, an email if you add one, and the app version, your system and its version,
+              device model, language and screen size. Never your tasks. <a href="/privacy">Privacy details</a>.</li>
             <li><strong>Only on this computer.</strong> The server listens on <code>127.0.0.1</code> only, checks the
               address it was called on, and asks for a 256-bit token.</li>
           </ul>
         </div>
-        <pre class="code tree" tabindex="0" aria-label="An example tasks folder"><code>Documents/Todo Tracker/
+        <pre class="code tree" tabindex="0" aria-label="An example tasks folder"><code>Documents/OneThing/
 ├── Work/
 │   ├── Ship v2.4 release.md
 │   └── Reply to the security review.md
@@ -438,16 +437,16 @@ claude mcp add todo-tracker --scope user -- tt mcp
       <div class="wrap narrow">
         <p class="eyebrow">Get it</p>
         <h2 id="get-title">Start with one thing</h2>
-        <p>Onething isn't in the app stores yet. Ready-built apps for every platform are attached to each build on
-          GitHub (sign in to GitHub to download them), or you can build it from the source.</p>
+        <p>One Thing isn't in the app stores yet. Ready-built apps are on its Releases page on GitHub, or you can
+          build it from the source.</p>
         <p class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml">Download a build</a>
+          <a class="btn btn-primary" href="https://github.com/shahabmokhtari/todo-tracker/releases">Download a build</a>
           <a class="btn" href="https://github.com/shahabmokhtari/todo-tracker">Source on GitHub</a>
         </p>
         <pre class="code" tabindex="0" aria-label="Build and run the Windows app from source"><code><span class="c"># Windows, with the .NET 10 SDK</span>
 git clone https://github.com/shahabmokhtari/todo-tracker
 cd todo-tracker
-dotnet run --project src/TodoTracker.Windows</code></pre>
+dotnet run --project src/OneThing.Windows</code></pre>
         <ul class="doc-links">
           <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/guide.md">The guide</a></li>
           <li><a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/ai-connectors.md">Connect an AI app</a></li>
@@ -460,8 +459,8 @@ dotnet run --project src/TodoTracker.Windows</code></pre>
 
   <footer class="site-footer">
     <div class="wrap footer-row">
-      <p><img src="/img/favicon.svg" alt="" width="20" height="20"> Onething</p>
-      <p><a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a> · <a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/llms.txt">llms.txt</a> · <a href="/privacy.html">Privacy</a> · <a href="#main">Back to top</a></p>
+      <p><img src="/img/favicon.svg" alt="" width="20" height="20"> One Thing</p>
+      <p><a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a> · <a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/llms.txt">llms.txt</a> · <a href="/privacy">Privacy</a> · <a href="#main">Back to top</a></p>
     </div>
   </footer>
 </body>

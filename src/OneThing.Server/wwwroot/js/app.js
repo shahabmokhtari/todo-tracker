@@ -1,0 +1,2091 @@
+import { api, post, patch, put, del, h, upload, text, ApiError, setKeepalive } from './api.js';
+import { relativeTime, priorityMeta, snoozeOptions, progressPercent, stepLabel, isSafeHttpUrl, greeting, metaChips, summaryLine, pomodoroFraction, fileSize, parseTags, formatTags, queryFor, hasTerm, toggleTerm, obsidianLink, cheerLine, whenText, taskLink, energyMarks, energyLine } from './format.js';
+import { icon, ring } from './icons.js';
+import { createAutosave, changedFields } from './autosave.js';
+import { step, drop, beforeOf, changed } from './order.js';
+import { splitEmbeds, embedUrl, acceptPastedMedia, pastesDone, imageFiles, pastedName, MAX_PASTE_BYTES } from './media.js';
+import { createShell } from './shell.js';
+import { createLater } from './later.js';
+import { pickIcon, colorPicker, iconBadge, withAccent, repeatField, repeatMark } from './looks.js';
+import { createBoardView } from './views/board.js';
+import { createOutlineView } from './views/outline.js';
+import { createDoneView } from './views/done.js';
+import { createReportsView } from './views/reports.js';
+import { createPlanView } from './views/plan.js';
+import { createSettingsView } from './views/settings.js';
+import { followTheme as follow } from './themes.js';
+import { askAboutHooks } from './hook-prompt.js';
+import { duration, toLocalInput as localInput } from './timefmt.js';
+import { latest, DRAG_TYPE } from './views/common.js';
+
+/** One embedded file: a picture (its name if it can't be shown), or a link for other files. */
+function embedNode(itemId, name, image) {
+  const url = embedUrl(itemId, name);
+  if (!image) return h('a', { class: 'embed-file', href: url, target: '_blank', rel: 'noopener' }, icon('paperclip', { size: 13 }), name);
+  const img = h('img', { src: url, alt: name, loading: 'lazy' });
+  const link = h('a', { class: 'embed', href: url, target: '_blank', rel: 'noopener', title: name }, img);
+  img.addEventListener('error', () => link.replaceWith(h('span', { class: 'embed-missing', title: 'Not found among this task’s attachments' }, icon('paperclip', { size: 13 }), name)), { once: true });
+  return link;
+}
+
+/** Text with its embedded files (![[Pasted image.png]]) shown as pictures or links; the rest stays plain text. */
+function withEmbeds(value, itemId) {
+  return splitEmbeds(value).map((part) => (part.embed ? embedNode(itemId, part.embed, part.image) : part.text));
+}
+
+/** Pasting a screenshot (or any file) into this box attaches it to the task and embeds it at the caret. */
+function acceptMedia(box, itemId, onUploaded) {
+  acceptPastedMedia(box, {
+    upload: (file, name) => upload(`/api/items/${itemId}/attachments`, file, name),
+    onError: (err) => toast(err.message, 'error'),
+    onUploaded,
+  });
+  return box;
+}
+
+const $ = (sel) => document.querySelector(sel);
+const state = {
+  dashboard: null,
+  group: localStorage.getItem('onething.group') || null,
+  drawerId: null,
+  query: '',
+  vault: null,
+  plugins: null, // ids of the plugins that are on (null until loaded: everything shows)
+};
+
+/** Notes autosave while typed: the first pause creates the note, later pauses update the same note. */
+const noteSessions = new Map();
+
+function noteSession(itemId, key = itemId) {
+  if (!noteSessions.has(key)) {
+    const session = { noteId: null };
+    session.autosave = createAutosave({
+      delay: 1200,
+      save: async (text) => {
+        if (!text.trim()) return;
+        if (session.noteId) await patch(`/api/items/${itemId}/notes/${session.noteId}`, { text });
+        else session.noteId = (await post(`/api/items/${itemId}/notes`, { text })).id;
+      },
+      onState: (s) => setSaveState(s),
+    });
+    noteSessions.set(key, session);
+  }
+  return noteSessions.get(key);
+}
+
+/**
+ * Finishes the note being typed (saves it now) so the next keystrokes start a new note. Returns false when it couldn't
+ * be saved: the session (and the text in the box) are kept so nothing typed is lost and the next try continues it.
+ */
+async function finishNote(key) {
+  const session = noteSessions.get(key);
+  if (!session) return true;
+  if (!(await session.autosave.flush())) return false;
+  if (noteSessions.get(key) === session) noteSessions.delete(key);
+  return true;
+}
+
+function setSaveState(s) {
+  const el = document.getElementById('save-state');
+  if (!el) return;
+  el.dataset.state = s;
+  el.textContent = { pending: 'Editing…', saving: 'Saving…', saved: 'Saved', error: 'Couldn’t save – will retry' }[s] ?? '';
+}
+
+// ---------- boot & refresh ----------
+
+// A tab switch, the filter, the tag picker and the 15 s check can overlap: only the newest answer is shown.
+const loadDashboard = latest((query) => api(`/api/dashboard${query}`));
+
+async function refresh({ background = false } = {}) {
+  // Background refreshes never interrupt typing: an open note box or a focused field keeps its content.
+  if (background && isEditing()) return;
+  try {
+    const params = new URLSearchParams();
+    if (state.group) params.set('group', state.group);
+    if (state.query) params.set('q', state.query);
+    const query = params.toString() ? `?${params}` : '';
+    const reply = await loadDashboard(query);
+    if (!reply.current) return;
+    state.dashboard = reply.value;
+    setOffline(false);
+    if (!state.vault) api('/api/vault').then((v) => { state.vault = v; renderVault(); }).catch(() => {});
+    showBoard(true);
+    await dragDone();
+    const drafts = collectNoteDrafts();
+    render();
+    restoreNoteDrafts(drafts);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return showBoard(false);
+    if (err instanceof ApiError && err.status === 404 && state.group) {
+      setGroup(null);
+      return refresh();
+    }
+    // No connection: one lasting notice (it goes once One Thing answers), not a toast on every try.
+    if (err.offline) return setOffline(true);
+    if (!background) toast(err.message, 'error');
+  }
+}
+
+/** The notice shown while One Thing can't be reached. */
+function setOffline(on) {
+  state.offline = on;
+  const el = $('#offline');
+  if (on && el.hidden) el.replaceChildren(icon('alert', { size: 16 }), h('span', null, 'Can’t reach One Thing right now. Check that it’s running; this page tries again by itself.'));
+  el.hidden = !on;
+}
+
+/** True only when something unsaved would be lost: typed capture text, a non-empty note, or dirty drawer fields. */
+function isEditing() {
+  if ($('#capture-input').value.trim()) return true;
+  if ([...noteSessions.values()].some((s) => s.autosave.dirty)) return true;
+  if ([...document.querySelectorAll('.inline-note:not([hidden]) input')].some((i) => i.value.trim())) return true;
+  return !$('#drawer').hidden && !!state.drawerAutosave?.dirty;
+}
+
+function collectNoteDrafts() {
+  const drafts = new Map();
+  const active = document.activeElement;
+  document.querySelectorAll('.inline-note:not([hidden])').forEach((form) => {
+    const input = form.querySelector('input');
+    drafts.set(form.dataset.id, { value: input.value, focused: input === active, start: input.selectionStart, end: input.selectionEnd });
+  });
+  return drafts;
+}
+
+function restoreNoteDrafts(drafts) {
+  drafts.forEach((draft, id) => {
+    const form = document.querySelector(`.inline-note[data-id="${CSS.escape(id)}"]`);
+    if (!form) return;
+    const { value, focused = false, start = value.length, end = value.length } = typeof draft === 'string' ? { value: draft } : draft;
+    const input = form.querySelector('input');
+    form.hidden = false;
+    input.value = value;
+    if (focused) {
+      // Keep the caret where it was, so the next keystroke doesn't trigger page shortcuts.
+      input.focus();
+      input.setSelectionRange(start, end);
+    }
+  });
+}
+
+/** Signed in: the views; signed out: the sign-in form (only redrawn when that changes). */
+function showBoard(authenticated) {
+  if (state.signedIn === authenticated) return;
+  state.signedIn = authenticated;
+  $('#login').hidden = authenticated;
+  document.body.classList.toggle('signed-out', !authenticated);
+  shell.route();
+}
+
+/** The dashboard (top bar, Today) and the view on screen, after a change. */
+async function refreshAll() {
+  await refresh();
+  await currentView()?.refresh();
+}
+
+const currentView = () => ctx.views[shell.current()];
+
+/** Runs an action, then refreshes. Returns true on success so callers only clear inputs when nothing was lost. */
+async function act(promise, message) {
+  let ok = true;
+  try {
+    await promise;
+    if (message) toast(message);
+  } catch (err) {
+    ok = false;
+    toast(err.message, 'error');
+  }
+  await refresh();
+  await currentView()?.refresh();
+  if (state.drawerId) await openDrawer(state.drawerId);
+  return ok;
+}
+
+function toast(message, tone = 'ok') {
+  const el = $('#toast');
+  el.className = `toast ${tone}`;
+  el.replaceChildren(icon(tone === 'error' ? 'x' : 'check', { size: 16 }), h('span', null, message));
+  el.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (el.hidden = true), 3200);
+}
+
+function setGroup(id) {
+  state.group = id;
+  if (id) localStorage.setItem('onething.group', id);
+  else localStorage.removeItem('onething.group');
+}
+
+// ---------- rendering ----------
+
+function render() {
+  const d = state.dashboard;
+  // Any redraw (a live update, a plugin loading) keeps the keyboard where it was on the board.
+  const kept = state.refocus ? { id: state.refocus } : boardFocus();
+  $('#greeting').textContent = greeting();
+  // Energy once something is planned today (the same rule in every app); in red past what there is in a day.
+  const energy = pluginOn('energy') && d.energy?.plannedToday > 0 ? energyLine(d.energy) : '';
+  $('#summary').replaceChildren(summaryLine(d), ...(energy ? [' ', h('span', { class: `energy-line${d.energy.plannedToday > d.energy.perDay ? ' over' : ''}` }, energy)] : []));
+  renderTabs(d);
+  const pick = $('#capture-group');
+  if (pick.dataset.chosen && pick.dataset.tab !== (state.group ?? '')) delete pick.dataset.chosen;
+  renderCaptureGroup(d);
+  renderFocus(d);
+  renderSection('#sec-now', d.now.filter((c) => c.id !== d.focus?.id).map((c) => card(c, { orderable: true })), d.now.length, 'Nothing else right now. Nice.');
+  renderSection('#sec-waiting', d.waiting.map((c) => card(c, { waiting: true })), d.waiting.length, 'Nothing is parked.');
+  // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
+  const streams = d.overview.filter((o) => o.hasChildren);
+  renderSection('#sec-overview', streams.map(workstream), streams.length, 'Tasks with subtasks or rollout steps show up here with progress.');
+  renderSection('#sec-notes', d.recentNotes.map(noteRow), d.recentNotes.length, 'Notes you and your agents log appear here.');
+  renderDoneToday(d.doneToday ?? []);
+  renderPomodoro(d.pomodoro);
+  renderProblems(d.problems ?? []);
+  renderFilter();
+  shell.update(d);
+  document.title = d.now.length ? `(${d.now.length}) One Thing` : 'One Thing';
+  if (kept) focusOrderControl(kept.id, kept.label);
+}
+
+/** The board task row (and which of its controls) the keyboard is on; nothing outside the board counts. */
+function boardFocus() {
+  const active = document.activeElement;
+  const row = active && $('#board').contains(active) ? active.closest('[data-order-id]') : null;
+  return row ? { id: row.dataset.orderId, label: active.getAttribute('aria-label') } : null;
+}
+
+/** Files that can't be read are shown, never silently ignored (the app won't overwrite them). */
+function renderProblems(problems) {
+  const el = $('#problems');
+  el.hidden = problems.length === 0;
+  if (!problems.length) return;
+  el.replaceChildren(icon('alert', { size: 16 }),
+    h('span', null, problems.length === 1 ? `A task file needs fixing: ${problems[0].path} – ${problems[0].message}` : `${problems.length} task files need fixing (first: ${problems[0].path}).`));
+}
+
+function renderFilter() {
+  const input = $('#filter');
+  if (document.activeElement !== input) input.value = state.query;
+  $('#filter-clear').hidden = !state.query;
+}
+
+function setQuery(q) {
+  state.query = (q ?? '').trim();
+  renderFilter();
+  // Every view follows the filter: Today, Board, Tasks and Done.
+  refreshAll();
+}
+
+/**
+ * The tag & label picker next to the filter: a small panel of toggles (click one to add it to the filter, again to
+ * take it out). Esc closes it and goes back to its button.
+ */
+async function toggleFilterMenu() {
+  const menu = $('#filter-menu');
+  if (!menu.hidden) return closeFilterMenu();
+  closeMenus();
+  let tags = [];
+  try { tags = await api('/api/tags'); } catch { /* labels alone still help */ }
+  renderFilterMenu(tags);
+  menu.hidden = false;
+  $('#filter-pick').setAttribute('aria-expanded', 'true');
+  menu.querySelector('button')?.focus();
+}
+
+function closeFilterMenu({ focusButton = false } = {}) {
+  $('#filter-menu').hidden = true;
+  $('#filter-pick').setAttribute('aria-expanded', 'false');
+  if (focusButton) $('#filter-pick').focus();
+}
+
+function renderFilterMenu(tags) {
+  const menu = $('#filter-menu');
+  const labels = state.dashboard?.labels ?? [];
+  // Redrawn after each click, so what's on shows at once (and focus stays on the same toggle).
+  const pick = (term) => {
+    setQuery(toggleTerm(state.query, term));
+    renderFilterMenu(tags);
+    menu.querySelector(`button[data-term="${CSS.escape(term)}"]`)?.focus();
+  };
+  const entry = (term, content, title) => {
+    const on = hasTerm(state.query, term);
+    return h('button', { type: 'button', 'aria-pressed': String(on), class: on ? 'on' : '', title, dataset: { term }, onclick: () => pick(term) },
+      h('span', { class: 'check', 'aria-hidden': 'true' }, on ? '✓' : ''), ...content);
+  };
+  const swatch = (color) => {
+    const s = h('span', { class: 'swatch', 'aria-hidden': 'true' });
+    s.style.setProperty('--label', color);
+    return s;
+  };
+  menu.replaceChildren(
+    h('h2', { class: 'menu-head' }, 'Labels', h('small', null, 'colored categories, picked from a list')),
+    ...(labels.length ? labels.map((l) => entry(queryFor({ label: l.name }), [swatch(l.color), l.name], `Show tasks labeled "${l.name}"`)) : [h('p', { class: 'menu-empty' }, 'No labels yet: add them in a task\'s details.')]),
+    h('h2', { class: 'menu-head' }, 'Tags', h('small', null, 'free words you type in a task, separated by commas')),
+    ...(tags.length ? tags.map((t) => entry(queryFor({ tag: t.name }), [h('span', null, `#${t.name}`), h('span', { class: 'count' }, String(t.count))], `Show #${t.name}`)) : [h('p', { class: 'menu-empty' }, 'No tags yet: add them in a task\'s details, separated by commas.')]),
+    state.query ? h('button', { type: 'button', class: 'menu-clear', onclick: () => { setQuery(''); renderFilterMenu(tags); } }, 'Clear the filter') : null);
+}
+
+/** "Open in Obsidian" when it's on this computer; else a link to get it (its site, or its app on a phone). */
+function obsidianAnchor(url, { class: cls, iconOnly = false, file = '' } = {}) {
+  const link = obsidianLink({ url, installed: state.vault?.obsidianInstalled ?? true, userAgent: navigator.userAgent, touchPoints: navigator.maxTouchPoints });
+  const title = link.get ? 'Get Obsidian (to open your tasks there)' : file ? `Open in Obsidian (${file})` : 'Open in Obsidian';
+  const attrs = { class: cls, href: link.href, title, 'aria-label': link.label, ...(link.get ? { target: '_blank', rel: 'noopener' } : {}) };
+  return h('a', attrs, iconOnly ? icon('obsidian') : link.label);
+}
+
+function renderVault() {
+  const v = state.vault;
+  if (!v) return;
+  $('#vault').replaceChildren(
+    icon('folder', { size: 14 }),
+    h('span', { class: 'muted', title: v.path }, 'Saved as markdown in ', h('code', null, v.path)),
+      pluginOn('obsidian') ? obsidianAnchor(v.obsidianUrl, { class: 'link' }) : null);
+}
+
+const tagChip = (t) => h('button', { class: 'chip tag', title: `Show #${t}`, onclick: (e) => { e.stopPropagation(); setQuery(queryFor({ tag: t })); } }, `#${t}`);
+
+function labelChip(l, { onclick } = {}) {
+  const el = h('button', { class: 'chip label', title: `Show "${l.name}"`, onclick: onclick ?? ((e) => { e.stopPropagation(); setQuery(queryFor({ label: l.name })); }) }, h('span', { class: 'swatch', 'aria-hidden': 'true' }), l.name);
+  el.style.setProperty('--label', l.color);
+  return el;
+}
+
+function renderTabs(d) {
+  const total = d.groups.reduce((n, g) => n + g.now, 0);
+  const attention = d.groups.some((g) => g.attention > 0);
+  const tab = (id, name, count, color, alert) => {
+    const el = h('button', {
+      type: 'button',
+      class: 'tab',
+      'aria-current': (state.group || null) === id ? 'true' : null,
+      onclick: () => { setGroup(id); shell.closeNav(); refreshAll(); },
+      title: id ? `Show ${name}` : 'All groups',
+    }, id ? h('span', { class: 'dot' }) : null, name, count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
+    if (color) el.style.setProperty('--group', color);
+    return el;
+  };
+  const group = (g) => h('div', { class: 'tab-row' }, tab(g.id, g.name, g.now, g.color, g.attention > 0), groupMenu(g, d.groups));
+
+  $('#tabs').replaceChildren(
+    tab(null, 'All', total, null, attention),
+    ...d.groups.map(group),
+    h('button', { class: 'tab add', type: 'button', title: 'Add group', 'aria-label': 'Add group', onclick: addGroup }, icon('plus', { size: 16 })));
+}
+
+/** A group's ⋯: rename it, or delete it (its tasks move to another group, after asking). */
+function groupMenu(g, groups) {
+  const others = groups.filter((x) => x.id !== g.id);
+  const menu = h('div', { class: 'menu group-menu', hidden: true, role: 'menu', 'aria-label': `${g.name} group` });
+  const item = (iconName, label, onclick) => h('button', { role: 'menuitem', class: 'wide', type: 'button', onclick: () => { closeMenus(); onclick(); } }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label));
+  menu.append(
+    item('pencil', 'Rename…', () => renameGroup(g)),
+    ...(others.length ? [item('trash', 'Delete…', () => deleteGroup(g, others[0]))] : []));
+  const button = h('button', {
+    class: 'icon-btn small tab-more', type: 'button', title: `More for ${g.name}`, 'aria-label': `More for ${g.name}`, 'aria-haspopup': 'menu', 'aria-expanded': 'false',
+    onclick: (e) => {
+      e.stopPropagation();
+      const opening = menu.hidden;
+      closeMenus();
+      if (!opening) return;
+      menu.hidden = false;
+      fitMenu(menu);
+      button.setAttribute('aria-expanded', 'true');
+      menu.querySelector('button')?.focus();
+    },
+  }, icon('more', { size: 16 }));
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMenus(); button.focus(); }
+  });
+  return h('span', { class: 'menu-wrap' }, button, menu);
+}
+
+function renderFocus(d) {
+  const f = d.focus;
+  if (!f) {
+    const next = d.waiting[0];
+    $('#focus').replaceChildren(h('div', { class: 'focus-card empty' },
+      h('div', { class: 'focus-top' }, h('span', { class: 'eyebrow' }, icon('sparkles', { size: 14 }), 'All clear')),
+      h('div', { class: 'empty-row' },
+        h('div', { class: 'empty-illustration' }, icon('check', { size: 28 })),
+        h('div', null,
+          h('div', { class: 'focus-title' }, 'Nothing is due. Enjoy the calm.'),
+          next ? h('div', { class: 'muted' }, `Next up: ${next.title} ${relativeTime(next.wakeAt)}`) : h('div', { class: 'muted' }, 'Capture the next thing whenever it comes to mind.')))));
+    return;
+  }
+
+  const meta = priorityMeta(f.priority);
+  const chips = metaChips(f, { energy: pluginOn('energy'), plan: pluginOn('plan'), notes: false }).filter((c) => c.tone !== 'step');
+  const sub = [];
+  if (f.stepNumber) {
+    sub.push(h('span', { class: 'step-progress' }, ring((f.stepNumber - 1) / f.stepCount, { size: 22, stroke: 3 }), stepLabel(f)));
+  }
+  const tagged = [...(f.labels ?? []).map((l) => labelChip(l)), ...(f.tags ?? []).map(tagChip)];
+  if (chips.length || tagged.length) sub.push(h('div', { class: 'meta' }, ...chips.map(cardChip(f)), ...tagged));
+
+  const el = h('div', { class: `focus-card${f.needsAttention ? ' attention' : ''}` },
+    h('div', { class: 'focus-top' },
+      h('span', { class: 'eyebrow' }, icon(f.needsAttention ? 'clock' : 'target', { size: 14 }), f.needsAttention ? 'Reminder' : 'Do this now'),
+      h('span', { class: 'prio-pill' }, meta.label)),
+    h('button', { class: 'focus-title', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(f.id) }, iconBadge(f.icon), f.title, repeatMark(f.repeat)),
+    sub.length ? h('div', { class: 'focus-sub' }, ...sub) : null,
+    f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
+    // The task you're on: every note, newest first.
+    f.notes?.length ? h('ul', { class: 'card-notes focus-notes', 'aria-label': 'Notes' }, ...f.notes.map(cardNote)) : null,
+    actions(f, { big: true }));
+  el.style.setProperty('--prio', meta.color);
+  withAccent(el, f.accent);
+  // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
+  sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
+  // Said in words: an unlabeled arrow among labeled buttons read as a menu.
+  if (blockIds(f.id).length > 1) {
+    const bar = el.querySelector('.actions.big');
+    bar.insertBefore(actionButton({
+      name: 'Skip', iconName: 'down', big: true, title: 'Do something else first: moves this one down the list (Alt+↓)',
+      onclick: () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id),
+    }), bar.lastElementChild);
+  }
+  $('#focus').replaceChildren(el);
+}
+
+// ---------- manual order (drag, arrows, Alt+↑/↓) ----------
+
+const nowIds = () => state.dashboard?.now.map((c) => c.id) ?? [];
+
+/**
+ * The tasks a task moves among: all of Do now, a task with a due reminder too (once placed, it stays where it's put;
+ * only a reminder going off later brings it back to the top).
+ */
+function blockIds() {
+  return nowIds();
+}
+
+/** Shows the new order right away, then saves it (one save at a time). */
+function arrangeNow(order, movedId) {
+  const d = state.dashboard;
+  if (!d || !order.length) return;
+  const ids = order;
+  if (!changed(nowIds(), ids)) return;
+  const byId = new Map(d.now.map((c) => [c.id, c]));
+  d.now = ids.map((id) => byId.get(id)).filter(Boolean);
+  d.focus = d.now[0] ?? null;
+  state.refocus = movedId;
+  const drafts = collectNoteDrafts();
+  render();
+  restoreNoteDrafts(drafts);
+  saveOrder(ids);
+}
+
+let orderSaving = Promise.resolve();
+let pendingOrder = null;
+
+/** Saves the latest order; quick moves never race (the newest order is always the one saved last). */
+function saveOrder(ids) {
+  pendingOrder = ids;
+  orderSaving = orderSaving.then(async () => {
+    if (!pendingOrder) return;
+    const send = pendingOrder;
+    pendingOrder = null;
+    try {
+      await post('/api/now/order', { ids: send });
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    if (!pendingOrder) {
+      await refresh({ background: true });
+      state.refocus = null;
+    }
+  });
+}
+
+/** Keeps the keyboard on the moved task (on the same control, if given) after a redraw of `scope`. */
+function focusOrderControl(id, label = null, scope = $('#board')) {
+  if (!id) return;
+  const el = scope.querySelector(`[data-order-id="${CSS.escape(id)}"]`);
+  const same = label ? [...(el?.querySelectorAll('[aria-label]') ?? [])].find((c) => c.getAttribute('aria-label') === label) : null;
+  (same ?? el?.querySelector('.title, .focus-title, .link') ?? el)?.focus({ preventScroll: true });
+}
+
+let dragging = null; // { id, scope }
+let dragWaiters = [];
+
+/** Resolves once no drag is in progress (at most 10 s): redrawing under a drag would lose the drop. */
+function dragDone() {
+  return dragging
+    ? new Promise((resolve) => {
+      dragWaiters.push(resolve);
+      setTimeout(resolve, 10000);
+    })
+    : Promise.resolve();
+}
+
+function endDrag() {
+  dragging = null;
+  const waiters = dragWaiters;
+  dragWaiters = [];
+  waiters.forEach((resolve) => resolve());
+}
+
+// A drag also ends when its row was replaced meanwhile (the row's own dragend may not come).
+document.addEventListener('dragend', endDrag, true);
+
+/**
+ * Makes `el` reorderable within its `scope`: drag it (or drop others on it), ↑/↓ buttons, and Alt+↑/Alt+↓.
+ * `ids()` is the current order; `onOrder(newIds, movedId)` applies a new one.
+ */
+function sortable(el, id, { scope, ids, onOrder, buttons = false, alwaysBefore = false }) {
+  el.dataset.orderId = id;
+  el.draggable = true;
+  el.classList.add('sortable');
+  const clear = () => el.classList.remove('drop-before', 'drop-after');
+  el.addEventListener('dragstart', (e) => {
+    if (e.target !== el) return;
+    dragging = { id, scope };
+    e.dataTransfer.effectAllowed = 'move';
+    // A private type: dropping a card on a text box must not paste its id.
+    e.dataTransfer.setData(DRAG_TYPE, id);
+    el.classList.add('dragging');
+  });
+  el.addEventListener('dragend', () => {
+    el.classList.remove('dragging');
+    document.querySelectorAll('.drop-before, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-after'));
+    endDrag();
+  });
+  const after = (e) => {
+    if (alwaysBefore) return false;
+    const r = el.getBoundingClientRect();
+    return e.clientY > r.top + r.height / 2;
+  };
+  const accepts = () => dragging && dragging.scope === scope && dragging.id !== id && ids().includes(dragging.id);
+  el.addEventListener('dragover', (e) => {
+    if (!accepts()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    clear();
+    el.classList.add(after(e) ? 'drop-after' : 'drop-before');
+  });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) clear(); });
+  el.addEventListener('drop', (e) => {
+    if (!accepts()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    clear();
+    const moved = dragging.id;
+    onOrder(drop(ids(), moved, id, after(e)), moved);
+  });
+  el.addEventListener('keydown', (e) => {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    // Typing in a note keeps Alt/Option+arrows for the text.
+    if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onOrder(step(ids(), id, e.key === 'ArrowUp' ? -1 : 1), id);
+  });
+  if (!buttons) return null;
+  const current = ids();
+  const index = current.indexOf(id);
+  const arrow = (delta, iconName, name) => h('button', {
+    class: 'icon-btn order-btn', type: 'button', 'aria-label': name, title: `${name} (Alt+${delta < 0 ? '↑' : '↓'})`, disabled: index + delta < 0 || index + delta >= current.length,
+    onclick: (e) => { e.stopPropagation(); onOrder(step(ids(), id, delta), id); },
+  }, icon(iconName, { size: 14 }));
+  return h('span', { class: 'order' },
+    h('span', { class: 'grip', title: 'Drag to reorder', 'aria-hidden': 'true' }, icon('grip', { size: 14 })),
+    arrow(-1, 'up', 'Move up'),
+    arrow(1, 'down', 'Move down'));
+}
+
+function renderSection(selector, rows, count, emptyText) {
+  const section = $(selector);
+  section.querySelector('.count').textContent = count ? String(count) : '';
+  section.querySelector('.list').replaceChildren(...(rows.length ? rows : [h('li', { class: 'empty' }, emptyText)]));
+  const key = `onething.open.${section.id}`;
+  if (!section.dataset.bound) {
+    section.dataset.bound = '1';
+    const saved = localStorage.getItem(key);
+    if (saved !== null) section.open = saved === '1';
+    section.addEventListener('toggle', () => localStorage.setItem(key, section.open ? '1' : '0'));
+  }
+}
+
+const chip = (c) => h('span', { class: `chip ${c.tone}` }, c.text);
+
+/** A card's chips; a subtask's path opens its parent (the bigger thing it belongs to). */
+const cardChip = (card) => (c) => (c.tone === 'path' && card.parentId
+  ? h('button', { class: 'chip path', type: 'button', title: 'Open the task it belongs to', onclick: (e) => { e.stopPropagation(); openDrawer(card.parentId); } }, icon('tree', { size: 12 }), c.text)
+  : chip(c));
+
+function card(c, { waiting = false, orderable = false } = {}) {
+  const li = h('li', { class: `item${c.needsAttention ? ' attention' : ''}` },
+    h('span', { class: 'prio', title: `${priorityMeta(c.priority).label} priority` }),
+    h('div', { class: 'body' },
+      h('button', { class: 'title link', title: 'Open details (subtasks, notes, time, files)', onclick: () => openDrawer(c.id) }, iconBadge(c.icon), c.title),
+      h('div', { class: 'meta' }, ...metaChips(c, { waiting, energy: pluginOn('energy'), plan: pluginOn('plan'), notes: false }).map(cardChip(c)), ...(c.labels ?? []).map((l) => labelChip(l)), ...(c.tags ?? []).map(tagChip),
+        c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
+      c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null,
+      ...notesToggle(c)),
+    actions(c, { waiting }));
+  li.style.setProperty('--prio', priorityMeta(c.priority).color);
+  withAccent(li, c.accent);
+  if (orderable) {
+    const controls = sortable(li, c.id, { scope: 'now', ids: () => blockIds(c.id), onOrder: arrangeNow, buttons: true });
+    li.insertBefore(controls, li.lastElementChild); // before the actions
+  }
+  return li;
+}
+
+/** Icon button for rows; labeled button for the focus card. Both expose the same accessible name. */
+function actionButton({ name, iconName, big, tone = '', primary = false, onclick, title = name }) {
+  return big
+    ? h('button', { class: `btn ${primary ? 'primary' : ''}`.trim(), title, onclick }, icon(iconName, { size: 16 }), name)
+    : h('button', { class: `icon-btn ${tone}`.trim(), title, 'aria-label': name, onclick }, icon(iconName));
+}
+
+function actions(c, { waiting = false, big = false } = {}) {
+  const bar = h('div', { class: `actions${big ? ' big' : ''}` });
+  // Saved as you type; Enter finishes the note (and starts a fresh one next time).
+  const noteInput = h('input', {
+    placeholder: 'What did you do? What is next? (saves as you type)', maxlength: 10000, 'aria-label': 'Note',
+    oninput: () => noteSession(c.id, `card:${c.id}`).autosave.schedule(noteInput.value),
+    onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); finish(); } },
+    // Leaving the box finishes the note, so coming back starts a new one instead of overwriting it.
+    onblur: () => { if (noteInput.value.trim()) finish(); },
+  });
+  acceptMedia(noteInput, c.id);
+  let finishing = false;
+  const finish = async () => {
+    if (finishing) return;
+    finishing = true;
+    try {
+      // A picture still uploading goes into this note, not the next one.
+      await pastesDone();
+      const hadText = noteInput.value.trim();
+      if (!(await finishNote(`card:${c.id}`))) return toast('Couldn’t save the note yet – it’s kept here, try again', 'error');
+      noteInput.value = '';
+      noteBox.hidden = true;
+      if (hadText) await act(Promise.resolve(), 'Note saved');
+    } finally {
+      finishing = false;
+    }
+  };
+  const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: (e) => { e.preventDefault(); finish(); } },
+    noteInput, h('button', { class: 'btn', type: 'submit', title: 'Finish this note (Enter)', 'aria-label': 'Finish note' }, icon('check', { size: 16 }), 'Finish'));
+
+  // "Mark done", not "Done": next to a panel's close button a bare "Done" reads as "I'm finished here".
+  if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Mark done', iconName: 'check', big, tone: 'ok', primary: true, title: 'Mark this task done', onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
+  if (waiting) bar.append(actionButton({ name: 'Do now', iconName: 'undo', big, title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }));
+  bar.append(snoozeButton(c, big));
+  bar.append(actionButton({ name: 'Note', iconName: 'note', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
+  if (!waiting && pluginOn('focus-timer')) bar.append(actionButton({ name: 'Focus', iconName: 'target', big, tone: 'warn', title: 'Start a focus session (Pomodoro)', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
+  if (!waiting) {
+    bar.append(c.timing
+      ? actionButton({ name: 'Stop timer', iconName: 'stop', big, tone: 'on', title: 'Stop timing this task', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') })
+      : actionButton({ name: 'Timer', iconName: 'timer', big, title: 'Time this task (stops any other timer)', onclick: () => act(post('/api/timer/start', { itemId: c.id }), 'Timer started') }));
+  }
+  // Said out loud: the title opens it too, but nothing else told you so.
+  bar.append(actionButton({ name: big ? 'Details' : 'Open', iconName: 'expand', big, title: 'Open details: subtasks, notes, time, files', onclick: () => openDrawer(c.id) }));
+  bar.append(moreButton(c, big));
+  return h('div', { class: 'action-wrap' }, bar, noteBox);
+}
+
+/** The rarer actions (dismissing a reminder, copying a link, what extras add) behind ⋯, so the buttons stay few. */
+function moreButton(c, big = false) {
+  const item = (iconName, label, onclick) => h('button', { role: 'menuitem', class: 'wide', onclick }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label));
+  const menu = h('div', { class: 'menu more-menu', hidden: true, role: 'menu', 'aria-label': `More for ${c.title}` });
+  const fill = () => menu.replaceChildren(
+    ...(c.needsAttention && c.reminderId ? [item('bellOff', 'Dismiss reminder', () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`), 'Reminder dismissed'))] : []),
+    item('expand', 'Open full size', () => { location.hash = `#/task/${c.id}`; }),
+    item('external', 'Open in a new tab', () => window.open(`/#/task/${c.id}`, '_blank', 'noopener')),
+    item('link', 'Copy link', () => copyTaskLink(c)),
+    ...visibleTaskActions().map((a) => item(a.iconName, a.label, () => a.onClick(c.id))));
+  const button = h('button', { class: big ? 'btn' : 'icon-btn', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => {
+    e.stopPropagation();
+    const opening = menu.hidden;
+    closeMenus();
+    if (!opening) return;
+    fill();
+    menu.hidden = false;
+    fitMenu(menu);
+    button.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button')?.focus();
+  } }, icon('more', { size: big ? 16 : 18 }));
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMenus(); button.focus(); }
+  });
+  return h('span', { class: 'menu-wrap' }, button, menu);
+}
+
+/** The quick choices come from the server (its clock and zone decide "this evening", "next Monday"…); kept a minute. */
+let snoozeChoices = { at: 0, list: null };
+async function quickChoices() {
+  if (snoozeChoices.list && Date.now() - snoozeChoices.at < 60000) return snoozeChoices.list;
+  try {
+    const answer = await Promise.race([api('/api/snooze'), new Promise((_, reject) => setTimeout(() => reject(new Error('slow')), 1500))]);
+    snoozeChoices = { at: Date.now(), list: answer.choices };
+    return answer.choices;
+  } catch {
+    return snoozeOptions().map((o) => ({ label: o.label, minutes: o.minutes }));
+  }
+}
+
+function snoozeButton(c, big) {
+  const menu = h('div', { class: 'menu snooze-menu', hidden: true, role: 'menu', 'aria-label': `Snooze ${c.title}` });
+  const fill = (choices) => {
+    const now = new Date();
+    menu.replaceChildren(
+      ...choices.map((o) => h('button', {
+        role: 'menuitem', class: 'choice',
+        onclick: () => act(post(`/api/items/${c.id}/schedule`, o.id ? { choice: o.id, notify: true } : { inMinutes: o.minutes, notify: true }),
+          o.at ? `Snoozed until ${whenText(o.at, now)}` : `Snoozed: ${o.label.toLowerCase()}`),
+      }, icon('clock', { size: 15 }), h('span', { class: 'menu-label' }, o.label), o.at ? h('span', { class: 'menu-hint' }, whenText(o.at, now)) : null)),
+      h('div', { class: 'menu-sep', role: 'separator' }),
+      h('button', { role: 'menuitem', class: 'wide', onclick: () => later.openWhen(c) }, icon('calendar', { size: 15 }), h('span', { class: 'menu-label' }, 'Pick a time…')),
+      h('button', { role: 'menuitem', class: 'wide', onclick: () => later.openAfter(c) }, icon('link', { size: 15 }), h('span', { class: 'menu-label' }, 'After another task…')));
+  };
+  const button = actionButton({
+    name: 'Later', iconName: 'clock', big, title: 'Snooze: later today, next week, a time you type, or after another task',
+    onclick: async (e) => {
+      e.stopPropagation();
+      const opening = menu.hidden;
+      closeMenus();
+      if (!opening) return;
+      fill(await quickChoices());
+      menu.hidden = false;
+      fitMenu(menu);
+      button.setAttribute('aria-expanded', 'true');
+      menu.querySelector('button')?.focus();
+    },
+  });
+  button.setAttribute('aria-haspopup', 'menu');
+  menu.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('button')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.stopPropagation(); closeMenus(); button.focus(); }
+  });
+  return h('span', { class: 'menu-wrap' }, button, menu);
+}
+
+/** A menu that doesn't fit below its button opens above it, or (no room either way) scrolls. */
+function fitMenu(menu) {
+  menu.classList.remove('up', 'start');
+  menu.style.maxHeight = '';
+  const margin = 8;
+  // Clipped on the left (right-aligned under a button near the left edge of a panel): align it to the button's left instead.
+  const clip = menu.closest('.drawer, .palette-box')?.getBoundingClientRect();
+  if (menu.getBoundingClientRect().left < Math.max(margin, clip ? clip.left + margin : 0)) menu.classList.add('start');
+  const rect = menu.getBoundingClientRect();
+  // Inside a panel that scrolls (task details), scroll it so the whole menu shows.
+  if (clip) { menu.scrollIntoView({ block: 'nearest' }); return; }
+  const top = margin;
+  const bottom = innerHeight - margin;
+  if (rect.bottom <= bottom) return;
+  const button = menu.parentElement.getBoundingClientRect();
+  if (button.top - top - 6 >= rect.height) {
+    menu.classList.add('up');
+    return;
+  }
+
+  // No room above or below: scroll the page so all of it shows (a menu taller than the window scrolls itself).
+  if (rect.height > bottom - top) menu.style.maxHeight = `${bottom - top}px`;
+  menu.scrollIntoView({ block: 'nearest' });
+}
+
+function closeMenus() {
+  document.querySelectorAll('.menu').forEach((m) => (m.hidden = true));
+  document.querySelectorAll('[aria-haspopup="menu"][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  $('#filter-pick')?.setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', closeMenus);
+
+function workstream(o) {
+  const pct = progressPercent(o.doneLeaves, o.totalLeaves);
+  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-label': `${pct}% done` }, h('span'));
+  bar.firstChild.style.width = `${pct}%`;
+  const chips = [{ text: `${o.doneLeaves}/${o.totalLeaves} done`, tone: 'muted' }];
+  if (o.actionableCount) chips.push({ text: `${o.actionableCount} now`, tone: 'step' });
+  if (o.waitingCount) chips.push({ text: `${o.waitingCount} waiting`, tone: 'info' });
+  if (o.nextWakeAt) chips.push({ text: `next ${relativeTime(o.nextWakeAt)}`, tone: 'muted' });
+  const li = h('li', { class: 'item' },
+    h('span', { class: 'prio' }),
+    h('div', { class: 'body' },
+      h('button', { class: 'title link', onclick: () => openDrawer(o.id) }, o.title),
+      bar,
+      h('div', { class: 'meta' }, ...chips.map(chip))),
+    h('a', { class: 'report-link', href: `report.html?id=${o.id}`, title: 'Full report', 'aria-label': `Full report for ${o.title}` }, icon('report')));
+  li.style.setProperty('--prio', priorityMeta(o.priority).color);
+  return li;
+}
+
+function avatar(kind, author) {
+  const letter = kind === 'user' ? 'Y' : (author.split(':').pop().trim()[0] || '?').toUpperCase();
+  return h('span', { class: `avatar ${kind}`, 'aria-hidden': 'true' }, letter);
+}
+
+/** What got done today: a cheer, the tasks (with where they belong), and a way to undo a slip. */
+function renderDoneToday(done) {
+  const section = $('#sec-done');
+  const cheer = section.querySelector('.cheer');
+  const line = cheerLine(done.length);
+  cheer.hidden = !line;
+  cheer.textContent = line ? `🎉 ${line}` : '';
+  renderSection('#sec-done', done.map((d) => h('li', { class: 'done-row' },
+    h('span', { class: 'done-check', 'aria-hidden': 'true' }, icon('check', { size: 13 })),
+    h('div', { class: 'done-text' },
+      h('button', { class: 'link done-title', type: 'button', onclick: () => openDrawer(d.id) }, d.title),
+      d.path.length ? h('span', { class: 'muted small' }, d.path.join(' › ')) : null),
+    h('span', { class: 'muted small' }, new Date(d.completedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })),
+    h('button', { class: 'btn small ghost', type: 'button', title: 'Not done after all', 'aria-label': `Reopen ${d.title}`, onclick: () => act(post(`/api/items/${d.id}/reopen`), 'Reopened') }, icon('undo', { size: 14 }), 'Reopen'))),
+  done.length, 'Finish something and it shows up here.');
+}
+
+/** Cards whose notes are open (kept across redraws). */
+const openNotes = new Set();
+
+/** A card's "2 notes ▾": shows every note on the card, newest first, without opening the task. */
+function notesToggle(c) {
+  if (!c.notes?.length) return [];
+  const label = (open) => (open ? 'Hide notes ▴' : `${c.notes.length} note${c.notes.length > 1 ? 's' : ''} ▾`);
+  const open = openNotes.has(c.id);
+  const list = h('ul', { class: 'card-notes', hidden: !open, 'aria-label': `Notes on ${c.title}` }, ...c.notes.map(cardNote));
+  const button = h('button', { class: 'link notes-toggle', type: 'button', 'aria-expanded': String(open), onclick: () => {
+    const now = list.hidden;
+    list.hidden = !now;
+    if (now) openNotes.add(c.id); else openNotes.delete(c.id);
+    button.setAttribute('aria-expanded', String(now));
+    button.textContent = label(now);
+  } }, label(open));
+  return [button, list];
+}
+
+/** One of a card's notes: the text (pictures too), who wrote it, when, and the page it came from. */
+function cardNote(n) {
+  return h('li', { class: 'card-note' },
+    h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
+    h('div', { class: 'meta' },
+      h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
+      h('span', null, '·'),
+      h('span', null, relativeTime(n.at)),
+      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null));
+}
+
+function noteRow(n) {
+  return h('li', { class: 'note' },
+    h('div', { class: 'note-text' }, ...withEmbeds(n.text, n.itemId)),
+    h('div', { class: 'meta' },
+      h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author),
+      h('span', null, '·'),
+      h('button', { class: 'link', onclick: () => openDrawer(n.itemId) }, n.itemTitle),
+      h('span', null, '·'),
+      h('span', null, relativeTime(n.at)),
+      isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null));
+}
+
+// ---------- pomodoro ----------
+
+function renderPomodoro(p) {
+  $('#pomodoro').hidden = !pluginOn('focus-timer');
+  announcePhase(p);
+  const label = { idle: 'Focus timer', focus: 'Focus', shortBreak: 'Break', longBreak: 'Long break' }[p.phase] ?? p.phase;
+  const buttons = [];
+  if (p.phase === 'idle') {
+    buttons.push(h('button', { class: 'icon-btn', title: 'Start focus', 'aria-label': 'Start focus', onclick: () => act(post('/api/pomodoro/start', { itemId: state.dashboard.focus?.id })) }, icon('play', { size: 16 })));
+  } else {
+    buttons.push(p.running
+      ? h('button', { class: 'icon-btn', title: 'Pause', 'aria-label': 'Pause', onclick: () => act(post('/api/pomodoro/pause')) }, icon('pause', { size: 16 }))
+      : h('button', { class: 'icon-btn', title: 'Resume', 'aria-label': 'Resume', onclick: () => act(post('/api/pomodoro/resume')) }, icon('play', { size: 16 })));
+    buttons.push(h('button', { class: 'icon-btn', title: 'Skip', 'aria-label': 'Skip', onclick: () => act(post('/api/pomodoro/skip')) }, icon('skip', { size: 16 })));
+    buttons.push(h('button', { class: 'icon-btn', title: 'Reset', 'aria-label': 'Reset', onclick: () => act(post('/api/pomodoro/reset')) }, icon('reset', { size: 16 })));
+  }
+  const dial = h('span', { class: 'pomo-dial', id: 'pomo-dial' }, ring(pomodoroFraction(p), { size: 34, stroke: 3 }));
+  const el = $('#pomodoro');
+  el.className = `pomodoro ${p.phase === 'focus' ? 'focus' : p.phase === 'idle' ? '' : 'break'}`.trim();
+  el.replaceChildren(dial,
+    h('span', { class: 'pomo-text' },
+      h('span', { class: 'pomo-time', id: 'pomo-time' }, clock(p)),
+      h('span', { class: 'pomo-label' }, p.itemTitle && p.phase !== 'idle' ? `${label} · ${p.itemTitle}` : label)),
+    ...buttons);
+}
+
+/**
+ * Says out loud when the focus timer moves to another phase (the clock itself ticks silently: read every second, it
+ * would drown everything else).
+ */
+function announcePhase(p) {
+  const was = state.pomodoroPhase;
+  state.pomodoroPhase = p.phase;
+  if (was === undefined || was === p.phase || !pluginOn('focus-timer')) return;
+  const said = { focus: 'Focus started.', shortBreak: 'Time for a break.', longBreak: 'Time for a longer break.', idle: 'Focus timer stopped.' }[p.phase];
+  if (said) $('#pomodoro-said').textContent = said;
+}
+
+function clock(p, now = Date.now()) {
+  const seconds = p.running && p.endsAt ? Math.max(0, Math.ceil((new Date(p.endsAt) - now) / 1000)) : p.remainingSeconds;
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+setInterval(() => {
+  const p = state.dashboard?.pomodoro;
+  const el = document.getElementById('pomo-time');
+  if (p && el) {
+    el.textContent = clock(p);
+    document.getElementById('pomo-dial')?.replaceChildren(ring(pomodoroFraction(p), { size: 34, stroke: 3 }));
+    if (p.running && p.endsAt && new Date(p.endsAt) <= Date.now() && !clock.pending) {
+      clock.pending = true;
+      setTimeout(() => { clock.pending = false; refresh(); }, 2000);
+    }
+  }
+}, 1000);
+
+// ---------- groups ----------
+
+async function addGroup() {
+  const name = prompt('New group name (e.g. Personal, Side project):');
+  if (name?.trim()) await act(post('/api/groups', { name }), `Added ${name}`);
+}
+
+async function renameGroup(g) {
+  const name = prompt(`Rename "${g.name}" to:`, g.name);
+  if (!name?.trim() || name.trim() === g.name) return;
+  await act(patch(`/api/groups/${g.id}`, { name: name.trim(), color: g.color }), `Renamed to ${name.trim()}`);
+}
+
+/** Its tasks move to `target`; nothing is deleted without asking first. */
+async function deleteGroup(g, target) {
+  if (!confirm(`Delete the group "${g.name}"? Its tasks move to "${target.name}"; none are lost.`)) return;
+  if (state.group === g.id) setGroup(null);
+  await act(del(`/api/groups/${g.id}?moveTo=${target.id}`), `Deleted ${g.name}`);
+}
+
+// ---------- drawer (task details) ----------
+
+/** Saves the drawer's fields and notes (except `keepKey`'s note). Returns false when something couldn't be saved. */
+async function flushDrawer(keepKey = null) {
+  const results = await Promise.all([
+    state.drawerAutosave?.flush() ?? true,
+    ...[...noteSessions.keys()].filter((k) => k.startsWith('drawer:') && k !== keepKey).map(finishNote),
+  ]);
+  return results.every((ok) => ok !== false);
+}
+
+async function closeDrawer() {
+  // Everything typed is saved before the panel closes; if that fails the panel stays open with the text in it.
+  if (!(await flushDrawer())) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+  state.panelClosed?.();
+  state.panelClosed = null;
+  state.drawerId = null;
+  state.drawerAutosave = null;
+  state.drawerNote = null;
+  $('#drawer').hidden = true;
+  $('#scrim').hidden = true;
+  // The keyboard goes back to what opened the panel (when it's still there).
+  const opener = state.drawerOpener;
+  state.drawerOpener = null;
+  if (opener?.isConnected) opener.focus({ preventScroll: true });
+  // Back to the view from a task's own address (#/task/<id>), without reloading the view.
+  if (location.hash.startsWith('#/task/')) history.replaceState(null, '', `#/${shell.current() ?? 'today'}`);
+  refresh({ background: true });
+  currentView()?.refresh();
+}
+
+$('#scrim').addEventListener('click', closeDrawer);
+
+/** What had the keyboard before the panel opened (it gets it back when the panel closes). */
+function rememberOpener() {
+  const drawer = $('#drawer');
+  if (!drawer.hidden) return;
+  const active = document.activeElement;
+  state.drawerOpener = active && active !== document.body && !drawer.contains(active) ? active : null;
+}
+
+/** What Tab can reach in `root`: shown, enabled, and not taken out of the Tab order. */
+function tabbable(root) {
+  return [...root.querySelectorAll('a[href], button, input, select, textarea, summary, iframe, [tabindex]')]
+    .filter((el) => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length > 0);
+}
+
+// The panel is a dialog: Tab and Shift+Tab go around inside it until it closes.
+$('#drawer').addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab' || e.defaultPrevented) return;
+  const items = tabbable($('#drawer'));
+  if (!items.length) return;
+  const first = items[0];
+  const last = items[items.length - 1];
+  const at = document.activeElement;
+  if (e.shiftKey ? at === first || at === $('#drawer') : at === last) {
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  }
+});
+
+/** What is being typed in the drawer, so re-opening the same task (after an action) keeps it and the caret. */
+function drawerDraft() {
+  const drawer = $('#drawer');
+  const active = document.activeElement;
+  const focused = active && drawer.contains(active) && active.dataset?.field ? { field: active.dataset.field, start: active.selectionStart, end: active.selectionEnd } : null;
+  const note = state.drawerNote;
+  return { note: note?.value ?? '', noteFocused: !!note && active === note, noteStart: note?.selectionStart, noteEnd: note?.selectionEnd, focused };
+}
+
+/**
+ * Opens a task in the panel. `full` overrides the size for this task only (a #/task/ link opens it full size without
+ * changing the size other tasks open at); re-opening the same task (after a change) keeps its size.
+ */
+let drawerTicket = 0;
+
+async function openDrawer(id, { full = null } = {}) {
+  // The latest call wins: a re-open of the task shown before (after an action) can't replace one opened since.
+  const ticket = ++drawerTicket;
+  rememberOpener();
+  const showFull = full ?? (state.drawerId === id && !$('#drawer').hidden ? state.drawerShownFull : state.drawerFull);
+  // Anything still being typed is saved first. Re-opening the same task keeps the note being written (same note);
+  // another task finishes it so the next keystrokes can't overwrite it.
+  const same = state.drawerId === id && !$('#drawer').hidden;
+  const draft = same ? drawerDraft() : null;
+  const saved = await flushDrawer(same ? `drawer:${id}` : null);
+  if (ticket !== drawerTicket) return;
+  if (!saved && !same && !$('#drawer').hidden) return toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+  // A plugin panel (e.g. Ask AI) gives way to the task: it stops its live updates.
+  state.panelClosed?.();
+  state.panelClosed = null;
+  state.drawerId = id;
+  let item;
+  try {
+    item = await api(`/api/items/${id}`);
+  } catch (err) {
+    if (ticket !== drawerTicket) return;
+    closeDrawer();
+    return toast(err.message, 'error');
+  }
+  await dragDone();
+  if (state.drawerId !== id || ticket !== drawerTicket) return;
+  const drawer = $('#drawer');
+  const field = (label, control) => h('label', { class: 'field' }, h('span', null, label), control);
+  const section = (title, ...children) => h('section', { class: 'drawer-section' }, h('h3', null, title), ...children);
+
+  // ---- Fields: saved automatically as you type ----
+  const title = h('input', { value: item.title, maxlength: 300, class: 'title-input', 'aria-label': 'Title', dataset: { field: 'title' } });
+  const priority = h('select', { dataset: { field: 'priority' } }, ...['low', 'normal', 'high', 'critical'].map((p) => h('option', { value: p, selected: p === item.priority }, priorityMeta(p).label)));
+  const deadline = h('input', { type: 'datetime-local', value: localInput(item.deadline), dataset: { field: 'deadline' } });
+  // A pasted file shows up in Attachments right away (without redrawing the panel and losing the caret).
+  let attachmentsNode = null;
+  const pastedFile = (attachment) => {
+    item.attachments.push(attachment);
+    const fresh = attachmentsSection(item);
+    attachmentsNode?.replaceWith(fresh);
+    attachmentsNode = fresh;
+  };
+  const details = acceptMedia(h('textarea', { rows: 4, maxlength: 10000, placeholder: 'Details, links, context… (markdown; paste images)', dataset: { field: 'details' } }, item.details ?? ''), id, pastedFile);
+  // A picture pasted into the title goes into the details (a title is one line of text); the title stays as it is.
+  title.addEventListener('paste', (e) => {
+    if (!imageFiles(e.clipboardData).length) return;
+    e.preventDefault();
+    details.focus();
+    details.setSelectionRange(details.value.length, details.value.length);
+    const forward = new ClipboardEvent('paste', { clipboardData: e.clipboardData, bubbles: true, cancelable: true });
+    if (forward.clipboardData) details.dispatchEvent(forward);
+  });
+  // Images embedded in the details show under the box (a text box can't show them); redrawn only when they change.
+  const detailImages = h('div', { class: 'embeds' });
+  let shownNames = '';
+  const showDetailImages = () => {
+    const parts = splitEmbeds(details.value).filter((p) => p.embed);
+    const names = parts.map((p) => p.embed).join('\n');
+    if (names === shownNames) return;
+    shownNames = names;
+    detailImages.replaceChildren(...parts.map((p) => embedNode(id, p.embed, p.image)));
+  };
+  showDetailImages();
+  details.addEventListener('input', showDetailImages);
+  const sequential = h('input', { type: 'checkbox', checked: item.sequential, dataset: { field: 'sequential' } });
+  const delay = h('input', { type: 'number', min: 0, step: 1, value: item.stepDelayMinutes ? item.stepDelayMinutes / 60 : '', placeholder: 'hours', dataset: { field: 'delay' } });
+  const tags = h('input', { value: formatTags(item.tags), placeholder: 'deep work, q3', 'aria-label': 'Tags', dataset: { field: 'tags' } });
+  const labels = new Set(item.labels.map((l) => l.name));
+
+  const fieldGroups = [['title'], ['details'], ['priority'], ['deadline', 'clearDeadline'], ['sequential'], ['stepDelayMinutes', 'clearStepDelay'], ['tags'], ['labels']];
+  const values = () => ({
+    title: title.value,
+    details: details.value,
+    priority: priority.value,
+    deadline: deadline.value ? new Date(deadline.value).toISOString() : null,
+    clearDeadline: !deadline.value,
+    sequential: sequential.checked,
+    stepDelayMinutes: Number(delay.value) > 0 ? Math.round(Number(delay.value) * 60) : null,
+    clearStepDelay: !(Number(delay.value) > 0),
+    tags: parseTags(tags.value),
+    labels: [...labels],
+  });
+  // Only fields changed here are sent, so edits made elsewhere meanwhile (Obsidian, agents, another tab) survive.
+  let lastSaved = values();
+  const autosave = createAutosave({
+    delay: 700,
+    onState: setSaveState,
+    save: async (v) => {
+      const changes = changedFields(lastSaved, v, fieldGroups);
+      if (!Object.keys(changes).length) return;
+      if ('title' in changes && !v.title.trim()) throw new Error('A title is required');
+      await patch(`/api/items/${id}`, changes);
+      lastSaved = v;
+      refresh({ background: true });
+    },
+  });
+  state.drawerAutosave = autosave;
+  const changed = () => autosave.schedule(values());
+  for (const el of [title, details, delay, tags]) el.addEventListener('input', changed);
+  // What the tag box will save, as you type (commas separate tags; a space doesn't).
+  const tagPreview = h('div', { class: 'tag-preview', 'aria-live': 'polite' });
+  const showTags = () => tagPreview.replaceChildren(...parseTags(tags.value).map((t) => h('span', { class: 'chip tag' }, `#${t}`)));
+  tags.addEventListener('input', showTags);
+  showTags();
+  for (const el of [priority, deadline, sequential]) el.addEventListener('change', changed);
+
+  const labelPicker = h('div', { class: 'label-picker' });
+  const renderLabels = () => {
+    const known = new Map((state.dashboard?.labels ?? []).map((l) => [l.name.toLowerCase(), l]));
+    item.labels.forEach((l) => known.set(l.name.toLowerCase(), l));
+    const all = [...known.values()];
+    const newLabel = h('input', { placeholder: '+ label', maxlength: 40, 'aria-label': 'New label', class: 'label-input', onkeydown: (e) => {
+      if (e.key !== 'Enter' || !newLabel.value.trim()) return;
+      e.preventDefault();
+      labels.add(newLabel.value.trim());
+      item.labels.push({ name: newLabel.value.trim(), color: '#64748b' });
+      changed();
+      renderLabels();
+    } });
+    labelPicker.replaceChildren(...all.map((l) => {
+      const on = [...labels].some((x) => x.toLowerCase() === l.name.toLowerCase());
+      const chipEl = labelChip(l, { onclick: () => { if (on) [...labels].filter((x) => x.toLowerCase() === l.name.toLowerCase()).forEach((x) => labels.delete(x)); else labels.add(l.name); changed(); renderLabels(); } });
+      chipEl.classList.toggle('off', !on);
+      chipEl.setAttribute('aria-pressed', String(on));
+      return chipEl;
+    }), newLabel);
+  };
+  renderLabels();
+
+  // ---- Subtasks (any depth) ----
+  const subtaskInput = h('input', { placeholder: 'Add a subtask…', maxlength: 300 });
+  const stepsInput = h('textarea', { rows: 3, placeholder: 'Rollout steps, one per line' });
+  const stepDelay = h('input', { type: 'number', min: 0, value: 24, 'aria-label': 'Hours between the new steps' });
+
+  // ---- Notes: saved as you type ----
+  const noteKey = `drawer:${id}`;
+  const noteInput = acceptMedia(h('textarea', { rows: 2, maxlength: 10000, placeholder: 'Note: what happened, what is next… (saves as you type; paste images)',
+    oninput: () => noteSession(id, noteKey).autosave.schedule(noteInput.value),
+    onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); newNote(); } } }), id, pastedFile);
+  state.drawerNote = noteInput;
+  const newNote = async () => {
+    // A picture still uploading goes into this note, not the next one.
+    await pastesDone();
+    if (!noteInput.value.trim()) return;
+    if (!(await finishNote(noteKey))) return toast('Couldn’t save the note yet – it’s kept, try again', 'error');
+    noteInput.value = '';
+    await act(Promise.resolve());
+  };
+
+  const remindIn = h('select', null, ...snoozeOptions().map((o) => h('option', { value: o.minutes }, o.label)));
+  const remindMsg = h('input', { placeholder: 'Reminder message (optional)', maxlength: 300 });
+  const meta = priorityMeta(item.priority);
+  drawer.style.setProperty('--prio', meta.color);
+
+  drawer.replaceChildren(
+    h('div', { class: 'drawer-head' },
+      h('span', { class: 'prio-pill' }, meta.label),
+      h('span', { id: 'save-state', class: 'save-state', 'aria-live': 'polite' }),
+      item.obsidianUrl && pluginOn('obsidian') ? obsidianAnchor(item.obsidianUrl, { class: 'icon-btn', iconOnly: true, file: item.file }) : null,
+      h('span', { class: 'task-actions' }, ...visibleTaskActions().map((a) => taskActionButton(a, id))),
+      h('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': 'Copy link', title: 'Copy a link that opens this task in the app (paste it in a note, chat, or mail)',
+        onclick: () => copyTaskLink(item),
+      }, icon('link')),
+      h('button', {
+        class: 'icon-btn', type: 'button', 'aria-label': showFull ? 'Smaller' : 'Full size', title: showFull ? 'Back to the side panel' : 'Full size (more room to write)', 'aria-pressed': String(showFull),
+        onclick: () => setDrawerFull(!showFull, id),
+      }, icon(showFull ? 'shrink' : 'expand')),
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
+    h('div', { class: 'title-row' },
+      h('button', {
+        class: `icon-pick${item.icon ? ' has-icon' : ''}`, type: 'button',
+        title: item.icon ? 'Change the icon' : 'Add an icon', 'aria-label': item.icon ? `Icon ${item.icon}: change it` : 'Add an icon',
+        onclick: async () => {
+          const chosen = await pickIcon(item.icon);
+          if (chosen !== null && chosen !== (item.icon ?? '')) act(patch(`/api/items/${id}`, { icon: chosen }), chosen ? 'Icon set' : 'Icon removed');
+        },
+      }, item.icon ?? icon('sparkles', { size: 18 })),
+      title),
+    wherePanel(item),
+    // Side panel: one column. Full size: what's being written on the left, time, reminders and history on the right.
+    h('div', { class: 'drawer-main' },
+    waitingBanner(item),
+    h('div', { class: 'chips-row' }, labelPicker),
+    field('Color', colorPicker(item.color, item.labels?.[0]?.color, (color) => {
+      if (color !== (item.color ?? '')) act(patch(`/api/items/${id}`, { color }), color ? 'Color set' : 'Color: its label’s');
+    })),
+    field('Tags', tags),
+    tagPreview,
+    h('p', { class: 'hint' }, 'Labels are colored categories you pick from a list (Urgent, Waiting…). Tags are free words you type, for anything else. Both filter: click one, or use the tag button by the search box.'),
+    h('div', { class: 'row' }, field('Priority', priority), field('Deadline', deadline)),
+    field('Repeat', repeatField(item.repeat, async (text) => {
+      await patch(`/api/items/${id}`, { repeat: text });
+      await act(Promise.resolve(), text ? 'Repeats' : 'Doesn’t repeat any more');
+    })),
+    item.repeat ? h('p', { class: 'hint' }, 'Done moves it to its next time (its deadline and when it comes back move along).') : null,
+    pluginOn('energy') ? energyField(item) : null,
+    pluginOn('plan') ? planField(item) : null,
+    field('Details', details),
+    detailImages,
+    item.parentId || item.completedAt ? null : h('div', { class: 'row' },
+      field('Board', h('select', { 'aria-label': 'Board column', onchange: (e) => act(post(`/api/items/${id}/stage`, { stage: e.target.value }), 'Moved') },
+        ...[['inbox', 'Inbox'], ['next', 'Next'], ['doing', 'Doing']].map(([v, label]) => h('option', { value: v, selected: v === item.stage }, label))))),
+    h('div', { class: 'row buttons' },
+      item.completedAt && !item.parentId
+        ? (item.archivedAt
+          ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/unarchive`), 'Back in Done') }, icon('undo', { size: 16 }), 'Unarchive')
+          : h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/archive`), 'Archived') }, icon('archive', { size: 16 }), 'Archive'))
+        : null,
+      item.completedAt
+        ? h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reopen`), 'Reopened') }, icon('undo', { size: 16 }), 'Reopen')
+        : h('button', { class: 'btn success', onclick: () => {
+          const open = item.children.filter((c) => !c.completedAt).length;
+          if (open && !confirm(`Also mark ${open} open subtask${open > 1 ? 's' : ''} as done?`)) return;
+          act(post(`/api/items/${id}/complete`), 'Done');
+        } }, icon('check', { size: 16 }), 'Mark done'),
+      item.completedAt ? null : snoozeButton(item, true),
+      h('a', { class: 'btn ghost', href: `report.html?id=${id}`, target: '_blank', rel: 'noopener' }, icon('report', { size: 16 }), 'Full report'),
+      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm(`Delete "${item.title}" and all its subtasks? (It goes to the vault's trash.)`)) { autosave.cancel(); closeDrawer(); act(del(`/api/items/${id}`), 'Deleted'); } } }, icon('trash', { size: 16 }), 'Delete')),
+
+    section(`Subtasks${item.sequential ? ' · in order' : ''}`,
+      subtaskTree(item.children, id),
+      h('form', { class: 'row', onsubmit: (e) => { e.preventDefault(); submitAndClear(subtaskInput, (t) => post('/api/items', { title: t, parentId: id })); } }, subtaskInput, h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add')),
+      h('details', null, h('summary', null, 'Steps in order & rollout steps'),
+        h('div', { class: 'row' }, h('label', { class: 'check' }, sequential, 'Steps in order'), field('Hours between steps', delay)),
+        stepsInput,
+        h('div', { class: 'row' }, field('Hours between the new steps', stepDelay),
+          h('button', { class: 'btn', onclick: () => {
+            const titles = stepsInput.value.split('\n').map((s) => s.trim()).filter(Boolean);
+            if (titles.length) act(post(`/api/items/${id}/steps`, { titles, stepDelayMinutes: Math.round(Number(stepDelay.value || 0) * 60) || null }), `Added ${titles.length} steps`);
+          } }, icon('layers', { size: 16 }), 'Add steps')))),
+
+    section('Notes',
+      h('div', { class: 'note-form' }, noteInput, h('button', { class: 'btn', title: 'Start a new note (Ctrl+Enter)', onclick: newNote }, icon('plus', { size: 16 }), 'New note')),
+      h('ul', { class: 'notes' }, ...item.notes.map((n) => h('li', null, h('div', { class: 'note-text' }, ...withEmbeds(n.text, id)), h('div', { class: 'meta' },
+        h('span', { class: 'author' }, avatar(n.authorKind, n.author), n.author), h('span', null, '·'), h('span', null, relativeTime(n.at)),
+        isSafeHttpUrl(n.sourceUrl) ? h('a', { href: n.sourceUrl, target: '_blank', rel: 'noopener noreferrer', class: 'author' }, icon('link', { size: 13 }), n.sourceTitle || 'source') : null))))),
+
+    (attachmentsNode = attachmentsSection(item)),
+    item.hasRich ? richSection(item) : null),
+
+    h('div', { class: 'drawer-side' },
+    timeSection(item),
+    section('Reminders',
+      h('ul', { class: 'reminders' }, ...item.reminders.filter((r) => !r.dismissedAt).map((r) => h('li', null,
+        h('span', { class: 'author' }, icon('clock', { size: 14 }), `${r.message} · ${relativeTime(r.dueAt)}`),
+        h('button', { class: 'link', onclick: () => act(post(`/api/items/${id}/reminders/${r.id}/dismiss`)) }, 'Dismiss')))),
+      h('div', { class: 'row' }, remindIn, remindMsg, h('button', { class: 'btn', onclick: () => act(post(`/api/items/${id}/reminders`, { inMinutes: Number(remindIn.value), message: remindMsg.value || null }), 'Reminder set') }, 'Remind me'))),
+
+    pluginOn('history') ? historySection(item) : null));
+  $('#scrim').hidden = false;
+  drawer.dataset.itemId = id;
+  drawer.setAttribute('aria-label', 'Task details');
+  state.drawerShownFull = showFull;
+  drawer.classList.toggle('full', showFull);
+  const opening = drawer.hidden;
+  drawer.hidden = false;
+  // Full size has its own address (#/task/<id>): Back closes it. The side panel stays on the view's address.
+  const taskHash = `#/task/${id}`;
+  if (showFull && location.hash !== taskHash) {
+    if (location.hash.startsWith('#/task/')) history.replaceState(null, '', taskHash);
+    else history.pushState(null, '', taskHash);
+  } else if (!showFull && location.hash.startsWith('#/task/')) {
+    history.replaceState(null, '', `#/${shell.current() ?? 'today'}`);
+  }
+  restoreDrawerDraft(drawer, draft, noteInput);
+  if (state.refocus) focusOrderControl(state.refocus, null, drawer);
+  // Just opened: the keyboard goes to the title. Redrawn after a change with the keyboard left behind: to the panel.
+  else if (opening) title.focus({ preventScroll: true });
+  else if (!drawer.contains(document.activeElement)) drawer.focus({ preventScroll: true });
+
+  // Drop files anywhere on the panel to attach them.
+  drawer.ondragover = (e) => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); drawer.classList.add('dropping'); } };
+  drawer.ondragleave = (e) => { if (e.target === drawer) drawer.classList.remove('dropping'); };
+  drawer.ondrop = (e) => { e.preventDefault(); drawer.classList.remove('dropping'); uploadFiles(id, e.dataTransfer.files); };
+}
+
+/** Copies a onething:// link to the task: rich (named after the task) where the browser allows, else plain text. */
+async function copyTaskLink(item) {
+  const link = taskLink(item.id, item.title);
+  try {
+    if (typeof ClipboardItem === 'function' && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain': new Blob([link.text], { type: 'text/plain' }),
+        'text/html': new Blob([link.html], { type: 'text/html' }),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(link.text);
+    }
+    toast('Link copied – it opens this task in the app');
+  } catch {
+    toast(`Couldn’t copy – the link is ${link.text}`, 'error');
+  }
+}
+
+function restoreDrawerDraft(drawer, draft, noteInput) {
+  if (!draft) return;
+  if (draft.note) {
+    noteInput.value = draft.note;
+    if (draft.noteFocused) {
+      noteInput.focus();
+      noteInput.setSelectionRange(draft.noteStart ?? draft.note.length, draft.noteEnd ?? draft.note.length);
+    }
+  }
+  if (draft.focused) {
+    const el = drawer.querySelector(`[data-field="${CSS.escape(draft.focused.field)}"]`);
+    if (el) {
+      el.focus();
+      if (typeof draft.focused.start === 'number' && typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(draft.focused.start, draft.focused.end); } catch { /* not a text field */ }
+      }
+    }
+  }
+}
+
+// ---------- plugins ----------
+
+/**
+ * Opens the side panel with a plugin's content (the same panel as task details). `onClose` runs when it closes.
+ * Returns false if what was typed in the panel couldn't be saved first.
+ */
+async function openPanel(title, content, { iconName = null, onClose = null } = {}) {
+  rememberOpener();
+  if (!(await flushDrawer())) {
+    toast('Couldn’t save your changes yet – they’re kept, try again', 'error');
+    return false;
+  }
+  state.panelClosed?.();
+  state.panelClosed = onClose;
+  state.drawerId = null;
+  state.drawerAutosave = null;
+  state.drawerNote = null;
+  const drawer = $('#drawer');
+  drawer.style.removeProperty('--prio');
+  drawer.classList.remove('full');
+  delete drawer.dataset.itemId;
+  drawer.setAttribute('aria-label', title);
+  drawer.replaceChildren(
+    h('div', { class: 'drawer-head' },
+      h('span', { class: 'connect-title' }, iconName ? icon(iconName, { size: 18 }) : null, title),
+      h('button', { class: 'icon-btn', 'aria-label': 'Close', title: 'Close (Esc)', onclick: closeDrawer }, icon('x'))),
+    content);
+  $('#scrim').hidden = false;
+  drawer.hidden = false;
+  // The keyboard goes into the panel (what the plugin puts there may move it on, e.g. to its text box).
+  (tabbable(content)[0] ?? drawer).focus({ preventScroll: true });
+  return true;
+}
+
+/** Buttons plugins add to every task's details and ⋯ menu (Copy for Loop…): onClick gets the task's id. */
+const taskActions = [];
+/** Each loaded plugin module, and the plugins it serves (the sync module serves OneDrive, iCloud and gist). */
+const loadedModules = new Map();
+const moduleOn = (module) => [...(loadedModules.get(module) ?? [])].some((id) => pluginOn(id));
+/** What plugins added that is on now (switched off in Settings: gone at once, no reload). */
+const visibleTaskActions = () => taskActions.filter((a) => !a.module || moduleOn(a.module));
+const taskActionButton = (a, id) => h('button', { class: 'icon-btn', type: 'button', 'aria-label': a.label, title: a.title ?? a.label, onclick: () => a.onClick(id) }, icon(a.iconName));
+
+/** What plugin modules may use: the API, building blocks, and a few hooks into the app. */
+const pluginHost = {
+  api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
+  refresh: () => refresh({ background: true }),
+  /** Whether this window is signed in (a plugin's own checks wait while it isn't). */
+  signedIn: () => !!state.signedIn,
+  /** The group picked in the tabs (null: all), and every group. */
+  group: () => state.group,
+  groups: () => state.dashboard?.groups ?? [],
+  addHeaderButton({ iconName, label, onClick }) {
+    const button = h('button', { class: 'icon-btn', type: 'button', 'aria-label': label, title: label, onclick: onClick }, icon(iconName));
+    $('#plugin-buttons').append(button);
+    return button;
+  },
+  addTaskAction(action) {
+    taskActions.push(action);
+    // A task opened from a link shows before the plugins load: it gets the button too.
+    const id = $('#drawer').dataset.itemId;
+    if (id && (!action.module || moduleOn(action.module))) $('#drawer .task-actions')?.append(taskActionButton(action, id));
+  },
+};
+
+/** The host a module gets: what it adds is tagged with it, so it hides when its plugin is switched off. */
+function hostFor(module) {
+  return {
+    ...pluginHost,
+    /** Whether this module's plugin is on now (e.g. before acting on a link to its view). */
+    on: () => moduleOn(module),
+    addHeaderButton(button) {
+      const el = pluginHost.addHeaderButton(button);
+      el.dataset.module = module;
+      return el;
+    },
+    addTaskAction(action) {
+      pluginHost.addTaskAction({ ...action, module });
+    },
+  };
+}
+
+/** Whether a built-in feature (plugin) is on. Until the list loads everything shows. */
+const pluginOn = (id) => !state.plugins || state.plugins.has(id);
+
+/**
+ * Loads the UI of each enabled plugin (built-in modules served by the app), and again after one is switched on or off
+ * in Settings: what a plugin that's off added is hidden at once, one switched on is loaded. One failing never breaks
+ * the board.
+ */
+async function loadPlugins() {
+  let plugins = [];
+  try {
+    plugins = await api('/api/plugins');
+  } catch {
+    return;
+  }
+  // Checked every 15 s: nothing to do unless an extra was switched on or off (here, or in another window).
+  const on = plugins.filter((p) => p.enabled).map((p) => p.id).sort().join(',');
+  if (state.plugins && on === state.pluginsKey) return;
+  state.pluginsKey = on;
+  state.plugins = new Set(plugins.filter((p) => p.enabled).map((p) => p.id));
+  // Views that are extras (Plan) leave the navigation when they're off (and the view, if it's open).
+  document.querySelectorAll('.nav-link[data-view="plan"], .bottom-link[data-view="plan"]').forEach((a) => { a.hidden = !pluginOn('plan'); });
+  if (!pluginOn('plan')) {
+    if (location.hash.startsWith('#/plan')) history.replaceState(null, '', '#/today');
+    if (shell.current() === 'plan') shell.show('today');
+  }
+  if (state.dashboard) render();
+  for (const p of plugins.filter((x) => x.enabled && x.webModule)) {
+    if (loadedModules.has(p.webModule)) {
+      loadedModules.get(p.webModule).add(p.id);
+      continue;
+    }
+    loadedModules.set(p.webModule, new Set([p.id]));
+    try {
+      const module = await import(p.webModule);
+      await module.activate?.(hostFor(p.webModule));
+    } catch (err) {
+      console.warn(`Plugin ${p.id} failed to load`, err);
+    }
+  }
+  document.querySelectorAll('[data-module]').forEach((el) => { el.hidden = !moduleOn(el.dataset.module); });
+  const open = $('#drawer').dataset.itemId;
+  $('#drawer .task-actions')?.replaceChildren(...(open ? visibleTaskActions().map((a) => taskActionButton(a, open)) : []));
+}
+
+// ---------- plugins panel ----------
+
+/** Every optional feature is a plugin: switch them on or off here (applies after a restart). */
+/** The extras are in Settings (with appearance and connected apps). */
+function openPlugins() {
+  location.hash = '#/settings/plugins';
+}
+
+function subtaskTree(children, parentId) {
+  if (!children.length) return h('p', { class: 'muted small' }, 'No subtasks yet.');
+  const order = () => children.map((c) => c.id);
+  // Reordering keeps each subtask under the same parent; the panel then refreshes (keeping what is being typed).
+  const reorder = async (ids, movedId) => {
+    if (!changed(order(), ids)) return;
+    state.refocus = movedId;
+    await act(post(`/api/items/${movedId}/reorder`, { before: beforeOf(ids, movedId) }));
+    state.refocus = null;
+  };
+  return h('ul', { class: 'subtasks' }, ...children.map((c) => {
+    const li = h('li', { class: `sub ${c.state}` });
+    const controls = sortable(li, c.id, { scope: `sub:${parentId}`, ids: order, onOrder: reorder, buttons: true });
+    li.append(
+      h('div', { class: 'sub-row' },
+        h('button', { class: 'check-btn', title: c.completedAt ? 'Reopen' : 'Done', 'aria-label': c.completedAt ? `Reopen ${c.title}` : `Complete ${c.title}`, onclick: () => act(post(`/api/items/${c.id}/${c.completedAt ? 'reopen' : 'complete'}`)) }, c.completedAt ? icon('check', { size: 14 }) : null),
+        h('button', { class: 'link', onclick: () => openDrawer(c.id) }, c.title),
+        ...c.tags.map(tagChip),
+        h('span', { class: 'state' }, c.state === 'locked' ? icon('lock', { size: 13 }) : null, stateLabel(c)),
+        controls),
+      // append() would write "null" for a missing child.
+      ...(c.children.length ? [subtaskTree(c.children, c.id)] : []));
+    return li;
+  }));
+}
+
+/** Sets styles from script (the page's content security policy blocks style attributes). Returns the element. */
+function withStyle(el, styles) {
+  for (const [k, v] of Object.entries(styles)) el.style.setProperty(k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`), String(v));
+  return el;
+}
+
+/**
+ * Where a task lives, at the top of its details: its group and parents (each one opens), and Move… to put it in
+ * another group, under another task, or at the top level. A subtask also shows what it's part of: the parent's
+ * progress and the other subtasks next to it.
+ */
+function wherePanel(item) {
+  const groups = state.dashboard?.groups ?? [];
+  const g = groups.find((x) => x.id === item.groupId);
+  const ids = item.pathIds ?? [];
+  const crumbs = item.path.slice(0, -1).map((title, i) =>
+    h('button', { class: 'crumb', type: 'button', title: `Open ${title}`, onclick: () => openDrawer(ids[i]) }, title));
+  const path = h('nav', { class: 'where-path', 'aria-label': 'Where this task is' },
+    h('span', { class: 'where-group' }, withStyle(h('span', { class: 'dot' }), { background: g?.color ?? 'var(--accent)' }), g?.name ?? 'Group'),
+    ...crumbs.flatMap((c) => [h('span', { class: 'sep', 'aria-hidden': 'true' }, '›'), c]),
+    h('button', { class: 'btn small ghost where-move', type: 'button', title: 'Another group, under another task, or on its own', onclick: () => moveDialog(item) }, icon('folder', { size: 14 }), 'Move…'),
+    h('button', { class: 'btn small ghost', type: 'button', title: 'See it with everything around it in the task tree', onclick: () => showInTree(item) }, icon('tree', { size: 14 }), 'Show in tree'));
+  if (!item.parentId) return h('div', { class: 'where' }, path);
+
+  const partOf = h('div', { class: 'part-of', 'aria-busy': 'true' });
+  api(`/api/items/${item.parentId}`).then((parent) => {
+    const done = parent.children.filter((c) => c.completedAt).length;
+    partOf.removeAttribute('aria-busy');
+    partOf.replaceChildren(
+      h('div', { class: 'part-of-head' },
+        h('span', { class: 'muted small' }, 'Part of'),
+        h('button', { class: 'link part-of-title', type: 'button', onclick: () => openDrawer(parent.id) }, parent.title),
+        h('span', { class: 'muted small push-right' }, `${done}/${parent.children.length} done${parent.sequential ? ' · in order' : ''}`)),
+      h('div', { class: 'mini-progress wide', role: 'img', 'aria-label': `${done} of ${parent.children.length} done` }, withStyle(h('span'), { width: `${progressPercent(done, parent.children.length)}%` })),
+      h('ol', { class: 'siblings' }, ...parent.children.map((s) => h('li', { class: `${s.id === item.id ? 'current' : ''}${s.completedAt ? ' done' : ''}` },
+        h('span', { class: 'sib-check', 'aria-hidden': 'true' }, s.completedAt ? icon('check', { size: 12 }) : null),
+        s.id === item.id
+          ? h('span', { class: 'sib-title', 'aria-current': 'true' }, s.title)
+          : h('button', { class: 'link sib-title', type: 'button', onclick: () => openDrawer(s.id) }, s.title)))));
+  }).catch(() => partOf.remove());
+  return h('div', { class: 'where' }, path, partOf);
+}
+
+/** The task in the tree (Tasks): in its group, its parents opened, highlighted. */
+async function showInTree(item) {
+  await closeDrawer();
+  if (!$('#drawer').hidden) return; // couldn't save what was typed: the panel stays open
+  if (state.group && state.group !== item.groupId) { setGroup(item.groupId); refreshAll(); }
+  location.hash = '#/tasks';
+  await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1), { finished: !!item.completedAt });
+}
+
+/**
+ * When to work on it (a block on the Plan view): a start and how long; saved when changed. The keyboard way to plan
+ * (the Plan view drags). "Off the plan" takes the block away.
+ */
+/** How much energy the task takes per hour: not said, ⚡, ⚡⚡ or ⚡⚡⚡ (the Energy extra). */
+function energyField(item) {
+  const choices = [[0, 'Not said'], [1, `${energyMarks(1)} light`], [2, energyMarks(2)], [3, `${energyMarks(3)} draining`]];
+  const set = (level) => act(patch(`/api/items/${item.id}`, { energy: level }), level ? `Energy: ${energyMarks(level)} an hour` : 'Energy: not said');
+  // A div, not a label: a label around several buttons would click the first one too.
+  return h('div', { class: 'field' }, h('span', null, 'Energy per hour'), h('div', { class: 'seg energy-seg', role: 'group', 'aria-label': 'Energy per hour' },
+    ...choices.map(([level, label]) => h('button', {
+      type: 'button', 'aria-pressed': String((item.energy ?? 0) === level), title: level ? `Takes ${energyMarks(level)} an hour` : 'Counts as ⚡ an hour',
+      onclick: () => { if ((item.energy ?? 0) !== level) set(level); },
+    }, label))));
+}
+
+function planField(item) {
+  if (item.completedAt) return null;
+  const start = h('input', { type: 'datetime-local', step: 900, value: localInput(item.plannedAt), 'aria-label': 'Planned start' });
+  const lengths = [15, 30, 45, 60, 90, 120, 180, 240];
+  const current = item.plannedMinutes ?? 30;
+  const minutes = h('select', { 'aria-label': 'Planned for' },
+    ...[...new Set([...lengths, current])].sort((a, b) => a - b).map((m) => h('option', { value: m, selected: m === current }, m < 60 ? `${m} min` : `${m / 60} h`)));
+  const save = () => {
+    if (!start.value) return;
+    act(post(`/api/items/${item.id}/plan`, { start: new Date(start.value).toISOString(), minutes: Number(minutes.value) }), 'Planned');
+  };
+  start.addEventListener('change', save);
+  minutes.addEventListener('change', save);
+  return h('label', { class: 'field' }, h('span', null, 'Plan'),
+    h('div', { class: 'row plan-field' }, start, minutes,
+      item.plannedAt ? h('button', { class: 'btn small ghost', type: 'button', onclick: (e) => { e.preventDefault(); act(post(`/api/items/${item.id}/plan`, {}), 'Off the plan'); } }, icon('x', { size: 14 }), 'Off the plan') : null));
+}
+
+/** Move a task: pick a group, then where in it (at the top level, or under one of its tasks). */
+function moveDialog(item) {
+  const groups = state.dashboard?.groups ?? [];
+  const dialog = h('dialog', { class: 'move-dialog', 'aria-label': `Move ${item.title}` });
+  const groupSelect = h('select', { 'aria-label': 'Group' }, ...groups.map((g) => h('option', { value: g.id, selected: g.id === item.groupId }, g.name)));
+  const search = h('input', { type: 'search', placeholder: 'Find a task to put it under…', 'aria-label': 'Find a task' });
+  const list = h('ul', { class: 'move-list', role: 'listbox', 'aria-label': 'Where it goes' });
+  let roots = [];
+  let target = item.parentId ?? '';
+
+  const inside = new Set();
+  const mark = (n) => { inside.add(n.id); n.children.forEach(mark); };
+  mark(item); // a task can't go under itself or its own subtasks
+
+  // A listbox: one Tab stop (the chosen option), arrows/Home/End move, Enter or Space or a click chooses. Choosing
+  // marks the option in place, so the keyboard stays where it is.
+  const options = () => [...list.querySelectorAll('[role="option"]')];
+  function choose(li, focus = false) {
+    target = li.dataset.id;
+    for (const o of options()) {
+      const on = o === li;
+      o.classList.toggle('chosen', on);
+      o.setAttribute('aria-selected', String(on));
+      o.tabIndex = on ? 0 : -1;
+    }
+    if (focus) { li.focus(); li.scrollIntoView({ block: 'nearest' }); }
+  }
+
+  const option = (id, label, depth, hint) => withStyle(h('li', {
+    role: 'option', tabindex: target === id ? 0 : -1, class: `move-option${target === id ? ' chosen' : ''}`, 'aria-selected': String(target === id), dataset: { id },
+    onclick: (e) => choose(e.currentTarget, true),
+  }, depth ? h('span', { class: 'muted', 'aria-hidden': 'true' }, '↳ ') : null, label, hint ? h('span', { class: 'muted small' }, ` ${hint}`) : null), { '--depth': depth });
+
+  list.addEventListener('keydown', (e) => {
+    const all = options();
+    const at = all.indexOf(document.activeElement);
+    const go = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (go !== undefined) {
+      e.preventDefault();
+      choose(all[Math.max(0, Math.min(all.length - 1, go))], true);
+    } else if ((e.key === 'Enter' || e.key === ' ') && at >= 0) {
+      e.preventDefault();
+      choose(all[at], true);
+      if (e.key === 'Enter') move();
+    }
+  });
+
+  function draw() {
+    // A redraw (the tasks arriving, a search) keeps the keyboard where it was.
+    const focusedId = list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
+    const q = search.value.trim().toLowerCase();
+    const rows = [option('', h('strong', null, 'On its own'), 0, '(a top-level task)')];
+    const walk = (nodes, depth) => nodes.forEach((n) => {
+      if (inside.has(n.id)) return;
+      const matches = !q || n.title.toLowerCase().includes(q);
+      if (matches) rows.push(option(n.id, n.title, q ? 0 : depth));
+      walk(n.children.filter((c) => !c.completedAt), depth + 1);
+    });
+    walk(roots.filter((r) => r.groupId === groupSelect.value), 0);
+    list.replaceChildren(...rows);
+    // Nothing chosen among what's shown: the first option takes the Tab stop.
+    if (!list.querySelector('[tabindex="0"]')) rows[0].tabIndex = 0;
+    if (focusedId !== null) (rows.find((r) => r.dataset.id === focusedId) ?? list.querySelector('[tabindex="0"]'))?.focus();
+  }
+
+  const move = () => {
+    const sameGroup = groupSelect.value === item.groupId;
+    let request = null;
+    if (target) {
+      if (target !== item.parentId) request = { parentId: target };
+    } else if (item.parentId || !sameGroup) {
+      request = { toTopLevel: true, groupId: groupSelect.value };
+    }
+
+    dialog.close();
+    if (!request) return;
+    const name = groups.find((g) => g.id === groupSelect.value)?.name;
+    act(post(`/api/items/${item.id}/move`, request), sameGroup ? 'Moved' : `Moved to ${name}`);
+  };
+
+  // Back in its own group, its current place is chosen again (so Move doesn't take a subtask out by surprise).
+  groupSelect.addEventListener('change', () => { target = groupSelect.value === item.groupId ? (item.parentId ?? '') : ''; draw(); });
+  search.addEventListener('input', draw);
+  // Enter in the search box picks the first task found (Enter again moves it there).
+  search.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const first = options().find((o) => o.dataset.id) ?? options()[0];
+    if (first) choose(first, true);
+  });
+  // Keys stay in the dialog: Esc closes it (not the task behind it), and the page's shortcuts don't fire.
+  dialog.addEventListener('keydown', (e) => e.stopPropagation());
+  dialog.append(
+    h('h2', null, `Move “${item.title}”`),
+    h('label', { class: 'field' }, h('span', null, 'Group'), groupSelect),
+    search,
+    list,
+    h('div', { class: 'row buttons' },
+      h('button', { class: 'btn primary', type: 'button', onclick: move }, 'Move'),
+      h('button', { class: 'btn ghost', type: 'button', onclick: () => dialog.close() }, 'Cancel')));
+  dialog.addEventListener('close', () => dialog.remove());
+  document.body.append(dialog);
+  dialog.showModal();
+  draw();
+  api('/api/items').then((r) => { roots = r; draw(); }).catch(() => {});
+}
+
+/** Full size gives a task the whole window (its own address, #/task/<id>); the side panel keeps the view in sight. */
+/** The size button: this task changes size now, and tasks open at that size from now on. */
+function setDrawerFull(full, id) {
+  state.drawerFull = full;
+  localStorage.setItem('onething.drawer.full', full ? '1' : '0');
+  openDrawer(id, { full });
+}
+
+/** Time spent: the timer for this task, the total (with subtasks), every stretch (fix or remove), and time to add by hand. */
+function timeSection(item) {
+  const timer = state.dashboard?.timer;
+  const timing = timer?.running && timer.itemId === item.id;
+  const own = [...(item.timeEntries ?? [])].reverse();
+  const shown = own.slice(0, 12);
+  const start = h('input', { type: 'datetime-local', value: localInput(new Date(Date.now() - 30 * 60_000)), 'aria-label': 'Started at' });
+  const minutes = h('input', { type: 'number', min: 1, max: 1440, step: 1, value: 30, 'aria-label': 'Minutes' });
+  const entryRow = (e) => {
+    const s = new Date(e.start);
+    const when = `${s.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${s.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return h('li', { class: e.end ? '' : 'running' },
+      h('span', { class: 'when' }, when),
+      h('span', { class: 'what' }, e.end ? duration(e.seconds) : `running · ${duration(e.seconds)}`),
+      e.source === 'focus' ? h('span', { class: 'chip warn', title: 'A focus (Pomodoro) session' }, 'focus') : null,
+      e.end ? h('button', { class: 'icon-btn small', type: 'button', title: 'Fix the length', 'aria-label': `Fix the time from ${when}`, onclick: () => {
+        const value = prompt('How many minutes was it?', String(Math.round(e.seconds / 60)));
+        const m = Number(value);
+        if (value !== null && m > 0) act(put(`/api/items/${item.id}/time/${e.id}`, { start: e.start, end: new Date(s.getTime() + m * 60_000).toISOString() }), 'Fixed');
+      } }, icon('pencil', { size: 13 })) : null,
+      h('button', { class: 'icon-btn small', type: 'button', title: 'Remove', 'aria-label': `Remove the time from ${when}`, onclick: () => { if (confirm('Remove this time?')) act(del(`/api/items/${item.id}/time/${e.id}`), 'Removed'); } }, icon('x', { size: 13 })));
+  };
+  return h('section', { class: 'drawer-section time-section' },
+    h('h3', null, 'Time'),
+    h('div', { class: 'time-head' },
+      item.completedAt ? null : (timing
+        ? h('button', { class: 'btn on', type: 'button', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') }, icon('stop', { size: 16 }), 'Stop timer')
+        : h('button', { class: 'btn', type: 'button', onclick: () => act(post('/api/timer/start', { itemId: item.id }), 'Timer started') }, icon('timer', { size: 16 }), 'Start timer')),
+      h('span', { class: 'time-total' }, h('strong', null, duration(item.timeSpentSeconds ?? 0)), item.children.length ? ' with subtasks' : ' in total')),
+    shown.length ? h('ul', { class: 'time-list' }, ...shown.map(entryRow)) : null,
+    own.length > shown.length ? h('p', { class: 'muted small' }, `and ${own.length - shown.length} earlier`) : null,
+    h('details', null, h('summary', null, 'Add time by hand'),
+      h('form', { class: 'row', onsubmit: (e) => {
+        e.preventDefault();
+        const from = new Date(start.value);
+        const m = Number(minutes.value);
+        if (!start.value || !(m > 0)) return;
+        act(post(`/api/items/${item.id}/time`, { start: from.toISOString(), end: new Date(from.getTime() + m * 60_000).toISOString() }), `Logged ${duration(m * 60)}`);
+      } },
+      h('label', { class: 'field' }, h('span', null, 'Started'), start),
+      h('label', { class: 'field' }, h('span', null, 'Minutes'), minutes),
+      h('button', { class: 'btn', type: 'submit' }, icon('plus', { size: 16 }), 'Add'))));
+}
+
+function attachmentsSection(item) {
+  const picker = h('input', { type: 'file', multiple: true, hidden: true, onchange: () => uploadFiles(item.id, picker.files) });
+  return h('section', { class: 'drawer-section' },
+    h('h3', null, 'Attachments'),
+    item.attachments.length
+      ? h('ul', { class: 'attachments' }, ...item.attachments.map((a) => h('li', null,
+        icon('paperclip', { size: 14 }),
+        h('a', { href: a.url, target: '_blank', rel: 'noopener', class: 'link' }, a.fileName),
+        h('span', { class: 'muted small' }, `${fileSize(a.size)} · ${a.addedBy}`),
+        h('button', { class: 'icon-btn small', title: 'Remove', 'aria-label': `Remove ${a.fileName}`, onclick: () => { if (confirm(`Remove "${a.fileName}"?`)) act(del(a.url), 'Removed'); } }, icon('x', { size: 14 })))))
+      : null,
+    h('div', { class: 'dropzone' }, picker,
+      h('button', { class: 'btn', onclick: () => picker.click() }, icon('paperclip', { size: 16 }), 'Attach files'),
+      h('span', { class: 'muted small' }, 'or drop files here')));
+}
+
+async function uploadFiles(id, files) {
+  const list = [...(files ?? [])];
+  if (!list.length) return;
+  await act((async () => { for (const file of list) await upload(`/api/items/${id}/attachments`, file); })(), list.length === 1 ? `Attached ${list[0].name}` : `Attached ${list.length} files`);
+}
+
+/** The task's rich HTML version, shown in a locked-down frame (no scripts, separate origin). */
+function richSection(item) {
+  const frame = h('iframe', { class: 'rich-frame', sandbox: '', src: `/api/items/${item.id}/rich`, title: `Rich version of ${item.title}`, referrerpolicy: 'no-referrer' });
+  return h('section', { class: 'drawer-section' },
+    h('h3', null, 'Rich view'),
+    frame,
+    h('div', { class: 'row' },
+      h('a', { class: 'btn ghost', href: `/api/items/${item.id}/rich`, target: '_blank', rel: 'noopener' }, 'Open full size'),
+      h('button', { class: 'btn ghost danger', onclick: () => { if (confirm('Remove the rich version? (It is kept in the history.)')) act(put(`/api/items/${item.id}/rich`, { html: null }), 'Removed'); } }, 'Remove')));
+}
+
+/** Every change is kept as a version; any version can be viewed or restored. */
+function historySection(item) {
+  const list = h('ul', { class: 'history' });
+  const preview = h('pre', { class: 'history-preview', hidden: true });
+  const box = h('details', { class: 'drawer-section history-box' }, h('summary', null, h('h3', null, 'History')), list, preview);
+  box.addEventListener('toggle', async () => {
+    if (!box.open || box.dataset.loaded) return;
+    box.dataset.loaded = '1';
+    const [versions, skipped] = await Promise.all([
+      api(`/api/items/${item.id}/history`).catch(() => []),
+      api('/api/history/skipped').catch(() => []),
+    ]);
+    const note = skipped.length
+      ? h('li', { class: 'muted small history-skipped' }, `Not in history: ${skipped.join(', ')}. ${skipped.length === 1 ? "It's a git repository of its own, so its own git keeps its versions." : "They're git repositories of their own, so their own git keeps their versions."}`)
+      : null;
+    if (!versions.length) {
+      list.replaceChildren(h('li', { class: 'muted small' }, 'Versions appear here a few seconds after changes (needs git).'), ...(note ? [note] : []));
+      return;
+    }
+    list.replaceChildren(...(note ? [note] : []), ...versions.map((v, i) => h('li', null,
+      h('span', { class: 'when', title: new Date(v.at).toLocaleString() }, relativeTime(v.at)),
+      h('span', { class: 'what' }, v.message.split('\n')[0]),
+      h('button', { class: 'link', onclick: async () => {
+        preview.hidden = false;
+        preview.textContent = await text(`/api/items/${item.id}/history/${v.id}`).catch((e) => e.message);
+      } }, 'View'),
+      i === 0 ? h('span', { class: 'muted small' }, 'current') : h('button', { class: 'link', onclick: () => {
+        if (confirm('Restore this version? The current one stays in the history.')) act(post(`/api/items/${item.id}/history/${v.id}/restore`), 'Restored');
+      } }, 'Restore'))));
+  });
+  return box;
+}
+
+/** Clears an input optimistically and puts the text back if the request fails. */
+async function submitAndClear(input, request, message) {
+  const value = input.value;
+  if (!value.trim()) return;
+  input.value = '';
+  if (!(await act(request(value), message))) input.value = value;
+}
+
+/**
+ * Why a task is waiting: its own snooze or wait (Do now brings it back), or its parent's (open the parent to change it).
+ * Nothing when it isn't waiting, or is waiting for a step before it.
+ */
+function waitingBanner(item) {
+  if (item.state !== 'waiting' || item.completedAt || !(item.wakeAt || item.waitingForTitle)) return null;
+  const why = [item.waitingForTitle ? `waits for “${item.waitingForTitle}”` : null, item.wakeAt ? `snoozed until ${whenText(item.wakeAt)}` : null].filter(Boolean).join(' and ');
+  // Its own wait (Do now ends it), its parent's (open the parent), or both.
+  const own = !!item.afterId || (!!item.nextActionAt && new Date(item.nextActionAt) > new Date());
+  const text = !own ? `Its parent “${item.heldByTitle}” ${why}`
+    : `${why[0].toUpperCase()}${why.slice(1)}${item.heldById ? `; its parent “${item.heldByTitle}” waits too` : ''}`;
+  return h('div', { class: 'waiting-banner', role: 'status' }, icon(item.waitingForTitle ? 'link' : 'clock', { size: 16 }), h('span', null, text),
+    own ? h('button', { class: 'btn ghost', type: 'button', onclick: () => act(post(`/api/items/${item.id}/schedule`, { clear: true }), 'Back now') }, icon('undo', { size: 15 }), 'Do now') : null,
+    item.heldById ? h('button', { class: 'btn ghost', type: 'button', onclick: () => openDrawer(item.heldById) }, icon('expand', { size: 15 }), 'Open parent') : null);
+}
+
+function stateLabel(item) {
+  if (item.state === 'waiting' && item.waitingForTitle) return `waiting for “${item.waitingForTitle}”`;
+  if (item.state === 'waiting' && item.nextActionAt) return `waiting · ${relativeTime(item.nextActionAt)}`;
+  return { actionable: 'now', container: 'in progress', locked: 'later', done: 'done', waiting: 'waiting' }[item.state] ?? item.state;
+}
+
+// ---------- forms & keyboard ----------
+
+$('#capture-icon').append(icon('plus', { size: 20 }));
+
+// Pictures pasted into quick add wait here (shown under the box) and go into the new task's details once it exists.
+const captureFiles = [];
+
+function renderCaptureFiles() {
+  const tray = $('#capture-files');
+  tray.hidden = !captureFiles.length;
+  tray.replaceChildren(...captureFiles.map((f, i) => h('span', { class: 'capture-file', title: f.name },
+    // A data: URL (read once when pasted): the page's content security policy allows those for images, not blob: ones.
+    f.preview ? h('img', { src: f.preview, alt: '' }) : h('span', { class: 'capture-file-icon' }, icon('paperclip', { size: 16 })),
+    h('span', { class: 'capture-file-name' }, f.name),
+    h('button', { class: 'icon-btn small', type: 'button', 'aria-label': `Remove ${f.name}`, onclick: () => { captureFiles.splice(i, 1); renderCaptureFiles(); } }, icon('x', { size: 12 })))));
+}
+
+/** A small preview of a pasted picture (null for other files, or if it can't be read). */
+function previewOf(file) {
+  if (!file.type.startsWith('image/')) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+$('#capture-input').addEventListener('paste', (e) => {
+  const files = imageFiles(e.clipboardData);
+  if (!files.length) return;
+  e.preventDefault();
+  for (const file of files) {
+    if (file.size > MAX_PASTE_BYTES) { toast(`${file.name || 'That file'} is too big to attach (at most 25 MB).`, 'error'); continue; }
+    const entry = { file, name: pastedName(file), preview: null };
+    captureFiles.push(entry);
+    previewOf(file).then((preview) => { entry.preview = preview; renderCaptureFiles(); });
+  }
+  renderCaptureFiles();
+});
+
+/**
+ * Attaches the waiting pictures to a new task and shows them in its details. Never fails: the task exists by now, so a
+ * problem is reported and the rest still go in (failing would offer to add the task again).
+ */
+async function attachCaptureFiles(itemId, files) {
+  const embeds = [];
+  for (const f of files) {
+    try {
+      const a = await upload(`/api/items/${itemId}/attachments`, f.file, f.name);
+      embeds.push(`![[${a.storedName ?? a.fileName}]]`);
+    } catch (err) {
+      toast(`Added, but couldn't attach ${f.name}: ${err.message}`, 'error');
+    }
+  }
+  if (!embeds.length) return;
+  try {
+    await patch(`/api/items/${itemId}`, { details: embeds.join('\n') });
+  } catch (err) {
+    toast(`Added, but couldn't show the pictures in its details: ${err.message}`, 'error');
+  }
+}
+
+$('#capture').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#capture-input');
+  const files = captureFiles.splice(0);
+  // A picture alone is enough: the task is named after it (rename it any time).
+  const text = input.value.trim() || (files.length ? files[0].name.replace(/\.[a-z0-9]+$/i, '') : '');
+  if (!text) return;
+  input.value = '';
+  renderCaptureFiles();
+  const groupId = $('#capture-group').value || state.group;
+  const elsewhere = groupId && state.group && groupId !== state.group;
+  const name = state.dashboard?.groups.find((g) => g.id === groupId)?.name;
+  const created = post('/api/capture', { text, groupId }).then(async (item) => {
+    if (files.length) await attachCaptureFiles(item.id, files);
+    return item;
+  });
+  act(created, elsewhere && name ? `Added to ${name}` : 'Added').then((ok) => {
+    if (ok) return;
+    if (!input.value) input.value = text;
+    // Nothing was added: the pictures wait again.
+    captureFiles.push(...files);
+    renderCaptureFiles();
+  });
+});
+
+/** Quick add puts the task in the group shown (the first one under All); the picker sends it elsewhere instead. */
+function renderCaptureGroup(d) {
+  const select = $('#capture-group');
+  const chosen = select.dataset.chosen;
+  const target = d.groups.find((g) => g.id === (chosen || state.group)) ?? d.groups[0];
+  select.replaceChildren(...d.groups.map((g) => h('option', { value: g.id, selected: g.id === target?.id }, g.name)));
+  $('#capture-group-dot').style.background = target?.color ?? 'var(--accent)';
+}
+
+$('#capture-group').addEventListener('change', (e) => {
+  // A choice made here sticks until the tab changes (then it follows the tab again).
+  e.target.dataset.chosen = e.target.value;
+  e.target.dataset.tab = state.group ?? '';
+  renderCaptureGroup(state.dashboard);
+});
+
+$('#login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try {
+    await post('/api/login', { token: $('#login-token').value });
+    $('#login-error').textContent = '';
+    // The same start as opening the app signed in: extras, theme, hooks and a deep link too.
+    start();
+  } catch (err) {
+    $('#login-error').textContent = err.status === 401 ? 'That token did not match.' : err.message;
+  }
+});
+
+/** Quick capture: on Today's capture box (from any view). */
+function focusCapture() {
+  if (shell.current() !== 'today') location.hash = '#/today';
+  setTimeout(() => $('#capture-input').focus(), 0);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!$('#break').hidden) return; // nothing behind the break screen reacts to keys
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+  if (e.key === 'Escape') { closeMenus(); shell.closeNav(); if (!$('#drawer').hidden) closeDrawer(); }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'n' && !typing) { e.preventDefault(); focusCapture(); }
+  if (e.key === '/' && !typing) { e.preventDefault(); $('#filter').focus(); }
+});
+
+// Filter: one search box with the same syntax as the CLI and agents (#tag, label:x, group:x, is:done, words).
+let filterTimer;
+$('#filter').addEventListener('input', () => { clearTimeout(filterTimer); filterTimer = setTimeout(() => setQuery($('#filter').value), 250); });
+$('#filter').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); $('#filter').blur(); } });
+$('#filter-clear').addEventListener('click', () => setQuery(''));
+$('#filter-pick').append(icon('tag', { size: 15 }));
+  $('#filter-pick').addEventListener('click', (e) => { e.stopPropagation(); toggleFilterMenu(); });
+$('#filter-menu').addEventListener('click', (e) => e.stopPropagation());
+$('#filter-menu').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFilterMenu({ focusButton: true }); } });
+$('#search-icon').append(icon('search', { size: 16 }));
+
+// Nothing typed is ever lost: pending saves are flushed when the page is hidden or closed.
+const flushAll = () => {
+  // The page may be going away: these requests must outlive it.
+  setKeepalive(true);
+  state.drawerAutosave?.flush();
+  noteSessions.forEach((s) => s.autosave.flush());
+  setKeepalive(false);
+};
+window.addEventListener('pagehide', flushAll);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+
+// ---------- views ----------
+
+let lastFocused = null;
+const ctx = {
+  api, post, h, icon, toast, act, state, openDrawer, relativeTime, labelChip, openPlugins, refreshAll,
+  /** Today and the top bar (counts, timer) after a change made in a view, without reloading the view itself. */
+  refreshDashboard: () => refresh({ background: true }),
+  navigate: (view) => { location.hash = `#/${view}`; },
+  groups: () => state.dashboard?.groups ?? [],
+  dashboard: () => state.dashboard,
+  signedIn: () => !!state.signedIn,
+  setGroup: (id) => { setGroup(id); refreshAll(); },
+  capture: focusCapture,
+  closeDrawer,
+  drawerOpen: () => !$('#drawer').hidden,
+  pluginOn: (id) => pluginOn(id),
+  reloadPlugins: () => loadPlugins(),
+  saveFocus: () => { lastFocused = document.activeElement; },
+  restoreFocus: () => { lastFocused?.focus?.(); lastFocused = null; },
+  views: {},
+};
+const shell = createShell(ctx);
+const later = createLater(ctx);
+ctx.pluginHost = pluginHost;
+ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), plan: createPlanView(ctx), settings: createSettingsView(ctx) };
+state.drawerFull = localStorage.getItem('onething.drawer.full') === '1';
+
+/** A view's own background refresh waits while something in it is being typed in or dragged. */
+function refreshViewQuietly() {
+  const view = currentView();
+  const active = document.activeElement;
+  if (!view || (active && view.root.contains(active) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName)) || view.root.querySelector('.dragging')) return;
+  (view.poll ?? view.refresh)();
+}
+
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { refresh({ background: true }); refreshViewQuietly(); } });
+/** A hook an AI agent added or changed waits for approval: ask here (when no desktop app asks itself). */
+const askHooks = () => askAboutHooks({ api, h, icon, toast });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') askHooks(); });
+/** The shared theme, changed elsewhere (the sidebar's menu, another window). */
+const followTheme = () => follow(() => api('/api/settings').then((s) => s.theme)).catch(() => {});
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') followTheme(); });
+// Coming back to this window (from the sidebar, where the theme may have just changed).
+window.addEventListener('focus', followTheme);
+setInterval(async () => {
+  if (document.visibilityState !== 'visible') return;
+  await refresh({ background: true });
+  // While One Thing can't be reached, the rest waits too (no error for each of them every 15 s).
+  if (state.offline) return;
+  refreshViewQuietly();
+  followTheme();
+  askHooks();
+  // An extra switched on or off in another window (or the sidebar) shows or goes here too.
+  if (state.signedIn) loadPlugins();
+}, 15000);
+
+/**
+ * Starts the app: the board, the shared theme, hooks waiting for approval, the extras, and a deep link. Runs again
+ * after signing in with the token form (signed out, most of it can't load).
+ */
+async function start() {
+  await refresh();
+  // The theme every window shares (js/theme.js already applied the one remembered here).
+  followTheme();
+  askHooks();
+  // Deep link from the sidebar / Teams: /?item=<id> opens that task's details.
+  const params = new URLSearchParams(location.search);
+  // /?feedback opens the feedback sheet (its plugin does, once loaded); with the extra off, say so.
+  loadPlugins().then(() => {
+    if (params.has('feedback') && !pluginOn('feedback')) toast('Send feedback is off. Switch it on in Settings › Extras.', 'error');
+  });
+  const item = params.get('item');
+  if (item && state.dashboard) openDrawer(item);
+  else if (params.has('plugins') && state.dashboard) openPlugins();
+}
+
+start();
+

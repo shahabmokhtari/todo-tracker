@@ -2,7 +2,7 @@
 
 See what to do now, add tasks and save notes about the page you're on, without leaving the browser. It works in
 **Microsoft Edge**, **Google Chrome** (a side panel) and **Safari** on the Mac (a toolbar popup). It only talks to
-Onething on your own computer.
+One Thing on your own computer.
 
 The extension isn't in the browser stores yet, so it's set up by hand once. The app walks you through it: open
 **Browser extension** (the puzzle button in the dashboard header, or **⋯ › Set up the browser extension** in the
@@ -25,18 +25,18 @@ Edge may ask at startup whether to keep "developer mode extensions": choose **Ke
 
 Safari extensions come inside a small Mac app.
 
-1. Get **Onething Extension.app**: CI builds it on every change (the `safari-extension` artifact). To build it
+1. Get **One Thing Extension.app**: CI builds it on every change (the `safari-extension` artifact). To build it
    yourself (needs Xcode), download the Safari version from the setup panel, unzip it, and run
-   `xcrun safari-web-extension-converter todo-tracker-extension-safari --macos-only --app-name "Onething Extension"`,
+   `xcrun safari-web-extension-converter onething-extension-safari --macos-only --app-name "One Thing Extension"`,
    then build and run the project Xcode opens.
 2. A downloaded app that isn't notarized is blocked the first time it opens. Right-click it › **Open** › **Open** (or
    System Settings › Privacy & Security › **Open Anyway**), or in Terminal:
-   `xattr -dr com.apple.quarantine "Onething Extension.app"`.
+   `xattr -dr com.apple.quarantine "One Thing Extension.app"`.
 3. Safari › Settings › Advanced: turn on **Show features for web developers**. Then **Develop › Allow Unsigned
    Extensions** (until the extension is signed, Safari asks for this again after it restarts).
-4. Open **Onething Extension.app** once, then Safari › Settings › Extensions: tick **Onething** and allow it on
+4. Open **One Thing Extension.app** once, then Safari › Settings › Extensions: tick **One Thing** and allow it on
    `127.0.0.1`.
-5. Click the Onething button in the toolbar and type the pairing code.
+5. Click the One Thing button in the toolbar and type the pairing code.
 
 ## Pairing
 
@@ -48,9 +48,13 @@ that web pages can't send to the app.
 A paired browser's token can do what the extension does and nothing more: see what to do now, add tasks, finish
 and snooze them, and add notes. Everything else (deleting, settings, plugins, the AI tools over MCP, sign-in links)
 is refused, including anything added to the app later, and whatever it does is recorded as the browser. **Paired browsers** in the setup panel lists them; **Remove**
-takes one's access away at once (the extension then asks for a new code). Switching the plugin off stops them all at once.
+takes one's access away at once (the extension then asks for a new code). Switching the plugin off stops them all at once
+(the extension then says to switch it back on, or to get a new code; pairing while it's off says to switch it on first).
 Pasting the app's own token (**⋯ › Copy API token**, under *Other server, or paste a token instead*) still works and
-has full access.
+has full access; the extension checks it with the app before keeping it.
+
+The gear (**Connection settings**) opens the same screen; **Cancel** goes back to your tasks without changing anything.
+The side panel checks for changes every 30 seconds, but not while that screen is open.
 
 ## For developers
 

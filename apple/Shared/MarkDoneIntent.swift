@@ -1,12 +1,12 @@
 import AppIntents
 import Foundation
-import TodoTrackerKit
+import OneThingKit
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
 
 /// Done on a widget (built into the app and the widget extension). The widget can't reach the tasks (they're in the
-/// app's own storage, on the Mac's server or on a connected computer), so the request is kept in the App Group, the
+/// app's own storage, or on the Mac's server), so the request is kept in the App Group, the
 /// widgets leave the task out at once, and the app opens and makes the change as its own Mark done does
 /// (`BoardModel.applyWidgetRequests`): once, as the user, in whatever mode it's in.
 struct MarkDoneIntent: AppIntent {

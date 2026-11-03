@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws Onething's icon (one lit task, the rest faint) and writes every platform's copy.
+"""Draws One Thing's icon (one lit task, the rest faint) and writes every platform's copy.
 
 The mark's shapes live here once; each platform gets them in its own format and frame.
 Needs: pip install cairosvg pillow.  Run from the repo root:  python3 build/icons.py
@@ -144,7 +144,7 @@ def android():
         )
         return (
             '<?xml version="1.0" encoding="utf-8"?>\n'
-            "<!-- Onething's mark: the task to do now, lit, and two later ones, faint. Drawn by build/icons.py;\n"
+            "<!-- One Thing's mark: the task to do now, lit, and two later ones, faint. Drawn by build/icons.py;\n"
             "     inside the adaptive icon's safe zone. -->\n"
             '<vector xmlns:android="http://schemas.android.com/apk/res/android"\n'
             '    android:width="108dp"\n    android:height="108dp"\n'
@@ -158,13 +158,13 @@ def android():
 
 def windows():
     img = png(mac(), 256)
-    (ROOT / "src/TodoTracker.Windows/Assets").mkdir(parents=True, exist_ok=True)
-    img.save(ROOT / "src/TodoTracker.Windows/Assets/app.ico", sizes=[(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)])
+    (ROOT / "src/OneThing.Windows/Assets").mkdir(parents=True, exist_ok=True)
+    img.save(ROOT / "src/OneThing.Windows/Assets/app.ico", sizes=[(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 
 def web():
     logo = small_logo()
-    for path in ("src/TodoTracker.Server/wwwroot/img/logo.svg", "extension/icons/logo.svg", "website/public/img/favicon.svg"):
+    for path in ("src/OneThing.Server/wwwroot/img/logo.svg", "extension/icons/logo.svg", "website/public/img/favicon.svg"):
         (ROOT / path).write_text(logo)
     save(png(logo, 128), "extension/icons/icon128.png")
     save(png(logo, 128), "integrations/claude-desktop/icon.png")

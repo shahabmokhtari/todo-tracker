@@ -1,5 +1,5 @@
 {
-  "about": "Search (the search box, tt, MCP): one syntax in every app. Words match the title or details; #tag (nested tags too), label:name, group:name, is:open / is:done, is:archived (archived tasks are found only then) and the board column (is:inbox, is:next, is:doing, stage:doing) narrow it down. Tags and labels count for subtasks too. All terms must match, in any case. Checked by the C# core (SearchFixtureTests, TaskQuery), Swift and Kotlin (SearchFixtureTest, TaskSearch).",
+  "about": "Search (the search box, ot, MCP): one syntax in every app. Words match the title or details; #tag (nested tags too), label:name, group:name, is:open / is:done, is:archived (archived tasks are found only then) and the board column (is:inbox, is:next, is:doing, stage:doing) narrow it down. Tags and labels count for subtasks too. All terms must match, in any case. Checked by the C# core (SearchFixtureTests, TaskQuery), Swift and Kotlin (SearchFixtureTest, TaskSearch).",
   "shape": {
     "groups": "the board's groups, in order (a new board has Work and Personal)",
     "tasks": "{ key, title, group?: name (default the first), parent?: key, details?, tags?: [], labels?: [], stage?: inbox|next|doing, done?: true, archived?: true }, added in order; a task that doesn't say its stage is in Next",

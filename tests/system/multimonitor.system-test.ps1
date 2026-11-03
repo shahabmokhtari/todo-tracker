@@ -1,8 +1,8 @@
-# Multi-monitor placement test against the real Onething sidebar on the live Windows shell.
+# Multi-monitor placement test against the real One Thing sidebar on the live Windows shell.
 # For every display: Menu > Position > Display N, then Dock right / Dock left / Float. Checks the window lands on that
 # monitor, only that monitor's work area changes, and every work area is restored on exit.
 # Skips (exit 0) on machines with a single monitor, such as CI runners.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("onething-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -40,7 +40,7 @@ function MainWindow($proc) {
   # Find the sidebar by process + automation name; Process.MainWindowHandle can briefly point at a WPF helper window.
   $cond = New-Object System.Windows.Automation.AndCondition(
     (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $proc.Id)),
-    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Onething sidebar')))
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'One Thing sidebar')))
   for ($i = 0; $i -lt 100; $i++) {
     $w = (Root).FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
     if ($w -and $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Menu')))) {
@@ -97,7 +97,7 @@ function MonByName($n) { Mons | ? { $_.n -eq $n } }
 $initial = Mons
 if ($initial.Count -lt 2) { Write-Host 'SKIPPED: needs at least two monitors'; exit 0 }
 # Never sync into this computer's real OneDrive or iCloud Drive.
-$env:TODOTRACKER_CLOUD = 'off'
+$env:ONETHING_CLOUD = 'off'
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = MainWindow $proc

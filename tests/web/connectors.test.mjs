@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loopMarkdown, taskMarkdown, taskHtml, taskPictures } from '../../src/TodoTracker.Server/wwwroot/js/plugins/loop.js';
-import { previewText } from '../../src/TodoTracker.Server/wwwroot/js/plugins/connectors.js';
+import { loopMarkdown, taskMarkdown, taskHtml, taskPictures } from '../../src/OneThing.Server/wwwroot/js/plugins/loop.js';
+import { previewText, reposInUse } from '../../src/OneThing.Server/wwwroot/js/plugins/connectors.js';
 
 const n = (title, extra = {}) => ({ title, done: false, children: [], ...extra });
 
@@ -21,6 +21,24 @@ test('the connector preview says what the first sync will do', () => {
   assert.equal(previewText({ addHere: 3, sendThere: 1, updateHere: 1, updateThere: 1, archive: 0 }), 'It will add 3 tasks here, send 1 task there, update 2.');
   assert.equal(previewText({ addHere: 0, sendThere: 0, updateHere: 0, updateThere: 0, archive: 2 }), 'It will archive 2 deleted here.');
   assert.equal(previewText({ addHere: 0, sendThere: 0 }), 'Nothing to change: they already match.');
+});
+
+test('a group can join a GitHub repository other groups use, and sees which groups are there', () => {
+  const groups = [
+    { group: 'Work', repo: 'me/life' },
+    { group: 'Personal', repo: 'me/life' },
+    { group: 'Side projects', repo: 'me/todo-side-projects' },
+    { group: 'Reading', repo: null },
+  ];
+  assert.deepEqual(reposInUse(groups, 'Reading'), [
+    { repo: 'me/life', groups: ['Personal', 'Work'] },
+    { repo: 'me/todo-side-projects', groups: ['Side projects'] },
+  ]);
+  assert.deepEqual(reposInUse(groups, 'Work'), [
+    { repo: 'me/life', groups: ['Personal'] },
+    { repo: 'me/todo-side-projects', groups: ['Side projects'] },
+  ]);
+  assert.deepEqual(reposInUse([], 'Work'), []);
 });
 
 const task = {

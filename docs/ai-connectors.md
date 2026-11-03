@@ -1,6 +1,6 @@
 # Connect AI apps
 
-Onething is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
+One Thing is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
 ask what to work on next, let an agent log progress or break a project into steps. Every change an AI makes is
 attributed to it (you'll see "Agent: claude" in the timeline) and versioned, so it can be undone.
 
@@ -11,33 +11,36 @@ There are four ways in, from most to least local:
 
 | Way | For | Needs the app running? |
 | --- | --- | --- |
-| **`tt mcp`** – MCP over stdio | Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor, any local MCP client | No |
-| **`tt` CLI** | Terminals, scripts, and agents that run shell commands | No |
+| **`onething mcp`** – MCP over stdio | Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor, any local MCP client | No |
+| **`ot` CLI** (or `onething`) | Terminals, scripts, and agents that run shell commands | No |
 | **`/mcp`** – MCP over HTTP | MCP clients that prefer a URL | Yes |
 | **REST + OpenAPI** | ChatGPT (GPT Actions), Copilot Studio, Power Automate, scripts | Yes |
 
-`tt` works directly on your tasks folder, the same one the app uses, and is safe to run alongside it (changes take
+`ot` is the short name of `onething`: both are installed and do the same thing. It works directly on your tasks folder, the same one the app uses, and is safe to run alongside it (changes take
 a per-folder lock and re-read the files first). Several AI apps can be connected at once.
 
-## Get `tt`
+## Get `ot`
 
-* **Windows app:** `tt.exe` is installed next to `TodoTracker.exe`. "Connect an AI app" fills in its full path.
-* **.NET tool:** `dotnet tool install -g TodoTracker.Cli --add-source <folder with the .nupkg>` (the package is a CI
-  artifact; `dotnet pack src/TodoTracker.Cli -o <folder>` builds it).
-* **Standalone:** CI publishes self-contained `tt` for Windows, macOS and Linux (`tt-<platform>.zip`, no .NET needed).
+* **Windows app:** `onething.exe` and `ot.exe` are installed in the `cli` folder next to `OneThing.exe`. "Connect an AI app"
+  fills in the full path. To type `ot` in any terminal, add that folder to your PATH.
+* **Linux app:** the install script puts `onething` and `ot` in `~/.local/bin`.
+* **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
+  artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it). A .NET tool has one name: `onething`.
+* **Standalone:** CI publishes self-contained `onething` and `ot` for Windows, macOS and Linux
+  (`onething-cli-<platform>.zip`, no .NET needed).
 
-`tt` uses the tasks folder the app uses (`Documents/Todo Tracker`, or the folder chosen in the app). Override it with
-`--vault <folder>` or the `TODOTRACKER_VAULT` environment variable.
+`ot` uses the tasks folder the app uses (`Documents/OneThing`, or the folder chosen in the app). Override it with
+`--vault <folder>` or the `ONETHING_VAULT` environment variable.
 
 ## Claude Desktop
 
-**Extension (easiest):** download `todo-tracker-<platform>.mcpb` from the CI artifacts and open it; Claude shows an
+**Extension (easiest):** download `onething-<platform>.mcpb` from the CI artifacts and open it; Claude shows an
 install dialog. Leave *Tasks folder* empty to use the app's folder.
 
 **Or by hand:** Settings → Developer → Edit config, then add (with the path from "Connect an AI app"):
 
 ```json
-{ "mcpServers": { "todo-tracker": { "command": "C:\\Program Files\\Todo Tracker\\tt.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "onething": { "command": "C:\\Program Files\\One Thing\\cli\\onething.exe", "args": ["mcp"] } } }
 ```
 
 Restart Claude Desktop completely after editing.
@@ -45,7 +48,7 @@ Restart Claude Desktop completely after editing.
 ## Claude Code
 
 ```bash
-claude mcp add todo-tracker --scope user -- tt mcp
+claude mcp add onething --scope user -- onething mcp
 ```
 
 For the tools *and* a skill that teaches Claude how to help with your tasks (capture, break down, log, defer, never
@@ -53,24 +56,24 @@ delete), install the plugin from this repository:
 
 ```
 /plugin marketplace add shahabmokhtari/todo-tracker
-/plugin install todo-tracker@todo-tracker
+/plugin install onething@onething
 ```
 
-The plugin launches `tt` from your PATH.
+The plugin launches `onething` from your PATH.
 
 ## GitHub Copilot CLI
 
 Add to `~/.copilot/mcp-config.json` (or run `/mcp add` inside Copilot):
 
 ```json
-{ "mcpServers": { "todo-tracker": { "type": "local", "command": "tt", "args": ["mcp"], "tools": ["*"] } } }
+{ "mcpServers": { "onething": { "type": "local", "command": "onething", "args": ["mcp"], "tools": ["*"] } } }
 ```
 
 The same plugin works in Copilot CLI (it reads Claude-format marketplaces too):
 
 ```bash
 copilot plugin marketplace add shahabmokhtari/todo-tracker
-copilot plugin install todo-tracker@todo-tracker
+copilot plugin install onething@onething
 ```
 
 ## VS Code (GitHub Copilot Chat)
@@ -78,7 +81,7 @@ copilot plugin install todo-tracker@todo-tracker
 Command palette → **MCP: Open User Configuration** (or a workspace `.vscode/mcp.json`), then add:
 
 ```json
-{ "servers": { "todo-tracker": { "type": "stdio", "command": "tt", "args": ["mcp"] } } }
+{ "servers": { "onething": { "type": "stdio", "command": "onething", "args": ["mcp"] } } }
 ```
 
 A copy is in [`integrations/vscode/mcp.json`](../integrations/vscode/mcp.json).
@@ -88,13 +91,18 @@ A copy is in [`integrations/vscode/mcp.json`](../integrations/vscode/mcp.json).
 While the app runs, its MCP endpoint is `http://127.0.0.1:5317/mcp` with the header
 `Authorization: Bearer <token>` (**⋯ › Copy MCP config** copies both). It only listens on this computer.
 
+Anything with the token (an agent, a script) reads and changes tasks; its changes show as `Agent: <name>` (the
+`X-OneThing-Actor: agent:<name>` header, or the MCP client's name; without one, `Agent: API client`). Some things are
+yours only and answer 403 to the token alone: deleting, Ask AI, switching extras, moving the tasks folder, the Teams
+webhook, sync and connected-app settings, approving or trying hooks, and switching off or removing hooks it didn't add.
+
 ## ChatGPT, Claude.ai, Microsoft 365 Copilot and Copilot Studio
 
 These connect **from the cloud**, so they can't reach `127.0.0.1`. They need a public HTTPS address in front of your
 local server, and most require OAuth rather than a fixed token:
 
 * **ChatGPT** (custom MCP server / developer mode): enter a public HTTPS URL to `/mcp`, or use OpenAI's Secure MCP
-  Tunnel, which forwards to a local command such as `tt mcp`. Auth options are OAuth or none, so only expose it through
+  Tunnel, which forwards to a local command such as `onething mcp`. Auth options are OAuth or none, so only expose it through
   the tunnel or an authenticating proxy.
 * **Claude.ai / Claude custom connectors**: same requirement (public HTTPS, usually OAuth). On the desktop, prefer the
   Claude Desktop extension above.
@@ -116,23 +124,23 @@ Deleting, settings and sign-in are left out.
 
 ## Windows Copilot (on-device agent registry)
 
-Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. Onething isn't packaged as
+Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. One Thing isn't packaged as
 MSIX yet; until then, use the Claude Desktop or VS Code setup.
 
-## The `tt` command
+## The `ot` command (or `onething`)
 
 ```
-tt                                  what to do now (and what is waiting)
-tt add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
-tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
-tt note passport 'Booked appointment for Tuesday'
-tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
-tt done passport                    finish
-tt mcp                              the MCP server over stdio
+ot                                  what to do now (and what is waiting)
+ot add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
+ot list #release                    find tasks: words, #tag, label:x, group:work, is:done
+ot note passport 'Booked appointment for Tuesday'
+ot snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
+ot done passport                    finish
+onething mcp                        the MCP server over stdio (ot mcp works too)
 ```
 
 Every command takes `--json` (the same shapes as the REST API and MCP tools) and `--as <name>` to attribute changes to
-an agent (or set `TT_AGENT`). All the commands and options: [cli.md](cli.md).
+an agent (or set `ONETHING_AGENT`). All the commands and options: [cli.md](cli.md).
 
 ## What the AI sees
 
@@ -141,5 +149,5 @@ make big things small, log progress, defer instead of piling up, never delete), 
 described for the model. The full list, made from the code: [mcp.md](mcp.md). There is deliberately no delete tool.
 
 For Claude Code and Copilot CLI, the plugin adds a skill
-([`SKILL.md`](../integrations/agent-plugin/skills/todo-tracker/SKILL.md)) with recipes: what to do now, follow-ups
+([`SKILL.md`](../integrations/agent-plugin/skills/onething/SKILL.md)) with recipes: what to do now, follow-ups
 after a meeting, planning a day, rollouts, end of day, automations.

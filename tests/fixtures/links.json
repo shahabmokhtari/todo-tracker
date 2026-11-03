@@ -1,0 +1,29 @@
+{
+  "about": "Deep links that open the app (onething://task/<id>), the same rules in C# (TaskLinkTests), Swift (TaskLinkTests) and Kotlin (TaskLinksTest). \"link\" is what the apps write for the task \"id\"; every line in \"opensTheTask\" opens that task, every line in \"opensTheApp\" just opens the app, and \"ignored\" ones (null: no link at all) are not links the app follows.",
+  "id": "4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
+  "link": "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
+  "opensTheTask": [
+    "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
+    "OneThing://Task/4F9D1C2E-3B7A-4E10-9C55-0A1B2C3D4E5F",
+    "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/",
+    "onething://task/4f9d1c2e3b7a4e109c550a1b2c3d4e5f?from=teams",
+    "onething:task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
+    "  onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f  "
+  ],
+  "opensTheApp": [
+    "onething://",
+    "onething:",
+    "onething://open"
+  ],
+  "ignored": [
+    null,
+    "",
+    "https://example.com/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
+    "onething://task/not-a-guid",
+    "onething://task/",
+    "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/../../settings",
+    "onething://settings/delete-everything",
+    "onething://task/{4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f}",
+    "--data"
+  ]
+}

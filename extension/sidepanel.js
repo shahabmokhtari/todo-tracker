@@ -1,4 +1,4 @@
-import { createClient, normalizeServerUrl, pageSource, pair } from './lib/client.js';
+import { connect, connectionLost, createClient, extrasOn, newest, normalizeServerUrl, pageSource, pair } from './lib/client.js';
 import { relativeTime, priorityMeta, metaChips, summaryLine } from './lib/format.js';
 import { icon } from './lib/icons.js';
 
@@ -11,9 +11,16 @@ const $ = (id) => document.getElementById(id);
 let client = null;
 let group = null;
 let dashboard = null;
+let extras = null; // the extras switched on in One Thing (null: unknown, everything shows)
 let selectedId = null;
 // Once the user starts typing, the note stays bound to that task even if the lists reshuffle.
 let pinned = null;
+// The connection screen is up: nothing redraws behind it, and it stays until you connect or cancel.
+let setupOpen = false;
+// The status line says One Thing couldn't be reached: cleared once it answers again (other messages stay).
+let unreachable = false;
+// Tab switches, actions and the 30 s check can overlap: only the newest answer is shown.
+const loadPanel = newest(() => Promise.all([client.dashboard(group), extrasOn(client)]));
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -35,35 +42,54 @@ async function init() {
   await refresh();
 }
 
-function showSetup(message = '') {
+function showSetup(message = '', { cancel = false } = {}) {
+  setupOpen = true;
   $('setup').hidden = false;
   $('main').hidden = true;
   $('setup-error').textContent = message;
+  // Cancel goes back to the tasks, so only while there's a connection to go back to.
+  $('setup-cancel').hidden = !cancel;
+}
+
+function closeSetup() {
+  setupOpen = false;
+  $('setup').hidden = true;
+  $('main').hidden = false;
+}
+
+function setStatus(text, { trouble = false } = {}) {
+  $('status').textContent = text;
+  unreachable = trouble;
 }
 
 async function refresh() {
+  if (!client) return;
+  let reply;
   try {
-    dashboard = await client.dashboard(group);
-    $('setup').hidden = true;
-    $('main').hidden = false;
-    render();
+    reply = await loadPanel();
   } catch (err) {
-    if (err.unauthorized) return showSetup('Onething didn’t accept this connection any more. Get a new pairing code in Onething (Browser extension).');
+    if (err.unauthorized) return showSetup(connectionLost());
     if (err.status === 404 && group) {
       group = null;
       await ext.storage.local.remove('groupId');
       return refresh();
     }
-    $('status').textContent = `Can't reach Onething: ${err.message}`;
+    return setStatus(`Can't reach One Thing: ${err.message}`, { trouble: true });
   }
+  if (!reply.current) return;
+  [dashboard, extras] = reply.value;
+  $('feedback').hidden = !extras?.has('feedback');
+  if (unreachable) setStatus('');
+  if (!setupOpen) closeSetup();
+  render();
 }
 
 async function run(action, message) {
   try {
     await action();
-    $('status').textContent = message ?? '';
+    setStatus(message ?? '');
   } catch (err) {
-    $('status').textContent = err.message;
+    setStatus(err.message);
   }
   await refresh();
 }
@@ -95,13 +121,15 @@ function render() {
   $('waiting').replaceChildren(...d.waiting.map((c) => {
     const li = el('li', { class: 'item' },
       el('span', { class: 'dot' }),
-      el('div', { class: 'grow' }, el('div', { class: 'title' }, c.title), el('div', { class: 'chips' }, ...metaChips(c, { waiting: true }).map(chip))));
+      el('div', { class: 'grow' }, el('div', { class: 'title' }, c.title), el('div', { class: 'chips' }, ...metaChips(c, { waiting: true, plan: planOn() }).map(chip))));
     li.style.setProperty('--prio', priorityMeta(c.priority).color);
     return li;
   }));
 }
 
 const chip = (c) => el('span', { class: `chip ${c.tone}` }, c.text);
+/** Planned times show while the Plan extra is on (or when the list of extras can't be read). */
+const planOn = () => !extras || extras.has('plan');
 
 function tab(id, name, count, color) {
   const button = el('button', {
@@ -113,12 +141,23 @@ function tab(id, name, count, color) {
 }
 
 function card(c, big = false) {
-  const li = el('li', { class: `item${big ? ' hero' : ''}${c.needsAttention ? ' attention' : ''}${c.id === (pinned?.id ?? selectedId) ? ' selected' : ''}` },
+  const selected = c.id === (pinned?.id ?? selectedId);
+  const pick = () => { selectedId = c.id; render(); };
+  const li = el('li', { class: `item${big ? ' hero' : ''}${c.needsAttention ? ' attention' : ''}${selected ? ' selected' : ''}` },
     big ? null : el('span', { class: 'dot' }),
-    el('div', { class: 'grow', onclick: () => { selectedId = c.id; render(); }, title: 'Select for notes' },
+    el('div', { class: 'grow', onclick: pick },
       big ? el('span', { class: 'eyebrow' }, icon(c.needsAttention ? 'clock' : 'target', { size: 13 }), c.needsAttention ? 'Reminder' : 'Do this now') : null,
-      el('div', { class: big ? 'hero-title' : 'title' }, c.title),
-      el('div', { class: 'chips' }, ...metaChips(c).map(chip)),
+      // A button, so the keyboard can pick the task the note goes to as well.
+      el('button', {
+        class: `pick ${big ? 'hero-title' : 'title'}`, type: 'button', title: 'Select for notes', 'aria-pressed': String(selected), 'data-id': c.id,
+        onclick: (e) => {
+          e.stopPropagation();
+          pick();
+          // Redrawn: the keyboard stays on the same task.
+          document.querySelector(`button.pick[data-id="${CSS.escape(c.id)}"]`)?.focus();
+        },
+      }, c.title),
+      el('div', { class: 'chips' }, ...metaChips(c, { plan: planOn() }).map(chip)),
       c.needsAttention && c.reminderMessage ? el('div', { class: 'reminder' }, icon('clock', { size: 13 }), c.reminderMessage) : null),
     el('div', { class: 'actions' },
       c.hasChildren ? null : el('button', { class: big ? 'btn primary' : 'icon-btn', title: 'Done', 'aria-label': 'Done', onclick: () => run(() => client.complete(c.id), `Done: ${c.title}`) }, icon('check', { size: 16 }), big ? 'Done' : null),
@@ -142,17 +181,25 @@ $('setup-form').addEventListener('submit', async (e) => {
   try {
     const serverUrl = normalizeServerUrl($('server').value);
     const typed = $('token').value.trim();
-    if (!typed && !$('code').value.trim()) throw new Error('Enter the pairing code shown in Onething.');
+    if (!typed && !$('code').value.trim()) throw new Error('Enter the pairing code shown in One Thing.');
+    // A pasted token is checked first, so one One Thing doesn't take is never kept.
+    if (typed) await connect({ serverUrl, token: typed });
     const token = typed || await pair({ serverUrl, code: $('code').value });
     await ext.storage.local.set({ serverUrl, token });
     $('code').value = '';
     $('token').value = '';
     client = createClient({ serverUrl, token });
+    closeSetup();
     await refresh();
-    $('status').textContent = typed ? 'Connected' : 'Paired ✓ – this browser now has its own access to your tasks';
+    setStatus(typed ? 'Connected' : 'Paired ✓ – this browser now has its own access to your tasks');
   } catch (err) {
     $('setup-error').textContent = err.message;
   }
+});
+
+$('setup-cancel').addEventListener('click', () => {
+  closeSetup();
+  refresh();
 });
 
 $('capture').addEventListener('submit', (e) => {
@@ -181,21 +228,21 @@ $('note').addEventListener('submit', async (e) => {
     await client.addNote(targetId, text, source);
     $('note-text').value = '';
     pinned = null;
-    $('status').textContent = 'Note saved';
+    setStatus('Note saved');
   } catch (err) {
     // Keep the text so nothing typed is lost.
-    $('status').textContent = err.message;
+    setStatus(err.message);
   }
   await refresh();
 });
 
 $('open').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/') })));
-// The feedback sheet of the app (one sheet for every app): a bug, an idea, anything.
+// The feedback sheet of the app (one sheet for every app): a bug, an idea, anything. Shown only while that extra is on.
 $('feedback').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/?feedback=button') })));
 $('settings').addEventListener('click', async () => {
   const { serverUrl } = await ext.storage.local.get('serverUrl');
   $('server').value = serverUrl || 'http://127.0.0.1:5317';
-  showSetup();
+  showSetup('', { cancel: !!client });
 });
 
 $('open').append(icon('external', { size: 17 }));
@@ -203,6 +250,7 @@ $('feedback').append(icon('chat', { size: 17 }));
 $('settings').append(icon('settings', { size: 17 }));
 ext.tabs.onActivated.addListener(showPage);
 ext.tabs.onUpdated.addListener((_, info) => info.title && showPage());
-setInterval(() => client && refresh(), 30000);
+// Not while the connection screen is up: it would close it (or rewrite its message) under you.
+setInterval(() => { if (client && !setupOpen) refresh(); }, 30000);
 showPage();
 init();

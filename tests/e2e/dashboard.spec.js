@@ -1,7 +1,11 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const token = 'e2e-token-0123456789abcdefghijklmnop';
+// The owner key from the data folder: what the person at this computer's own apps send (Ask AI is only theirs).
+const ownerKey = () => ({ 'X-OneThing-Owner-Key': fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim() });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -132,11 +136,11 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   // Someone else renames the task meanwhile; typing details here must not put the old title back.
   const id = await drawer.getAttribute('data-item-id');
 
-  // Copy link: a todotracker:// link that opens this task in the app.
+  // Copy link: a onething:// link that opens this task in the app.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await drawer.getByRole('button', { name: 'Copy link' }).click();
   await expect(page.locator('#toast')).toContainText('Link copied');
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`todotracker://task/${id}`);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`onething://task/${id}`);
   await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Launch plan (renamed elsewhere)' } });
   await drawer.getByPlaceholder(/^Details/).fill('Audience: partners');
   await expect(drawer.locator('#save-state')).toHaveText('Saved');
@@ -166,7 +170,7 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   // Connecting an AI app is one click and one copy.
   await page.getByRole('button', { name: 'Connect an AI app' }).click();
   await expect(drawer.locator('details.connect[open]')).toContainText('Claude Code');
-  await expect(drawer.locator('details.connect[open] pre')).toContainText('claude mcp add todo-tracker');
+  await expect(drawer.locator('details.connect[open] pre')).toContainText('claude mcp add onething');
   await drawer.locator('details.connect', { hasText: 'VS Code' }).locator('summary').click();
   await expect(drawer.locator('details.connect', { hasText: 'VS Code' }).locator('pre')).toContainText('"servers"');
   await page.keyboard.press('Escape');
@@ -246,7 +250,7 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
 test('Ask AI: chat with the agent, approve a change, and see the answer', async ({ page, request }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   await page.getByRole('button', { name: 'Ask AI' }).click();
   const drawer = page.locator('#drawer');
@@ -307,7 +311,7 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
   });
   await new Promise((resolve) => fake.listen(0, '127.0.0.1', resolve));
   try {
-    const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+    const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
     await page.goto(launch.url);
     await page.getByRole('button', { name: 'Ask AI' }).click();
     const drawer = page.locator('#drawer');
@@ -338,7 +342,7 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
 });
 
 test('Plugins: an extra switched off is gone at once, and the light ones come back at once', async ({ page, request }) => {
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   // The extras moved from a Plugins panel into Settings (the side bar's Settings link).
   await page.locator('#settings-link').click();
@@ -355,7 +359,7 @@ test('Plugins: an extra switched off is gone at once, and the light ones come ba
   await expect(loop).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Plan' }).uncheck();
   await expect(planLink).toBeHidden();
-  const restart = drawer.getByText('Restart Onething to switch it on.');
+  const restart = drawer.getByText('Restart One Thing to switch it on.');
   await expect(restart).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Copy for Loop' }).check();
   await expect(loop).toBeVisible();
@@ -373,11 +377,11 @@ test('Plugins: an extra switched off is gone at once, and the light ones come ba
 test('Sync: the panel says where it syncs and sync can be switched off', async ({ page, request }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   await page.getByRole('button', { name: /^Sync/ }).click();
   const drawer = page.locator('#drawer');
-  // The test server sees no cloud drives (TODOTRACKER_CLOUD=off).
+  // The test server sees no cloud drives (ONETHING_CLOUD=off).
   await expect(drawer).toContainText('Nothing to sync with');
   await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('off');
   await expect(drawer).toContainText('Sync is off');

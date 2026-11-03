@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke test an MCP server binary over stdio: initialize, create a task, check the markdown file, exit cleanly.
 
-Usage: mcp-smoke.py <path-to-tt>
+Usage: mcp-smoke.py <path-to-onething>
 """
 import json
 import os
@@ -16,7 +16,7 @@ def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
-    data = tempfile.mkdtemp(prefix="tt-smoke-")
+    data = tempfile.mkdtemp(prefix="onething-smoke-")
     vault = os.path.join(data, "vault")
     os.makedirs(vault)
     proc = subprocess.Popen(
@@ -38,7 +38,7 @@ def main() -> int:
         send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
             "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "ci-smoke", "version": "1"}}})
         init = receive()["result"]
-        assert init["serverInfo"]["name"] == "todo-tracker", init
+        assert init["serverInfo"]["name"] == "onething", init
         assert init.get("instructions"), "server instructions missing"
         send({"jsonrpc": "2.0", "method": "notifications/initialized"})
         send({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "create_task", "arguments": {"title": "Smoke test"}}})

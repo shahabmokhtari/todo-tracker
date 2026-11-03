@@ -7,11 +7,11 @@ const token = 'e2e-token-0123456789abcdefghijklmnop';
 // The stand-in issues relay (feedback.spec.js).
 const relayPort = Number((process.env.E2E_RELAY_PORT ??= '5397'));
 // Set once (workers inherit it): specs read the owner key from here.
-const dataDir = (process.env.TT_E2E_DATA ??= path.join(os.tmpdir(), `tt-e2e-${Date.now()}`));
+const dataDir = (process.env.ONETHING_E2E_DATA ??= path.join(os.tmpdir(), `onething-e2e-${Date.now()}`));
 const configuration = process.env.E2E_CONFIGURATION || 'Debug';
 // Ask AI talks to a scripted agent, never to a real Copilot/Claude that happens to be installed.
 const fakeAgent = path.resolve(`../FakeAcpAgent/bin/${configuration}/net10.0/FakeAcpAgent.dll`);
-const noAgents = path.join(os.tmpdir(), 'tt-e2e-no-agents');
+const noAgents = path.join(os.tmpdir(), 'onething-e2e-no-agents');
 
 export default defineConfig({
   testDir: '.',
@@ -26,12 +26,12 @@ export default defineConfig({
   },
   metadata: { token },
   webServer: {
-    command: `dotnet run --project ../../src/TodoTracker.Web/TodoTracker.Web.csproj -c ${configuration} --no-launch-profile -- --port ${port} --data "${dataDir}"`,
+    command: `dotnet run --project ../../src/OneThing.Web/OneThing.Web.csproj -c ${configuration} --no-launch-profile -- --port ${port} --data "${dataDir}"`,
     url: `http://127.0.0.1:${port}/health`,
     timeout: 180_000,
     reuseExistingServer: false,
     // Feedback goes to a stand-in relay on this computer (feedback.spec.js runs it), never to issues.awesomehq.app.
-    env: { TODOTRACKER_TOKEN: token, TODOTRACKER_TEST_AGENT: fakeAgent, TODOTRACKER_AGENT_PATH: noAgents, TODOTRACKER_CLOUD: 'off', ONETHING_FEEDBACK_URL: `http://127.0.0.1:${relayPort}/v1/issues`, ONETHING_FEEDBACK_SEND: '1' },
+    env: { ONETHING_TOKEN: token, ONETHING_TEST_AGENT: fakeAgent, ONETHING_AGENT_PATH: noAgents, ONETHING_CLOUD: 'off', ONETHING_FEEDBACK_URL: `http://127.0.0.1:${relayPort}/v1/issues`, ONETHING_FEEDBACK_SEND: '1' },
     stdout: 'pipe',
   },
 });

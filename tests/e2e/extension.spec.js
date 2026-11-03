@@ -11,7 +11,7 @@ const extensionDir = fileURLToPath(new URL('../../extension', import.meta.url));
 // builds ignore --load-extension, so this always uses Playwright's Chromium).
 test('Browser extension: loads unpacked, pairs with a code, and shows what to do now', async ({ request, baseURL }) => {
   test.skip(!fs.existsSync(chromium.executablePath()), 'Needs Playwright’s Chromium: npx playwright install chromium');
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-ext-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ext-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
@@ -29,10 +29,17 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
     await panel.goto(`chrome-extension://${id}/sidepanel.html`);
     await expect(panel.locator('#setup')).toBeVisible();
 
-    // The code the dashboard's setup guide shows.
-    const { code } = await (await request.post('/api/plugins/browser-extension/pair', { headers: auth })).json();
+    // A pasted token that One Thing doesn't take is never kept.
     await panel.locator('#advanced summary').click();
     await panel.locator('#server').fill(baseURL);
+    await panel.locator('#token').fill('not-a-token');
+    await panel.getByRole('button', { name: 'Connect' }).click();
+    await expect(panel.locator('#setup-error')).toContainText('didn’t accept that token');
+    expect((await worker.evaluate(() => chrome.storage.local.get('token'))).token).toBeUndefined();
+    await panel.locator('#token').fill('');
+
+    // The code the dashboard's setup guide shows.
+    const { code } = await (await request.post('/api/plugins/browser-extension/pair', { headers: auth })).json();
     await panel.locator('#code').fill(`${code.slice(0, 3)} ${code.slice(3)}`);
     await panel.getByRole('button', { name: 'Connect' }).click();
 
@@ -43,8 +50,17 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
     const stored = await worker.evaluate(() => chrome.storage.local.get('token'));
     expect(stored.token).toMatch(/^ttb_/);
     expect(stored.token).not.toBe(token);
-    const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code } });
+    const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-OneThing-Client': 'browser-extension' }, data: { code } });
     expect(reuse.status()).toBe(400);
+
+    // Connection settings, then Cancel: back to the tasks, nothing changed.
+    await panel.getByRole('button', { name: 'Connection settings' }).click();
+    await expect(panel.locator('#setup')).toBeVisible();
+    await panel.getByRole('button', { name: 'Cancel' }).click();
+    await expect(panel.locator('#main')).toBeVisible();
+    await expect(panel.locator('body')).toContainText('Seen from the extension');
+    // The task the note goes to is picked with a button (the keyboard can do it too).
+    await expect(panel.getByRole('button', { name: 'Seen from the extension' }).first()).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     await context.close();
@@ -59,7 +75,7 @@ test('Browser extension: the setup guide walks through the steps for this browse
   await expect(drawer).toContainText('Load unpacked');
   const download = page.waitForEvent('download');
   await drawer.getByRole('link', { name: 'Download the extension' }).click();
-  expect((await download).suggestedFilename()).toBe('todo-tracker-extension.zip');
+  expect((await download).suggestedFilename()).toBe('onething-extension.zip');
 
   await drawer.getByRole('button', { name: 'Safari (Mac)' }).click();
   await expect(drawer.getByRole('button', { name: 'Safari (Mac)' })).toHaveAttribute('aria-pressed', 'true');
@@ -72,7 +88,7 @@ test('Browser extension: the setup guide walks through the steps for this browse
 
   // When the extension uses the code, the guide says so and lists the browser, which can be removed.
   const code = (await shown.textContent()).replace(' ', '');
-  const claim = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code, name: 'Test browser' } });
+  const claim = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-OneThing-Client': 'browser-extension' }, data: { code, name: 'Test browser' } });
   expect(claim.ok()).toBeTruthy();
   await expect(drawer).toContainText('Paired with Test browser');
   await drawer.getByRole('button', { name: 'Remove Test browser' }).click();

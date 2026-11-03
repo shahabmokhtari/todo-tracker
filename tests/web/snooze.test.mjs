@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { whenText, metaChips, rulePreview } from '../../src/TodoTracker.Server/wwwroot/js/format.js';
+import { whenText, metaChips, rulePreview } from '../../src/OneThing.Server/wwwroot/js/format.js';
 
 // Local times (the browser's zone), so the words match what the user sees on the clock.
 const now = new Date(2026, 0, 5, 9, 0); // Monday 5 Jan 2026, 9:00
@@ -40,7 +40,7 @@ test('whenText matches the shared wording in tests/fixtures/snooze.json (C#, Swi
   const { fileURLToPath, pathToFileURL } = await import('node:url');
   const root = fileURLToPath(new URL('../../', import.meta.url));
   const cases = JSON.parse(readFileSync(`${root}tests/fixtures/snooze.json`, 'utf8')).describe;
-  const format = pathToFileURL(`${root}src/TodoTracker.Server/wwwroot/js/format.js`).href;
+  const format = pathToFileURL(`${root}src/OneThing.Server/wwwroot/js/format.js`).href;
   for (const zone of new Set(cases.map((c) => c.zone))) {
     const mine = cases.filter((c) => c.zone === zone);
     // The browser's own time zone decides the words: run in that zone.

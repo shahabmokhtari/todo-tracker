@@ -1,0 +1,127 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using OneThing.Core;
+
+namespace OneThing.Server;
+
+/// <summary>
+/// How the Plan view looks for a group: a day or a week, work hours or the whole day, and what work hours and work days
+/// are (minutes after midnight; days 1 = Monday … 7 = Sunday).
+/// </summary>
+public sealed record PlanSettings(
+    string View = "week",
+    string Hours = "work",
+    int WorkStart = 9 * 60,
+    int WorkEnd = 17 * 60,
+    IReadOnlyList<int>? WorkDays = null,
+    int WeekStart = 1)
+{
+    public static readonly IReadOnlyList<int> DefaultWorkDays = [1, 2, 3, 4, 5];
+
+    internal PlanSettings Validated()
+    {
+        if (View is not ("day" or "week"))
+        {
+            throw new ArgumentException("The plan shows a day or a week.", nameof(View));
+        }
+
+        if (Hours is not ("work" or "full"))
+        {
+            throw new ArgumentException("The plan shows work hours or the full day.", nameof(Hours));
+        }
+
+        if (WorkStart is < 0 or >= 24 * 60 || WorkEnd is <= 0 or > 24 * 60 || WorkEnd - WorkStart < 60)
+        {
+            throw new ArgumentException("Work hours are within a day and at least an hour long.", nameof(WorkStart));
+        }
+
+        var days = (WorkDays ?? DefaultWorkDays).Distinct().Order().ToList();
+        if (days.Count == 0 || days.Exists(d => d is < 1 or > 7))
+        {
+            throw new ArgumentException("Work days are 1 (Monday) to 7 (Sunday).", nameof(WorkDays));
+        }
+
+        return WeekStart is 1 or 7 ? this with { WorkDays = days } : throw new ArgumentException("A week starts on Monday (1) or Sunday (7).", nameof(WeekStart));
+    }
+}
+
+/// <summary>A block on the plan.</summary>
+public sealed record PlanBlockDto(Guid Id, string Title, IReadOnlyList<string> Path, string? Icon, string? Accent, string Priority, DateTimeOffset Start, int Minutes, bool Done, Guid GroupId, string? Repeat, int? Energy = null);
+
+/// <summary>A deadline that falls in the shown days (a marker on its day).</summary>
+public sealed record PlanDeadlineDto(Guid Id, string Title, DateTimeOffset Deadline, bool Done);
+
+/// <summary>
+/// Something to do that isn't planned yet, to drag onto the plan: in Do now order, or (in <see cref="PlanDto.Later"/>)
+/// put off: snoozed, waiting for another task, or a repeating task until its next time (<paramref name="WakeAt"/>).
+/// </summary>
+public sealed record PlanTaskDto(Guid Id, string Title, IReadOnlyList<string> Breadcrumb, string? Icon, string? Accent, string Priority, int Minutes,
+    string? Repeat = null, DateTimeOffset? WakeAt = null, string? WaitingFor = null, int? Energy = null);
+
+/// <summary>Energy on the days shown: what there is in a day, and what each day's planned blocks take (every group).</summary>
+public sealed record PlanEnergyDto(int PerDay, IReadOnlyDictionary<string, double> Days);
+
+public sealed record PlanDto(string From, int Days, PlanSettings Settings, IReadOnlyList<PlanBlockDto> Blocks, IReadOnlyList<PlanDeadlineDto> Deadlines, IReadOnlyList<PlanTaskDto> Unplanned,
+    IReadOnlyList<PlanTaskDto> Later, PlanEnergyDto? Energy = null);
+
+public sealed record PlanRequest(DateTimeOffset? Start = null, int? Minutes = null);
+
+internal static class PlanEndpoints
+{
+    public static void Map(IEndpointRouteBuilder app)
+    {
+        var api = app.MapGroup("/api").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
+
+        // What's planned in the days shown (from a local date, in the user's time zone), deadlines in them, and the
+        // tasks to do that aren't planned yet.
+        api.MapGet("/plan", (string? from, int? days, Guid? group, IBoardStore store, TimeProvider time, OneThingServerOptions options, SettingsStore settings) =>
+        {
+            var zone = options.TimeZone;
+            var now = time.GetUtcNow();
+            var first = from is null ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime)
+                : DateOnly.TryParseExact(from, "yyyy-MM-dd", out var d) ? d : throw new ArgumentException("from is a date like 2026-01-05.", nameof(from));
+            var count = Math.Clamp(days ?? 7, 1, PlanDays.MaxDays);
+            return store.ReadAsync(b =>
+            {
+                var plan = PlanDays.Build(b, first, count, zone, now, group);
+                PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
+                    e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title, e.Item.Energy);
+                static string Day(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                return new PlanDto(
+                    Day(first),
+                    count,
+                    settings.PlanFor(Key(group)),
+                    [.. plan.Blocks.Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))],
+                    [.. plan.Deadlines.Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))],
+                    [.. plan.Unplanned.Select(Task)],
+                    [.. plan.Later.Select(Task)],
+                    new PlanEnergyDto(b.DailyEnergy, plan.Energy.ToDictionary(e => Day(e.Key), e => e.Value)));
+            });
+        });
+
+        api.MapGet("/plan/settings", (Guid? group, SettingsStore settings) => settings.PlanFor(Key(group)));
+
+        api.MapPut("/plan/settings", (Guid? group, PlanSettings request, SettingsStore settings) => settings.SetPlan(Key(group), request));
+
+        // Plan a task (a start; minutes: how long, default what it had or 30), or take it off the plan (no start).
+        api.MapPost("/items/{id:guid}/plan", (Guid id, PlanRequest request, HttpContext http, IBoardStore store, TimeProvider time, VaultLinks links) =>
+            store.UpdateAsync(b =>
+            {
+                var now = time.GetUtcNow();
+                var actor = Security.ActorOf(http);
+                if (request.Start is { } start)
+                {
+                    b.Plan(id, start, request.Minutes, actor, now);
+                }
+                else
+                {
+                    b.Unplan(id, actor, now);
+                }
+
+                return Wire.Item(b.Get(id), now, b, links);
+            }));
+    }
+
+    private static string Key(Guid? group) => group?.ToString() ?? "all";
+}
