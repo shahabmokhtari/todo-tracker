@@ -197,7 +197,7 @@ object SyncPlanner {
             val merged = TextMerge.merge(utf8(baseBytes), utf8(winner), utf8(loser), if (kind == SyncKind.TASK) ::taskLineKeys else null)
             // A merge that isn't a valid task any more (both changed the same frontmatter) isn't written: both
             // versions are kept whole instead.
-            if (kind != SyncKind.TASK || ctx.options.isValidTask(current.path, merged.text)) {
+            if (!merged.tooLarge && (kind != SyncKind.TASK || ctx.options.isValidTask(current.path, merged.text))) {
                 val text = merged.text.toByteArray(Charsets.UTF_8)
                 if (merged.conflicted) ctx.conflicts.add(SyncConflict(key, current.path, ctx.peer.device, ctx.peer.name, l.hash, p.hash, b?.hash, SyncHash.of(text)))
                 if (SyncHash.of(text) != l.hash) ctx.ops.add(SyncOp(SyncOpKind.WRITE, current.path, l.hash, text))
@@ -276,6 +276,8 @@ object SyncPlanner {
         val content: ByteArray
         if (l == null || (b != null && l.hash == b.hash)) {
             content = ctx.peer.read(p)
+            // Settings another device can't read itself aren't taken here either.
+            if (parse(content) == null) return
         } else if (b != null && p.hash == b.hash) {
             return
         } else {

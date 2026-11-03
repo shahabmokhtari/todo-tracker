@@ -1,10 +1,12 @@
 package dev.onething.core.sync
 
 import dev.onething.core.vault.Net
+import dev.onething.core.vault.NetJson
 import dev.onething.core.vault.VaultFiles
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import kotlinx.serialization.json.JsonNull
 
 /**
  * A shared folder as the meeting place (OneThing.Core.Sync.FolderRemote): `devices/<id>.json` per device and
@@ -43,8 +45,18 @@ class FolderRemote(val root: File, private val clock: () -> Long = System::curre
         var partial = false
         for ((name, content) in files) {
             try {
-                val device = SyncJson.readSnapshot(String(content, Charsets.UTF_8))
-                if (device.schema == 1 && SyncJson.hasEntries(device) && Net.equalsCi(device.device, Net.stem(name))) found.add(device)
+                val text = String(content, Charsets.UTF_8)
+                // "null": not a device file at all (skipped, as on a computer).
+                if (NetJson.parseOrNull(text) is JsonNull) continue
+                val device = SyncJson.readSnapshot(text)
+                if (Net.equalsCi(device.device, Net.stem(name))) {
+                    if (device.schema == 1 && SyncJson.hasEntries(device)) {
+                        found.add(device)
+                    } else {
+                        // From a newer version (or half written): not merged, and this version isn't taken as merged.
+                        partial = true
+                    }
+                }
             } catch (e: SyncFormatException) {
                 // Half-synced or from a newer version: skipped, and looked at again next time.
                 partial = true

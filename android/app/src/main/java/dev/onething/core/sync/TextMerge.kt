@@ -1,6 +1,7 @@
 package dev.onething.core.sync
 
-data class TextMergeResult(val text: String, val conflicted: Boolean)
+/** [tooLarge]: too big to merge line by line; [text] is the first side, and both versions should be kept whole. */
+data class TextMergeResult(val text: String, val conflicted: Boolean, val tooLarge: Boolean = false)
 
 /** What to do where both sides changed the same lines differently. */
 enum class ConflictPolicy {
@@ -20,57 +21,74 @@ enum class ConflictPolicy {
  * is the same on every device as long as callers order the sides the same way.
  */
 object TextMerge {
-    /**
-     * Above this many cells in a diff table (lines of one side times lines of another, once the lines all three share at
-     * the start are set aside) the sides aren't diffed: what's left is one clash, kept as the policy says. A huge file
-     * can't make a sync run out of memory or time.
-     */
+    /** The most cells one line-matching table may have (4 million: 16 MB); bigger differences aren't merged line by line. */
     const val MAX_TABLE_CELLS = 4_000_000L
 
     /** [lineKeys] gives each line its identity (or null), e.g. a step's block id: keyed lines merge one by one. */
     fun merge(base: String, first: String, second: String, lineKeys: ((List<String>) -> List<String?>)? = null, policy: ConflictPolicy = ConflictPolicy.BOTH): TextMergeResult {
-        val o0 = split(base)
-        val a0 = split(first)
-        val b0 = split(second)
-        // Lines all three have at the start stay as they are (they'd pair up the same way): only the rest is diffed.
-        // (Not at the end: equal lines pair from the start, so trimming there could pair them differently.)
-        var pre = 0
-        while (pre < o0.size && pre < a0.size && pre < b0.size && o0[pre] == a0[pre] && o0[pre] == b0[pre]) pre++
-        val o = o0.subList(pre, o0.size)
-        val a = a0.subList(pre, a0.size)
-        val b = b0.subList(pre, b0.size)
-        val ko = lineKeys?.invoke(o0)?.let { it.subList(pre, it.size) }
-        val ka = lineKeys?.invoke(a0)?.let { it.subList(pre, it.size) }
-        val kb = lineKeys?.invoke(b0)?.let { it.subList(pre, it.size) }
-        val output = mutableListOf<String>()
-        output.addAll(o0.subList(0, pre))
-        val cells = maxOf((o.size + 1L) * (a.size + 1L), (o.size + 1L) * (b.size + 1L), (a.size + 1L) * (b.size + 1L))
-        val conflicted = if (cells > MAX_TABLE_CELLS) {
-            val (lines, clash) = whole(o, a, b, policy)
-            output.addAll(lines)
-            clash
-        } else {
-            mergeLines(o, a, b, ko, ka, kb, policy, output)
+        val fo = split(base)
+        val fa = split(first)
+        val fb = split(second)
+        val fko = lineKeys?.invoke(fo)
+        val fka = lineKeys?.invoke(fa)
+        val fkb = lineKeys?.invoke(fb)
+
+        // Lines all three share at the start and the end are kept as they are; only the stretch between is matched.
+        var head = 0
+        while (head < fo.size && head < fa.size && head < fb.size && fo[head] == fa[head] && fo[head] == fb[head]) head++
+        var tail = 0
+        while (tail < fo.size - head && tail < fa.size - head && tail < fb.size - head &&
+            fo[fo.size - 1 - tail] == fa[fa.size - 1 - tail] && fo[fo.size - 1 - tail] == fb[fb.size - 1 - tail]
+        ) tail++
+
+        // Only lines that appear nowhere in the stretch between: then no line there could pair with them, and the
+        // result is exactly what matching everything gives (repeated lines, like blank ones, stay in the stretch).
+        while (true) {
+            val middle = HashSet<String>()
+            middle.addAll(fo.subList(head, fo.size - tail))
+            middle.addAll(fa.subList(head, fa.size - tail))
+            middle.addAll(fb.subList(head, fb.size - tail))
+            val safeHead = safeEdge(fo.subList(0, head), middle)
+            val safeTail = safeEdge(fo.subList(fo.size - tail, fo.size).reversed(), middle)
+            if (safeHead == head && safeTail == tail) break
+            head = safeHead
+            tail = safeTail
         }
+
+        val o = fo.subList(head, fo.size - tail)
+        val a = fa.subList(head, fa.size - tail)
+        val b = fb.subList(head, fb.size - tail)
+        if (cells(o, a) > MAX_TABLE_CELLS || cells(o, b) > MAX_TABLE_CELLS || cells(a, b) > MAX_TABLE_CELLS) {
+            // Matching that many lines would take more memory than a merge is worth: both versions are kept whole.
+            return TextMergeResult(first, true, tooLarge = true)
+        }
+        val ko = fko?.let { it.subList(head, it.size - tail) }
+        val ka = fka?.let { it.subList(head, it.size - tail) }
+        val kb = fkb?.let { it.subList(head, it.size - tail) }
+        val output = mutableListOf<String>()
+        output.addAll(fo.subList(0, head))
+        val conflicted = mergeLines(o, a, b, ko, ka, kb, policy, output)
+        output.addAll(fo.subList(fo.size - tail, fo.size))
         return TextMergeResult(join(output), conflicted)
     }
 
-    /** Too big to diff: one side's change, or a clash kept as [policy] says. */
-    private fun whole(o: List<String>, a: List<String>, b: List<String>, policy: ConflictPolicy): Pair<List<String>, Boolean> {
-        if (o == a) return b to false
-        if (o == b || a == b) return a to false
-        return when (policy) {
-            ConflictPolicy.FIRST -> a
-            ConflictPolicy.SECOND -> b
-            ConflictPolicy.BOTH -> {
-                val seen = a.toHashSet()
-                a + b.filter { it !in seen }
-            }
-        } to true
+    private fun cells(x: List<String>, y: List<String>): Long = (x.size + 1L) * (y.size + 1L)
+
+    /**
+     * How many of [edge]'s lines (from the outside in) can stay trimmed: none of them may appear in [middle] or in the
+     * lines of the edge that go back to it.
+     */
+    private fun safeEdge(edge: List<String>, middle: Set<String>): Int {
+        val first = HashMap<String, Int>()
+        for (i in edge.indices) first.putIfAbsent(edge[i], i)
+        var keep = edge.size
+        for (line in middle) first[line]?.let { keep = minOf(keep, it) }
+        // Lines that go back to the stretch take their earlier copies with them.
+        for (i in edge.size - 1 downTo keep) keep = minOf(keep, first.getValue(edge[i]))
+        return keep
     }
 
-    private fun mergeLines(o: List<String>, a: List<String>, b: List<String>, ko: List<String?>?, ka: List<String?>?, kb: List<String?>?, policy: ConflictPolicy, output: MutableList<String>): Boolean {
-        val ma = match(o, a)
+    private fun mergeLines(o: List<String>, a: List<String>, b: List<String>, ko: List<String?>?, ka: List<String?>?, kb: List<String?>?, policy: ConflictPolicy, output: MutableList<String>): Boolean {        val ma = match(o, a)
         val mb = matchAgreeing(o, b, ma, match(a, b))
         var conflicted = false
         var io = 0

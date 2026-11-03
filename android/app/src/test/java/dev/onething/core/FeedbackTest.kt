@@ -93,6 +93,7 @@ class FeedbackTest {
         val long = Feedback.title(Feedback.Kind.IDEA, "Android", "😀".repeat(300))
         assertEquals(256, long.codePointCount(0, long.length))
         assertTrue(long.startsWith("Idea · Android: 😀"))
+        assertTrue(long.endsWith("😀…"))
     }
 
     @Test

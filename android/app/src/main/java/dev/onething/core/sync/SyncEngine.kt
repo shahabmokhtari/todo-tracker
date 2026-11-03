@@ -50,6 +50,7 @@ class SyncEngine(
     /** One sync; the vault changing meanwhile starts it over (up to 3 times). Errors are kept in [SyncState.status] too. */
     fun sync(): SyncResult = synchronized(lock) {
         try {
+            state.problem?.let { throw IOException(it) }
             syncWithRetries()
         } catch (e: Exception) {
             state.status = state.status.copy(lastError = e.message)
@@ -80,6 +81,7 @@ class SyncEngine(
      * everything (a device half read, contents not arrived), nothing is imported or published: join again later.
      */
     fun join(legacyBoard: File?): JoinResult = synchronized(lock) {
+        state.problem?.let { throw IOException(it) }
         val previous = mode
         mode = SyncMode.READ
         val pulled = try {
@@ -163,13 +165,13 @@ class SyncEngine(
         val conflicts = mutableListOf<SyncConflictRecord>()
         val problems = mutableListOf<String>()
         // What can't sync here is said (and left alone everywhere), never taken as deleted.
-        for (h in local.held) problems.add("“${h.path}” can't sync (${h.reason}); it's left as it is on every device.")
+        for (h in local.held) problems.add("\"${h.path}\" doesn't sync for now: ${h.reason}. Your other devices keep their copy.")
         var complete = snapshot?.partial != true
         for (peer in peers) {
             try {
                 val checked = check(peer) ?: continue
                 val entries = checked.entries
-                for (h in checked.rejected) problems.add("${peer.name}: “${h.path}” can't sync to this phone (${h.reason}); it's left as it is.")
+                for (h in checked.rejected) problems.add("\"${h.path}\" on ${peer.name} doesn't sync here: ${h.reason}. The copy here stays as it is.")
                 val missing = fetch(peer, entries, local)
                 if (missing != null) {
                     complete = false
@@ -178,13 +180,12 @@ class SyncEngine(
                 }
                 val base = state.loadBase(peer.device)
                 val current = local
-                val peerHeld = (peer.held ?: emptyList()).map { SyncHeld(it, "", "held back on ${peer.name}") }
                 val plan = SyncPlanner.plan(
                     SyncSide(state.deviceId, state.deviceName, current.entries, current.read),
                     SyncSide(peer.device, peer.name, entries) { e -> state.readBlob(e.hash) ?: throw SyncStaleException("${e.path} is missing.") },
                     base,
                     state::readBlob,
-                    SyncPlanOptions(options.deleted, options.isValidTask, current.held + checked.rejected + peerHeld),
+                    SyncPlanOptions(options.deleted, options.isValidTask, current.held + checked.rejected),
                 )
                 // Both versions of a clash stay available (to keep one of them).
                 for (conflict in plan.conflicts) state.writeBlob(conflict.mine, current.read(current.entries[conflict.key]!!))
@@ -225,9 +226,14 @@ class SyncEngine(
                 state.tombstones.filter { Duration.between(it.at, now) < SyncLimits.MEMORY && !local.entries.containsKey(it.key) && it.key !in heldKeys } +
                     state.publishedEntries.filter { !local.entries.containsKey(it.key) && it.key !in heldKeys && SyncKeys.kindOf(it.key) in fileKinds }.map { SyncTombstone(it.key, it.hash, now) }
                 ).distinctBy { it.key to it.hash }
-            val entriesNow = local.entries.values.map { it.copy(since = publishedSince[it.key to it.hash] ?: now) }.sortedWith(compareBy(Net.ordinal) { it.key })
+            // A held file's last published version stays listed while its contents are still here to give.
+            val entriesNow = (
+                local.entries.values.map { it.copy(since = publishedSince[it.key to it.hash] ?: now) } +
+                    state.publishedEntries.filter { it.key in heldKeys && !local.entries.containsKey(it.key) && state.hasBlob(it.hash) }
+                ).sortedWith(compareBy(Net.ordinal) { it.key })
             val mine = DeviceSnapshot(state.deviceId, state.deviceName, now, entriesNow, deleted = tombstones, held = heldKeys.sortedWith(Net.ordinal).takeIf { it.isNotEmpty() })
-            val version = remote.publish(mine, local.read, if (reading) state.remoteVersion else state.seenVersion)
+            val read = { e: SyncEntry -> if (e.key in heldKeys) state.readBlob(e.hash) ?: throw SyncStaleException("${e.path} is missing.") else local.read(e) }
+            val version = remote.publish(mine, read, if (reading) state.remoteVersion else state.seenVersion)
             state.tombstones = tombstones
             state.publishedEntries = entriesNow
             state.published = fingerprint
@@ -269,9 +275,14 @@ class SyncEngine(
     }
 
     companion object {
-        /** A hash of what the vault holds (sorted `key|path|hash` lines): unchanged means nothing to publish. */
+        /** A hash of what the vault holds (sorted `key|path|hash` lines, then `held|key` lines): unchanged means nothing to publish. */
         fun fingerprint(snapshot: SyncSnapshot): String =
-            SyncHash.of(snapshot.entries.values.sortedWith(compareBy(Net.ordinal) { it.key }).joinToString("\n") { "${it.key}|${it.path}|${it.hash}" }.toByteArray(Charsets.UTF_8))
+            SyncHash.of(
+                (
+                    snapshot.entries.values.sortedWith(compareBy(Net.ordinal) { it.key }).map { "${it.key}|${it.path}|${it.hash}" } +
+                        snapshot.held.map { "held|${it.key}" }.sortedWith(Net.ordinal)
+                    ).joinToString("\n").toByteArray(Charsets.UTF_8),
+            )
 
         private fun isDeviceId(id: String) = id.length in 2..64 && id.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
 
@@ -292,7 +303,7 @@ class SyncEngine(
             val rejected = mutableListOf<SyncHeld>()
             for (e in peer.entries) {
                 if (e.hash.length != 64 || !e.hash.all { it in '0'..'9' || it in 'a'..'f' }) {
-                    rejected.add(SyncHeld(e.key, e.path, "its contents' hash isn't valid"))
+                    rejected.add(SyncHeld(e.key, e.path, "its name can't be used on this device; rename it there to sync it"))
                     continue
                 }
                 val ok = when (SyncKeys.kindOf(e.key)) {
@@ -307,8 +318,13 @@ class SyncEngine(
                 if (ok) {
                     entries[e.key] = if (e.since == null) e.copy(since = NetTime.MIN) else e
                 } else {
-                    rejected.add(SyncHeld(e.key, e.path, "its name can't be used here"))
+                    rejected.add(SyncHeld(e.key, e.path, "its name can't be used on this device; rename it there to sync it"))
                 }
+            }
+            // What the peer says it holds back is left alone here too, whatever it still lists for it.
+            for (key in peer.held ?: emptyList()) {
+                val kept = entries.remove(key)
+                if (rejected.none { it.key == key }) rejected.add(SyncHeld(key, kept?.path ?: key, "it can't sync from there right now"))
             }
             return Checked(entries, rejected)
         }

@@ -94,12 +94,14 @@ object Feedback {
     /** How long an issue's title can be (code points). */
     const val MAX_TITLE = 256
 
-    /** "Bug · Android: <the note's first line>", cut to [MAX_TITLE] code points (the whole note is in the body). */
+    /**
+     * "Bug · Android: <the note's first line, trimmed>"; longer than [MAX_TITLE] code points: cut to one less, trimmed,
+     * and ended with "…" (the whole note is in the body).
+     */
     fun title(kind: Kind, platform: String, message: String): String {
-        val firstLine = message.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
-        val title = "${kind.label} · $platform: $firstLine"
+        val title = "${kind.label} · $platform: " + dev.onething.core.vault.Net.trim(message.split('\n')[0])
         if (title.codePointCount(0, title.length) <= MAX_TITLE) return title
-        return title.substring(0, title.offsetByCodePoints(0, MAX_TITLE)).trim()
+        return dev.onething.core.vault.Net.trimEnd(title.substring(0, title.offsetByCodePoints(0, MAX_TITLE - 1))) + "…"
     }
 
     /** The request body (keys in the relay's order), or null when there's nothing to send. */

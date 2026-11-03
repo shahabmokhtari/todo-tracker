@@ -70,6 +70,7 @@ class SyncFixtureTest {
             val options = SyncPlanOptions(
                 deleted = { (it.key to it.hash) in deleted },
                 isValidTask = if (validate) { path, text -> TaskMarkdown.isValidTask(path, text, Fixtures.zone, Fixtures.now) } else { _, _ -> true },
+                held = (o["held"] as? JsonArray ?: JsonArray(emptyList())).map { SyncHeld(it.jsonObject.s("key"), it.jsonObject.s("path"), "held") },
             )
             val plan = SyncPlanner.plan(local, peer, base, { blobs[it] }, options)
             fun str(v: String?): JsonElement = v?.let(::JsonPrimitive) ?: JsonNull

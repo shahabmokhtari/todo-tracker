@@ -108,4 +108,47 @@ class VaultStoreTest {
         assertTrue(text.contains("> from the phone"))
         assertNull(store.problems.firstOrNull())
     }
+
+    @Test
+    fun settingsANewerVersionKeepsAreWrittenBackAsTheyAre() {
+        val store = open()
+        val config = File(root, ".onething/config.json")
+        config.writeText(config.readText().replaceFirst("\"schemaVersion\": 2,", "\"schemaVersion\": 2,\n  \"theme\": \"dark\",").replaceFirst("\"folder\": \"Work\"", "\"folder\": \"Work\",\n      \"icon\": \"briefcase\""))
+        store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        val text = config.readText()
+        assertTrue(text, text.contains("\"theme\": \"dark\""))
+        assertTrue(text, text.contains("\"icon\": \"briefcase\""))
+    }
+
+    @Test
+    fun settingsThatCantBeReadAreNeverWrittenOverAndDontSync() {
+        val store = open()
+        val config = File(root, ".onething/config.json")
+        config.writeText("{ \"groups\": 3 }")
+        store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        assertEquals("{ \"groups\": 3 }", config.readText())
+        assertEquals(listOf(".onething/config.json"), store.problems.map { it.path })
+        // The tabs as they were stay.
+        assertEquals(listOf("Work", "Personal"), store.read { b -> b.groups.map { it.name } })
+        val sync = store.readSync()
+        assertFalse(sync.entries.containsKey("config"))
+        assertEquals(listOf("config"), sync.held.map { it.key })
+    }
+
+    @Test
+    fun theActivityLogSkipsAByteOrderMarkAndIsReadAgainWhenReplaced() {
+        val store = open()
+        val task = store.update { it.addTask(NewTask("Plan", groupId = it.groups[0].id), Actor.USER, now) }
+        val log = File(root, ".onething/activity.jsonl")
+        val line = log.readText().lines().first { it.isNotEmpty() }
+        log.writeBytes(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "$line\n".toByteArray())
+        assertEquals(1, open().read { it.activity.size })
+
+        // Replaced by one as long, with other bytes before the end: read again from the start.
+        val renamed = line.replace("Plan", "Plon")
+        store.read { it.activity.size }
+        log.writeBytes(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + "$renamed\n".toByteArray())
+        assertEquals(listOf(task.id), store.read { b -> b.activity.map { it.itemId } })
+        assertTrue(store.read { b -> b.activity.single().summary }.contains("Plon"))
+    }
 }

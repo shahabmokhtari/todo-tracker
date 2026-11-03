@@ -37,6 +37,7 @@ import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -126,6 +127,10 @@ class VaultStore(
 
         /** Trash is emptied this many days after it was trashed (the time in the trash file's name). */
         const val TRASH_DAYS = 30L
+
+        private const val ACTIVITY_TAIL_BYTES = 4096L
+
+        private const val CONFIG_PROBLEM = "Your tabs and labels settings can't be read, so they're used as they were and left as they are. Fix the file (or put back an earlier version) to change them again."
     }
 
     // ---- Startup ----
@@ -247,15 +252,17 @@ class VaultStore(
     private fun diskDiffers(): Boolean {
         val c = caches
         var seen = 0
-        for (file in enumerateTaskFiles()) {
+        val unreadable = mutableListOf<File>()
+        for (file in enumerateTaskFiles(unreadable)) {
             seen++
             val state = c.files[relative(file)]
             if (state == null || state.stamp != stamp(file)) return true
         }
         val folders = topFolders().map(Net::ci).toSet()
-        if (seen != c.files.size || folders != c.groupFolders.values.map(Net::ci).toSet()) return true
-        return readOrEmpty(File(meta, "config.json")) != configText || readOrEmpty(File(meta, "state.json")) != stateText ||
-            fileLength(File(meta, "activity.jsonl")) != activityBytes
+        if (unreadable.isNotEmpty() || seen != c.files.size || folders != c.groupFolders.values.map(Net::ci).toSet()) return true
+        val activity = File(meta, "activity.jsonl")
+        return tryReadText(File(meta, "config.json")) != configText || tryReadText(File(meta, "state.json")) != stateText ||
+            fileLength(activity) != activityBytes || (activityBytes > 0 && !activityTailMatches(activity))
     }
 
     /** Rebuilds the board from disk. Returns whether anything changed. */
@@ -274,12 +281,25 @@ class VaultStore(
         for (f in folders) parsedByFolder[f] = mutableListOf()
         val problems = mutableListOf<VaultProblem>()
         for (folder in folders) {
-            for (file in enumerateTaskFiles(File(root, folder))) {
+            val unreadable = mutableListOf<File>()
+            for (file in enumerateTaskFiles(File(root, folder), unreadable)) {
                 val rel = relative(file)
                 val state = readFile(file, rel, oldCaches, force)
                 files[rel] = state
                 state.error?.let { problems.add(VaultProblem(rel, it)) }
                 state.good?.let { parsedByFolder[folder]!!.add(rel to parseText(it, rel)) }
+            }
+            for (dir in unreadable) {
+                // A folder that can't be listed right now (offline, no permission): its tasks stay as last read, and it
+                // counts as a file that can't be read (sync waits, so the other devices keep its tasks).
+                val dirRel = relative(dir)
+                val error = "This folder can't be opened right now. Its tasks are shown as they were, and it's read again shortly."
+                for ((rel, old) in oldCaches.files.entries.filter { Net.startsWithCi(it.first, "$dirRel/") && !files.containsKey(it.first) }) {
+                    files[rel] = old.copy(stamp = UNREAD, error = error)
+                    old.good?.let { parsedByFolder[folder]!!.add(rel to parseText(it, rel)) }
+                }
+                files[dirRel] = FileState("", null, UNREAD, error)
+                problems.add(VaultProblem(dirRel, error))
             }
         }
 
@@ -321,7 +341,7 @@ class VaultStore(
             next.groups.add(TaskGroup(id, folder, color))
             groupFolders[id] = folder
         }
-        for (label in config.labels) if (next.findLabel(label.first) == null) next.labels.add(LabelDefinition(label.first, label.second))
+        for (label in config.labels) if (next.findLabel(label.name) == null) next.labels.add(LabelDefinition(label.name, label.color))
         next.energyPerDay = config.energyPerDay?.takeIf { it in 1..Energy.MAX_PER_DAY }
 
         // Tasks in the remembered order. A copied file's ids are taken: it gets ids derived from its path (stable,
@@ -358,6 +378,7 @@ class VaultStore(
             if (state.error != null) paths.entries.firstOrNull { Net.equalsCi(it.value, rel) }?.let { blocked.add(it.key) }
         }
 
+        configProblem?.let(problems::add)
         board = next
         dormantGroups = dormant
         caches = Caches(files, paths, groupFolders, fileIds, layouts, next.items.associate { it.id to signature(it) }.toMutableMap(), blocked)
@@ -389,8 +410,15 @@ class VaultStore(
         val stamp = stamp(file)
         val cached = old.files[rel]
         if (cached != null && cached.stamp == stamp && !force) return cached
-        val text = VaultFiles.readText(file)
-        if (cached != null && cached.text == text) return cached.copy(stamp = stamp)
+        val text = try {
+            VaultFiles.readText(file)
+        } catch (e: IOException) {
+            // Not downloaded yet, or locked by another app: the last good version stays, and the file is read again next
+            // time (no stamp matches UNREAD).
+            val error = "It can't be opened right now (${e.message}). It's read again shortly."
+            return cached?.copy(stamp = UNREAD, error = error) ?: FileState("", null, UNREAD, error)
+        }
+        if (cached != null && cached.text == text && cached.stamp != UNREAD) return cached.copy(stamp = stamp)
         return try {
             parseText(text, rel)
             FileState(text, text, stamp, null)
@@ -719,58 +747,95 @@ class VaultStore(
 
     // ---- Settings, timer state, activity ----
 
-    internal data class ConfigGroup(val id: UUID, val folder: String, val color: String?)
+    /** A tab in config.json; [extra] is what a newer version keeps about it (kept as it is). */
+    internal data class ConfigGroup(val id: UUID, val folder: String, val color: String?, val extra: Map<String, JsonElement> = emptyMap())
 
-    private class Config(val groups: List<ConfigGroup>, val labels: List<Pair<String, String>>, val order: List<UUID>, val energyPerDay: Int?)
+    private data class ConfigLabel(val name: String, val color: String, val extra: Map<String, JsonElement> = emptyMap())
+
+    /** config.json as last read well; [extra]: settings a newer version keeps here (written back as they are). */
+    private class Config(val groups: List<ConfigGroup>, val labels: List<ConfigLabel>, val order: List<UUID>, val energyPerDay: Int?, val extra: Map<String, JsonElement> = emptyMap())
+
+    /** The settings as last read well (their unknown fields are written back from here). */
+    private var config = Config(emptyList(), emptyList(), emptyList(), null)
+
+    /** Why config.json can't be read right now (then it's never written, and doesn't sync). */
+    private var configProblem: VaultProblem? = null
+
+    private class ConfigFormatException : RuntimeException()
 
     private fun readConfig(): Config {
-        val text = readOrEmpty(File(meta, "config.json"))
+        val text = tryReadText(File(meta, "config.json"))
+        if (text == null) {
+            // Locked or offline right now: the last good settings stay; nothing is written over the file.
+            configProblem = VaultProblem(SyncKeys.CONFIG_PATH, "Your tabs and labels settings can't be opened right now. They're read again shortly.")
+            configText = ""
+            return config
+        }
         configText = text
-        val empty = Config(emptyList(), emptyList(), emptyList(), null)
-        if (text.isEmpty()) return empty
-        // Like System.Text.Json: anything that isn't the right shape makes the whole file unreadable (the defaults).
+        configProblem = null
+        if (Net.trim(text).isEmpty()) return Config(emptyList(), emptyList(), emptyList(), null).also { config = it }
+        // Like System.Text.Json: a value of the wrong kind makes the file unreadable; then it's never replaced by an
+        // empty one (that would lose the tabs' order, colours and labels everywhere it syncs).
         return try {
-            val doc = NetJson.parse(text) as? JsonObject ?: return empty
-            fun prop(o: JsonObject, name: String): JsonElement? = o.entries.firstOrNull { Net.equalsCi(it.key, name) }?.value?.takeIf { it !is kotlinx.serialization.json.JsonNull }
-            fun guid(e: JsonElement?): UUID = Net.parseGuid(NetJson.str(e) ?: throw IllegalStateException()) ?: throw IllegalStateException()
-            val groups = (prop(doc, "groups") as JsonArray?)?.map { g ->
-                val o = g as JsonObject
-                ConfigGroup(guid(prop(o, "id")), NetJson.str(prop(o, "folder")) ?: "", prop(o, "color")?.let { NetJson.str(it) ?: throw IllegalStateException() })
-            } ?: emptyList()
-            val labels = (prop(doc, "labels") as JsonArray?)?.map { l ->
-                val o = l as JsonObject
-                (NetJson.str(prop(o, "name")) ?: "") to (NetJson.str(prop(o, "color")) ?: TaskBoard.LABEL_PALETTE[0])
-            } ?: emptyList()
-            val order = (prop(doc, "order") as JsonArray?)?.map(::guid) ?: emptyList()
-            val energy = prop(doc, "energyPerDay")?.let { NetJson.long(it)?.toInt() ?: throw IllegalStateException() }
-            Config(groups, labels, order, energy)
+            val doc = NetJson.parse(text) as? JsonObject ?: throw ConfigFormatException()
+            fun prop(o: JsonObject, name: String): JsonElement? = o.entries.firstOrNull { Net.equalsCi(it.key, name) }?.value?.takeIf { it !is JsonNull }
+            fun has(o: JsonObject, name: String) = o.keys.any { Net.equalsCi(it, name) }
+            fun extra(o: JsonObject, known: Set<String>): Map<String, JsonElement> = o.filterKeys { k -> known.none { Net.equalsCi(it, k) } }
+            fun str(e: JsonElement?): String? = e?.let { NetJson.str(it) ?: throw ConfigFormatException() }
+            fun guid(e: JsonElement?): UUID = Net.parseGuid(NetJson.str(e ?: throw ConfigFormatException()) ?: throw ConfigFormatException()) ?: throw ConfigFormatException()
+            fun list(name: String): List<JsonElement> = prop(doc, name)?.let { it as? JsonArray ?: throw ConfigFormatException() } ?: emptyList()
+            // Entries that aren't there (null, or without a folder or name) are skipped, never a failed read.
+            val groups = list("groups").mapNotNull { g ->
+                if (g is JsonNull) return@mapNotNull null
+                val o = g as? JsonObject ?: throw ConfigFormatException()
+                val id = if (has(o, "id")) guid(o.entries.first { Net.equalsCi(it.key, "id") }.value.takeIf { it !is JsonNull }) else UUID(0, 0)
+                val folder = str(prop(o, "folder")) ?: return@mapNotNull null
+                ConfigGroup(id, folder, str(prop(o, "color")), extra(o, setOf("id", "folder", "color")))
+            }
+            val labels = list("labels").mapNotNull { l ->
+                if (l is JsonNull) return@mapNotNull null
+                val o = l as? JsonObject ?: throw ConfigFormatException()
+                val name = str(prop(o, "name"))
+                val color = str(prop(o, "color"))
+                if (name == null || color == null) null else ConfigLabel(name, color, extra(o, setOf("name", "color")))
+            }
+            val order = list("order").map(::guid)
+            val energy = prop(doc, "energyPerDay")?.let { NetJson.long(it)?.toInt() ?: throw ConfigFormatException() }
+            Config(groups, labels, order, energy, extra(doc, setOf("schemaVersion", "groups", "labels", "order", "energyPerDay"))).also { config = it }
         } catch (e: RuntimeException) {
-            empty
+            configProblem = VaultProblem(SyncKeys.CONFIG_PATH, CONFIG_PROBLEM)
+            config
         }
     }
 
-    private fun configJson(groups: List<ConfigGroup>, labels: List<LabelDefinition>, order: List<UUID>, energyPerDay: Int?): String {
+    private fun configJson(groups: List<ConfigGroup>, labels: List<ConfigLabel>, order: List<UUID>, energyPerDay: Int?, extra: Map<String, JsonElement> = emptyMap()): String {
         val doc = LinkedHashMap<String, JsonElement>()
         doc["schemaVersion"] = JsonPrimitive(2)
         doc["groups"] = JsonArray(
             groups.map { g ->
                 val o = linkedMapOf<String, JsonElement>("id" to JsonPrimitive(g.id.toString()), "folder" to JsonPrimitive(g.folder))
                 g.color?.let { o["color"] = JsonPrimitive(it) }
+                o.putAll(g.extra)
                 JsonObject(o)
             },
         )
-        doc["labels"] = JsonArray(labels.map { JsonObject(linkedMapOf("name" to JsonPrimitive(it.name), "color" to JsonPrimitive(it.color))) })
+        doc["labels"] = JsonArray(labels.map { JsonObject(linkedMapOf<String, JsonElement>("name" to JsonPrimitive(it.name), "color" to JsonPrimitive(it.color)).apply { putAll(it.extra) }) })
         doc["order"] = JsonArray(order.map { JsonPrimitive(it.toString()) })
         energyPerDay?.let { doc["energyPerDay"] = JsonPrimitive(it) }
+        doc.putAll(extra)
         return NetJson.write(JsonObject(doc), JsonEscaping.DEFAULT, indented = true) + "\n"
     }
 
     private fun buildConfigText(): String {
         val folders = caches.groupFolders
-        val groups = groupsInOrder(board.groups.filter { folders.containsKey(it.id) }.map { ConfigGroup(it.id, folders[it.id]!!, it.color) }, dormantGroups)
-        return configJson(groups, board.labels, board.items.map { it.id }, board.energyPerDay)
+        val known = config
+        val groupExtra = HashMap<UUID, Map<String, JsonElement>>()
+        for (g in known.groups) if (g.extra.isNotEmpty()) groupExtra.putIfAbsent(g.id, g.extra)
+        val labelExtra = CiMap<Map<String, JsonElement>>()
+        for (l in known.labels) if (l.extra.isNotEmpty() && !labelExtra.containsKey(l.name)) labelExtra[l.name] = l.extra
+        val groups = groupsInOrder(board.groups.filter { folders.containsKey(it.id) }.map { ConfigGroup(it.id, folders[it.id]!!, it.color, groupExtra[it.id] ?: emptyMap()) }, dormantGroups)
+        return configJson(groups, board.labels.map { ConfigLabel(it.name, it.color, labelExtra[it.name] ?: emptyMap()) }, board.items.map { it.id }, board.energyPerDay, known.extra)
     }
-
     /**
      * The tabs as config.json lists them: the ones with a folder in tab order, and each dormant one (in config, without a
      * folder here yet) right after the nearest tab that came before it in config and is still there, or first when none
@@ -789,8 +854,12 @@ class VaultStore(
     }
 
     private fun writeMetadataIfChanged(undo: ArrayDeque<() -> Unit>?): Boolean {
-        val config = buildConfigText()
-        var changed = writeIfChanged(File(meta, "config.json"), config, configText, undo).also { if (it) configText = config }
+        // Settings that can't be read are never written over.
+        var changed = false
+        if (configProblem == null) {
+            val config = buildConfigText()
+            changed = writeIfChanged(File(meta, "config.json"), config, configText, undo).also { if (it) configText = config }
+        }
         val state = stateText()
         if (state != stateText) {
             writeIfChanged(File(meta, "state.json"), state, stateText, undo)
@@ -808,7 +877,8 @@ class VaultStore(
     }
 
     private fun loadState(b: TaskBoard) {
-        val text = readOrEmpty(File(meta, "state.json"))
+        // Locked by another app right now: the timer state last read stays.
+        val text = tryReadText(File(meta, "state.json")) ?: stateText
         stateText = text
         if (text.isEmpty()) return
         try {
@@ -866,25 +936,71 @@ class VaultStore(
         "moved", "focusStarted", "focusCompleted", "groupChanged", "attachmentAdded", "attachmentRemoved", "labelChanged", "archived", "timeLogged",
     ).associateBy(Net::ci)
 
-    /** Reads the whole lines of activity.jsonl (a torn last line, from a crash mid-append, is left for later). */
+    /**
+     * Reads only what other processes appended since the last read (counted in bytes, a byte-order mark skipped). A
+     * shorter file, or one whose bytes before that point aren't the ones read (replaced by a sync client, a restored
+     * copy), is read again from the start. A torn last line (a crash mid-append) is left for later.
+     */
     private fun loadActivity(b: TaskBoard) {
         val file = File(meta, "activity.jsonl")
-        val bytes = if (file.exists()) file.readBytes() else ByteArray(0)
-        activityBytes = bytes.size.toLong()
-        val text = String(bytes, Charsets.UTF_8)
-        val complete = text.lastIndexOf('\n')
-        val entries = mutableListOf<ActivityEntry>()
-        if (complete >= 0) {
-            for (line in text.substring(0, complete).split('\n')) {
-                if (line.isEmpty()) continue
-                parseActivity(line)?.let(entries::add)
+        try {
+            val length = fileLength(file)
+            if (activityBytes < 0 || length < activityBytes || (activityBytes > 0 && !activityTailMatches(file))) {
+                activityLines = mutableListOf()
+                activityBytes = 0
+                activityTail = ByteArray(0)
             }
+            if (length > activityBytes) {
+                val bytes = RandomAccessFile(file, "r").use { raf ->
+                    raf.seek(activityBytes)
+                    val out = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = raf.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                    }
+                    out.toByteArray()
+                }
+                val bom = activityBytes == 0L && bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+                val start = if (bom) 3 else 0
+                val complete = bytes.lastIndexOf('\n'.code.toByte())
+                if (complete >= start) {
+                    for (line in String(bytes, start, complete - start, Charsets.UTF_8).split('\n')) {
+                        val text = line.trimEnd('\r')
+                        if (text.isEmpty()) continue
+                        parseActivity(text)?.let(activityLines::add)
+                    }
+                    activityBytes += complete + 1
+                    activityTail = readActivityTail(file)
+                }
+            }
+        } catch (e: IOException) {
+            // Locked or offline right now: the entries read so far stay, the rest is read next time.
+            if (activityBytes < 0) activityBytes = 0
         }
-        activityLines = entries
         b.activity.clear()
-        b.activity.addAll(entries)
+        b.activity.addAll(activityLines)
     }
 
+    // The last bytes read of the activity log (up to 4 KB before activityBytes): if they're different now, it was replaced.
+    private var activityTail = ByteArray(0)
+
+    private fun readActivityTail(file: File): ByteArray {
+        val size = minOf(ACTIVITY_TAIL_BYTES, activityBytes).toInt()
+        val tail = ByteArray(size)
+        RandomAccessFile(file, "r").use {
+            it.seek(activityBytes - size)
+            it.readFully(tail)
+        }
+        return tail
+    }
+
+    private fun activityTailMatches(file: File): Boolean = try {
+        readActivityTail(file).contentEquals(activityTail)
+    } catch (e: IOException) {
+        false
+    }
     private fun parseActivity(line: String): ActivityEntry? = try {
         val o = NetJson.parse(line) as? JsonObject
         fun prop(name: String): JsonElement? = o?.entries?.firstOrNull { Net.equalsCi(it.key, name) }?.value
@@ -922,6 +1038,7 @@ class VaultStore(
         undo?.addLast { RandomAccessFile(file, "rw").use { it.setLength(length) } }
         activityLines.addAll(pending)
         activityBytes = fileLength(file)
+        activityTail = readActivityTail(file)
         return true
     }
 
@@ -960,11 +1077,18 @@ class VaultStore(
         fun add(key: String, rel: String) {
             val file = full(rel)
             val link = Files.isSymbolicLink(file.toPath())
-            if (link || (file.isFile && file.length() > SyncLimits.MAX_FILE_BYTES)) {
-                // Here but can't be shared: the other devices leave theirs alone (never taken as deleted).
-                held.add(SyncHeld(key, rel, if (link) "it's a link to somewhere else" else "it's bigger than ${SyncLimits.MAX_FILE_BYTES / (1024 * 1024)} MB"))
+            if (!link && !file.isFile) return
+            // Here but not shareable: listed as held, so the other devices keep theirs (left out, it would look deleted).
+            val why = when {
+                !VaultFiles.isSyncablePath(rel) -> "its name has characters other devices can't use; rename it to sync it again"
+                file.isFile && file.length() > SyncLimits.MAX_FILE_BYTES -> "it's bigger than 50 MB"
+                link -> "it's a link to somewhere else"
+                else -> null
+            }
+            if (why != null) {
+                held.add(SyncHeld(key, rel, why))
                 covered.add(Net.ci(rel))
-            } else if (file.isFile) {
+            } else {
                 val stamp = stamp(file)
                 var known = syncHashes[Net.ci(rel)]
                 if (known == null || known.first != stamp) {
@@ -985,7 +1109,12 @@ class VaultStore(
             entries[key] = SyncEntry(key, path, SyncHash.of(bytes))
             memory[key] = bytes
         }
-        File(meta, "config.json").takeIf { it.exists() }?.let { remember(SyncKeys.CONFIG, SyncKeys.CONFIG_PATH, it.readBytes()) }
+        if (configProblem != null) {
+            // Settings that can't be read don't sync (another device would take them, or merge against nothing).
+            held.add(SyncHeld(SyncKeys.CONFIG, SyncKeys.CONFIG_PATH, "your tabs and labels settings can't be read"))
+        } else {
+            File(meta, "config.json").takeIf { it.exists() }?.let { remember(SyncKeys.CONFIG, SyncKeys.CONFIG_PATH, it.readBytes()) }
+        }
         remember(SyncKeys.ORDER, SyncKeys.ORDER_PATH, orderBytes(board.nowOrder))
         File(meta, "activity.jsonl").takeIf { it.exists() }?.let { remember(SyncKeys.ACTIVITY, SyncKeys.ACTIVITY_PATH, it.readBytes()) }
         syncHashes.keys.retainAll(seen)
@@ -1173,19 +1302,36 @@ class VaultStore(
 
     private fun topFolders(): List<String> = (root.listFiles() ?: emptyArray()).filter { it.isDirectory && isGroupFolder(it.name) }.map { it.name }.sorted()
 
-    private fun enumerateTaskFiles(): List<File> = topFolders().flatMap { enumerateTaskFiles(File(root, it)) }
+    private fun enumerateTaskFiles(unreadable: MutableList<File>? = null): List<File> = topFolders().flatMap { enumerateTaskFiles(File(root, it), unreadable) }
 
-    private fun enumerateTaskFiles(folder: File): List<File> {
-        val children = (folder.listFiles() ?: return emptyList()).sortedBy { it.name }
+    /** The task files under a folder; folders that can't be listed right now go to [unreadable]. */
+    private fun enumerateTaskFiles(folder: File, unreadable: MutableList<File>? = null): List<File> {
+        if (!folder.isDirectory) return emptyList()
+        val listed = folder.listFiles()
+        if (listed == null) {
+            unreadable?.add(folder)
+            return emptyList()
+        }
+        val children = listed.sortedBy { it.name }
         return children.filter { it.isFile && Net.endsWithCi(it.name, ".md") && !it.name.startsWith('.') } +
-            children.filter { it.isDirectory && isGroupFolder(it.name) }.flatMap { enumerateTaskFiles(it) }
+            children.filter { it.isDirectory && isGroupFolder(it.name) }.flatMap { enumerateTaskFiles(it, unreadable) }
     }
 
     private fun stamp(file: File): Pair<Long, Long> = if (file.exists()) file.lastModified() to file.length() else Long.MIN_VALUE to -1L
 
+    /** The stamp of a file that couldn't be read: never matches, so it's read again next time. */
+    private val UNREAD: Pair<Long, Long> = Long.MIN_VALUE to -2L
+
     private fun fileLength(file: File): Long = if (file.exists()) file.length() else 0L
 
     private fun readOrEmpty(file: File): String = if (file.exists()) VaultFiles.readText(file) else ""
+
+    /** The file's text, empty when there's none, or null when it can't be read right now (locked, offline). */
+    private fun tryReadText(file: File): String? = try {
+        readOrEmpty(file)
+    } catch (e: IOException) {
+        null
+    }
 
     private fun hasAnyId(b: TaskBoard, top: WorkItem): Boolean = top.selfAndDescendants.any { b.find(it.id) != null }
 
