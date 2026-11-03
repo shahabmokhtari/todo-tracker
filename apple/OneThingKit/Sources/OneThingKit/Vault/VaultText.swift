@@ -179,9 +179,16 @@ enum VaultText {
 
     private static let durationPart = Rx(#"(\d+)\s*([dhm])"#, ignoreCase: true)
 
+    /// The longest duration a file may give (.NET's `TimeSpan.MaxValue`): a longer one is a problem with that file.
+    static let maxDurationSeconds: TimeInterval = 922_337_203_685
+    static let maxDurationMinutes: Int64 = 15_372_286_728
+
     static func parseDuration(_ text: String?) throws -> TimeInterval? {
         guard let value = text?.oTrim(), !value.isEmpty else { return nil }
-        if let plain = parseLong(value) { return TimeInterval(plain * 60) }
+        if let plain = parseLong(value) {
+            guard plain >= -maxDurationMinutes, plain <= maxDurationMinutes else { throw tooLong(text!) }
+            return TimeInterval(plain) * 60
+        }
         let parts = durationPart.matches(value)
         if parts.isEmpty || parts.map({ $0.value.oRep(" ", "") }).joined().u16 != value.oRep(" ", "").u16 {
             throw VaultFormatError("\"\(text!)\" isn't a duration (use 90m, 24h, or 1d).")
@@ -195,7 +202,12 @@ enum VaultText {
             default: total += TimeInterval(n) * 60
             }
         }
+        guard total <= maxDurationSeconds else { throw tooLong(text!) }
         return total
+    }
+
+    private static func tooLong(_ text: String) -> VaultFormatError {
+        VaultFormatError("\"\(text)\" is too long for a duration (use 90m, 24h, or 1d).")
     }
 
     /// `long.TryParse(NumberStyles.Integer)`: optional white space and sign, ASCII digits.
@@ -344,12 +356,18 @@ public struct Instant: Comparable, Hashable, Sendable, CustomStringConvertible {
 
     public init(utcTicks: Int64) { self.utcTicks = utcTicks }
 
+    /// A time outside what .NET keeps (years 1 to 9999), say one worked out from a far-off date in a file, is the
+    /// nearest one it keeps (never a crash).
     public init(_ date: Date) {
-        utcTicks = Instant.unixEpochTicks + Int64((date.timeIntervalSince1970 * 10_000_000).rounded())
+        let ticks = (date.timeIntervalSince1970 * 10_000_000).rounded()
+        let lowest = -Double(Instant.unixEpochTicks), highest = Double(Instant.maxTicks - Instant.unixEpochTicks)
+        utcTicks = Instant.unixEpochTicks + (ticks.isNaN ? 0 : Int64(min(max(ticks, lowest), highest)))
     }
 
     public static let minValue = Instant(utcTicks: 0)
     static let unixEpochTicks: Int64 = 621_355_968_000_000_000
+    /// 9999-12-31T23:59:59.9999999Z (.NET's `DateTime.MaxValue`).
+    static let maxTicks: Int64 = 3_155_378_975_999_999_999
     static let ticksPerSecond: Int64 = 10_000_000
 
     public var date: Date { Date(timeIntervalSince1970: Double(utcTicks - Instant.unixEpochTicks) / 1e7) }

@@ -205,7 +205,7 @@ public enum TaskMarkdown {
             reminderIndex += 1
         }
 
-        let ordered = parseList(sections[subtasks]!.lines, root, state)
+        let ordered = try parseList(sections[subtasks]!.lines, root, state)
         root.sequential = ordered ?? isTrue(fm.scalar("sequential"))
         try parseNotes(sections[notes]!.lines, root, state)
         parseAttachments(sections[attachments]!.lines, root, state)
@@ -303,7 +303,7 @@ public enum TaskMarkdown {
     }
 
     /// Parses the subtasks list into `root`; returns whether its top-level list is ordered.
-    private static func parseList(_ lines: [String], _ root: WorkItem, _ state: ParseState) -> Bool? {
+    private static func parseList(_ lines: [String], _ root: WorkItem, _ state: ParseState) throws -> Bool? {
         var frames = [Frame(root, -1, "")]
         var created: [Frame] = []
         let leading = Lines()
@@ -332,7 +332,7 @@ public enum TaskMarkdown {
                     let titleKey = "\(parent.seedKey)/\(titleForSeed(rest))"
                     let count = (occurrences[OKey(titleKey)] ?? 0) + 1
                     occurrences[OKey(titleKey)] = count
-                    let item = parseItem(m.has("c") ? m.group("c").unit(0) : 0x20, rest, state, isPlain: !m.has("c"), seedKey: "\(titleKey)#\(count)")
+                    let item = try parseItem(m.has("c") ? m.group("c").unit(0) : 0x20, rest, state, isPlain: !m.has("c"), seedKey: "\(titleKey)#\(count)")
                     item.parent = parent.item
                     parent.item.children.append(item)
                     if parent.ordered == nil { parent.ordered = Ordinal.isDigit(m.group("m").unit(0)) }
@@ -383,7 +383,7 @@ public enum TaskMarkdown {
         return spaces.replace(text) { _ in " " }.oTrim().oLower()
     }
 
-    private static func parseItem(_ check: UInt16, _ input: String, _ state: ParseState, isPlain: Bool, seedKey: String) -> WorkItem {
+    private static func parseItem(_ check: UInt16, _ input: String, _ state: ParseState, isPlain: Bool, seedKey: String) throws -> WorkItem {
         let ctx = state.context
         let tz = ctx.timeZone
         var rest = input
@@ -454,7 +454,13 @@ public enum TaskMarkdown {
         item.nextActionAt = resolve(scheduled, str(meta, "next"), VaultText.defaultScheduledTime)
         item.afterId = parseGuid(str(meta, "after"))
         item.sequential = meta?["seq"]?.boolValue ?? false
-        item.stepDelay = long(meta, "delay").map { TimeInterval($0 * 60) }
+        if let delay = long(meta, "delay") {
+            // Out of range (a hand-edited file): a problem with this file, never a crash.
+            guard delay >= -VaultText.maxDurationMinutes, delay <= VaultText.maxDurationMinutes else {
+                throw VaultFormatError("A step's delay in \"\(title)\" is too long (\(delay) minutes).")
+            }
+            item.stepDelay = TimeInterval(delay) * 60
+        }
         item.icon = cleanIcon(str(meta, "icon"))
         item.color = cleanColor(str(meta, "color"))
         item.repeatRule = Recurrence.parseOrNil(str(meta, "repeat"))
