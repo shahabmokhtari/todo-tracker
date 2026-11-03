@@ -176,9 +176,13 @@ public final class SyncModel: ObservableObject {
     public private(set) static weak var current: SyncModel?
 
     /// iOS woke the app for a background refresh: the next one is asked for first (even before the app's sync is
-    /// there), then one sync.
+    /// there), then one sync. Woken before the app was ever shown (nothing opened the tasks folder yet), it opens the
+    /// folder and its sync first.
     public static func backgroundRefresh() async {
         submitBackground()
+        #if os(iOS)
+        if current == nil { _ = BoardModel.openPhoneStorage() }
+        #endif
         await current?.syncInBackground()
     }
 

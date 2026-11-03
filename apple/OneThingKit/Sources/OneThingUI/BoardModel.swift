@@ -147,33 +147,10 @@ public final class BoardModel: ObservableObject {
 
     public static func live() -> BoardModel {
         #if os(iOS)
-        let phone = PhoneSetup.live()
-        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
-        var store: VaultBoardStore?
-        var sync: SyncModel?
-        var openError: String?
-        var fallback: TaskBoard?
-        var notice: String?
-        if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("OneThing", isDirectory: true) {
-            let syncFolder = base.appendingPathComponent("sync", isDirectory: true)
-            // Joining a sync for the first time brings a leftover board.json in after what came (never before).
-            let joining = settings.load().map { !PhoneSyncer.hasJoined(directory: syncFolder, settings: $0) } ?? false
-            let opened = VaultBoardStore.openOnDevice(base: base, importLeftover: !joining)
-            if let vault = opened.store {
-                store = vault
-                notice = opened.message
-                let syncer = PhoneSyncer(store: vault.vault, directory: syncFolder, settings: settings,
-                                         deviceName: phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
-                sync = SyncModel(syncer: syncer, settings: settings)
-            } else {
-                openError = opened.message
-                fallback = opened.fallback
-            }
-        } else {
-            openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
-        }
-        let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError, fallback: fallback, notice: notice)
+        let opened = openPhoneStorage()
+        let sync = opened.sync
+        let model = BoardModel(store: opened.store, phone: opened.phone, sync: sync, openError: opened.openError,
+                               fallback: opened.fallback, notice: opened.notice)
         model.widgetShelf = WidgetShelf.shared
         // At launch: a sync now, then every minute while the app is open.
         sync?.start()
@@ -184,6 +161,51 @@ public final class BoardModel: ObservableObject {
         return model
         #endif
     }
+
+    #if os(iOS)
+    /// The phone's tasks folder and its sync.
+    struct PhoneStorage {
+        var phone: PhoneSetup
+        var store: VaultBoardStore?
+        var sync: SyncModel?
+        var openError: String?
+        var fallback: TaskBoard?
+        var notice: String?
+    }
+
+    /// Opened once per run: by the app, or before it by a background refresh (iOS can wake the app to sync without
+    /// showing it), so the two never sync the same folder side by side.
+    private static var phoneStorage: PhoneStorage?
+
+    static func openPhoneStorage() -> PhoneStorage {
+        if let phoneStorage { return phoneStorage }
+        let phone = PhoneSetup.live()
+        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
+        var opened = PhoneStorage(phone: phone)
+        if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("OneThing", isDirectory: true) {
+            let syncFolder = base.appendingPathComponent("sync", isDirectory: true)
+            // Joining a sync for the first time brings a leftover board.json in after what came (never before).
+            let joining = settings.load().map { !PhoneSyncer.hasJoined(directory: syncFolder, settings: $0) } ?? false
+            let device = VaultBoardStore.openOnDevice(base: base, importLeftover: !joining)
+            if let vault = device.store {
+                opened.store = vault
+                opened.notice = device.message
+                let syncer = PhoneSyncer(store: vault.vault, directory: syncFolder, settings: settings,
+                                         deviceName: phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
+                opened.sync = SyncModel(syncer: syncer, settings: settings)
+                // Kept only when it opened: a folder that couldn't be opened is tried again by whoever comes next.
+                phoneStorage = opened
+            } else {
+                opened.openError = device.message
+                opened.fallback = device.fallback
+            }
+        } else {
+            opened.openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
+        }
+        return opened
+    }
+    #endif
 
     public static func requestNotificationPermission() { NotificationScheduler.requestAuthorization() }
 
