@@ -249,7 +249,7 @@ final class SyncModelTests: XCTestCase {
         XCTAssertEqual(sync.settings?.joined, false, "the first sync joins")
         await sync.finish()
         XCTAssertEqual(syncer.runs, 1)
-        XCTAssertEqual(SyncModel.tokenPage.absoluteString, "https://github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker")
+        XCTAssertEqual(SyncModel.tokenPage.absoluteString, "https://github.com/settings/tokens/new?scopes=gist&description=One%20Thing")
     }
 
     func testAFolderWithoutOneThingSyncIsOfferedToBeMadeThere() async throws {
