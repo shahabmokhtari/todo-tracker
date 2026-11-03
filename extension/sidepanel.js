@@ -1,4 +1,4 @@
-import { createClient, normalizeServerUrl, pageSource, pair } from './lib/client.js';
+import { createClient, feedbackOn, normalizeServerUrl, pageSource, pair } from './lib/client.js';
 import { relativeTime, priorityMeta, metaChips, summaryLine } from './lib/format.js';
 import { icon } from './lib/icons.js';
 
@@ -43,7 +43,7 @@ function showSetup(message = '') {
 
 async function refresh() {
   try {
-    dashboard = await client.dashboard(group);
+    [dashboard, $('feedback').hidden] = await Promise.all([client.dashboard(group), feedbackOn(client).then((on) => !on)]);
     $('setup').hidden = true;
     $('main').hidden = false;
     render();
@@ -190,7 +190,7 @@ $('note').addEventListener('submit', async (e) => {
 });
 
 $('open').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/') })));
-// The feedback sheet of the app (one sheet for every app): a bug, an idea, anything.
+// The feedback sheet of the app (one sheet for every app): a bug, an idea, anything. Shown only while that extra is on.
 $('feedback').addEventListener('click', () => run(async () => ext.tabs.create({ url: await client.launchUrl('/?feedback=button') })));
 $('settings').addEventListener('click', async () => {
   const { serverUrl } = await ext.storage.local.get('serverUrl');

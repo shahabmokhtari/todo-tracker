@@ -756,10 +756,6 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
 
-    /// <summary>Opens Settings › Phones (let phones connect, pair one with a QR code) in the app window.</summary>
-    [RelayCommand]
-    private void ConnectPhone() => OpenApp("/#/settings/phones");
-
     /// <summary>The feedback sheet of the app (one sheet for every desktop app): a bug, an idea, anything.</summary>
     [RelayCommand]
     private void SendFeedback() => OpenApp("/?feedback=button");

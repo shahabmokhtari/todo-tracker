@@ -2,7 +2,7 @@
 import SwiftUI
 import TodoTrackerKit
 
-/// Settings: the computer a phone uses, appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
+/// Settings: how a phone syncs, appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
 /// Appearance and Energy sections; the focus timer's lengths are kept with the board.
 public struct SettingsView: View {
     @ObservedObject var model: BoardModel
@@ -37,15 +37,13 @@ public struct SettingsView: View {
 
     private var form: some View {
         Form {
-            // iPhone and iPad: one of three — a computer's tasks, syncing on its own, or only on this device (the Mac
-            // has its own server).
+            // iPhone and iPad: syncing on their own, or only on this device (the Mac has its own server).
             if model.phone != nil {
                 Section {
                     Text(model.modeDescription).font(.footnote).accessibilityIdentifier("settings-mode")
                 } header: {
                     Text("Your tasks")
                 }
-                ComputerSection(model: model)
                 if let sync = model.sync { SyncSection(model: model, sync: sync) }
             }
 

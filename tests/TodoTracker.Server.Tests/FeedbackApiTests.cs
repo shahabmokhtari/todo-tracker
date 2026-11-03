@@ -191,4 +191,33 @@ public sealed class FeedbackApiTests : IAsyncLifetime
         Assert.Equal("logged", (await response.Json())["status"]!.GetValue<string>());
         Assert.Empty(server.Relay.Requests);
     }
+
+    [Fact]
+    public async Task A_note_kept_in_the_log_of_a_debug_build_leaves_out_the_email()
+    {
+        var log = new CapturingLogger();
+        var relay = new FeedbackRelay(null!, new FeedbackSettings(FakeRelay.Url, Send: false), log);
+        var body = Feedback.Body(new FeedbackDraft("bug", "The timer stops.", "me@example.com", "button", Guid.NewGuid().ToString()), new FeedbackDevice("Windows", "1.0.0", null, null, null, null, null))!;
+
+        var answer = await relay.SendAsync(body, TestContext.Current.CancellationToken);
+
+        Assert.Equal("logged", answer.State);
+        var line = Assert.Single(log.Lines);
+        Assert.Contains("The timer stops.", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("me@example.com", line, StringComparison.Ordinal);
+        Assert.Equal("me@example.com", body["contact"]!.GetValue<string>());
+    }
+
+    private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger<FeedbackRelay>
+    {
+        public List<string> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Lines.Add(formatter(state, exception));
+    }
 }

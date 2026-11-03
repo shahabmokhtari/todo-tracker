@@ -115,7 +115,6 @@ public sealed class PluginHost
         new HistoryPlugin(),
         new ObsidianPlugin(),
         new BrowserExtensionPlugin(),
-        new PhonesPlugin(),
         new Sync.OneDriveSyncPlugin(),
         new Sync.ICloudSyncPlugin(),
         new Sync.GistSyncPlugin(),
@@ -196,8 +195,6 @@ public sealed class PluginHost
                     .AddEndpointFilter(ApiEndpoints.MapDomainErrors));
             }
         }
-
-        PhonesPlugin.MapClaim(app, host);
 
         // Shared by every sync provider plugin, and by every connector plugin.
         Sync.SyncEndpoints.Map(app);

@@ -9,7 +9,11 @@ final class FakeSyncer: DeviceSyncing, @unchecked Sendable {
     private var count = 0
     private var publishes = 0
     private var resetCount = 0
+    private var inside = 0
+    private var mostInside = 0
     var delay: UInt64 = 0
+    /// The delay runs to its end even when the sync is cancelled (a sync that takes a while to stop).
+    var slowToStop = false
     /// Done during a sync (say, a task arriving from another device).
     var during: (() throws -> Void)?
     /// The sync fails after `during` (part of it came in).
@@ -20,10 +24,30 @@ final class FakeSyncer: DeviceSyncing, @unchecked Sendable {
     /// Syncs that got as far as publishing (as the engine does, not once cancelled).
     var published: Int { lock.withLock { publishes } }
     var resets: Int { lock.withLock { resetCount } }
+    /// The most syncs and resets running at once.
+    var overlap: Int { lock.withLock { mostInside } }
+
+    private func enter() {
+        lock.withLock {
+            inside += 1
+            mostInside = max(mostInside, inside)
+        }
+    }
+
+    private func leave() { lock.withLock { inside -= 1 } }
 
     func run() async throws -> SyncResult? {
+        enter()
+        defer { leave() }
         lock.withLock { count += 1 }
-        if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+        if delay > 0 {
+            let delay = self.delay
+            if slowToStop {
+                _ = await Task.detached { try? await Task.sleep(nanoseconds: delay) }.value
+            } else {
+                try? await Task.sleep(nanoseconds: delay)
+            }
+        }
         try during?()
         if let failure { throw failure }
         try Task.checkCancellation()
@@ -31,7 +55,11 @@ final class FakeSyncer: DeviceSyncing, @unchecked Sendable {
         return result
     }
 
-    func reset() async { lock.withLock { resetCount += 1 } }
+    func reset() async {
+        enter()
+        defer { leave() }
+        lock.withLock { resetCount += 1 }
+    }
 
     func status() async -> SyncStatus {
         var status = SyncStatus()
@@ -50,8 +78,8 @@ final class PathBookmarks: FolderBookmarks, @unchecked Sendable {
 }
 
 /// iPhone and iPad syncing on their own: the tasks folder as the phone's store (moved in from board.json once), when it
-/// syncs, reading the folder again after a sync, and the three ways a phone works (a computer's tasks, syncing on its
-/// own, or only on this device) never losing a task when switching.
+/// syncs, reading the folder again after a sync, and the two ways a phone works (syncing on its own, or only on this
+/// device) never losing a task when switching.
 @MainActor
 final class SyncModelTests: XCTestCase {
     private var folder: URL!
@@ -63,11 +91,6 @@ final class SyncModelTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         suite = "SyncModelTests-\(UUID().uuidString)"
         secrets = InMemorySecretStore()
-        FakeComputer.mode = .up
-        FakeComputer.requests = []
-        let computer = TaskBoard()
-        _ = try computer.addTask(NewTask("On the computer"), now: Date())
-        FakeComputer.board = try BoardCodec.encode(computer)
     }
 
     override func tearDown() async throws {
@@ -98,13 +121,7 @@ final class SyncModelTests: XCTestCase {
         return SyncModel(syncer: syncer, settings: settings, bookmarks: PathBookmarks(), debounce: 0.1, interval: 3600)
     }
 
-    private func phone() -> PhoneSetup {
-        PhoneSetup(pairings: PairingStore(defaults: defaults, secrets: secrets), cacheURL: folder.appendingPathComponent("computer-board.json"), phoneName: "Test iPhone") { _ in
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.protocolClasses = [FakeComputer.self]
-            return URLSession(configuration: configuration)
-        }
-    }
+    private func phone() -> PhoneSetup { PhoneSetup(phoneName: "Test iPhone") }
 
     // MARK: The tasks folder
 
@@ -245,27 +262,41 @@ final class SyncModelTests: XCTestCase {
         XCTAssertEqual(model.modeDescription, "Your tasks are only on this iPhone.")
     }
 
-    func testConnectingToAComputerTurnsSyncOffAndDisconnectingBringsThePhonesTasksBack() async throws {
-        let store = try VaultBoardStore.open(base: folder, importLeftover: true)
+    func testANewPlaceWaitsForTheSyncStoppedBeforeIt() async throws {
         let syncer = FakeSyncer()
+        syncer.delay = 300_000_000
+        syncer.slowToStop = true
         let sync = syncModel(syncer)
-        let model = BoardModel(store: store, phone: phone(), sync: sync)
-        model.quickText = "On this phone"
-        model.capture()
-        await sync.finish()
-
-        model.open(link: URL(string: "todotracker://pair?v=1&hosts=192.168.1.20:5318&code=c0de&fp=bkHHwIb84H1Te4ePQXbl3y-dAm4kMyZc47CFWjSYarI&name=Studio%20Mac")!)
-        try await waitUntil("pairing") { model.board.items.contains { $0.title == "On the computer" } }
-        XCTAssertFalse(sync.isOn, "one or the other")
-        XCTAssertTrue(model.modeDescription.hasPrefix("Connected to Studio Mac"))
-        let before = syncer.runs
         sync.syncNow()
-        XCTAssertEqual(syncer.runs, before, "nothing syncs while connected")
-        XCTAssertEqual(try store.load().items.map(\.title), ["On this phone"], "the tasks folder isn't touched")
+        try await waitUntil("started") { syncer.runs == 1 }
+        sync.turnOff()
+        sync.useGist(token: "ghp_new", library: "Todo Tracker")
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 2)
+        XCTAssertEqual(syncer.overlap, 1, "the stopped sync, the forgetting and the new sync one after another")
+        XCTAssertEqual(syncer.resets, 2)
+    }
 
-        model.disconnectComputer()
-        XCTAssertEqual(model.board.items.map(\.title), ["On this phone"])
-        model.complete(try XCTUnwrap(model.board.items.first).id)
-        XCTAssertEqual(try store.load().items.first?.isDone, true)
+    func testASyncAskedForRightAfterOneWasStoppedRunsAfterIt() async throws {
+        let syncer = FakeSyncer()
+        syncer.delay = 300_000_000
+        syncer.slowToStop = true
+        let sync = syncModel(syncer)
+        sync.syncNow()
+        try await waitUntil("started") { syncer.runs == 1 }
+        sync.cancel()
+        sync.syncNow()
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 2)
+        XCTAssertEqual(syncer.overlap, 1)
+    }
+
+    func testABackendThisVersionDoesntKnowIsntUsed() throws {
+        XCTAssertEqual(SyncBackends.all.map(\.id), ["folder", "gist"])
+        XCTAssertEqual(SyncBackends.backend(.gist)?.name, "GitHub gist")
+        XCTAssertNil(SyncBackends.backend(SyncPlaceKind(rawValue: "carrier-pigeon")))
+        let settings = SyncSettingsStore(defaults: defaults, secrets: secrets)
+        settings.save(SyncSettings(kind: SyncPlaceKind(rawValue: "carrier-pigeon")))
+        XCTAssertNil(settings.load(), "a backend this version doesn't know isn't used")
     }
 }

@@ -4,11 +4,10 @@ Every optional part of Onething is a plugin, so you can turn off what you don't 
 Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
 
 * **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
-  its API answers 404, a paired browser extension (or phone) loses access, and its background work stops (Teams cards, version
+  its API answers 404, a paired browser extension loses access, and its background work stops (Teams cards, version
   saving, sync).
 * **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser
-  extension, Phones, Copy for Loop, Energy, Send feedback, and the connectors). Phones' own switch, **Let phones connect**, opens its
-  port at the next start. The ones with their own background work (Ask AI, Version history, the
+  extension, Copy for Loop, Energy, Send feedback, and the connectors). The ones with their own background work (Ask AI, Version history, the
   sync providers, Teams reminders) come on at the next start if they weren't running; Settings says so, and the
   sidebar offers to restart right away.
 
@@ -22,7 +21,6 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **Version history** | Every change saved as a version (needs git); view and restore in the task panel | Yes |
 | **Obsidian** | Open tasks in Obsidian; keep tasks in an Obsidian vault | Yes |
 | **Browser extension** | Setup guide for the Edge, Chrome and Safari extension, with pairing codes ([`browser-extension.md`](browser-extension.md)) | Yes |
-| **Phones** | The iPhone, iPad and Android apps use the tasks on this computer over Wi-Fi or Tailscale: **Settings › Phones** lets phones connect, pairs each one with a QR code, and disconnects one ([below](#phones)) | No |
 | **OneDrive sync** | Sync with your other computers through OneDrive (work or school account first, then personal) ([`sync.md`](sync.md)) | Yes |
 | **iCloud Drive sync** | Sync with your Macs (and Windows with iCloud for Windows) through iCloud Drive | Yes |
 | **GitHub gist sync** | Sync through a private gist on your GitHub account | No |
@@ -83,30 +81,6 @@ isn't shown twice). Otherwise a new session starts and is given the earlier mess
   isn't signed in that way, the chat switches to your normal Copilot settings and says so.
 * If the agent crashes while starting, Onething tries again and then says what happened (with the exit code).
 
-## Phones
-
-With **Phones** on, the Onething app on an iPhone, iPad or Android phone can work on the tasks on this computer (the
-same tasks folder, synced as usual), at home on the same Wi-Fi or anywhere with [Tailscale](https://tailscale.com).
-
-1. **Settings › Phones › Let phones connect** (only in the app on this computer, not in a browser signed in with the
-   token). Restart Onething: it then also listens on port **5318** (all networks, HTTPS with a certificate it makes
-   once and keeps in its data folder). The loopback port and its rules don't change.
-2. **Connect a phone** shows a QR code (and a link to copy). Scan it in the phone app. The code works once, for 10
-   minutes. The link says where to find this computer (its Wi-Fi and Tailscale addresses), and the certificate's
-   fingerprint, so the phone knows it's talking to this computer and nothing in between.
-3. **Connected phones** lists each phone (when it was paired, when it was last used). **Disconnect** takes one's
-   access back at once.
-
-What a phone can do: everything the phone apps do with tasks (add, change, finish, snooze, notes, steps, reminders,
-order, groups, focus timer and time, energy, the theme). Not settings, the tasks folder, history, hooks, extras,
-AI apps or MCP: the phone port answers 403 to anything else, and the API token, the app's sign-in and the session
-cookie don't work there. Changes say which phone made them ("You (Shahab's iPhone)" in the timeline). Only devices
-on this computer's own network or on Tailscale get an answer; anything from a public address is turned away.
-
-Turning **Let phones connect** or **Phones** off shuts every phone out at once; the port itself closes at the next
-start. On a Mac or Windows firewall, allow Onething (or port 5318) for private networks. Run the server with
-`--phone-port <port>` to use another port.
-
 ## Send feedback
 
 **Send feedback** opens one sheet: pick **Bug**, **Idea** or **Other**, write a note (up to 2000 characters; a counter
@@ -116,10 +90,12 @@ filed twice).
 
 * **Where:** Settings › Feedback and the command palette (Ctrl K) in the web app; **⋯ › Send feedback…** in the
   Windows sidebar and **Send feedback…** in the tray menu (Windows and Linux), which open the web app's sheet; the
-  browser extension's speech-bubble button. The iPhone, iPad, Mac and Android apps have their own sheet (see the
-  [guide](guide.md)).
+  browser extension's speech-bubble button (shown only while this extra is on). The iPhone, iPad, Mac and Android
+  apps have their own sheet (see the [guide](guide.md)).
 * **What's sent:** the note, the kind, the email if you typed one, and coarse facts: platform, app version, system
-  version, device model (the processor type on a computer), language, screen size and how the sheet was opened.
+  version, device model (the processor type on a computer), language, screen size and how the sheet was opened
+  (`button`, `shake`, `page` or `qr`). The email is cleaned like the note (control characters out, trimmed) and cut to
+  200 characters.
   Never anything from your tasks, and no ids. It goes to the issues relay at `issues.awesomehq.app` (with the app's
   public key, which can only open issues; there's no GitHub token in any app), which files it as an issue on the
   public GitHub repository, email included if you gave one. See [privacy](privacy.md).
@@ -127,9 +103,10 @@ filed twice).
   computer adds the facts and sends it. Only the person at this computer can (the app's own session; an agent or a
   script with the API token gets 403). The title names the system the server runs on (Windows, macOS or Linux),
   whether the sheet is in the app window or in a browser.
-* **Off:** the menu entries, the Settings section and the palette command leave at once, and the endpoint answers 404.
+* **Off:** the menu entries, the Settings section, the palette command and the browser extension's button leave at
+  once, and the endpoint answers 404.
 
-**Developers.** Debug builds log the note instead of sending it. `ONETHING_FEEDBACK_SEND=1` sends from a debug build
+**Developers.** Debug builds log the note (without the email) instead of sending it. `ONETHING_FEEDBACK_SEND=1` sends from a debug build
 (`0` never sends, even from a release build), and `ONETHING_FEEDBACK_URL` sends to another relay (the e2e tests use a
 stand-in on 127.0.0.1). The Mac, iPhone and iPad apps read `ONETHING_FEEDBACK_SEND=1` from the Xcode scheme's
 environment; Android debug builds send only when built with `-PonethingFeedbackSend=true`. The request body and what

@@ -6,10 +6,10 @@ import TodoTrackerKit
 import BackgroundTasks
 #endif
 
-/// Settings › Sync on an iPhone or iPad: syncing on its own with the other devices (through iCloud Drive's
-/// `Apps/TodoTrackerSync` or a GitHub gist), and when: at launch and back in front, a few seconds after a change,
-/// every minute while open, and in the background when iOS allows. Each sync runs off the main thread; after one that
-/// brought something, the board is read again from the tasks folder.
+/// Settings › Sync on an iPhone or iPad: syncing on its own with the other devices through one of `SyncBackends` (a
+/// shared folder in iCloud Drive or OneDrive, or a GitHub gist), and when: at launch and back in front, a few seconds
+/// after a change, every minute while open, and in the background when iOS allows. Each sync runs off the main thread,
+/// one at a time; after one that brought something, the board is read again from the tasks folder.
 @MainActor
 public final class SyncModel: ObservableObject {
     /// The place set up (nil: sync is off).
@@ -27,6 +27,8 @@ public final class SyncModel: ObservableObject {
     public struct PendingFolder: Equatable, Identifiable {
         public let url: URL
         public let subpath: String
+        /// The backend it was picked for.
+        public var kind: SyncPlaceKind = .folder
         public var id: String { url.path + "|" + subpath }
     }
 
@@ -43,13 +45,14 @@ public final class SyncModel: ObservableObject {
     /// After a sync that brought or sent something, or one that failed part way: the board is read again from the
     /// tasks folder.
     public var onSynced: (() -> Void)?
-    /// While true (connected to a computer), nothing syncs.
-    public var isPaused: () -> Bool = { false }
 
     private var pendingChange: Task<Void, Never>?
     private var timer: Timer?
     private var again = false
     private var running: Task<Void, Never>?
+    /// The last sync stopped (or the forgetting after sync was turned off): whatever runs next waits for it to end
+    /// first, so two never overlap. Each run waits for the one stopped before it, so this one is enough.
+    private var stopping: Task<Void, Never>?
     private var runId = 0
 
     public init(syncer: DeviceSyncing, settings: SyncSettingsStore, bookmarks: FolderBookmarks = SystemFolderBookmarks(), debounce: TimeInterval = 5, interval: TimeInterval = 60) {
@@ -65,13 +68,13 @@ public final class SyncModel: ObservableObject {
 
     public var isOn: Bool { settings != nil }
 
-    /// Where it syncs, in words ("iCloud Drive › TodoTrackerSync", "A private GitHub gist").
+    /// The backend set up (nil: sync is off).
+    public var backend: SyncBackend? { settings.flatMap { SyncBackends.backend($0.kind) } }
+
+    /// Where it syncs, in words ("iCloud Drive › Apps › TodoTrackerSync", "A private GitHub gist").
     public var placeName: String? {
-        guard let settings else { return nil }
-        switch settings.kind {
-        case .folder: return settings.folderName.isEmpty ? "A shared folder" : (settings.subpath.isEmpty ? settings.folderName : "\(settings.folderName) › \(settings.subpath.replacingOccurrences(of: "/", with: " › "))")
-        case .gist: return "A private GitHub gist"
-        }
+        guard let settings, let backend else { return nil }
+        return backend.describe(settings)
     }
 
     // MARK: When it syncs
@@ -106,32 +109,27 @@ public final class SyncModel: ObservableObject {
 
     /// Syncs now (another sync asked for meanwhile runs right after this one).
     public func syncNow() {
-        guard isOn, !isPaused() else { return }
+        guard isOn else { return }
         if running != nil {
             again = true
             return
         }
         runId += 1
         let id = runId
+        let before = stopping
         running = Task { [weak self] in
+            // A sync stopped a moment ago may still be finishing: this one starts after it.
+            await before?.value
             await self?.runLoop(id)
         }
     }
 
-    /// Stops the sync running now and the one waiting after a change (sync turned off, or connecting to a computer):
-    /// whatever it hadn't published yet isn't.
+    /// Stops the sync running now and the one waiting after a change (sync turned off, or another place chosen):
+    /// whatever it hadn't published yet isn't. The next sync (or forgetting) waits until it has really ended.
     public func cancel() {
         pendingChange?.cancel()
         pendingChange = nil
-        running?.cancel()
-        running = nil
-        again = false
-        isSyncing = false
-    }
-
-    /// Waits for the sync running now (and any asked for meanwhile).
-    public func finish() async {
-        while let running { await running.value }
+        cancelRunning()
     }
 
     /// The app's sync (the background refresh reaches it here).
@@ -158,32 +156,46 @@ public final class SyncModel: ObservableObject {
     }
 
     private func cancelRunning() {
-        running?.cancel()
+        if let running {
+            running.cancel()
+            // Not over yet: it ends at its next check. What comes next waits for it (it waited for the one before).
+            stopping = running
+        }
         running = nil
         again = false
         isSyncing = false
     }
 
+    /// Waits for the sync running now (and any asked for meanwhile), and for one stopped before it to end.
+    public func finish() async {
+        while let running { await running.value }
+        await stopping?.value
+    }
+
     private func runLoop(_ id: Int) async {
         repeat {
+            // Stopped (or another place chosen) before it began: nothing to say, nothing to run.
+            guard id == runId, !Task.isCancelled else { return }
             again = false
             isSyncing = true
             do {
                 if let result = try await syncer.run() {
-                    problem = nil
-                    waiting = result.complete ? nil : (result.problem ?? "Some changes from your other devices haven’t downloaded yet. They come in on a later sync.")
+                    if id == runId {
+                        problem = nil
+                        waiting = result.complete ? nil : (result.problem ?? "Some changes from your other devices haven’t downloaded yet. They come in on a later sync.")
+                    }
                     if !result.skipped { onSynced?() }
                 }
             } catch is CancellationError {
             } catch {
-                problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if id == runId { problem = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription }
                 // Part of it may have come in before it failed.
                 onSynced?()
             }
             guard id == runId, !Task.isCancelled else { return }
             isSyncing = false
             await readStatus()
-        } while again && isOn && !isPaused() && !Task.isCancelled
+        } while again && isOn && !Task.isCancelled
         if id == runId { running = nil }
     }
 
@@ -207,9 +219,9 @@ public final class SyncModel: ObservableObject {
 
     // MARK: Setting it up
 
-    /// The folder picked in the Files app: `TodoTrackerSync` (or a folder holding it) is used; else it's offered to
-    /// make it there (`pendingFolder`).
-    public func choose(folder url: URL, library: String) {
+    /// The folder picked in the Files app for a backend that syncs through a folder: `TodoTrackerSync` (or a folder
+    /// holding it) is used; else it's offered to make it there (`pendingFolder`).
+    public func choose(folder url: URL, library: String, backend: SyncBackend = SyncBackends.folder) {
         let opened = url.startAccessingSecurityScopedResource()
         defer { if opened { url.stopAccessingSecurityScopedResource() } }
         let choice = SyncFolderChoice.choose(pickedName: url.lastPathComponent) { rel in
@@ -217,8 +229,8 @@ public final class SyncModel: ObservableObject {
             return FileManager.default.fileExists(atPath: url.appendingPathComponent(rel).path, isDirectory: &dir) && dir.boolValue
         }
         switch choice {
-        case .ready(let subpath): use(folder: url, subpath: subpath, library: library)
-        case .missing(let subpath): pendingFolder = PendingFolder(url: url, subpath: subpath)
+        case .ready(let subpath): use(folder: url, subpath: subpath, library: library, kind: backend.kind)
+        case .missing(let subpath): pendingFolder = PendingFolder(url: url, subpath: subpath, kind: backend.kind)
         }
     }
 
@@ -234,31 +246,36 @@ public final class SyncModel: ObservableObject {
             problem = "Couldn’t make the folder there: \(error.localizedDescription)"
             return
         }
-        use(folder: pending.url, subpath: pending.subpath, library: library)
+        use(folder: pending.url, subpath: pending.subpath, library: library, kind: pending.kind)
     }
 
-    private func use(folder url: URL, subpath: String, library: String) {
+    private func use(folder url: URL, subpath: String, library: String, kind: SyncPlaceKind) {
         do {
             let bookmark = try bookmarks.make(url)
-            begin(SyncSettings(kind: .folder, library: Self.libraryName(library), bookmark: bookmark, subpath: subpath, folderName: url.lastPathComponent))
+            begin(SyncSettings(kind: kind, library: Self.libraryName(library), bookmark: bookmark, subpath: subpath, folderName: url.lastPathComponent))
         } catch {
             problem = "Couldn’t keep access to that folder: \(error.localizedDescription)"
         }
     }
 
-    /// Syncs through a private gist with a pasted GitHub token (classic with the `gist` scope, or fine-grained with
-    /// Gists: read and write). The token stays in the Keychain.
-    public func useGist(token: String, library: String) {
+    /// Syncs through a backend set up with a pasted token (kept in the Keychain).
+    public func use(_ backend: SyncBackend, token: String, library: String) {
         let clean = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
-            problem = "Paste a GitHub token first."
+            problem = "Paste a token first."
             return
         }
         guard store.setToken(clean) else {
             problem = "Couldn’t keep the token on this phone (its Keychain said no). Try again."
             return
         }
-        begin(SyncSettings(kind: .gist, library: Self.libraryName(library)))
+        begin(SyncSettings(kind: backend.kind, library: Self.libraryName(library)))
+    }
+
+    /// Syncs through a private gist with a pasted GitHub token (classic with the `gist` scope, or fine-grained with
+    /// Gists: read and write).
+    public func useGist(token: String, library: String) {
+        use(SyncBackends.gist, token: token, library: library)
     }
 
     /// Another library name (devices with the same one meet): the next sync joins it.
@@ -274,19 +291,21 @@ public final class SyncModel: ObservableObject {
 
     private func begin(_ settings: SyncSettings) {
         // A new place: the sync running for the old one stops, what it remembered goes (this one is joined, pulling
-        // first), and a gist token isn't kept when a folder is used.
+        // first), and a token isn't kept for a backend that doesn't use one.
         cancel()
-        if settings.kind == .folder { store.removeToken() }
+        if SyncBackends.backend(settings.kind)?.usesToken != true { store.removeToken() }
         store.save(settings)
         self.settings = settings
         problem = nil
         waiting = nil
         status = .empty
-        // What sync remembered about the old place goes first; then the first sync joins this one.
+        // Once the old sync has ended, what it remembered about the old place goes; then the first sync joins this one.
         runId += 1
         let id = runId
         let syncer = self.syncer
+        let before = stopping
         running = Task { [weak self] in
+            await before?.value
             await syncer.reset()
             await self?.runLoop(id)
         }
@@ -296,7 +315,13 @@ public final class SyncModel: ObservableObject {
     public func turnOff() {
         cancel()
         let syncer = self.syncer
-        Task { await syncer.reset() }
+        let before = stopping
+        // Forgotten once the sync stopped has ended (it could write what it remembered after); a sync turned on again
+        // meanwhile waits for this.
+        stopping = Task {
+            await before?.value
+            await syncer.reset()
+        }
         store.clear()
         settings = nil
         status = .empty
@@ -322,6 +347,6 @@ public final class SyncModel: ObservableObject {
     }
 
     /// GitHub's page to make a token that can only use gists.
-    public static let tokenPage = URL(string: "https://github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker")!
+    public static let tokenPage = SyncBackends.gistTokenPage
 }
 #endif

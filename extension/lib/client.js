@@ -56,6 +56,18 @@ export async function pair({ serverUrl, code, name = browserName(), fetch = glob
   return data.token;
 }
 
+/**
+ * Whether Send feedback belongs in the side panel: only while the feedback extra is on in Onething, as in its other
+ * windows. When the list can't be read (an older Onething), it stays out.
+ */
+export async function feedbackOn(client) {
+  try {
+    return (await client.plugins()).some((p) => p.id === 'feedback' && p.enabled);
+  } catch {
+    return false;
+  }
+}
+
 export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
   const base = normalizeServerUrl(serverUrl);
 
@@ -78,6 +90,7 @@ export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
   }
 
   return {
+    plugins: () => call('/api/plugins'),
     dashboard: (groupId) => call(`/api/dashboard${groupId ? `?group=${encodeURIComponent(groupId)}` : ''}`),
     capture: (text, groupId) => call('/api/capture', { method: 'POST', body: { text, groupId: groupId || null } }),
     complete: (id) => call(`/api/items/${id}/complete`, { method: 'POST', body: {} }),

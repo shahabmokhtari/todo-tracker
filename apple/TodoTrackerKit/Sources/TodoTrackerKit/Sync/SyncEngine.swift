@@ -62,12 +62,14 @@ public struct SyncResult: Sendable {
 
 /// Syncs the phone's tasks folder through a remote: merges each other device's latest snapshot into the vault
 /// (three-way, against what the two devices last agreed on), then publishes this vault's snapshot. Nothing is merged or
-/// published when neither side changed. One sync at a time (an actor). Port of C#'s `SyncEngine`.
+/// published when neither side changed. One sync (or forget) at a time, in turn (`gate`: the actor alone lets another
+/// in at each `await`). Port of C#'s `SyncEngine`.
 public actor SyncEngine {
     public let store: VaultStore
     public let remote: SyncRemote
     public let state: SyncState
     private let clock: () -> Date
+    private let gate = SerialGate()
 
     public init(store: VaultStore, remote: SyncRemote, state: SyncState, clock: @escaping () -> Date = Date.init) {
         self.store = store
@@ -79,7 +81,12 @@ public actor SyncEngine {
     /// One sync: merge what came, publish what changed. Starts over (up to 3 times) when the tasks folder changed while
     /// syncing; cancelled part way it leaves the folder whole and the next sync starts over.
     @discardableResult
-    public func sync() async throws -> SyncResult { try await run(publish: true) }
+    public func sync() async throws -> SyncResult {
+        await gate.enter()
+        defer { gate.leave() }
+        try Task.checkCancellation()
+        return try await run(publish: true)
+    }
 
     /// Joining an existing sync for the first time: everything the others have comes in first, then the phone's own
     /// `board.json` (from before the tasks folder) is brought in beside it — a task already there (same id) is never
@@ -87,6 +94,9 @@ public actor SyncEngine {
     /// of that computer's tasks with the same ids; importing them first would turn each into a "(from iPhone)" copy.
     @discardableResult
     public func join(importing legacyBoard: URL?) async throws -> SyncResult {
+        await gate.enter()
+        defer { gate.leave() }
+        try Task.checkCancellation()
         var first = try await run(publish: false)
         // Not everything came in yet (a device's files still arriving, or one that couldn't be read): importing now
         // could copy tasks that are on their way. Nothing is imported or published; join again later.
@@ -110,8 +120,10 @@ public actor SyncEngine {
         state.status = status
     }
 
-    /// Stops merging a device (a phone or computer that's gone).
+    /// Stops merging a device (a phone or computer that's gone). Waits for a sync running now.
     public func forget(_ device: String) async throws {
+        await gate.enter()
+        defer { gate.leave() }
         try await remote.forget(device)
         try state.forgetPeer(device)
         state.remoteVersion = nil

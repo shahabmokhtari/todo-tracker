@@ -49,8 +49,9 @@ rule as on computers (sync.md: "The tasks folder itself is never moved").
 If the first pull didn't get everything (a device's file half read, contents that haven't arrived), steps 3 and 4
 wait for a later join: importing against half of the others' tasks would make copies of the rest.
 
-Importing *after* the first pull matters: a phone that used remote mode against a computer holds copies of that
-computer's tasks with the same ids; importing them first would turn every one into a "(from iPhone)" copy.
+Importing *after* the first pull matters: a phone that once used a computer's tasks directly (earlier versions could)
+may hold copies of that computer's tasks with the same ids; importing them first would turn every one into a
+"(from iPhone)" copy.
 
 ## What a phone must implement
 

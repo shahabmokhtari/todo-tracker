@@ -15,7 +15,7 @@ struct TodoTrackerApp: App {
     @State private var breakWindows: BreakWindows?
     #endif
 
-    /// The tasks on this device (or the computer's, or the server's on a Mac). A debug build started with TT_DEMO=1 shows
+    /// The tasks on this device (or the server's on a Mac). A debug build started with TT_DEMO=1 shows
     /// a made-up board kept in memory instead (screenshots), and TT_VIEW=board (tasks, done…) opens on that view.
     private static func makeModel() -> BoardModel {
         #if DEBUG
@@ -79,7 +79,7 @@ struct TodoTrackerApp: App {
         #else
         WindowGroup("Onething", id: AppShell.sceneId) {
             shell
-                // Back in the app: a computer that wasn't answering is tried again at once, and a sync runs.
+                // Back in the app: a sync runs.
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         model.becameActive()
@@ -114,8 +114,7 @@ struct TodoTrackerApp: App {
         AppShell(model: model, start: Self.startView)
             .followsAppTheme(theme)
             .onAppear { if !Self.isDemo { BoardModel.requestNotificationPermission() } }
-            // todotracker://task/<id> (Info.plist registers the scheme): the task opens here; a todotracker://pair link
-            // from a computer's Settings › Phones connects this phone to it.
+            // todotracker://task/<id> (Info.plist registers the scheme): the task opens here.
             .onOpenURL { model.open(link: $0) }
             // Done tapped on a widget, with the app running: made at once.
             .onReceive(NotificationCenter.default.publisher(for: WidgetShelf.doneRequested)) { _ in model.applyWidgetRequests() }

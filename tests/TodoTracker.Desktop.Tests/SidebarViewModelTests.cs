@@ -769,11 +769,10 @@ public sealed class SidebarViewModelTests : IDisposable
         _vm.ConnectAiCommand.Execute(null);
         _vm.OpenSyncCommand.Execute(null);
         _vm.SetUpBrowserExtensionCommand.Execute(null);
-        _vm.ConnectPhoneCommand.Execute(null);
         _vm.SendFeedbackCommand.Execute(null);
 
         Assert.Equal(
-            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/#/task/{item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1", "launch:/#/settings/phones", "launch:/?feedback=button"],
+            ["launch:/", $"launch:/report.html?id={item.Id}", $"launch:/#/task/{item.Id}", "launch:/?connect=1", "launch:/?sync=1", "launch:/?extension=1", "launch:/?feedback=button"],
             _shell.OpenedUrls);
         _vm.CopyApiTokenCommand.Execute(null);
         _vm.CopyLinkCommand.Execute(_vm.Focus);

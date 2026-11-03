@@ -10,6 +10,8 @@ public enum Feedback {
     public static let publicKey = "pk_gGPPMjRSsuHaXRdgdXvUevvL"
     /// The longest note, in code points.
     public static let maxMessage = 2000
+    /// The longest reply address, in code points.
+    public static let maxContact = 200
     /// Debug builds log the request instead of sending it unless this is "1" (set it in the Xcode scheme).
     public static let sendVariable = "ONETHING_FEEDBACK_SEND"
 
@@ -32,14 +34,29 @@ public enum Feedback {
         return trim(String(cut))
     }
 
+    /// The reply address as it's sent: every control character gone (new lines and tabs too), trimmed, at most
+    /// `maxContact` code points, trimmed again. Nil when nothing is left.
+    public static func cleanContact(_ text: String?, maxContact: Int = maxContact) -> String? {
+        guard let text else { return nil }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: text.unicodeScalars.filter { $0.properties.generalCategory != .control })
+        var clean = trim(String(scalars))
+        if clean.unicodeScalars.count > maxContact {
+            var cut = String.UnicodeScalarView()
+            cut.append(contentsOf: clean.unicodeScalars.prefix(maxContact))
+            clean = trim(String(cut))
+        }
+        return clean.isEmpty ? nil : clean
+    }
+
     /// How long the note is, in code points (what the counter shows).
     public static func length(_ text: String) -> Int { cleanMessage(text, maxMessage: Int.max).unicodeScalars.count }
 
     /// The request body for a draft (nil: nothing to send).
-    public static func body(_ draft: FeedbackDraft, device: FeedbackDevice, maxMessage: Int = maxMessage) -> FeedbackBody? {
+    public static func body(_ draft: FeedbackDraft, device: FeedbackDevice, maxMessage: Int = maxMessage, maxContact: Int = maxContact) -> FeedbackBody? {
         let message = cleanMessage(draft.message, maxMessage: maxMessage)
         guard !message.isEmpty else { return nil }
-        let contact = draft.contact.map(trim).flatMap { $0.isEmpty ? nil : $0 }
+        let contact = cleanContact(draft.contact, maxContact: maxContact)
         let platform = device.platform.lowercased()
         let version = device.appVersion.flatMap(nonEmpty).map { v in device.build.flatMap(nonEmpty).map { "\(v) (\($0))" } ?? v }
         let metadata: [(String, String)] = [

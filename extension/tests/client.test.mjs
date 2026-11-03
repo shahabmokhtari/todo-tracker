@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { browserName, createClient, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
+import { browserName, createClient, feedbackOn, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
 
 function fakeFetch(responses = {}) {
   const calls = [];
@@ -29,6 +29,17 @@ test('client sends bearer token and browser actor on every request', async () =>
   assert.equal(url, 'http://127.0.0.1:5317/api/dashboard');
   assert.equal(init.headers.Authorization, 'Bearer abc');
   assert.equal(init.headers['X-TodoTracker-Actor'], 'browser-extension');
+});
+
+test('Send feedback shows only while the feedback extra is on in Onething', async () => {
+  const on = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 200, body: [{ id: 'teams', enabled: true }, { id: 'feedback', enabled: true }] } }) });
+  const off = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 200, body: [{ id: 'feedback', enabled: false }] } }) });
+  // An older Onething that doesn't let the browser read its extras: no button that might lead nowhere.
+  const older = createClient({ serverUrl: 'http://127.0.0.1:5317', token: 't', fetch: fakeFetch({ 'GET /api/plugins': { status: 403, body: {} } }) });
+
+  assert.equal(await feedbackOn(on), true);
+  assert.equal(await feedbackOn(off), false);
+  assert.equal(await feedbackOn(older), false);
 });
 
 test('dashboard can be filtered by group', async () => {

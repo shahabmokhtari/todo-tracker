@@ -17,15 +17,6 @@
 </array>
 </dict>
 </array>
-<key>NSAppTransportSecurity</key>
-<dict>
-<key>NSAllowsLocalNetworking</key>
-<true/>
-</dict>
-<key>NSCameraUsageDescription</key>
-<string>Onething uses the camera to scan the code your computer shows when you connect this phone to it.</string>
-<key>NSLocalNetworkUsageDescription</key>
-<string>Onething connects to Onething on your computer, over your Wi-Fi, to use the tasks there.</string>
 <key>UIBackgroundModes</key>
 <array>
 <string>fetch</string>

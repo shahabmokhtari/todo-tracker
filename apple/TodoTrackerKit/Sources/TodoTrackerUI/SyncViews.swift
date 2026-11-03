@@ -16,28 +16,27 @@ struct SyncSection: View {
             NavigationLink {
                 SyncView(model: model, sync: sync)
             } label: {
-                LabeledContent("Sync with your other devices", value: sync.isOn ? (sync.settings?.kind == .gist ? "GitHub gist" : "iCloud Drive") : "Off")
+                LabeledContent("Sync with your other devices", value: sync.backend?.name ?? "Off")
             }
-            .disabled(model.isRemote)
             .accessibilityIdentifier("settings-sync")
         } header: {
             Text("Sync")
         } footer: {
-            Text(model.isRemote
-                 ? "You’re using \(model.remoteComputer ?? "your computer")’s tasks. Disconnect from it to sync on your own instead."
-                 : "Your computers and other phones, without a computer running: through iCloud Drive or a private GitHub gist.")
+            Text("Keep the same tasks on your computers and other phones, with no computer running.")
         }
     }
 }
 
-/// "Sync with your other devices": set up a place (iCloud Drive's TodoTrackerSync folder, or a gist), then see how it
+/// "Sync with your other devices": set up one of `SyncBackends` (a shared folder, a gist…), then see how it
 /// goes: when it last synced, the other devices, problems and changes made on both.
 struct SyncView: View {
     @ObservedObject var model: BoardModel
     @ObservedObject var sync: SyncModel
     @State private var library = SyncLibrary.defaultName
-    @State private var token = ""
-    @State private var picking = false
+    /// What's pasted for each backend set up with a token (by its id).
+    @State private var tokens: [String: String] = [:]
+    /// The backend a folder is being picked for (its id).
+    @State private var picking: String?
     @State private var confirmOff = false
     @State private var forgetting: SyncDevice?
     @Environment(\.openURL) private var openURL
@@ -49,10 +48,11 @@ struct SyncView: View {
         .navigationTitle("Sync")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $picking) {
+        .sheet(isPresented: Binding(get: { picking != nil }, set: { if !$0 { picking = nil } })) {
             FolderPicker { url in
-                picking = false
-                if let url { sync.choose(folder: url, library: library) }
+                let backend = picking.flatMap { id in SyncBackends.all.first { $0.id == id } } ?? SyncBackends.folder
+                picking = nil
+                if let url { sync.choose(folder: url, library: library, backend: backend) }
             }
             .ignoresSafeArea()
         }
@@ -62,7 +62,7 @@ struct SyncView: View {
             Button("Create it here") { sync.createPendingFolder(library: library) }
             Button("Cancel", role: .cancel) { sync.pendingFolder = nil }
         } message: {
-            Text("Your computers meet in iCloud Drive › Apps › TodoTrackerSync. If they sync through iCloud Drive already, pick that folder instead. Otherwise, make it here: \(sync.pendingFolder.map { "\($0.url.lastPathComponent) › \($0.subpath.replacingOccurrences(of: "/", with: " › "))" } ?? "").")
+            Text("Your computers meet in Apps › TodoTrackerSync, in iCloud Drive or OneDrive. If they sync there already, pick that folder instead. Otherwise, make it here: \(sync.pendingFolder.map { "\($0.url.lastPathComponent) › \($0.subpath.replacingOccurrences(of: "/", with: " › "))" } ?? "").")
         }
     }
 
@@ -83,32 +83,32 @@ struct SyncView: View {
         } footer: {
             Text("Devices with the same library name sync together. Your computers use the name of their tasks folder (Todo Tracker unless you changed it).")
         }
-        Section {
-            Button { picking = true } label: { Label("Choose the folder in iCloud Drive…", systemImage: "icloud") }
-                .accessibilityIdentifier("sync-icloud")
-        } header: {
-            Text("iCloud Drive")
-        } footer: {
-            Text("Pick iCloud Drive › Apps › TodoTrackerSync, the folder your Mac and Windows computers use. If it isn’t there yet, pick iCloud Drive and choose Create it here.")
-        }
-        Section {
-            SecureField("GitHub token", text: $token)
-                .accessibilityIdentifier("sync-token")
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .autocorrectionDisabled()
-            Button("Make a token on GitHub…") { openURL(SyncModel.tokenPage) }
-            Button("Sync through a gist") {
-                sync.useGist(token: token, library: library)
-                token = ""
+        ForEach(SyncBackends.all) { backend in
+            Section {
+                switch backend.setup {
+                case .pickFolder:
+                    Button { picking = backend.id } label: { Label(backend.action, systemImage: backend.symbol) }
+                        .accessibilityIdentifier("sync-\(backend.id)")
+                case let .token(page):
+                    SecureField("Token", text: Binding(get: { tokens[backend.id] ?? "" }, set: { tokens[backend.id] = $0 }))
+                        .accessibilityIdentifier("sync-\(backend.id)-token")
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                    Button("Make a token…") { openURL(page) }
+                    Button(backend.action) {
+                        sync.use(backend, token: tokens[backend.id] ?? "", library: library)
+                        tokens[backend.id] = nil
+                    }
+                    .disabled((tokens[backend.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityIdentifier("sync-\(backend.id)")
+                }
+            } header: {
+                Text(backend.name)
+            } footer: {
+                Text(backend.help(model.phone?.deviceKind ?? "device"))
             }
-            .disabled(token.trimmingCharacters(in: .whitespaces).isEmpty)
-            .accessibilityIdentifier("sync-gist")
-        } header: {
-            Text("A private GitHub gist")
-        } footer: {
-            Text("Make a token that can only use gists (the gist scope), copy it and paste it here. It stays in this \(model.phone?.deviceKind ?? "device")’s Keychain. On your computers, turn on GitHub gist sync too.")
         }
         if let problem = sync.problem {
             Section { Text(problem).foregroundStyle(.red).font(.footnote) }

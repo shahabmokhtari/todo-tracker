@@ -4,40 +4,26 @@ using System.Text.Json;
 
 namespace TodoTracker.Server;
 
-/// <summary>A browser (the extension) or a phone paired with Onething, as the app shows it: never its token.</summary>
+/// <summary>A browser paired with Onething (the extension), as the app shows it: never its token.</summary>
 public sealed record PairedDevice(string Id, string Name, DateTimeOffset PairedAt, DateTimeOffset? LastUsed);
 
 /// <summary>
 /// Browsers paired through a pairing code. Each gets its own token (kept only as a hash), which reaches the task API
 /// and nothing else, always counts as the browser, and can be taken back on its own.
 /// </summary>
-public sealed class PairedBrowsers(TodoTrackerServerOptions options, TimeProvider time)
-    : PairedDevices(options, time, "paired-browsers.json", "ttb_", "Browser");
-
-/// <summary>
-/// Phones and tablets paired from Settings › Phones. Each gets its own token (kept only as a hash), which works only on
-/// the phone port and only for what the phone apps do, and can be taken back on its own.
-/// </summary>
-public sealed class PairedPhones(TodoTrackerServerOptions options, TimeProvider time)
-    : PairedDevices(options, time, "paired-phones.json", "ttp_", "Phone");
-
-/// <summary>Devices paired through a code: each with its own token (kept only as a hash) that can be taken back.</summary>
-public abstract class PairedDevices
+public sealed class PairedBrowsers
 {
+    private const string Prefix = "ttb_";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private readonly string _path;
-    private readonly string _prefix;
-    private readonly string _fallbackName;
     private readonly TimeProvider _time;
     private readonly Lock _lock = new();
     private List<Entry> _entries;
 
-    protected PairedDevices(TodoTrackerServerOptions options, TimeProvider time, string fileName, string prefix, string fallbackName)
+    public PairedBrowsers(TodoTrackerServerOptions options, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _path = Path.Combine(options.DataDirectory, fileName);
-        _prefix = prefix;
-        _fallbackName = fallbackName;
+        _path = Path.Combine(options.DataDirectory, "paired-browsers.json");
         _time = time ?? TimeProvider.System;
         _entries = Load();
     }
@@ -50,15 +36,15 @@ public abstract class PairedDevices
         }
     }
 
-    /// <summary>Pairs a device: returns its token (handed to it once, never stored).</summary>
+    /// <summary>Pairs a browser: returns its token (handed to it once, never stored).</summary>
     public (string Token, PairedDevice Device) Pair(string? name)
     {
-        var token = _prefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var token = Prefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var clean = new string([.. (name ?? string.Empty).Trim().Where(c => !char.IsControl(c)).Take(60)]);
-        var entry = new Entry(Guid.NewGuid().ToString("N")[..12], clean.Length == 0 ? _fallbackName : clean, Hash(token), _time.GetUtcNow(), null);
+        var entry = new Entry(Guid.NewGuid().ToString("N")[..12], clean.Length == 0 ? "Browser" : clean, Hash(token), _time.GetUtcNow(), null);
         lock (_lock)
         {
-            // Saved first: if it can't be, nothing changes (no token handed out for a device that isn't kept).
+            // Saved first: if it can't be, nothing changes (no token handed out for a browser that isn't kept).
             List<Entry> next = [.. _entries, entry];
             Save(next);
             _entries = next;
@@ -67,10 +53,10 @@ public abstract class PairedDevices
         return (token, new PairedDevice(entry.Id, entry.Name, entry.PairedAt, null));
     }
 
-    /// <summary>The paired device this token belongs to, or null.</summary>
+    /// <summary>The paired browser this token belongs to, or null.</summary>
     public PairedDevice? Match(string? token)
     {
-        if (token is null || !token.StartsWith(_prefix, StringComparison.Ordinal))
+        if (token is null || !token.StartsWith(Prefix, StringComparison.Ordinal))
         {
             return null;
         }
@@ -131,7 +117,7 @@ public abstract class PairedDevices
         }
         catch (JsonException)
         {
-            // Unreadable: no device gets in (fail closed), and the file is kept aside rather than overwritten.
+            // Unreadable: no browser gets in (fail closed), and the file is kept aside rather than overwritten.
             try
             {
                 File.Move(_path, _path + ".bad", overwrite: true);

@@ -150,13 +150,12 @@ public struct DashboardView: View {
             if chrome { groupTabs }
             captureBar
             if searching || !model.searchText.isEmpty { searchBar }
-            if model.remoteBanner != nil { RemoteBanner(model: model, reconnect: { showSettings = true }) }
-            if let status = model.status, status != model.remoteBanner {
+            if let status = model.status {
                 Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
             }
             if scrollable {
                 ScrollView { sections.padding(.bottom, 8) }.scrollIndicators(.hidden)
-                    // Pull down: read again from the computer (or look for it again).
+                    // Pull down: read again from the server (on a Mac).
                     .refreshable { await model.pullToRefresh() }
             } else {
                 sections

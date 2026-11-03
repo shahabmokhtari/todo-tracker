@@ -50,7 +50,7 @@ test('Send feedback: a note that couldn’t go keeps its words and goes on the n
 
   const sheet = page.locator('#drawer');
   await expect(sheet.locator('.drawer-head')).toContainText('Send feedback');
-  await expect(sheet).toContainText('We’ll include your app version, device model and language.');
+  await expect(sheet).toContainText('We’ll include the app version, your OS and its version, device model, language and screen size.');
   const send = sheet.getByRole('button', { name: 'Send' });
   await expect(send).toBeDisabled();
   // Opened once: a reload doesn't open it again.

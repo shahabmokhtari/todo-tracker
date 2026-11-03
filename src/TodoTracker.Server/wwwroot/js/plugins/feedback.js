@@ -12,7 +12,7 @@ export const TEXTS = {
   sent: 'Thanks — we read every note.',
   retry: 'Couldn’t send — check your connection and try again.',
   failed: 'Couldn’t send your note: something went wrong on our side. Please try again later.',
-  finePrint: 'We’ll include your app version, device model and language.',
+  finePrint: 'We’ll include the app version, your OS and its version, device model, language and screen size.',
   contactHint: 'Only if you’d like a reply. It’s shown with your note on GitHub.',
 };
 

@@ -139,12 +139,12 @@ on the web.
 **Groups:** tap the group you're in again (or **Edit**) to rename it, give it a color, or delete it. Its tasks move to
 the group you pick, so none are lost.
 
-**Settings** (⚙): sync, or a connected computer; light, dark, or as your phone is; how much energy you have in a day;
+**Settings** (⚙): sync; light, dark, or as your phone is; how much energy you have in a day;
 how long a focus session and its breaks last; and whether notifications and on-time alarms are on.
 
-**Where your tasks are.** The phone is in one of three modes, and Settings says which: **only on this phone** (the
-start), **syncing on its own** with your other devices (below), or **using a computer's tasks** (the section after).
-Switching never deletes tasks: the ones on the phone stay as they are.
+**Where your tasks are.** The phone keeps them in a tasks folder of its own, and Settings says which way it works:
+**only on this phone** (the start), or **syncing on its own** with your other devices (below). Turning sync on or off
+never deletes tasks: the ones on the phone stay as they are.
 
 ### Android widgets
 
@@ -157,8 +157,7 @@ Two widgets keep the one thing to do now on your home screen. Touch and hold an 
   it scrolls.
 
 Tap a task to open it in the app. **Done** marks it done right there, just as **Mark done** in the app does (it's yours
-on the timeline). A task with subtasks still to do shows **Open** instead. Connected to a computer, Done goes to the
-computer; when it can't be reached, the app opens on that task and tells you, so you can mark it done once you're back.
+on the timeline). A task with subtasks still to do shows **Open** instead.
 Snoozed tasks come back on the widgets on time, even with the app closed. With nothing to do, they say so.
 
 ### Sync Android with your other devices
@@ -186,45 +185,8 @@ arrived yet), and **Changed on both**: the same line changed on the phone and el
 task; to choose one, open it on a computer (Keep mine / Keep theirs aren't on the phone yet). **Turn sync off** keeps
 your tasks on the phone and forgets the token. Joining another library adds this phone's tasks to it too.
 
-Your phone's backup (and moving to a new phone) keeps your tasks, but not the sync sign-in or a computer connection: on
-the new phone, set up sync again (it joins as a new device) or connect again.
-
-A phone either syncs on its own or uses a computer's tasks: connecting to a computer turns sync off (the computer syncs
-then), and to sync on its own again, disconnect first.
-
-### Use your computer's tasks on Android
-
-On its own, the Android app keeps its tasks on the phone (and can sync them, above). It can use the tasks on your
-computer instead, over your Wi-Fi at home or anywhere with Tailscale:
-
-1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
-   Tracker. Choose **Connect a phone**: it shows a QR code and a link.
-2. On the phone, open **Settings › Connect to a computer**, check **This phone's name** (the computer lists the phone by
-   it), and tap **Scan the code** (or paste the link; opening the link on the phone works too). The phone asks first.
-   The code works once, for 10 minutes.
-
-From then on the phone shows the computer's tasks ("On <computer>" under the greeting) and your changes go straight
-there (the timeline says they came from your phone). What changes on the computer shows up within half a minute, and at
-once when you come back to the app. The focus timer's lengths are set on the computer.
-
-* **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
-  computer, with the time; changes wait until you're back (**Try again** checks now).
-* **Reminders** set on the computer also notify you on the phone, even with the app closed, and **Mark done** / **In an
-  hour** on them change the task on the computer (if it can't be reached, the notification says so). With the app
-  closed, the phone checks the computer every 15 minutes or so, so a reminder added there meanwhile still rings.
-* **Disconnect** (Settings › Connect to a computer) takes the phone back to its own tasks, just as you left them: they're
-  never touched while it's connected. To remove the phone on the computer too, use **Disconnect** in Settings › Phones
-  there. If the computer **disconnects the phone**, the app says so, shows its own tasks again, and offers **Reconnect**.
-* The phone only trusts your computer: it checks the computer's certificate against the fingerprint in the code, and
-  keeps its key encrypted with the phone's keystore.
-
-## Phones
-
-The phone apps (iPhone, iPad, Android) can use the tasks on your computer, at home on Wi-Fi or anywhere with
-Tailscale. Turn on the **Phones** extra (Settings › Extras), then in **Settings › Phones** (or **⋯ › Connect a phone…**
-in the sidebar) turn on **Let phones connect** and restart Onething. **Connect a phone** shows a QR code: scan it in
-the phone app (it works once, for 10 minutes). **Connected phones** lists them; **Disconnect** takes one's access back.
-A phone only reaches your tasks, never settings, hooks or AI apps. See [`docs/plugins.md`](plugins.md#phones).
+Your phone's backup (and moving to a new phone) keeps your tasks, but not the sync sign-in: on the new phone, set up
+sync again (it joins as a new device).
 
 ## Send feedback
 
@@ -243,9 +205,10 @@ only if you'd like a reply, and press **Send**. Every note is read.
   it off with **Shake to send feedback** in Settings; not while a sheet, a dialog or a break is on screen).
 
 No connection? The sheet keeps your note and says so; press **Send** again later (it's never filed twice). What's sent
-with it is only your app version, system, device model and language, never your tasks. The note becomes an issue on
-Onething's public GitHub repository (with your email, if you gave one): see [privacy](privacy.md). Don't want it? Turn
-off the **Send feedback** extra (Settings › Extras).
+with it is only the app version, your system and its version, device model, language and screen size, never your tasks. The note becomes an issue on
+Onething's public GitHub repository (with your email, if you gave one): see [privacy](privacy.md). Nothing is sent
+unless you press **Send**; on the web and desktop apps you can also turn off the **Send feedback** extra (Settings ›
+Extras).
 
 ## Teams reminders
 
@@ -315,7 +278,7 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
 * **Settings** (in the sidebar, the gear on an iPhone, or Onething › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
-  also where your tasks are, **Computer** and **Sync** (below).
+  also where your tasks are and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
 * **Plan** (a week as a time grid; a day at a time on iPhone): drag a task from *Not planned* onto a time to plan a block
@@ -325,8 +288,8 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
   keyboard, the arrow keys move a selected block, Shift with up and down changes its length, Return opens it and Delete
   takes it off the plan. While a block is on, its task is the thing to do now. Each day shows its deadlines, what comes
   back that day, and its energy (⚡ planned against what there is in a day; red when it's more). *Work hours* or *Full
-  day*, and the gear sets work hours, work days and the day a week starts on, for each group on this device. Connected to
-  a computer (or on a Mac), planning goes to the computer's tasks like every other change.
+  day*, and the gear sets work hours, work days and the day a week starts on, for each group on this device. On a Mac,
+  planning goes to the computer's tasks like every other change.
 * **Reports**: time tracked, focus sessions, tasks done and your longest streak for 7 days, 4 weeks, 3 months, a year or
   dates you pick; time per day (focus and other time), by group, the tasks that took the most time, when you work
   (weekday × hour), active days (for 3 months or more), and the **Timeline**: a row per task with bars for its work, a
@@ -345,8 +308,7 @@ To add one on an iPhone or iPad, touch and hold the home screen, tap **Edit** �
 Mac, right-click the desktop and choose **Edit Widgets**, or open Notification Center and click **Edit Widgets**.
 
 Tap a task to open it in the app. **Done** takes the task off the widget at once and opens the app, which marks it done
-the way **Mark done** does: on this device, through your tasks folder on a Mac, or on the computer an iPhone or iPad is
-connected to (if it can't be reached yet, it's done as soon as it can be). A task with subtasks still to do shows
+the way **Mark done** does: on this device, or through your tasks folder on a Mac. A task with subtasks still to do shows
 **Open** instead. Snoozed tasks come back on the widgets on time, even with the app closed. The widgets get only the
 titles and groups of your tasks, never their details or notes.
 
@@ -373,38 +335,11 @@ downloaded yet: they come in on a later sync), and tasks **changed on both** (bo
 on a computer to choose one). **Turn sync off** keeps your tasks on the device as they are. More in
 [sync.md](sync.md#iphone-and-ipad).
 
-A device works one way at a time, and Settings › Your tasks says which: **connected to a computer** (below),
-**syncing on its own**, or **only on this device**. Connecting to a computer turns syncing off; nothing is deleted
-either way.
+Settings › Your tasks says whether the device is **syncing on its own** or keeps its tasks **only on this device**;
+nothing is deleted either way.
 
 When you update from an earlier version, the tasks the app kept move into the tasks folder by themselves (the old file
 stays, as `board.json.migrated`).
-
-### Use your computer's tasks on an iPhone or iPad
-
-Instead of syncing on its own, the iPhone and iPad app can use the tasks on your computer, over your Wi-Fi at home or
-anywhere with Tailscale:
-
-1. On the computer, turn on the **Phones** extra, then **Settings › Phones › Let phones connect**, and restart Todo
-   Tracker. Choose **Connect a phone**: it shows a QR code and a link.
-2. On the phone, open **Settings › Computer › Connect to a computer…**, check **This phone's name** (the computer lists
-   the phone by it; type e.g. "Shahab's iPad", since the phone only offers "iPad"), and scan the code (or paste the
-   link; opening the link on the phone works too). The code works once, for 10 minutes.
-
-From then on the phone shows the computer's tasks and your changes go straight there (the timeline says they came from
-your phone). Settings says **Connected to** your computer. Only opening the full app in the browser stays on the
-computer.
-
-* **Away from its Wi-Fi** (and not on Tailscale), you still see your tasks as they were when the phone last reached the
-  computer, with the time: "Can't reach … You're seeing your tasks from 6:05 PM; changes wait until you're back on its
-  Wi-Fi or Tailscale." Changes are off until then. The phone tries again every 30 seconds and each time you open the
-  app; pull down to try now.
-* **Disconnect** (Settings › Computer) takes the phone back to its own tasks, just as you left them: they're never
-  touched while it's connected. To remove the phone on the computer too, use **Disconnect** in Settings › Phones there.
-* If the computer **disconnects the phone**, the app says so and goes back to the phone's own tasks; **Reconnect**
-  pairs it again.
-* The phone only trusts your computer: it checks the computer's certificate against the fingerprint in the code, and
-  keeps its key in the Keychain.
 
 ## The server on its own, and the Apple apps from source
 

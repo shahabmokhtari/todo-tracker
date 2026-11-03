@@ -1,15 +1,16 @@
 {
-  "about": "Send feedback: what every app sends to the issues relay, and what each answer means. A draft (kind, message, optional email, source, the sheet's clientID) plus coarse facts about the device become the request body; never anything from the tasks. The message: control characters removed (except new lines and tabs), trimmed, cut to maxMessage code points (2000 unless the case says), trimmed again; nothing left means nothing to send (body null). The title is \"<Kind> · <Platform>: <message>\" in full (the relay shortens it). The email is trimmed and left out when empty. Metadata keeps this key order and leaves out what isn't known. Answers: 2xx is sent; 408, 429, 5xx and no answer at all (offline, status null) mean try again with the same clientID; any other 4xx failed. Checked by the C# core (FeedbackFixtureTests), the server (FeedbackApiTests), the web app (feedback.test.mjs), Swift (FeedbackTests) and Kotlin (FeedbackTest).",
+  "about": "Send feedback: what every app sends to the issues relay, and what each answer means. A draft (kind, message, optional email, source, the sheet's clientID) plus coarse facts about the device become the request body; never anything from the tasks. The message: control characters removed (except new lines and tabs), trimmed, cut to maxMessage code points (2000 unless the case says), trimmed again; nothing left means nothing to send (body null). The title is \"<Kind> · <Platform>: <message>\" in full (the relay shortens it). The email: control characters removed (all of them, new lines and tabs too), trimmed, cut to maxContact (200) code points, trimmed again, and left out when nothing is left. Metadata keeps this key order and leaves out what isn't known. Answers: 2xx is sent; 408, 429, 5xx and no answer at all (offline, status null) mean try again with the same clientID; any other 4xx failed. Checked by the C# core (FeedbackFixtureTests), the server (FeedbackApiTests), the web app (feedback.test.mjs), Swift (FeedbackTests) and Kotlin (FeedbackTest).",
   "relay": {
     "url": "https://issues.awesomehq.app/v1/issues",
     "publicKey": "pk_gGPPMjRSsuHaXRdgdXvUevvL",
-    "maxMessage": 2000
+    "maxMessage": 2000,
+    "maxContact": 200
   },
   "texts": {
     "sent": "Thanks — we read every note.",
     "retry": "Couldn’t send — check your connection and try again.",
     "failed": "Couldn’t send your note: something went wrong on our side. Please try again later.",
-    "finePrint": "We’ll include your app version, device model and language.",
+    "finePrint": "We’ll include the app version, your OS and its version, device model, language and screen size.",
     "contactHint": "Only if you’d like a reply. It’s shown with your note on GitHub."
   },
   "kinds": [
@@ -92,6 +93,44 @@
         "clientID": "22222222-3333-4444-8555-666666666666",
         "labels": ["kind:other", "platform:linux", "source:qr"],
         "metadata": { "Platform": "linux", "App version": "1.0.0", "OS": "Linux 6.8", "Device": "arm64", "Language": "fr-FR", "Screen": "2560x1440", "Source": "qr" }
+      }
+    },
+    {
+      "name": "The email: control characters removed, then trimmed",
+      "draft": { "kind": "idea", "message": "Bigger buttons", "contact": "\u0007 me\u0000@exam\tple.com\r\n", "source": "button", "clientID": "44444444-5555-4666-8777-888888888888" },
+      "device": { "platform": "Android", "appVersion": "2.0", "build": "12", "os": "Android 15", "device": "Pixel 9", "language": "en-US", "screen": "412x915" },
+      "body": {
+        "message": "Bigger buttons",
+        "title": "Idea · Android: Bigger buttons",
+        "contact": "me@example.com",
+        "clientID": "44444444-5555-4666-8777-888888888888",
+        "labels": ["kind:idea", "platform:android", "source:button"],
+        "metadata": { "Platform": "android", "App version": "2.0 (12)", "OS": "Android 15", "Device": "Pixel 9", "Language": "en-US", "Screen": "412x915", "Source": "button" }
+      }
+    },
+    {
+      "name": "The email: cut to 200 code points (an emoji is one)",
+      "draft": { "kind": "other", "message": "Hello", "contact": "  😀aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@example.com", "source": "page", "clientID": "55555555-6666-4777-8888-999999999999" },
+      "device": { "platform": "Web", "appVersion": "1.0.0", "build": null, "os": null, "device": null, "language": null, "screen": null },
+      "body": {
+        "message": "Hello",
+        "title": "Other · Web: Hello",
+        "contact": "😀aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "clientID": "55555555-6666-4777-8888-999999999999",
+        "labels": ["kind:other", "platform:web", "source:page"],
+        "metadata": { "Platform": "web", "App version": "1.0.0", "Source": "page" }
+      }
+    },
+    {
+      "name": "The email: nothing left once cleaned, so it is left out",
+      "draft": { "kind": "bug", "message": "Crash on start", "contact": " \u0007\u0000 ", "source": "qr", "clientID": "66666666-7777-4888-8999-aaaaaaaaaaaa" },
+      "device": { "platform": "iOS", "appVersion": "1.2.3", "build": "45", "os": "iOS 26.1", "device": "iPhone17,1", "language": "en-US", "screen": "393x852" },
+      "body": {
+        "message": "Crash on start",
+        "title": "Bug · iOS: Crash on start",
+        "clientID": "66666666-7777-4888-8999-aaaaaaaaaaaa",
+        "labels": ["kind:bug", "platform:ios", "source:qr"],
+        "metadata": { "Platform": "ios", "App version": "1.2.3 (45)", "OS": "iOS 26.1", "Device": "iPhone17,1", "Language": "en-US", "Screen": "393x852", "Source": "qr" }
       }
     },
     {

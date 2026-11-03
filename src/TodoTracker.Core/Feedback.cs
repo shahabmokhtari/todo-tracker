@@ -38,6 +38,9 @@ public static class Feedback
 
     public const int MaxMessage = 2000;
 
+    /// <summary>The longest reply address kept, in code points.</summary>
+    public const int MaxContact = 200;
+
     public static IReadOnlyList<(string Id, string Label)> Kinds { get; } = [("bug", "Bug"), ("idea", "Idea"), ("other", "Other")];
 
     public static IReadOnlyList<string> Sources { get; } = ["button", "shake", "page", "qr"];
@@ -48,7 +51,7 @@ public static class Feedback
         public const string Sent = "Thanks — we read every note.";
         public const string Retry = "Couldn’t send — check your connection and try again.";
         public const string Failed = "Couldn’t send your note: something went wrong on our side. Please try again later.";
-        public const string FinePrint = "We’ll include your app version, device model and language.";
+        public const string FinePrint = "We’ll include the app version, your OS and its version, device model, language and screen size.";
         public const string ContactHint = "Only if you’d like a reply. It’s shown with your note on GitHub.";
 
         public static string For(FeedbackOutcome outcome) => outcome switch
@@ -95,6 +98,28 @@ public static class Feedback
         return cut.ToString().Trim();
     }
 
+    /// <summary>
+    /// The reply address as sent: every control character removed (new lines and tabs too), trimmed, cut to
+    /// <see cref="MaxContact"/> code points and trimmed again. Empty: none.
+    /// </summary>
+    public static string CleanContact(string? text)
+    {
+        var kept = new string([.. (text ?? string.Empty).Where(c => !char.IsControl(c))]).Trim();
+        var cut = new StringBuilder();
+        var count = 0;
+        foreach (var rune in kept.EnumerateRunes())
+        {
+            if (count++ == MaxContact)
+            {
+                break;
+            }
+
+            cut.Append(rune.ToString());
+        }
+
+        return cut.ToString().Trim();
+    }
+
     /// <summary>How many code points the note has as it would be sent (for the counter near the limit).</summary>
     public static int Length(string? text) => CleanMessage(text, int.MaxValue).EnumerateRunes().Count();
 
@@ -127,7 +152,7 @@ public static class Feedback
             ["message"] = message,
             ["title"] = $"{kind.Label} · {device.Platform}: {message}",
         };
-        if (draft.Contact?.Trim() is { Length: > 0 } contact)
+        if (CleanContact(draft.Contact) is { Length: > 0 } contact)
         {
             body["contact"] = contact;
         }

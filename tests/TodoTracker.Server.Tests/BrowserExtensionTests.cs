@@ -91,6 +91,8 @@ public sealed class BrowserExtensionTests : IAsyncLifetime
         var created = JsonNode.Parse(await (await paired.PostAsJsonAsync(new Uri("/api/capture", UriKind.Relative), new { text = "From a page" }, TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
         var id = created["id"]?.GetValue<string>() ?? created["item"]!["id"]!.GetValue<string>();
         (await paired.GetAsync(new Uri("/api/dashboard", UriKind.Relative), TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        // Which extras are on: the side panel hides Send feedback when that one is off.
+        (await paired.GetAsync(new Uri("/api/plugins", UriKind.Relative), TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/notes", UriKind.Relative), new { text = "a note" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/schedule", UriKind.Relative), new { inMinutes = 60 }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await paired.PostAsJsonAsync(new Uri($"/api/items/{id}/complete", UriKind.Relative), new { }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();

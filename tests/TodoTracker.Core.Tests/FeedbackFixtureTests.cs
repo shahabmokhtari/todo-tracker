@@ -53,6 +53,7 @@ public sealed class FeedbackFixtureTests
         Assert.Equal(Feedback.RelayUrl, relay["url"]!.GetValue<string>());
         Assert.Equal(Feedback.PublicKey, relay["publicKey"]!.GetValue<string>());
         Assert.Equal(Feedback.MaxMessage, relay["maxMessage"]!.GetValue<int>());
+        Assert.Equal(Feedback.MaxContact, relay["maxContact"]!.GetValue<int>());
         Assert.Equal(Fixture["kinds"]!.AsArray().Select(k => (k!["id"]!.GetValue<string>(), k["label"]!.GetValue<string>())), Feedback.Kinds);
         Assert.Equal(Fixture["sources"]!.AsArray().Select(s => s!.GetValue<string>()), Feedback.Sources);
 

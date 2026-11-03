@@ -3,7 +3,7 @@
 Onething keeps your tasks on your devices: markdown files in a folder you own. There's no account and no telemetry.
 The apps only talk to the services you switch on (sync, connectors, an AI model you add) and, when you choose to
 send a note, to our feedback relay. The same words are on the website at
-<https://onething.awesomehq.app/privacy.html>.
+<https://onething.awesomehq.app/privacy>.
 
 ## Your tasks
 
@@ -22,7 +22,8 @@ What's sent:
 * **Your email, only if you type one**, so we can reply.
 * **Coarse facts about the app**: the platform (iOS, iPadOS, Android, macOS, Windows, Linux), the app version, the
   system version, the device model (for example `iPhone17,1` or `Pixel 9`; on a computer, the processor type such as
-  `arm64`), your language, the screen size, and how you opened the sheet (a button or a shake).
+  `arm64`), your language, the screen size, and how you opened the sheet: `button` (a button or a menu), `shake` (a
+  shake on a phone), `page` (a link on a web page) or `qr` (a QR code).
 
 What's never sent: your tasks or anything in them, your name, any user, install or advertising id, your IP address as
 data, your location, screenshots or logs.
@@ -36,10 +37,12 @@ issue stays on GitHub until it's deleted there. The web app and the Windows and 
 computer; the phone and Mac apps send it themselves. None of them use a GitHub account or token.
 
 What it's used for: support (reading your note and, if you gave an email, replying) and making the app work better.
-It's not linked to your identity and not used for tracking or advertising.
+It's not used for tracking or advertising. The note isn't tied to an account or an id; the only thing that can say
+who you are is the email, if you type one.
 
-Don't want it at all? Turn off **Send feedback** in **Settings › Extras** (web and desktop), or **Shake to send
-feedback** in Settings on a phone.
+Don't want it at all? Nothing is sent unless you write a note and press **Send**. On the web and desktop apps you can
+also turn off **Send feedback** in **Settings › Extras**, which takes it out of every window. On a phone, **Shake to
+send feedback** in Settings only stops a shake from opening the sheet; the **Send feedback** button stays.
 
 ## Store privacy labels
 
@@ -47,5 +50,5 @@ What the store forms should say, from the above (Onething collects nothing else)
 
 | Store | Answer |
 | --- | --- |
-| **App Store** (App Privacy) | *Data Not Linked to You*: **Contact Info › Email Address** (optional; App Functionality) and **User Content › Customer Support** (the feedback note; App Functionality). **Diagnostics › Other Diagnostic Data** (app and system version, device model; App Functionality). Not used for tracking. |
+| **App Store** (App Privacy) | *Data Linked to You*: **Contact Info › Email Address** (optional; App Functionality). *Data Not Linked to You*: **User Content › Customer Support** (the feedback note; App Functionality) and **Diagnostics › Other Diagnostic Data** (app and system version, device model, language, screen size; App Functionality). Not used for tracking. |
 | **Google Play** (Data safety) | Collected, not shared: **Personal info › Email address** (optional; App functionality) and **App activity › Other user-generated content** (the note; App functionality), plus **App info and performance › Diagnostics** (App functionality). Sent over HTTPS. Users can choose not to send any (and to leave the email out). |

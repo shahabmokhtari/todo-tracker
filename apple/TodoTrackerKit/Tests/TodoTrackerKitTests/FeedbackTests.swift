@@ -20,6 +20,7 @@ final class FeedbackTests: XCTestCase {
         XCTAssertEqual(Feedback.relayURL.absoluteString, relay["url"] as? String)
         XCTAssertEqual(Feedback.publicKey, relay["publicKey"] as? String)
         XCTAssertEqual(Feedback.maxMessage, relay["maxMessage"] as? Int)
+        if let maxContact = relay["maxContact"] as? Int { XCTAssertEqual(Feedback.maxContact, maxContact) }
         let texts = try XCTUnwrap(f["texts"] as? [String: String])
         XCTAssertEqual(Feedback.sentText, texts["sent"])
         XCTAssertEqual(Feedback.retryText, texts["retry"])
@@ -42,7 +43,8 @@ final class FeedbackTests: XCTestCase {
                                       clientID: d["clientID"] as! String)
             let device = FeedbackDevice(platform: v["platform"] as! String, appVersion: string(v["appVersion"]), build: string(v["build"]),
                                         os: string(v["os"]), device: string(v["device"]), language: string(v["language"]), screen: string(v["screen"]))
-            let body = Feedback.body(draft, device: device, maxMessage: c["maxMessage"] as? Int ?? Feedback.maxMessage)
+            let body = Feedback.body(draft, device: device, maxMessage: c["maxMessage"] as? Int ?? Feedback.maxMessage,
+                                     maxContact: c["maxContact"] as? Int ?? Feedback.maxContact)
             guard let expected = c["body"] as? [String: Any] else {
                 XCTAssertNil(body, name)
                 continue
@@ -69,7 +71,9 @@ final class FeedbackTests: XCTestCase {
         var root = URL(fileURLWithPath: #filePath)
         for _ in 0..<5 { root.deleteLastPathComponent() }
         let text = try String(contentsOf: root.appendingPathComponent("tests/fixtures/feedback.json"), encoding: .utf8)
-        let caseText = String(text[text.range(of: "\"name\": \(String(decoding: try JSONEncoder().encode(name), as: UTF8.self))")!.upperBound...])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        let caseText = String(text[text.range(of: "\"name\": \(String(decoding: try encoder.encode(name), as: UTF8.self))")!.upperBound...])
         let meta = caseText[caseText.range(of: "\"metadata\": {")!.upperBound...]
         let block = meta[..<meta.firstIndex(of: "}")!]
         let regex = try NSRegularExpression(pattern: "\"([^\"]+)\":")
@@ -86,6 +90,15 @@ final class FeedbackTests: XCTestCase {
     func testTheCounterCountsCodePoints() {
         XCTAssertEqual(Feedback.length("  😀 a\u{7} "), 3)
         XCTAssertEqual(Feedback.cleanMessage(String(repeating: "😀", count: 2001)).unicodeScalars.count, 2000)
+    }
+
+    func testAReplyAddressLosesControlCharactersAndIsCutTo200CodePoints() {
+        XCTAssertEqual(Feedback.cleanContact(" \u{7}me@example.com\r\n\u{0} "), "me@example.com")
+        XCTAssertEqual(Feedback.cleanContact("me@\u{85}example.com"), "me@example.com")
+        XCTAssertNil(Feedback.cleanContact(" \u{1b}\t "))
+        XCTAssertNil(Feedback.cleanContact(nil))
+        XCTAssertEqual(Feedback.cleanContact(String(repeating: "😀", count: 201))?.unicodeScalars.count, 200)
+        XCTAssertEqual(Feedback.cleanContact("ab cd", maxContact: 3), "ab")
     }
 
     func testDebugBuildsOnlySendWithTheFlag() {

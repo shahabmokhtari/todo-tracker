@@ -57,7 +57,7 @@ calm until it matters.
 | Everything about a task | The Windows sidebar | On your phone |
 |---|---|---|
 | ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
-| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. An iPhone or iPad syncs on its own (iCloud Drive or a gist), or uses your computer's tasks over Wi-Fi or Tailscale. |
+| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
 <summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>
@@ -126,7 +126,7 @@ Onething used to be called Todo Tracker. The folder keeps that name, so nothing 
 |---|---|
 | **Windows** | A native sidebar docked to the screen edge, toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window, full-screen breaks on every monitor |
 | **macOS / iOS** | Native SwiftUI apps: Today, Board, Tasks and Done with a sidebar on iPad and Mac (tabs on iPhone), keyboard shortcuts and drag and drop; home-screen, Lock Screen and desktop widgets (Now, Today) with Done; the Mac adds a menu bar glance |
-| **Android** | A native app: Today, quick capture, every task's details, search, reminders that notify you even with the app closed, snooze, notes, task timers and the focus timer with full-screen breaks; home-screen widgets (Now, Today) with Done; syncs on its own with your computers through a GitHub gist ([sync](docs/sync.md)), or uses your computer's tasks over Wi-Fi or Tailscale ([Phones](docs/plugins.md#phones)) |
+| **Android** | A native app: Today, quick capture, every task's details, search, reminders that notify you even with the app closed, snooze, notes, task timers and the focus timer with full-screen breaks; home-screen widgets (Now, Today) with Done; syncs on its own with your computers through a GitHub gist ([sync](docs/sync.md)) |
 | **Linux** | A tray app that runs everything; click it for the full window |
 | **Web** | The whole app at `http://127.0.0.1:5317` (local only), on any screen |
 | **Browser** | An Edge, Chrome and Safari side panel: glance, capture, and notes that keep the page you were on |
@@ -174,19 +174,17 @@ to tasks, and more.
 | [Sync](docs/sync.md) · [Connectors](docs/connectors.md) | Your computers, Notion, Microsoft To Do, GitHub Issues |
 | [Hooks](docs/hooks.md) · [Plugins](docs/plugins.md) | Automations and the event stream; every extra and its switch |
 | [Browser extension](docs/browser-extension.md) | Install and pair |
-| [Phones](docs/plugins.md#phones) | Let the iPhone, iPad and Android apps use this computer's tasks |
 | [Send feedback](docs/plugins.md#send-feedback) · [Privacy](docs/privacy.md) | Tell us about a bug or an idea from any app; what's sent and where |
 | [Product spec](docs/product-spec.md) | Design, rules, security, decisions |
 
 ## Privacy and security
 
 Everything runs on your computer. The server only listens on `127.0.0.1`, checks the address it was called on (no DNS
-rebinding) and a 256-bit token, and never puts the token in a URL. If you let phones connect (the **Phones** extra,
-off by default), it also listens on port 5318 over HTTPS for phones you paired with a QR code, each with its own
-token that only reaches your tasks. There's no account and no telemetry: the app only
+rebinding) and a 256-bit token, and never puts the token in a URL. Phones don't connect to it: they sync on their own
+through iCloud Drive or a GitHub gist. There's no account and no telemetry: the app only
 talks to the services you switch on (sync, connectors, an AI model you add). **Send feedback** sends a note only when
-you press Send: your words, an email if you add one, and your app version, device model and language, never your
-tasks ([privacy](docs/privacy.md)). Details: [product spec › Security](docs/product-spec.md#8-security-local-server).
+you press Send: your words, an email if you add one, and the app version, your system and its version, device
+model, language and screen size, never your tasks ([privacy](docs/privacy.md)). Details: [product spec › Security](docs/product-spec.md#8-security-local-server).
 
 ## Contributing
 

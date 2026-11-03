@@ -308,21 +308,19 @@
             <h3>iPhone and iPad</h3>
             <p class="status ok">Available</p>
             <p>A native app with Today, every task's details, snooze, reminders, notes, energy, search and the focus
-              timer. Syncs with your other devices through iCloud Drive or a gist, or uses your computer's tasks.</p>
+              timer. Syncs with your other devices on its own, through iCloud Drive or a gist.</p>
           </li>
           <li>
             <h3>Android</h3>
             <p class="status ok">Available</p>
             <p>A native app: Today, every task's details, reminder notifications, search, task timers, and the focus
-              timer with full-screen breaks. Syncs with your other devices through a gist, or uses your computer's
-              tasks.</p>
+              timer with full-screen breaks. Syncs with your other devices on its own, through a gist.</p>
           </li>
           <li class="wide">
-            <h3>Your phone and your computer, together</h3>
+            <h3>Your phone and your computers, together</h3>
             <p class="status ok">Available</p>
-            <p>Your phone keeps the same list as your computers. Let it sync on its own (iCloud Drive or a private
-              gist, no computer needed), or scan a code on your computer to use its tasks over your Wi-Fi or
-              Tailscale.</p>
+            <p>Your phone keeps the same list as your computers. It syncs on its own through iCloud Drive or a private
+              GitHub gist, the same places your computers use, with no computer needed.</p>
           </li>
         </ul>
 
@@ -418,8 +416,8 @@ claude mcp add todo-tracker --scope user -- tt mcp
             <li><strong>No account, no telemetry.</strong> The app only talks to the services you switch on: sync,
               connectors, an AI model you add.</li>
             <li><strong>Feedback only when you send it.</strong> Send feedback (Settings, the menus, a shake on a
-              phone) sends your note, an email if you add one, and your app version, device model and language.
-              Never your tasks. <a href="/privacy.html">Privacy details</a>.</li>
+              phone) sends your note, an email if you add one, and the app version, your system and its version,
+              device model, language and screen size. Never your tasks. <a href="/privacy">Privacy details</a>.</li>
             <li><strong>Only on this computer.</strong> The server listens on <code>127.0.0.1</code> only, checks the
               address it was called on, and asks for a 256-bit token.</li>
           </ul>
@@ -438,10 +436,10 @@ claude mcp add todo-tracker --scope user -- tt mcp
       <div class="wrap narrow">
         <p class="eyebrow">Get it</p>
         <h2 id="get-title">Start with one thing</h2>
-        <p>Onething isn't in the app stores yet. Ready-built apps for every platform are attached to each build on
-          GitHub (sign in to GitHub to download them), or you can build it from the source.</p>
+        <p>Onething isn't in the app stores yet. Ready-built apps are on its Releases page on GitHub, or you can
+          build it from the source.</p>
         <p class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml">Download a build</a>
+          <a class="btn btn-primary" href="https://github.com/shahabmokhtari/todo-tracker/releases">Download a build</a>
           <a class="btn" href="https://github.com/shahabmokhtari/todo-tracker">Source on GitHub</a>
         </p>
         <pre class="code" tabindex="0" aria-label="Build and run the Windows app from source"><code><span class="c"># Windows, with the .NET 10 SDK</span>
@@ -461,7 +459,7 @@ dotnet run --project src/TodoTracker.Windows</code></pre>
   <footer class="site-footer">
     <div class="wrap footer-row">
       <p><img src="/img/favicon.svg" alt="" width="20" height="20"> Onething</p>
-      <p><a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a> · <a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/llms.txt">llms.txt</a> · <a href="/privacy.html">Privacy</a> · <a href="#main">Back to top</a></p>
+      <p><a href="https://github.com/shahabmokhtari/todo-tracker">GitHub</a> · <a href="https://github.com/shahabmokhtari/todo-tracker/blob/master/llms.txt">llms.txt</a> · <a href="/privacy">Privacy</a> · <a href="#main">Back to top</a></p>
     </div>
   </footer>
 </body>

@@ -1,13 +1,21 @@
 import Foundation
 
-/// Where a phone syncs on its own: a shared folder it was given (iCloud Drive's `Apps/TodoTrackerSync`), or a private
-/// GitHub gist.
-public enum SyncPlaceKind: String, Sendable {
-    case folder
-    case gist
+/// Which sync backend a phone uses: the id kept in its settings (`SyncBackends` says what each one is). A struct, not
+/// an enum, so another backend is added in one place.
+public struct SyncPlaceKind: RawRepresentable, Hashable, Sendable {
+    public let rawValue: String
+
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    /// A shared folder picked in the Files app (iCloud Drive's or OneDrive's `Apps/TodoTrackerSync`).
+    public static let folder = SyncPlaceKind(rawValue: "folder")
+    /// A private GitHub gist.
+    public static let gist = SyncPlaceKind(rawValue: "gist")
 }
 
-/// How this phone syncs on its own (nil when it doesn't). Kept in UserDefaults; the gist token is in the Keychain.
+/// How this phone syncs on its own (nil when it doesn't). Kept in UserDefaults; a token is in the Keychain.
 public struct SyncSettings: Equatable, Sendable {
     public var kind: SyncPlaceKind
     /// Which set of tasks (a library): devices with the same name meet. "Todo Tracker" unless the person changed it.
@@ -48,7 +56,8 @@ public enum SyncLibrary {
     }
 }
 
-/// Keeps the sync settings (UserDefaults) and the gist token (the Keychain).
+/// Keeps the sync settings (UserDefaults) and the backend's token, if it uses one (the Keychain; kept under its first
+/// name, `gist-token`, so a token saved before stays).
 public final class SyncSettingsStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private let secrets: SecretStore
@@ -61,9 +70,11 @@ public final class SyncSettingsStore: @unchecked Sendable {
         self.secrets = secrets
     }
 
+    /// The settings, when they name a backend this version knows.
     public func load() -> SyncSettings? {
         guard let saved = defaults.dictionary(forKey: Self.settingsKey),
-              let kind = (saved["kind"] as? String).flatMap(SyncPlaceKind.init(rawValue:)) else { return nil }
+              let kind = (saved["kind"] as? String).map({ SyncPlaceKind(rawValue: $0) }),
+              SyncBackends.backend(kind) != nil else { return nil }
         let library = (saved["library"] as? String).map(SyncLibrary.clean) ?? ""
         return SyncSettings(kind: kind, library: library.isEmpty ? SyncLibrary.defaultName : library, bookmark: saved["bookmark"] as? Data,
                             subpath: saved["subpath"] as? String ?? "", folderName: saved["folderName"] as? String ?? "", joined: saved["joined"] as? Bool ?? false,
@@ -85,7 +96,7 @@ public final class SyncSettingsStore: @unchecked Sendable {
 
     public var token: String? { secrets.read(Self.tokenKey).flatMap { $0.isEmpty ? nil : $0 } }
 
-    /// No gist any more (a folder is used): the token isn't kept.
+    /// A backend without a token is used: the token isn't kept.
     public func removeToken() { secrets.remove(Self.tokenKey) }
 
     @discardableResult
@@ -148,8 +159,8 @@ public struct SyncSetupError: Error, LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// Runs this phone's sync (what the Sync screen and the schedule call). An actor: one sync at a time, off the main
-/// thread.
+/// Runs this phone's sync (what the Sync screen and the schedule call). One call at a time, in turn (a sync, a forget
+/// and a reset never overlap), off the main thread.
 public protocol DeviceSyncing: AnyObject, Sendable {
     /// Syncs once with the place set up (the first time, joining it). Nil when sync is off.
     func run() async throws -> SyncResult?
@@ -160,7 +171,7 @@ public protocol DeviceSyncing: AnyObject, Sendable {
     func reset() async
 }
 
-/// The phone syncing on its own: builds the engine for the place in the settings (again when they change) over the
+/// The phone syncing on its own: builds the engine for the backend in the settings (again when they change) over the
 /// app's one tasks folder, and the first time joins (everything comes in before anything goes out).
 public actor PhoneSyncer: DeviceSyncing {
     public let store: VaultStore
@@ -173,6 +184,8 @@ public actor PhoneSyncer: DeviceSyncing {
     private let access: (URL) -> SyncFolderAccess
     private let clock: () -> Date
     private var current: (key: String, engine: SyncEngine)?
+    /// A sync, a forget and a reset wait their turn (the actor alone lets another in at each `await`).
+    private let gate = SerialGate()
 
     /// - Parameters:
     ///   - directory: the app's private sync folder (what sync remembers; never in the tasks folder or the cloud).
@@ -193,6 +206,10 @@ public actor PhoneSyncer: DeviceSyncing {
     }
 
     public func run() async throws -> SyncResult? {
+        await gate.enter()
+        defer { gate.leave() }
+        // Turned off (or moved) while it waited its turn: nothing runs.
+        try Task.checkCancellation()
         guard let setup = settings.load() else {
             current = nil
             return nil
@@ -215,6 +232,9 @@ public actor PhoneSyncer: DeviceSyncing {
     }
 
     public func reset() async {
+        // After the sync running now (cancelled, it stops soon): what it remembered is never written back after this.
+        await gate.enter()
+        defer { gate.leave() }
         current = nil
         let fm = FileManager.default
         for name in (try? fm.contentsOfDirectory(atPath: directory.path)) ?? [] where name != "device.json" {
@@ -248,38 +268,18 @@ public actor PhoneSyncer: DeviceSyncing {
     }
 
     public func forget(_ device: String) async throws {
+        await gate.enter()
+        defer { gate.leave() }
         guard let setup = settings.load() else { return }
         try await engine(for: setup).forget(device)
     }
 
     private func engine(for setup: SyncSettings) throws -> SyncEngine {
         if let current, current.key == setup.key { return current.engine }
-        let remote: SyncRemote
-        switch setup.kind {
-        case .folder:
-            guard let bookmark = setup.bookmark else { throw SyncSetupError("Pick the TodoTrackerSync folder in iCloud Drive again.") }
-            let resolved: (url: URL, stale: Bool)
-            do {
-                resolved = try bookmarks.resolve(bookmark)
-            } catch {
-                throw SyncSetupError("The sync folder can't be opened any more. Pick it again in Settings › Sync.")
-            }
-            if resolved.stale, let fresh = try? bookmarks.make(resolved.url), var now = settings.load(), now.key == setup.key {
-                now.bookmark = fresh
-                settings.save(now)
-            }
-            var root = resolved.url
-            for part in setup.subpath.split(separator: "/") { root.appendPathComponent(String(part), isDirectory: true) }
-            root.appendPathComponent(setup.library, isDirectory: true)
-            remote = FolderRemote(root: root, access: access(resolved.url), clock: clock)
-        case .gist:
-            let settings = self.settings
-            let library = setup.library
-            remote = GistRemote(http: http, token: {
-                guard let token = settings.token else { throw SyncSetupError("Paste a GitHub token (with the gist scope) in Settings › Sync.") }
-                return token
-            }, loadId: { settings.gistId(library) }, saveId: { settings.setGistId($0, library) }, library: library)
+        guard let backend = SyncBackends.backend(setup.kind) else {
+            throw SyncSetupError("This version of Onething can’t sync there. Update the app, or choose another place in Settings › Sync.")
         }
+        let remote = try backend.makeRemote(SyncBackendContext(settings: setup, store: settings, bookmarks: bookmarks, http: http, access: access, clock: clock))
         try excludeFromBackup()
         let state = try SyncState(directory: Self.stateDirectory(directory, setup), deviceDirectory: directory, deviceName: deviceName)
         let engine = SyncEngine(store: store, remote: remote, state: state, clock: clock)

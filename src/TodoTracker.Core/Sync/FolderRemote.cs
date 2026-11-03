@@ -14,6 +14,10 @@ public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private DateTime _lastCollect = DateTime.MinValue;
 
+    // Stored contents this device read and found whole, by hash: their size and time then. Reading every one again on
+    // each publish would download them all from a cloud drive that keeps files online only (OneDrive Files On-Demand).
+    private readonly Dictionary<string, (long Length, DateTime Written)> _verified = new(StringComparer.Ordinal);
+
     public string Root { get; } = root ?? throw new ArgumentNullException(nameof(root));
 
     public string Identity => "folder:" + Path.GetFullPath(Root);
@@ -137,16 +141,30 @@ public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
         foreach (var entry in snapshot.Entries)
         {
             var path = BlobPath(entry.Hash);
-            if (!File.Exists(path) || SyncHash.Of(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)) != entry.Hash)
+            var file = new FileInfo(path);
+            var intact = file.Exists
+                && (_verified.TryGetValue(entry.Hash, out var seen) && seen == (file.Length, file.LastWriteTimeUtc)
+                    || SyncHash.Of(await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false)) == entry.Hash);
+            if (!intact)
             {
                 // Missing, or damaged (a sync client's half download): the other devices would never get it.
                 await WriteAsync(path, read(entry), cancellationToken).ConfigureAwait(false);
             }
-            else if (File.GetLastWriteTimeUtc(path) < DateTime.UtcNow.AddDays(-1))
+            else if (file.LastWriteTimeUtc < DateTime.UtcNow.AddDays(-1))
             {
                 // Still in use: never "old" to a device cleaning up while it sees an older list of ours.
                 File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
             }
+
+            file.Refresh();
+            _verified[entry.Hash] = (file.Length, file.LastWriteTimeUtc);
+        }
+
+        // Only what this snapshot lists is kept in mind.
+        var listed = snapshot.Entries.Select(e => e.Hash).ToHashSet(StringComparer.Ordinal);
+        foreach (var gone in _verified.Keys.Where(h => !listed.Contains(h)).ToList())
+        {
+            _verified.Remove(gone);
         }
 
         await WriteAsync(Path.Combine(Devices, snapshot.Device + ".json"), JsonSerializer.SerializeToUtf8Bytes(snapshot, Json), cancellationToken).ConfigureAwait(false);

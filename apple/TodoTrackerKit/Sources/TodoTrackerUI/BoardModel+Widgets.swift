@@ -5,12 +5,12 @@ import TodoTrackerKit
 import WidgetKit
 #endif
 
-/// The home-screen widgets (Now and Today). Whatever the board is (on this device, the Mac's server, or the computer the
-/// phone is connected to), the app writes what the widgets show for the next day into the shared App Group
-/// (`WidgetSnapshot`) whenever it changes, and asks WidgetKit to show it again.
+/// The home-screen widgets (Now and Today). Whatever the board is (on this device, or the Mac's server), the app writes
+/// what the widgets show for the next day into the shared App Group (`WidgetSnapshot`) whenever it changes, and asks
+/// WidgetKit to show it again.
 ///
-/// "Done" on a widget can't change the tasks from the widget (they're in the app's own storage, on the Mac's server, or
-/// on a computer over the network): the widget keeps the request in the App Group, leaves the task out at once, and
+/// "Done" on a widget can't change the tasks from the widget (they're in the app's own storage, or on the Mac's
+/// server): the widget keeps the request in the App Group, leaves the task out at once, and
 /// opens the app, which makes the change the way its own Mark done does (the user did it: it's theirs on the timeline)
 /// and removes the request. A request is applied once (see `WidgetDoneRequest.outcome`), and waits while the app is
 /// still connecting.
@@ -36,15 +36,15 @@ extension BoardModel {
         }
     }
 
-    /// Marks done what was tapped Done on a widget: the same change as Mark done here (to this device's tasks, the
-    /// Mac's server or the connected computer). Waits while the app is connecting; a task that can't be done here (it
+    /// Marks done what was tapped Done on a widget: the same change as Mark done here (to this device's tasks, or the
+    /// Mac's server). Waits while the app is connecting; a task that can't be done here (it
     /// has open subtasks, or the change didn't go through) opens instead, with why.
     public func applyWidgetRequests() {
         guard let shelf = widgetShelf else { return }
         let pending = shelf.pendingDone()
         guard !pending.isEmpty else { return }
-        // Opening the tasks folder, or the computer isn't answering yet: they wait (the widget keeps them out).
-        if isConnecting || (isRemote && remote?.canChange != true) { return }
+        // Opening the tasks folder: they wait (the widget keeps them out).
+        if isConnecting { return }
         // One change per task: two taps (or Now and Today both tapped) are one Done, and while a Done for a task is
         // still on its way the board here doesn't show it yet, so a repeating task would move on twice.
         var handled = widgetDoneSending

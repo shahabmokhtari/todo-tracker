@@ -15,11 +15,6 @@ final class SyncSafetyTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         suite = "SyncSafetyTests-\(UUID().uuidString)"
         secrets = InMemorySecretStore()
-        FakeComputer.mode = .up
-        FakeComputer.requests = []
-        let computer = TaskBoard()
-        _ = try computer.addTask(NewTask("On the computer"), now: Date())
-        FakeComputer.board = try BoardCodec.encode(computer)
     }
 
     override func tearDown() async throws {
@@ -133,23 +128,6 @@ final class SyncSafetyTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: legacy.path), "kept, tried again later")
     }
 
-    func testChangesStayOffAfterConnectingAndDisconnectingWhenTheTasksCouldntBeOpened() async throws {
-        let phone = PhoneSetup(pairings: PairingStore(defaults: defaults, secrets: secrets), cacheURL: folder.appendingPathComponent("computer-board.json"), phoneName: "Test iPhone") { _ in
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.protocolClasses = [FakeComputer.self]
-            return URLSession(configuration: configuration)
-        }
-        let model = BoardModel(store: nil, phone: phone, openError: "Couldn't open your tasks (test).", fallback: try BoardCodec.decode(try boardData(["From before"])))
-        model.open(link: URL(string: "todotracker://pair?v=1&hosts=192.168.1.20:5318&code=c0de&fp=bkHHwIb84H1Te4ePQXbl3y-dAm4kMyZc47CFWjSYarI&name=Studio%20Mac")!)
-        try await waitUntil("pairing") { model.board.items.contains { $0.title == "On the computer" } }
-        model.disconnectComputer()
-        XCTAssertTrue(model.isReadOnly)
-        XCTAssertEqual(model.board.items.map(\.title), ["From before"])
-        let item = try XCTUnwrap(model.board.items.first)
-        model.complete(item.id)
-        XCTAssertFalse(item.isDone, "no change to tasks that weren't opened")
-    }
-
     // MARK: Stopping a sync
 
     func testTurningSyncOffStopsTheSyncRunningSoNothingIsPublishedAfter() async throws {
@@ -172,25 +150,6 @@ final class SyncSafetyTests: XCTestCase {
         sync.turnOff()
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(syncer.runs, 0)
-    }
-
-    func testConnectingToAComputerStopsTheSyncRunning() async throws {
-        let syncer = FakeSyncer()
-        syncer.delay = 200_000_000
-        let sync = syncModel(syncer)
-        let phone = PhoneSetup(pairings: PairingStore(defaults: defaults, secrets: secrets), cacheURL: folder.appendingPathComponent("computer-board.json"), phoneName: "Test iPhone") { _ in
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.protocolClasses = [FakeComputer.self]
-            return URLSession(configuration: configuration)
-        }
-        let model = BoardModel(store: try VaultBoardStore.open(base: folder, importLeftover: true), phone: phone, sync: sync)
-        sync.syncNow()
-        try await waitUntil("started") { syncer.runs == 1 }
-        model.open(link: URL(string: "todotracker://pair?v=1&hosts=192.168.1.20:5318&code=c0de&fp=bkHHwIb84H1Te4ePQXbl3y-dAm4kMyZc47CFWjSYarI&name=Studio%20Mac")!)
-        try await waitUntil("pairing") { model.isRemote }
-        try await Task.sleep(nanoseconds: 300_000_000)
-        XCTAssertEqual(syncer.published, 0)
-        XCTAssertFalse(sync.isOn)
     }
 
     func testABackgroundSyncStopsWhenIOSSaysTimesUp() async throws {

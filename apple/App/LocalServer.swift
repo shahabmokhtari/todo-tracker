@@ -149,8 +149,13 @@ final class LocalServer {
         process.executableURL = executable
         var arguments = ["--port", String(port), "--parent-pid", String(ProcessInfo.processInfo.processIdentifier), "--import-legacy"]
         if !hasGit { arguments.append("--no-history") }
-        process.arguments = arguments
         var environment = ProcessInfo.processInfo.environment
+        if let given = givenDataFolder {
+            // The folder this app reads the token from (`~` expanded), named outright: the server doesn't expand `~`.
+            arguments += ["--data", given.path]
+            environment["TODOTRACKER_DATA"] = given.path
+        }
+        process.arguments = arguments
         // Apps opened from the Finder get a short PATH: add where git usually is.
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:" + (environment["PATH"] ?? "/usr/bin:/bin")
         process.environment = environment
@@ -178,12 +183,16 @@ final class LocalServer {
         return token.isEmpty ? nil : ServerClient(baseURL: base, token: token, ownerKey: ownerKey?.isEmpty == false ? ownerKey : nil)
     }
 
-    /// The server's data folder: `TODOTRACKER_DATA` when set (the server it starts inherits it), else the usual one.
+    /// The server's data folder: `TODOTRACKER_DATA` when set (passed to the server it starts), else the usual one.
     nonisolated static var dataFolder: URL {
-        if let given = ProcessInfo.processInfo.environment["TODOTRACKER_DATA"]?.trimmingCharacters(in: .whitespaces), !given.isEmpty {
-            return URL(fileURLWithPath: (given as NSString).expandingTildeInPath, isDirectory: true)
-        }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker")
+        givenDataFolder ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/TodoTracker")
+    }
+
+    /// `TODOTRACKER_DATA`, with `~` expanded (nil: not set). Only then is `--data` passed: without it the server keeps
+    /// its own default, which also decides where the tasks folder is.
+    nonisolated static var givenDataFolder: URL? {
+        guard let given = ProcessInfo.processInfo.environment["TODOTRACKER_DATA"]?.trimmingCharacters(in: .whitespaces), !given.isEmpty else { return nil }
+        return URL(fileURLWithPath: (given as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
     }
 
     /// `server.log` (this run of the app) and `server.previous.log` (the run before: why it stopped, after a crash).

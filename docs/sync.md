@@ -91,14 +91,9 @@ Windows computer does:
   GitHub token (gist scope) and the same library name; on the computers, choose **GitHub gist** here. The phone is a
   device like any other in the gist (its own `device-<id>.json`) and is listed under the other devices
   ([guide](guide.md#sync-android-with-your-other-devices)).
-* **iPhone and iPad** sync on their own too ([below](#iphone-and-ipad)). Or (and Android) with the **Phones** extra they use a computer's: turn on
-  **Settings › Phones › Let phones connect** there, choose **Connect a phone**, and scan the QR code in the phone app
-  (on iPhone and iPad: **Settings › Computer › Connect to a computer…**; on Android: **Settings › Connect to a
-  computer**; [plugins.md](plugins.md#phones)). The phone then works on that computer's tasks folder (over Wi-Fi, or
-  anywhere with Tailscale), so it's in step with everything this page syncs. Away from both, a phone shows the tasks
-  as last read and changes wait ([iPhone and iPad](guide.md#use-your-computers-tasks-on-an-iphone-or-ipad),
-  [Android](guide.md#use-your-computers-tasks-on-android)). Without it, a phone keeps its tasks on the device (and keeps them, untouched,
-  while it's connected).
+* **iPhone and iPad** sync on their own too, through iCloud Drive or a gist ([below](#iphone-and-ipad)). Phones never
+  connect to a computer directly: they sync through the same places your computers do. Without sync, a phone keeps
+  its tasks on the device.
 
 ## iPhone and iPad
 

@@ -58,7 +58,10 @@ public sealed partial class FeedbackRelay(IHttpClientFactory http, FeedbackSetti
         ArgumentNullException.ThrowIfNull(body);
         if (!settings.Send)
         {
-            LogNotSent(log, settings.RelayUrl, body);
+            // The reply address stays out of the log.
+            var logged = body.DeepClone().AsObject();
+            logged.Remove("contact");
+            LogNotSent(log, settings.RelayUrl, logged);
             return new Answer(FeedbackOutcome.Sent, null, null, "logged");
         }
 
