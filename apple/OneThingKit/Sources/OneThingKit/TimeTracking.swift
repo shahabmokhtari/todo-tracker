@@ -57,15 +57,28 @@ extension TaskBoard {
         #endif
     }()
 
-    /// Ends every timer (any device) that has run longer than `forgottenAfter`, at that length. Returns how many ended.
+    /// Ends every timer (any device) that has run longer than `forgottenAfter`, at that length; the timeline puts it
+    /// down to the app. Returns how many ended.
     @discardableResult
     public func closeForgottenTimers(now: Date) -> Int {
         var closed = 0
-        for entry in allItems.flatMap(\.timeEntries) where entry.isRunning && now.timeIntervalSince(entry.start) > Self.forgottenAfter {
-            entry.end = entry.start.addingTimeInterval(Self.forgottenAfter)
-            closed += 1
+        for item in allItems {
+            for entry in item.timeEntries where entry.isRunning && now.timeIntervalSince(entry.start) > Self.forgottenAfter {
+                entry.end = entry.start.addingTimeInterval(Self.forgottenAfter)
+                log(now, item.id, "timeLogged", "Stopped a timer left running on \"\(item.title)\" (counted \(Self.minutesText(Self.forgottenAfter)))", .system)
+                closed += 1
+            }
         }
         return closed
+    }
+
+    /// "25 min", or "1 h 05 min" from an hour on (as C#'s `Minutes`).
+    static func minutesText(_ span: TimeInterval) -> String {
+        let minutes = span / 60
+        if minutes < 60 { return "\(Int(minutes.rounded(.toNearestOrEven))) min" }
+        let whole = Int(minutes)
+        let part = whole % 60
+        return "\(whole / 60) h \(part < 10 ? "0" : "")\(part) min"
     }
 
     /// The timer that runs (the newest, if sync brought two together), or nil. A forgotten one doesn't count.
@@ -93,11 +106,15 @@ extension TaskBoard {
         return entry
     }
 
-    /// Stops the timer (every running one, if sync brought two together); the newest is returned.
+    /// Stops the timer (every running one, if sync brought two together); the newest is returned. The timeline says who
+    /// stopped it.
     @discardableResult
-    public func stopTimer(now: Date) -> (item: WorkItem, entry: TimeEntry)? {
+    public func stopTimer(actor: Actor = .user, now: Date) -> (item: WorkItem, entry: TimeEntry)? {
         let newest = runningTimer()
         stopTimers(allItems, now: now)
+        if let stopped = newest {
+            log(now, stopped.item.id, "timeLogged", "Stopped the timer on \"\(stopped.item.title)\" (\(Self.minutesText(stopped.entry.duration(now))))", actor)
+        }
         return newest
     }
 

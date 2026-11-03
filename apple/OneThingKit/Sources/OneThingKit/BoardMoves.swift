@@ -52,8 +52,8 @@ extension TaskBoard {
         log(now, id, "moved", parent.map { "Moved \"\(item.title)\" under \"\($0.title)\"" } ?? "Moved \"\(item.title)\" to \(group!.name)", actor)
     }
 
-    /// Moves a task among its siblings, before `before` (nil: to the end). Its parent stays.
-    public func reorder(_ id: UUID, before: UUID?) throws {
+    /// Moves a task among its siblings, before `before` (nil: to the end). Its parent stays. The timeline says who.
+    public func reorder(_ id: UUID, before: UUID?, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         if before == id { return }
         let target = try before.map { try get($0) }
@@ -65,10 +65,11 @@ extension TaskBoard {
         let at = target.flatMap { t in siblings.firstIndex { $0 === t } } ?? siblings.count
         siblings.insert(item, at: at)
         setSiblings(of: item, siblings)
+        log(now, item.id, "moved", target.map { "Moved \"\(item.title)\" before \"\($0.title)\"" } ?? "Moved \"\(item.title)\" to the end", actor)
     }
 
-    /// Puts a task right after another one next to it.
-    public func reorderAfter(_ id: UUID, after: UUID) throws {
+    /// Puts a task right after another one next to it. The timeline says who.
+    public func reorderAfter(_ id: UUID, after: UUID, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
         let target = try get(after)
         if after == id { return }
@@ -79,6 +80,7 @@ extension TaskBoard {
         siblings.removeAll { $0 === item }
         siblings.insert(item, at: siblings.firstIndex { $0 === target }! + 1)
         setSiblings(of: item, siblings)
+        log(now, item.id, "moved", "Moved \"\(item.title)\" after \"\(target.title)\"", actor)
     }
 
     /// Makes one change of a move.
@@ -87,8 +89,8 @@ extension TaskBoard {
         case let .complete(id): try complete(id, actor: actor, now: now)
         case let .stage(id, stage): try setStage(id, stage, actor: actor, now: now)
         case let .move(id, parentId, groupId, index): try self.move(id, parentId: parentId, index: index, groupId: groupId, actor: actor, now: now)
-        case let .reorder(id, before): try reorder(id, before: before)
-        case let .reorderAfter(id, after): try reorderAfter(id, after: after)
+        case let .reorder(id, before): try reorder(id, before: before, actor: actor, now: now)
+        case let .reorderAfter(id, after): try reorderAfter(id, after: after, actor: actor, now: now)
         }
     }
 

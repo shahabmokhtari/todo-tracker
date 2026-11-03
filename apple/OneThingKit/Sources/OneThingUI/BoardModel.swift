@@ -484,7 +484,7 @@ public final class BoardModel: ObservableObject {
 
     /// How much energy there is in a day (every app uses it).
     public func setDailyEnergy(_ perDay: Int?) {
-        change("Energy in a day: \(perDay ?? Energy.defaultPerDay)", server: .setDailyEnergy(perDay)) { _ in try board.setEnergyPerDay(perDay) }
+        change("Energy in a day: \(perDay ?? Energy.defaultPerDay)", server: .setDailyEnergy(perDay)) { try board.setEnergyPerDay(perDay, now: $0) }
     }
 
     /// Do something else first: the task moves one down Do now (the next one becomes the focus).

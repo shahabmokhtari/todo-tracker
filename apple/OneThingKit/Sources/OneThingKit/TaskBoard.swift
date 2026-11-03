@@ -408,15 +408,23 @@ public final class TaskBoard {
         log(now, id, "updated", "Updated \"\(item.title)\"", actor)
     }
 
-    /// How much energy there is in a day (nil: back to the default).
-    public func setEnergyPerDay(_ perDay: Int?) throws {
+    /// How much energy there is in a day (nil: back to the default). The timeline says who set it.
+    public func setEnergyPerDay(_ perDay: Int?, actor: Actor = .user, now: Date) throws {
         if let perDay, !(1...Energy.maxPerDay).contains(perDay) { throw BoardError.invalid("A day's energy is 1 to \(Energy.maxPerDay) ⚡.") }
         energyPerDay = perDay
+        log(now, TaskBoard.boardScopeId, "updated", perDay.map { "Set a day's energy to \($0) ⚡" } ?? "Set a day's energy back to the default", actor)
     }
 
     /// Records the order of the tasks someone sees in Do now (TaskBoard.ArrangeNow in C#, same rules): only the places
-    /// those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks.
-    public func arrangeNow(_ ids: [UUID], now: Date) throws {
+    /// those tasks already had are reused, so arranging one group's tab doesn't move the other groups' tasks. The
+    /// timeline says who arranged it.
+    public func arrangeNow(_ ids: [UUID], actor: Actor = .user, now: Date) throws {
+        try arrangeNowCore(ids, now: now)
+        let first = try ids.first.map { try get($0) }
+        log(now, first?.id ?? TaskBoard.boardScopeId, "moved", first.map { "Arranged Do now (\"\($0.title)\" first)" } ?? "Arranged Do now", actor)
+    }
+
+    private func arrangeNowCore(_ ids: [UUID], now: Date) throws {
         guard Set(ids).count == ids.count else { throw BoardError.invalid("Each task can appear only once.") }
         for id in ids { _ = try get(id) }
         let arranged = Set(ids)
@@ -579,14 +587,20 @@ public final class TaskBoard {
         }
     }
 
-    public func pauseFocus(now: Date) {
-        if pomodoro.phase == .focus { stopFocusTimer(now) }
+    /// Pauses the focus session (its task's focus time stops). The timeline says who paused it.
+    public func pauseFocus(actor: Actor = .user, now: Date) {
+        if pomodoro.phase == .focus {
+            stopFocusTimer(now)
+            logFocus(now, "Paused focus on", actor)
+        }
         pomodoro.pause(now: now)
     }
 
-    public func resumeFocus(now: Date) {
+    /// Goes on with a paused session (timing its task again).
+    public func resumeFocus(actor: Actor = .user, now: Date) {
         let resuming = pomodoro.phase == .focus && !pomodoro.isRunning
         pomodoro.resume(now: now)
+        if resuming { logFocus(now, "Resumed focus on", actor) }
         // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
         if resuming, let id = pomodoro.itemId, let item = index[id], !item.isDone, runningTimer(now) == nil {
             startTimerCore(item, source: .focus, now: now)
@@ -594,15 +608,24 @@ public final class TaskBoard {
     }
 
     /// A session that has already run out ends on time first, so Skip skips the break that followed it.
-    public func skipFocus(now: Date) {
+    public func skipFocus(actor: Actor = .user, now: Date) {
         tickPomodoro(now: now)
-        if pomodoro.phase == .focus { stopFocusTimer(now) }
+        if pomodoro.phase == .focus {
+            stopFocusTimer(now)
+            logFocus(now, "Ended focus early on", actor)
+        }
         pomodoro.skip(now: now)
     }
 
-    public func resetFocus(now: Date) {
+    /// Stops focus altogether (a running session's time is kept).
+    public func resetFocus(actor: Actor = .user, now: Date) {
         stopFocusTimer(now)
+        if pomodoro.phase == .focus { logFocus(now, "Stopped focus on", actor) }
         pomodoro.reset()
+    }
+
+    private func logFocus(_ now: Date, _ what: String, _ actor: Actor) {
+        if let id = pomodoro.itemId, let item = find(id) { log(now, id, "timeLogged", "\(what) \"\(item.title)\"", actor) }
     }
 
     /// The task "Start next focus" picks up: the last session's, if it's still there and open.

@@ -226,7 +226,7 @@ extension BoardModel {
         var created: UUID?
         mutate("Added") { at in
             let item = try board.addTask(NewTask(clean, parentId: parentId, groupId: groupId, stage: stage), now: at)
-            if let after { try board.reorderAfter(item.id, after: after) } else if let first { try board.reorder(item.id, before: first) }
+            if let after { try board.reorderAfter(item.id, after: after, now: at) } else if let first { try board.reorder(item.id, before: first, now: at) }
             created = item.id
         }
         done?(created)
