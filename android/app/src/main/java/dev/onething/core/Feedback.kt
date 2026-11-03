@@ -91,6 +91,17 @@ object Feedback {
     /** How long the message is, as the relay counts it (code points). */
     fun length(text: String): Int = cleanMessage(text, Int.MAX_VALUE).let { it.codePointCount(0, it.length) }
 
+    /** How long an issue's title can be (code points). */
+    const val MAX_TITLE = 256
+
+    /** "Bug · Android: <the note's first line>", cut to [MAX_TITLE] code points (the whole note is in the body). */
+    fun title(kind: Kind, platform: String, message: String): String {
+        val firstLine = message.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+        val title = "${kind.label} · $platform: $firstLine"
+        if (title.codePointCount(0, title.length) <= MAX_TITLE) return title
+        return title.substring(0, title.offsetByCodePoints(0, MAX_TITLE)).trim()
+    }
+
     /** The request body (keys in the relay's order), or null when there's nothing to send. */
     fun body(draft: Draft, device: Device, maxMessage: Int = MAX_MESSAGE): JsonObject? {
         val message = cleanMessage(draft.message, maxMessage)
@@ -100,7 +111,7 @@ object Feedback {
         val version = device.appVersion?.takeIf { it.isNotBlank() }?.let { v -> device.build?.takeIf { it.isNotBlank() }?.let { "$v ($it)" } ?: v }
         return buildJsonObject {
             put("message", message)
-            put("title", "${draft.kind.label} · ${device.platform}: $message")
+            put("title", title(draft.kind, device.platform, message))
             if (contact.isNotEmpty()) put("contact", contact)
             put("clientID", draft.clientId)
             put("labels", buildJsonArray {

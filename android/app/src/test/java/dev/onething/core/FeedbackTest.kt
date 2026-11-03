@@ -88,6 +88,14 @@ class FeedbackTest {
     }
 
     @Test
+    fun theTitleIsTheFirstLineCutTo256CodePoints() {
+        assertEquals("Bug · Android: It crashes", Feedback.title(Feedback.Kind.BUG, "Android", "It crashes\nwhen I tap Done"))
+        val long = Feedback.title(Feedback.Kind.IDEA, "Android", "😀".repeat(300))
+        assertEquals(256, long.codePointCount(0, long.length))
+        assertTrue(long.startsWith("Idea · Android: 😀"))
+    }
+
+    @Test
     fun debugBuildsOnlyLogUnlessAskedToSend() {
         assertTrue(Feedback.sendsForReal(debugBuild = false, sendFlag = false))
         assertFalse(Feedback.sendsForReal(debugBuild = true, sendFlag = false))
