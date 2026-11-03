@@ -216,7 +216,8 @@ public actor SyncEngine {
         var complete = !(remoteSnapshot?.partial ?? false)
         for peer in peers {
             do {
-                guard let entries = Self.valid(peer) else { continue }
+                guard let accepted = Self.accepted(peer) else { continue }
+                var entries = accepted.entries
                 let fetched = try await fetch(peer, entries, local)
                 if !fetched.ok {
                     if let problem = fetched.problem { problems.append(problem) }
@@ -224,6 +225,18 @@ public actor SyncEngine {
                     continue
                 }
                 let base = try state.loadBase(peer.device)
+                // What this device can't take (a name other systems can't use, a broken entry, too big) is never a
+                // delete: it stays as both devices last had it, and that's said.
+                let refused = accepted.refused + fetched.refused
+                for key in refused {
+                    let kind = SyncKeys.kind(of: key)
+                    // A file stays as both last had it (unchanged there: nothing to do here); settings, order and the
+                    // activity log are only ever merged, never deleted, so they're simply left out.
+                    entries[OrdinalString(key)] = kind == .task || kind == .rich || kind == .file ? base[OrdinalString(key)] : nil
+                }
+                if !refused.isEmpty {
+                    problems.append("\(peer.name) has \(refused.count == 1 ? "a file" : "\(refused.count) files") this device can't take (a name other systems can't use, or too big); \(refused.count == 1 ? "it's" : "they're") left as \(refused.count == 1 ? "it is" : "they are") here.")
+                }
                 let state = self.state
                 let plan = try SyncPlanner.plan(
                     local: SyncSide(device: state.deviceId, name: state.deviceName, entries: local.entries, read: local.read),
@@ -303,8 +316,10 @@ public actor SyncEngine {
                           problem: problems.isEmpty ? nil : problems.joined(separator: " "), devices: devices, complete: complete)
     }
 
-    /// Brings the peer's contents we don't have yet into the local cache. False if some haven't arrived.
-    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?) {
+    /// Brings the peer's contents we don't have yet into the local cache. Not ok if some haven't arrived; `refused`:
+    /// the keys whose contents this device won't take (too big, or damaged where they're kept).
+    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?, refused: [String]) {
+        var refused: [String] = []
         for entry in entries.values {
             if local.entries[OrdinalString(entry.key)]?.hash == entry.hash || state.hasBlob(entry.hash) { continue }
             let content: Data
@@ -312,23 +327,38 @@ public actor SyncEngine {
                 content = try await remote.readContent(peer, entry)
             } catch is CancellationError {
                 throw CancellationError()
+            } catch is SyncDataError {
+                // Too big to sync (or damaged where it's kept): never taken as a delete; the rest syncs.
+                refused.append(entry.key)
+                continue
             } catch {
-                // Not there yet, still downloading (iCloud placeholders), or too big: this device is merged later.
-                return (false, nil)
+                // Not there yet, still downloading (iCloud placeholders): this device is merged later.
+                return (false, nil, [])
+            }
+            if Int64(content.count) > SyncLimits.maxFileBytes {
+                refused.append(entry.key)
+                continue
             }
             // Still being written (or damaged): said, and tried again next time (that device rewrites it when it syncs).
-            if SyncHash.of(content) != entry.hash { return (false, "\(entry.path) from \(peer.name) didn't arrive whole; it's tried again.") }
+            if SyncHash.of(content) != entry.hash { return (false, "\(entry.path) from \(peer.name) didn't arrive whole; it's tried again.", []) }
             try state.writeBlob(entry.hash, content)
         }
-        return (true, nil)
+        return (true, nil, refused)
     }
 
     /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere).
-    static func valid(_ peer: DeviceSnapshot) -> SyncEntries? {
+    static func valid(_ peer: DeviceSnapshot) -> SyncEntries? { accepted(peer)?.entries }
+
+    /// The peer's entries we accept, and the keys of those we don't (kept as they are here, never taken as deletes).
+    static func accepted(_ peer: DeviceSnapshot) -> (entries: SyncEntries, refused: [String])? {
         guard peer.device.utf16.count > 1, peer.device.utf16.count <= 64, Ordinal.isAsciiLetterOrDigit(peer.device) else { return nil }
         var entries: SyncEntries = [:]
+        var refused: [String] = []
         for e in peer.entries {
-            guard e.hash.utf16.count == 64, Ordinal.isLowerHex(e.hash) else { continue }
+            guard e.hash.utf16.count == 64, Ordinal.isLowerHex(e.hash) else {
+                refused.append(e.key)
+                continue
+            }
             let ok: Bool
             switch SyncKeys.kind(of: e.key) {
             case .config: ok = e.path == SyncKeys.configPath
@@ -343,9 +373,12 @@ public actor SyncEngine {
                 var entry = e
                 if entry.since == nil { entry.since = .minValue }
                 entries[OrdinalString(e.key)] = entry
+            } else {
+                refused.append(e.key)
             }
         }
-        return entries
+        // A key both accepted and refused (listed twice): its accepted entry stays.
+        return (entries, refused.filter { entries[OrdinalString($0)] == nil })
     }
 
     private static func needsBase(_ key: String) -> Bool {

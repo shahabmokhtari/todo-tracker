@@ -157,6 +157,30 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(try phone.titles().sorted(), ["Only on the phone", "Shared task"])
     }
 
+    func testAFileAPeerListsUnderANameThisDeviceCantTakeIsNeverDeletedHere() async throws {
+        let temp = TempDir()
+        let shared = temp.url.appendingPathComponent("shared")
+        let (a, b) = try pair(temp) { FolderRemote(root: shared) }
+        let id = try a.store.update { try $0.addTask(NewTask("Plan the trip"), now: self.now).id }
+        let rel = try XCTUnwrap(a.store.path(of: id))
+        try await a.engine.sync()
+        try await b.engine.sync()
+        XCTAssertEqual(try b.titles(), ["Plan the trip"])
+
+        // The laptop now lists it under a name other systems can't use (a newer version, or a hand-edited file).
+        let devices = shared.appendingPathComponent("devices")
+        let laptopFile = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: devices, includingPropertiesForKeys: nil)
+            .first { (try? String(contentsOf: $0, encoding: .utf8))?.contains("\"Laptop\"") == true })
+        let text = try String(contentsOf: laptopFile, encoding: .utf8)
+        XCTAssertTrue(text.contains(rel))
+        try text.replacingOccurrences(of: rel, with: "Inbox/Plan: the trip?.md").write(to: laptopFile, atomically: true, encoding: .utf8)
+
+        let result = try await b.engine.sync()
+        XCTAssertEqual(try b.titles(), ["Plan the trip"], "kept: a name it can't take isn't a delete")
+        XCTAssertNotNil(b.text(rel))
+        XCTAssertTrue(result.problem?.contains("can't take") == true, result.problem ?? "")
+    }
+
     func testADamagedContentIsSaidAndWrittenAgainByTheDeviceThatHasIt() async throws {
         let temp = TempDir()
         let shared = temp.url.appendingPathComponent("shared")
