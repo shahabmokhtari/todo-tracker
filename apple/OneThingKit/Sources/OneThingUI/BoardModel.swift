@@ -844,9 +844,14 @@ public final class BoardModel: ObservableObject {
 
     // MARK: The app in front and behind (iPhone and iPad)
 
-    /// Pulled down to refresh: the board is read again from the server.
+    /// Pulled down to refresh: the board is read again from the server, or (iPhone and iPad) a sync runs now.
     public func pullToRefresh() async {
-        if server != nil, !isConnecting { await reload() }
+        if server != nil {
+            if !isConnecting { await reload() }
+        } else if let sync, sync.isOn {
+            sync.syncNow()
+            await sync.finish()
+        }
     }
 
     /// The app is in front again: a sync runs (then every minute while it's open).

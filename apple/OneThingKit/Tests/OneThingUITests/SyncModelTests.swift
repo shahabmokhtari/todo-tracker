@@ -186,6 +186,18 @@ final class SyncModelTests: XCTestCase {
         XCTAssertNotNil(sync.status.lastSync)
     }
 
+    func testPullingDownSyncsNow() async throws {
+        let store = try VaultBoardStore.open(base: folder, importLeftover: true)
+        let syncer = FakeSyncer()
+        syncer.during = { _ = try store.vault.update { try $0.addTask(NewTask("From the laptop"), now: Date()) } }
+        let model = BoardModel(store: store, sync: syncModel(syncer))
+
+        await model.pullToRefresh()
+
+        XCTAssertEqual(syncer.runs, 1)
+        XCTAssertEqual(model.board.items.map(\.title), ["From the laptop"], "shown when the spinner goes away")
+    }
+
     func testASyncAskedForWhileOneRunsRunsOnceAfterIt() async throws {
         let syncer = FakeSyncer()
         syncer.delay = 100_000_000
