@@ -446,15 +446,16 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             Name = name,
             TimeoutSec = timeoutSec,
             Match = new Hooks.HookMatch { Groups = groups?.ToList(), Tags = tags?.ToList(), Labels = labels?.ToList(), Actors = actors?.ToList() },
-        }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow()).Redacted()));
+        }, AuthorOf(server), time.GetUtcNow()).Redacted()));
 
-    [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.")]
-    public Task<Hooks.HookEntry> SetHookEnabled([Description("The hook's id, from list_hooks.")] string hookId, [Description("On (true) or off (false).")] bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled).Redacted()));
+    [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). You can only switch hooks you added yourself; the user's own hooks are theirs to switch. A hook waiting for approval still needs the user's approval to run.")]
+    public Task<Hooks.HookEntry> SetHookEnabled(McpServer server, [Description("The hook's id, from list_hooks (one you added).")] string hookId, [Description("On (true) or off (false).")] bool enabled) =>
+        Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled, AuthorOf(server)).Redacted()));
 
-    [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook (by its id from list_hooks).")]
-    public Task<Hooks.HookRemoved> RemoveHook([Description("The hook's id, from list_hooks.")] string hookId) => Guard(() =>
+    [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook you added (by its id from list_hooks). The user's own hooks can only be removed by them, in Settings › Hooks.")]
+    public Task<Hooks.HookRemoved> RemoveHook(McpServer server, [Description("The hook's id, from list_hooks (one you added).")] string hookId) => Guard(() =>
     {
-        hooks.Remove(hookId);
+        hooks.Remove(hookId, AuthorOf(server));
         return Task.FromResult(new Hooks.HookRemoved(hookId));
     });
 

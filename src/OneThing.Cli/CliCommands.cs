@@ -643,7 +643,7 @@ internal static class CliCommands
                 await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval (ot hooks list)." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
                 break;
             case "enable" or "disable":
-                var toggled = store.SetEnabled(Id(), verb == "enable");
+                var toggled = store.SetEnabled(Id(), verb == "enable", author);
                 await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "approve":
@@ -661,7 +661,7 @@ internal static class CliCommands
                 break;
             case "remove" or "delete":
                 var id = Id();
-                store.Remove(id);
+                store.Remove(id, author);
                 await s.Print(new { removed = id }, (o, _) => o.Line($"Removed hook {id}.")).ConfigureAwait(false);
                 break;
             case "test":

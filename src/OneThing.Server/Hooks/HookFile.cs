@@ -62,6 +62,9 @@ public sealed class HookSpec
     /// <summary>Who added or last changed it (an agent's name, or <c>you</c>).</summary>
     public string? AddedBy { get; set; }
 
+    /// <summary>The agent (or other app with the API token) that added it: it may switch it off or remove it too. Not set for yours.</summary>
+    public string? CreatedBy { get; set; }
+
     public DateTimeOffset? AddedAt { get; set; }
 
     /// <summary>New (random) with every change to what it does: what an approval names, so it can't be guessed.</summary>

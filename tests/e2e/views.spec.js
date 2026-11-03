@@ -799,18 +799,20 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await hooks.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('#toast')).toContainText('Hook changed');
   const renamed = hooks.locator('.hook-row', { hasText: 'Agent hook renamed' });
-  await renamed.getByRole('checkbox').uncheck();
   await expect(renamed).toContainText('needs approval');
-  await renamed.getByRole('button', { name: 'Remove Agent hook renamed' }).click();
-  await expect(hooks.locator('.hook-row', { hasText: 'Agent hook' })).toHaveCount(0);
+  await mine.getByRole('checkbox').uncheck();
+  await expect(mine).toContainText('needs approval');
+  await mine.getByRole('button', { name: 'Remove Log what got done' }).click();
+  await expect(hooks.locator('.hook-row', { hasText: 'Log what got done' })).toHaveCount(0);
+  await expect(renamed).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
 test('Hooks: the app asks you about a hook an agent added, and once allowed it just runs', async ({ page, request }) => {
   const errors = watchErrors(page);
   // Only the owner's session (the app's own, as the Mac app and the tray open it with the owner key) is asked.
-  for (const x of (await (await request.get('/api/hooks', { headers: auth })).json()).hooks) {
-    await request.delete(`/api/hooks/${x.id}`, { headers: auth });
+  for (const x of (await (await request.get('/api/hooks', { headers: ownerAuth() })).json()).hooks) {
+    await request.delete(`/api/hooks/${x.id}`, { headers: ownerAuth() });
   }
   const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-OneThing-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
   const ownerKey = fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim();

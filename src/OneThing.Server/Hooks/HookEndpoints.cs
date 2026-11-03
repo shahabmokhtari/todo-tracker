@@ -34,7 +34,8 @@ internal static class HookEndpoints
     {
         var api = app.MapGroup("/api").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
 
-        // The owner's session sees everything and may approve; anything else sees header and variable values hidden.
+        // The owner's session sees everything and may approve; anything else sees header and variable values, the
+        // addresses' secrets and what the runs said hidden.
         api.MapGet("/hooks", (HttpContext http, HookService hooks) =>
         {
             var owner = Security.IsAppSession(http);
@@ -43,6 +44,7 @@ internal static class HookEndpoints
             {
                 CanApprove = owner,
                 Hooks = owner ? status.Hooks : status.Hooks.Select(h => h with { Hook = new HookEntry(h.Id, h.Event, h.Hook, h.State, h.Problem, h.Version).Redacted().Hook }).ToList(),
+                Runs = owner ? status.Runs : [],
             });
         });
 
@@ -52,7 +54,7 @@ internal static class HookEndpoints
         api.MapPut("/hooks/{id}", (string id, HookRequest request, HttpContext http, HookStore store, TimeProvider time) =>
             Shown(http, store.Update(id, request.Event, request.Hook ?? throw new ArgumentException("Say what the hook does (hook)."), AuthorOf(http), time.GetUtcNow())));
 
-        api.MapPost("/hooks/{id}/enabled", (string id, HookEnabledRequest request, HttpContext http, HookStore store) => Shown(http, store.SetEnabled(id, request.Enabled)));
+        api.MapPost("/hooks/{id}/enabled", (string id, HookEnabledRequest request, HttpContext http, HookStore store) => Shown(http, store.SetEnabled(id, request.Enabled, AuthorOf(http))));
 
         api.MapPost("/hooks/{id}/approve", (string id, HookApproveRequest? request, HttpContext http, HookStore store) => Shown(http, store.Approve(id, request?.Version, AuthorOf(http))));
 
@@ -61,13 +63,13 @@ internal static class HookEndpoints
             store.Reject(id, request.Version ?? throw new ArgumentException("Say which version you looked at (version).")) ? Results.NoContent() : Results.Problem("This hook was allowed or changed meanwhile: it was kept. See Settings › Hooks.", statusCode: StatusCodes.Status409Conflict))
             .OwnerOnly("Only you can turn down a hook: in Settings › Hooks of the One Thing app, or with ot hooks.");
 
-        api.MapDelete("/hooks/{id}", (string id, HookStore store) =>
+        api.MapDelete("/hooks/{id}", (string id, HttpContext http, HookStore store) =>
         {
-            store.Remove(id);
+            store.Remove(id, AuthorOf(http));
             return Results.NoContent();
         });
 
-        // Runs the hooks for an event now, with an example task, and says how each went.
+        // Runs the hooks for an event now, with an example task, and says how each went (what they print can be private).
         api.MapPost("/hooks/test", async (HookTestRequest request, HookService hooks, IBoardStore store, TimeProvider time, CancellationToken cancellationToken) =>
         {
             var name = string.IsNullOrWhiteSpace(request.Event) ? "test" : request.Event.Trim();

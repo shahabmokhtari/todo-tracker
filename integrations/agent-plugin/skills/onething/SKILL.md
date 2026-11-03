@@ -90,7 +90,8 @@ the last Friday", "every 3 days when done"). Completing it moves it to its next 
 tomorrow ("tomorrow 9am"). `get_time_report` if they want to see where the time went.
 
 **Automations:** `add_hook` (e.g. on `taskCompleted`, post to a webhook or run a script). A hook you add waits until
-the user allows it in the app (they get asked): tell them so, and don't add it again.
+the user allows it in the app (they get asked): tell them so, and don't add it again. You can switch off or remove
+only hooks you added; the user's own are theirs to change.
 
 ## Files
 
