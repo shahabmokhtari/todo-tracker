@@ -275,7 +275,17 @@
                     <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="Menu" AutomationProperties.Name="Menu" Click="OnMenuClick" WindowChrome.IsHitTestVisibleInChrome="True" />
                 </StackPanel>
                 <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" VerticalAlignment="Center">
-                    <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                    <!-- The app icon (wwwroot/img/logo.svg): one lit task, the rest faint. -->
+                    <Viewbox>
+                        <Canvas Width="1024" Height="1024">
+                            <Ellipse Canvas.Left="212" Canvas.Top="220" Width="220" Height="220" Fill="White" />
+                            <Rectangle Canvas.Left="482" Canvas.Top="290" Width="332" Height="80" RadiusX="40" RadiusY="40" Fill="White" />
+                            <Ellipse Canvas.Left="260" Canvas.Top="498" Width="124" Height="124" Fill="White" Opacity="0.3" />
+                            <Rectangle Canvas.Left="442" Canvas.Top="534" Width="300" Height="52" RadiusX="26" RadiusY="26" Fill="White" Opacity="0.3" />
+                            <Ellipse Canvas.Left="260" Canvas.Top="678" Width="124" Height="124" Fill="White" Opacity="0.18" />
+                            <Rectangle Canvas.Left="442" Canvas.Top="714" Width="240" Height="52" RadiusX="26" RadiusY="26" Fill="White" Opacity="0.18" />
+                        </Canvas>
+                    </Viewbox>
                 </Border>
                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="One Thing" FontWeight="Bold" FontSize="14.5" FontFamily="Segoe UI Variable Display, Segoe UI" />
@@ -628,7 +638,17 @@
             </Grid.RowDefinitions>
         <StackPanel HorizontalAlignment="Center">
             <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" Margin="0,0,0,12">
-                <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                <!-- The app icon (wwwroot/img/logo.svg): one lit task, the rest faint. -->
+                <Viewbox>
+                    <Canvas Width="1024" Height="1024">
+                        <Ellipse Canvas.Left="212" Canvas.Top="220" Width="220" Height="220" Fill="White" />
+                        <Rectangle Canvas.Left="482" Canvas.Top="290" Width="332" Height="80" RadiusX="40" RadiusY="40" Fill="White" />
+                        <Ellipse Canvas.Left="260" Canvas.Top="498" Width="124" Height="124" Fill="White" Opacity="0.3" />
+                        <Rectangle Canvas.Left="442" Canvas.Top="534" Width="300" Height="52" RadiusX="26" RadiusY="26" Fill="White" Opacity="0.3" />
+                        <Ellipse Canvas.Left="260" Canvas.Top="678" Width="124" Height="124" Fill="White" Opacity="0.18" />
+                        <Rectangle Canvas.Left="442" Canvas.Top="714" Width="240" Height="52" RadiusX="26" RadiusY="26" Fill="White" Opacity="0.18" />
+                    </Canvas>
+                </Viewbox>
             </Border>
             <Button x:Name="ExpandButton" Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Expand sidebar" AutomationProperties.Name="Expand" Command="{Binding ToggleCompactCommand}" Margin="0,0,0,12" WindowChrome.IsHitTestVisibleInChrome="True" />
             <Border CornerRadius="12" Padding="8,3" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" ToolTip="Things to do now">
