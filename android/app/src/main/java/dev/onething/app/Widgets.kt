@@ -1,11 +1,23 @@
 package dev.onething.app
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.Color
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import dev.onething.R
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,15 +102,29 @@ object Widgets {
         return store.read { WidgetSnapshot.build(it, now, zone) }
     }
 
+    /**
+     * Goes up whenever the board changes: a widget that's on screen (its content still running) reads the board again,
+     * so it never shows what was there before (a task just done).
+     */
+    val revision = MutableStateFlow(0L)
+
     /** The board changed: the widgets show it again. */
     fun update(context: Context) {
         val app = context.applicationContext
+        revision.value++
         scope.launch {
             runCatching {
                 NowWidget().updateAll(app)
                 TodayWidget().updateAll(app)
             }
         }
+    }
+
+    /** The same, waiting until the widgets were told (a worker that ends right after). */
+    suspend fun refresh(context: Context) {
+        revision.value++
+        NowWidget().updateAll(context)
+        TodayWidget().updateAll(context)
     }
 
     /** Updates the widgets again when their list next changes on its own (null: in a day at the latest). */
@@ -134,20 +160,41 @@ object Widgets {
             }
         }
         if (problem != null) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(app, problem, Toast.LENGTH_LONG).show()
-                app.startActivity(openTask(app, id))
-            }
+            // A widget can't open the app on its own (Android blocks starting an activity from the background): a
+            // notification the person taps opens the task instead.
+            withContext(Dispatchers.Main) { Toast.makeText(app, problem, Toast.LENGTH_LONG).show() }
+            tellToOpen(app, id, problem)
         }
         update(app)
+    }
+
+    private const val CHANNEL = "widget"
+
+    /** "Couldn't mark it done: … Tap to open it." (tapping opens the task). */
+    private fun tellToOpen(context: Context, id: UUID, problem: String) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "Widgets", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "When something tapped on a widget needs the app"
+        })
+        val code = ReminderAlarm.notificationId(id) xor 0x20000
+        val open = PendingIntent.getActivity(context, code, openTask(context, id), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("Open the task to finish it")
+            .setContentText(problem)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(problem))
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        runCatching { manager.notify(code, notification) }
     }
 }
 
 /** Updates the widgets when their list changes on its own. */
 class WidgetWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
-        NowWidget().updateAll(applicationContext)
-        TodayWidget().updateAll(applicationContext)
+        Widgets.refresh(applicationContext)
         return Result.success()
     }
 }
@@ -176,12 +223,28 @@ internal object WidgetWords {
 
 private val accent = Color(0xFF6366F1)
 
-/** Reads the board, and sets the next update, then draws [content] with what to show now. */
-private suspend fun showing(context: Context, draw: suspend (WidgetView, Boolean) -> Unit) {
+/** What the widgets show now, read from the board (and the next update set). */
+private suspend fun load(context: Context): Pair<WidgetView, Boolean> {
     val now = Instant.now()
     val snapshot = withContext(Dispatchers.IO) { runCatching { Widgets.snapshot(context, now) }.getOrNull() }
     Widgets.scheduleNext(context, snapshot?.nextChange(now), now)
-    draw(snapshot?.viewAt(now) ?: WidgetView.EMPTY, snapshot != null)
+    return (snapshot?.viewAt(now) ?: WidgetView.EMPTY) to (snapshot != null)
+}
+
+/**
+ * Draws [content] with what to show, read again inside the widget's content whenever the board changes
+ * ([Widgets.revision]): a widget whose content is still running is redrawn, not given what it showed before.
+ */
+private suspend fun GlanceAppWidget.showing(context: Context, content: @Composable (WidgetView, Boolean) -> Unit) {
+    val startedAt = Widgets.revision.value
+    val first = load(context)
+    provideContent {
+        val revision by Widgets.revision.collectAsState()
+        val shown by produceState(first, revision) {
+            if (revision != startedAt) value = load(context)
+        }
+        GlanceTheme { content(shown.first, shown.second) }
+    }
 }
 
 /** The Now widget: the one thing to do now (and its group), Done, and when it's wide the next few and how many more today. */
@@ -189,7 +252,7 @@ class NowWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Responsive(setOf(DpSize(110.dp, 110.dp), DpSize(250.dp, 110.dp)))
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        showing(context) { view, hasSnapshot -> provideContent { GlanceTheme { NowContent(view, hasSnapshot) } } }
+        showing(context) { view, hasSnapshot -> NowContent(view, hasSnapshot) }
     }
 }
 
@@ -198,7 +261,7 @@ class TodayWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        showing(context) { view, hasSnapshot -> provideContent { GlanceTheme { TodayContent(view, hasSnapshot) } } }
+        showing(context) { view, hasSnapshot -> TodayContent(view, hasSnapshot) }
     }
 }
 
