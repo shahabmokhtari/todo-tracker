@@ -19,6 +19,11 @@ public enum ConflictPolicy: Sendable {
 /// sides changed the same lines differently, both versions' lines are kept (the first side's first). Lines compare
 /// ordinally and keep their own line endings.
 public enum TextMerge {
+    /// The most cells a line-matching table may have (the lines left once the common start and end are set aside,
+    /// one side's times the other's). Files that differ in more than that are kept whole, both sides' lines, as a
+    /// conflict: matching them would take too long and too much memory.
+    static let maxCells = 4_000_000
+
     /// `lineKeys` gives each line of a file its identity (or nil), e.g. a step's block id: keyed lines merge one by one.
     public static func merge(base: String, first: String, second: String, lineKeys: (([String]) -> [String?])? = nil, policy: ConflictPolicy = .both) -> TextMergeResult {
         let o = split(base), a = split(first), b = split(second)
@@ -32,9 +37,13 @@ public enum TextMerge {
             }
         }
         let no = number(o), na = number(a), nb = number(b)
+        // Too different to match line by line: one side's change if only one changed, else both kept whole.
+        func whole() -> TextMergeResult {
+            let kept = resolve(o: o, co: no, a: a, ca: na, b: b, cb: nb, ko: nil, ka: nil, kb: nil, policy: policy)
+            return TextMergeResult(text: join(kept.lines), conflicted: kept.conflicted)
+        }
+        guard let ma = match(no, na), let ab = match(na, nb), let mb = matchAgreeing(no, nb, ma, ab) else { return whole() }
         let ko = lineKeys?(o), ka = lineKeys?(a), kb = lineKeys?(b)
-        let ma = match(no, na)
-        let mb = matchAgreeing(no, nb, ma, match(na, nb))
         var output: [String] = []
         var conflicted = false
         var io = 0, ia = 0, ib = 0
@@ -165,14 +174,31 @@ public enum TextMerge {
     /// sides' diffs must agree on which, or a line both sides added (or removed) is counted twice. So among the longest
     /// ones, this takes the pairing that agrees most with the first side's: base line i pairs with the line of `other`
     /// that the first side's line for i pairs with (`firstToOther`). As C#'s `TextMerge.MatchAgreeing`.
-    private static func matchAgreeing(_ o: [Int], _ other: [Int], _ baseToFirst: [Int], _ firstToOther: [Int]) -> [Int] {
-        let n = o.count, m = other.count
-        var map = Array(repeating: -1, count: n)
+    ///
+    /// Lines at the start and the end that are the same on both and where the first side agrees are paired first
+    /// (every longest, most agreeing pairing pairs them, so the result is the same): only what's left between them
+    /// needs the table. Nil when that's more than `maxCells`.
+    private static func matchAgreeing(_ o: [Int], _ other: [Int], _ baseToFirst: [Int], _ firstToOther: [Int]) -> [Int]? {
+        var map = Array(repeating: -1, count: o.count)
+        if o.isEmpty || other.isEmpty { return map }
+        func agrees(_ i: Int, _ j: Int) -> Bool { o[i] == other[j] && baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j }
+        var prefix = 0
+        while prefix < o.count && prefix < other.count && agrees(prefix, prefix) {
+            map[prefix] = prefix
+            prefix += 1
+        }
+        var suffix = 0
+        while suffix < o.count - prefix && suffix < other.count - prefix && agrees(o.count - 1 - suffix, other.count - 1 - suffix) {
+            map[o.count - 1 - suffix] = other.count - 1 - suffix
+            suffix += 1
+        }
+        let n = o.count - prefix - suffix, m = other.count - prefix - suffix
         if n == 0 || m == 0 { return map }
+        guard (n + 1) * (m + 1) <= maxCells else { return nil }
         // A pair is worth more than every agreement together, so the pairing stays a longest one.
         let pair = min(n, m) + 1
         func worth(_ i: Int, _ j: Int) -> Int {
-            o[i] != other[j] ? 0 : pair + (baseToFirst[i] >= 0 && firstToOther[baseToFirst[i]] == j ? 1 : 0)
+            o[prefix + i] != other[prefix + j] ? 0 : pair + (agrees(prefix + i, prefix + j) ? 1 : 0)
         }
         var best = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
         for i in stride(from: n - 1, through: 0, by: -1) {
@@ -186,7 +212,7 @@ public enum TextMerge {
         while i < n && j < m {
             let w = worth(i, j)
             if w > 0 && best[i][j] == w + best[i + 1][j + 1] {
-                map[i] = j
+                map[prefix + i] = prefix + j
                 i += 1
                 j += 1
             } else if best[i + 1][j] >= best[i][j + 1] {
@@ -198,8 +224,9 @@ public enum TextMerge {
         return map
     }
 
-    /// For each base line, the index of the line it matches in `other` (longest common subsequence), or -1.
-    private static func match(_ o: [Int], _ other: [Int]) -> [Int] {
+    /// For each base line, the index of the line it matches in `other` (longest common subsequence), or -1. Nil when
+    /// what's left between the common start and end is more than `maxCells`.
+    private static func match(_ o: [Int], _ other: [Int]) -> [Int]? {
         var map = Array(repeating: -1, count: o.count)
         var prefix = 0
         while prefix < o.count && prefix < other.count && o[prefix] == other[prefix] {
@@ -213,6 +240,7 @@ public enum TextMerge {
         }
         let n = o.count - prefix - suffix, m = other.count - prefix - suffix
         if n == 0 || m == 0 { return map }
+        guard (n + 1) * (m + 1) <= maxCells else { return nil }
         var lcs = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
         for i in stride(from: n - 1, through: 0, by: -1) {
             for j in stride(from: m - 1, through: 0, by: -1) {

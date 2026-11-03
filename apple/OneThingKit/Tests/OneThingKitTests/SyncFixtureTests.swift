@@ -22,6 +22,29 @@ final class SyncFixtureTests: XCTestCase {
         }
     }
 
+    func testALongFileWithChangesCloseTogetherMergesWithoutTheWholeTable() {
+        let base = (0..<3000).map { "line \($0)\n" }
+        var first = base, second = base
+        first[10] = "line 10, edited here\n"
+        second[20] = "line 20, edited there\n"
+        let result = TextMerge.merge(base: base.joined(), first: first.joined(), second: second.joined())
+        XCTAssertFalse(result.conflicted)
+        var expected = base
+        expected[10] = first[10]
+        expected[20] = second[20]
+        XCTAssertEqual(result.text, expected.joined())
+    }
+
+    func testFilesTooDifferentToMatchAreKeptWholeAsAConflict() {
+        let base = (0..<2500).map { "line \($0)\n" }.joined()
+        let first = (0..<2500).map { "first \($0)\n" }.joined()
+        let second = (0..<2500).map { "second \($0)\n" }.joined()
+        let result = TextMerge.merge(base: base, first: first, second: second)
+        XCTAssertTrue(result.conflicted)
+        XCTAssertEqual(result.text, first + second, "both sides' lines, nothing lost")
+        XCTAssertEqual(TextMerge.merge(base: base, first: base, second: second).text, second, "only one side changed: that change")
+    }
+
     private func entries(_ list: Any?) -> (SyncEntries, [String: Data]) {
         var result: SyncEntries = [:]
         var contents: [String: Data] = [:]
