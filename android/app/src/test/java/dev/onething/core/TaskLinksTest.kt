@@ -1,43 +1,52 @@
 package dev.onething.core
 
+import java.io.File
 import java.util.UUID
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Deep links: the same rules as the C# TaskLinkTests. */
+/** Deep links: the same rules as C# and Swift (tests/fixtures/links.json). */
 class TaskLinksTest {
-    private val id = UUID.fromString("4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f")
+    private val fixture: JsonObject = run {
+        var dir: File? = File("").absoluteFile
+        while (dir != null && !File(dir, "tests/fixtures/links.json").isFile) dir = dir.parentFile
+        Json.parseToJsonElement(File(dir ?: error("tests/fixtures not found"), "tests/fixtures/links.json").readText()).jsonObject
+    }
+
+    private val id = UUID.fromString(fixture["id"]!!.jsonPrimitive.content)
+
+    private fun lines(name: String): List<String?> = fixture[name]!!.jsonArray.map { it.jsonPrimitive.contentOrNull }
 
     @Test
     fun aTaskLinkRoundTrips() {
         val link = TaskLinks.forTask(id)
-        assertEquals("onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", link)
+        assertEquals(fixture["link"]!!.jsonPrimitive.content, link)
         assertEquals(TaskLinks.Target.Task(id), TaskLinks.target(link))
     }
 
     @Test
     fun otherShapesStillOpenTheTask() {
-        listOf(
-            "OneThing://Task/4F9D1C2E-3B7A-4E10-9C55-0A1B2C3D4E5F",
-            "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/",
-            "onething://task/4f9d1c2e3b7a4e109c550a1b2c3d4e5f?from=teams",
-            "onething:task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
-            "  onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f  ",
-        ).forEach { assertEquals(it, TaskLinks.Target.Task(id), TaskLinks.target(it)) }
+        assertTrue(lines("opensTheTask").isNotEmpty())
+        lines("opensTheTask").forEach { assertEquals(it, TaskLinks.Target.Task(id), TaskLinks.target(it)) }
     }
 
     @Test
     fun theBareSchemeJustOpensTheApp() {
-        listOf("onething://", "onething:", "onething://open").forEach { assertEquals(it, TaskLinks.Target.App, TaskLinks.target(it)) }
+        assertTrue(lines("opensTheApp").isNotEmpty())
+        lines("opensTheApp").forEach { assertEquals(it, TaskLinks.Target.App, TaskLinks.target(it)) }
     }
 
     @Test
     fun anythingElseIsIgnored() {
-        listOf(
-            null, "", "https://example.com/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", "onething://task/not-a-guid",
-            "onething://task/", "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/../../settings",
-            "onething://settings/delete-everything", "onething://task/{4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f}", "--data",
-        ).forEach { assertNull(it, TaskLinks.target(it)) }
+        assertTrue(lines("ignored").contains(null))
+        lines("ignored").forEach { assertNull(it, TaskLinks.target(it)) }
     }
 }

@@ -1,40 +1,49 @@
+import Foundation
 import XCTest
 @testable import OneThingKit
 
-/// Deep links: the same rules as the C# TaskLinkTests.
+/// Deep links: the same rules as C# and Kotlin (tests/fixtures/links.json).
 final class TaskLinkTests: XCTestCase {
-    private let id = UUID(uuidString: "4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f")!
-
-    func testATaskLinkRoundTrips() {
-        let link = TaskLinks.forTask(id)
-        XCTAssertEqual(link, "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f")
-        XCTAssertEqual(TaskLinks.target(link), .task(id))
+    private func fixture() throws -> [String: Any] {
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { root.deleteLastPathComponent() }
+        let data = try Data(contentsOf: root.appendingPathComponent("tests/fixtures/links.json"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    func testOtherShapesStillOpenTheTask() {
-        for link in [
-            "OneThing://Task/4F9D1C2E-3B7A-4E10-9C55-0A1B2C3D4E5F",
-            "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/",
-            "onething://task/4f9d1c2e3b7a4e109c550a1b2c3d4e5f?from=teams",
-            "onething:task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f",
-            "  onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f  ",
-        ] {
-            XCTAssertEqual(TaskLinks.target(link), .task(id), link)
+    private func id() throws -> UUID {
+        try XCTUnwrap(UUID(uuidString: try XCTUnwrap(try fixture()["id"] as? String)))
+    }
+
+    /// The lines under `name`; JSON null is a missing link.
+    private func lines(_ name: String) throws -> [String?] {
+        try XCTUnwrap(try fixture()[name] as? [Any]).map { $0 as? String }
+    }
+
+    func testATaskLinkRoundTrips() throws {
+        let link = TaskLinks.forTask(try id())
+        XCTAssertEqual(link, try fixture()["link"] as? String)
+        XCTAssertEqual(TaskLinks.target(link), .task(try id()))
+    }
+
+    func testOtherShapesStillOpenTheTask() throws {
+        let id = try id()
+        XCTAssertFalse(try lines("opensTheTask").isEmpty)
+        for link in try lines("opensTheTask") {
+            XCTAssertEqual(TaskLinks.target(link), .task(id), link ?? "nil")
         }
     }
 
-    func testTheBareSchemeJustOpensTheApp() {
-        for link in ["onething://", "onething:", "onething://open"] {
-            XCTAssertEqual(TaskLinks.target(link), .app, link)
+    func testTheBareSchemeJustOpensTheApp() throws {
+        XCTAssertFalse(try lines("opensTheApp").isEmpty)
+        for link in try lines("opensTheApp") {
+            XCTAssertEqual(TaskLinks.target(link), .app, link ?? "nil")
         }
     }
 
-    func testAnythingElseIsIgnored() {
-        for link in [
-            nil, "", "https://example.com/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", "onething://task/not-a-guid",
-            "onething://task/", "onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f/../../settings",
-            "onething://settings/delete-everything", "onething://task/{4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f}", "--data",
-        ] as [String?] {
+    func testAnythingElseIsIgnored() throws {
+        XCTAssertTrue(try lines("ignored").contains(nil))
+        for link in try lines("ignored") {
             XCTAssertNil(TaskLinks.target(link), link ?? "nil")
         }
     }
