@@ -13,9 +13,28 @@ public sealed class FakeShell : IDesktopShell
 
     public bool ConfirmAnswer { get; set; } = true;
 
-    public void OpenUrl(string url) => OpenedUrls.Add(url);
+    /// <summary>Thrown by opening and copying (no browser, the clipboard held by another app).</summary>
+    public Exception? Failure { get; set; }
 
-    public void CopyToClipboard(string text) => Clipboard.Add(text);
+    public void OpenUrl(string url)
+    {
+        if (Failure is { } failure)
+        {
+            throw failure;
+        }
+
+        OpenedUrls.Add(url);
+    }
+
+    public void CopyToClipboard(string text)
+    {
+        if (Failure is { } failure)
+        {
+            throw failure;
+        }
+
+        Clipboard.Add(text);
+    }
 
     public void RunOnUi(Action action) => action();
 
@@ -822,7 +841,42 @@ public sealed class SidebarViewModelTests : IDisposable
         Assert.True(await _store.ReadAsync(b => b.Get(item.Id).IsDone));
 
         await _vm.HandleToastActionAsync(ToastAction.Open, item.Id, null);
-        Assert.Equal($"launch:/?item={item.Id}", _shell.OpenedUrls[^1]);
+        Assert.Equal($"launch:/#/task/{item.Id}", _shell.OpenedUrls[^1]);
+    }
+
+    [Fact]
+    public async Task Opening_a_task_from_a_notification_uses_the_app_window_when_there_is_one()
+    {
+        var item = await Seed("Feature B");
+        var opened = new List<string>();
+        using var vm = new SidebarViewModel(_store, _time, _shell, new SidebarOptions("http://x", p => p, "{}", TimeZoneInfo.Utc) { OpenApp = opened.Add });
+
+        await vm.HandleToastActionAsync(ToastAction.Open, item.Id, null);
+
+        Assert.Equal([$"/#/task/{item.Id}"], opened);
+        Assert.Empty(_shell.OpenedUrls);
+    }
+
+    [Fact]
+    public void No_browser_to_open_a_page_says_so_instead_of_something_went_wrong()
+    {
+        _shell.Failure = new System.ComponentModel.Win32Exception(2, "The system cannot find the file specified.");
+
+        _vm.ConnectAiCommand.Execute(null);
+
+        Assert.Equal("Couldn't open your browser. Check that you have a default browser, then try again.", _vm.StatusMessage);
+    }
+
+    [Fact]
+    public void A_clipboard_another_app_holds_says_so_instead_of_something_went_wrong()
+    {
+#pragma warning disable CA2201 // What WPF's clipboard throws when another app holds it.
+        _shell.Failure = new System.Runtime.InteropServices.COMException("OpenClipboard Failed", unchecked((int)0x800401D0));
+#pragma warning restore CA2201
+
+        _vm.CopyApiTokenCommand.Execute(null);
+
+        Assert.Equal("Couldn't copy: another app is using the clipboard. Try again in a moment.", _vm.StatusMessage);
     }
 
     [Fact]

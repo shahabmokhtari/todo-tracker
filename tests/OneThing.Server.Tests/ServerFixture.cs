@@ -17,7 +17,12 @@ public sealed class ServerFixture : IAsyncDisposable
     public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
 
     // Tests must never sync into this computer's real OneDrive or iCloud Drive.
-    static ServerFixture() => Environment.SetEnvironmentVariable("ONETHING_CLOUD", "off");
+    // Nor into the folder ONETHING_VAULT names (it wins over the temp data folder).
+    static ServerFixture()
+    {
+        Environment.SetEnvironmentVariable("ONETHING_CLOUD", "off");
+        Environment.SetEnvironmentVariable("ONETHING_VAULT", null);
+    }
 
     private ServerFixture(WebApplication app, string dataDirectory, FakeTimeProvider time, RecordingNotifier notifier, FakeHttpHandler teams, FakeRelay relay)
     {
@@ -59,6 +64,8 @@ public sealed class ServerFixture : IAsyncDisposable
             EnableBackgroundLoop = false,
             WatchVault = false,
             EnableHistory = false,
+            // Locks and version history stay in the temp folder, not in this computer's local app data.
+            LockDirectory = Path.Combine(dir, "locks"),
         };
         configure?.Invoke(options);
         var time = new FakeTimeProvider(T0);

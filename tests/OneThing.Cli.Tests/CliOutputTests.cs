@@ -98,6 +98,27 @@ public sealed class CliOutputTests : IDisposable
     }
 
     [Fact]
+    public async Task Vault_use_from_an_ai_agent_is_refused()
+    {
+        var target = Path.Combine(_tt.DataDirectory, "elsewhere");
+
+        var result = await _tt.Run("vault", "use", target, "--as", "claude");
+
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Only you can change where your tasks live", result.Error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.Combine(_tt.DataDirectory, "settings.json")) && (await File.ReadAllTextAsync(Path.Combine(_tt.DataDirectory, "settings.json"))).Contains("elsewhere", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Help_on_hooks_never_tells_an_agent_how_to_approve_its_own_hook()
+    {
+        var help = CliCommands.Help("hooks");
+
+        Assert.DoesNotContain("without --as", help, StringComparison.Ordinal);
+        Assert.Contains("approving is for you, the person at the computer", help, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Help_for_one_command_and_usage_errors()
     {
         var add = await _tt.Run("help", "add");

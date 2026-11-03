@@ -51,6 +51,23 @@ public sealed class WindowPlacementTests : IDisposable
     }
 
     [Fact]
+    public void Saving_where_the_file_cannot_be_written_returns_false_instead_of_throwing()
+    {
+        // A file where the folder should be: the store can't create its folder.
+        File.WriteAllText(_dir, "in the way");
+        try
+        {
+            var saved = new WindowPlacementStore(FilePath).Save(WindowPlacement.Default);
+
+            Assert.False(saved);
+        }
+        finally
+        {
+            File.Delete(_dir);
+        }
+    }
+
+    [Fact]
     public void Hidden_and_making_room_for_remote_desktop_are_remembered()
     {
         var store = new WindowPlacementStore(FilePath);

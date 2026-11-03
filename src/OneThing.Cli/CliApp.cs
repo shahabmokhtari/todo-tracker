@@ -20,6 +20,22 @@ public static class CliApp
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
+    /// <summary>
+    /// Whether Ctrl+C should stop the command cleanly instead of ending the process: the MCP server, however it was
+    /// started (<c>onething mcp</c>, <c>onething --json mcp</c>, <c>onething MCP</c>).
+    /// </summary>
+    public static bool StopsOnCtrlC(IReadOnlyList<string> args)
+    {
+        try
+        {
+            return CliArgs.Parse(args).Command == "mcp";
+        }
+        catch (CliUsageException)
+        {
+            return false;
+        }
+    }
+
     public static async Task<int> RunAsync(IReadOnlyList<string> args, CliContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -80,6 +96,18 @@ public static class CliApp
         catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException or IOException or TimeoutException)
         {
             await context.Error.WriteLineAsync($"ot: {ErrorText.Friendly(ex)}").ConfigureAwait(false);
+            return 1;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopped with Ctrl+C: a clean stop.
+            return 0;
+        }
+#pragma warning disable CA1031 // Last stop: say what went wrong (exit 1) instead of a crash with a stack trace.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await context.Error.WriteLineAsync($"ot: something went wrong: {ex.Message}").ConfigureAwait(false);
             return 1;
         }
     }

@@ -248,6 +248,8 @@ Where the task files live, their format, or switch folders.
 ot vault [guide | obsidian | use <folder|obsidian vault>]
 ```
 
+use is for you, the person at the computer (not for AI agents); the app switches at its next start.  
+
 ### ot mcp
 
 Run the MCP server over stdio (for Claude, Copilot, VS Code…).
@@ -317,5 +319,5 @@ ot hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve 
 add &lt;event&gt; (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…  
 edit &lt;id&gt; [--event e] and any of the add options (only what you give changes).  
 &lt;event&gt;: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).  
-A command gets the event as JSON on stdin. With --as (or ONETHING_AGENT) a hook you add or change waits for approval:  
-ot hooks approve &lt;id&gt; &lt;version&gt; (without --as; ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.  
+A command gets the event as JSON on stdin. A hook an AI agent adds or changes (--as or ONETHING_AGENT) waits for your approval:  
+approving is for you, the person at the computer: ot hooks approve &lt;id&gt; &lt;version&gt; (ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.  

@@ -179,25 +179,46 @@ internal static class StartupRegistration
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "OneThing";
 
+    /// <summary>What Windows runs at sign-in: this app, where it is now (null when that can't be told).</summary>
+    private static string? Command => Environment.ProcessPath is { } exe ? $"\"{exe}\"" : null;
+
+    /// <summary>On, and starting this copy of the app (not one that has moved or been removed since).</summary>
     public static bool IsEnabled
     {
         get
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-            return key?.GetValue(ValueName) is string;
+            return key?.GetValue(ValueName) is string value && Command is { } command && string.Equals(value, command, StringComparison.OrdinalIgnoreCase);
         }
     }
 
     public static void Set(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (enabled)
-        {
-            key.SetValue(ValueName, $"\"{Environment.ProcessPath}\"");
-        }
-        else
+        if (!enabled)
         {
             key.DeleteValue(ValueName, throwOnMissingValue: false);
+        }
+        else if (Command is { } command)
+        {
+            key.SetValue(ValueName, command);
+        }
+    }
+
+    /// <summary>At every start: when it's on, it follows the app if it moved (an update, a new folder).</summary>
+    public static void Refresh()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
+            if (key?.GetValue(ValueName) is string value && Command is { } command && !string.Equals(value, command, StringComparison.OrdinalIgnoreCase))
+            {
+                key.SetValue(ValueName, command);
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
+        {
+            // Starting with Windows is a nicety; the app runs without it.
         }
     }
 }

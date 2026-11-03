@@ -41,6 +41,9 @@ public partial class MainWindow : Window
 
     internal OneThing.Server.Plugins.Sync.SyncService? Sync { get; set; }
 
+    /// <summary>What a restart starts the new sidebar with (this run's data folder, port…; set by the app).</summary>
+    internal IReadOnlyList<string> RestartArguments { get; set; } = ["--restart"];
+
     private bool On(string plugin) => Plugins?.IsRunning(plugin) ?? true;
     private WindowPlacement? _preferred;
 
@@ -829,7 +832,13 @@ public partial class MainWindow : Window
         if (Environment.ProcessPath is { } exe)
         {
             ReleaseScreenEdge();
-            Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, Arguments = "--restart" });
+            var start = new ProcessStartInfo(exe) { UseShellExecute = false };
+            foreach (var argument in RestartArguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            Process.Start(start);
             Application.Current.Shutdown();
         }
     }
@@ -910,7 +919,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var message = $"Keep your tasks in\n{folder}?\n\nOnething restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
+        var message = $"Keep your tasks in\n{folder}?\n\nOne Thing restarts to switch. Your current tasks stay where they are (copy the group folders over if you want them there too).";
         var summary = OneThing.Core.Vault.VaultFolder.Inspect(folder);
         if (summary is { IsTaskFolder: false, Tasks: > 0 })
         {

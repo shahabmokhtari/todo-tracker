@@ -72,7 +72,7 @@ internal sealed class CliArgs
                 name = eq > 0 ? arg[2..eq] : arg[2..];
                 inline = eq > 0 ? arg[(eq + 1)..] : null;
             }
-            else if (ShortNames.TryGetValue(arg, out var full))
+            else if (ShortNames.TryGetValue(arg, out var full) && !TakesDashWords(words))
             {
                 name = full;
             }
@@ -119,6 +119,13 @@ internal sealed class CliArgs
     }
 
     public bool Has(string name) => _flags.Contains(name) || _values.ContainsKey(name);
+
+    /// <summary>
+    /// ot tag and ot label take -name to remove one: after their task, -g, -h, -j and -v are tags to remove, not options
+    /// (the long --group, --help, --json and --version still work).
+    /// </summary>
+    private static bool TakesDashWords(List<string> words) =>
+        words.Count > 1 && (string.Equals(words[0], "tag", StringComparison.OrdinalIgnoreCase) || string.Equals(words[0], "label", StringComparison.OrdinalIgnoreCase));
 
     public string? Value(string name) => _values.TryGetValue(name, out var list) ? list[^1] : null;
 

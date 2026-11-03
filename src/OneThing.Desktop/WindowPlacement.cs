@@ -160,12 +160,24 @@ public sealed class WindowPlacementStore(string path)
         }
     }
 
-    public void Save(WindowPlacement placement)
+    /// <summary>
+    /// Remembers the placement for the next start. Best effort: a file another app holds open (or a read-only folder)
+    /// only means it isn't remembered this time, so it returns false instead of throwing.
+    /// </summary>
+    public bool Save(WindowPlacement placement)
     {
         ArgumentNullException.ThrowIfNull(placement);
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(placement.Sanitized(), Json));
-        File.Move(temp, path, overwrite: true);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(placement.Sanitized(), Json));
+            File.Move(temp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

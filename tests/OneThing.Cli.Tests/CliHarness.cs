@@ -81,6 +81,7 @@ public sealed class CliHarness : IDisposable
 
     public void Dispose()
     {
+        ForgetDefaultLock(VaultDirectory);
         try
         {
             if (Directory.Exists(DataDirectory))
@@ -91,6 +92,36 @@ public sealed class CliHarness : IDisposable
                 }
 
                 Directory.Delete(DataDirectory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// A test that starts <c>onething</c> as its own process can't point its locks at a temp folder: removes the lock
+    /// file it left in local app data for this test's (unique, temporary) tasks folder. Same name as VaultFiles.LockPath.
+    /// </summary>
+    public static void ForgetDefaultLock(string vault)
+    {
+        var key = Path.GetFullPath(vault).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!OperatingSystem.IsLinux())
+        {
+            key = key.ToUpperInvariant();
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key)))[..16];
+        var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var path = Path.Combine(root, "OneThing", "locks", $"vault-{hash}.lock");
+        try
+        {
+            if (!string.IsNullOrEmpty(root))
+            {
+                File.Delete(path);
             }
         }
         catch (IOException)

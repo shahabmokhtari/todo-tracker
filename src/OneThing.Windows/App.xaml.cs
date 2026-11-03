@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -34,8 +33,23 @@ public partial class App : Application
     {
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledUiException;
-        TaskScheduler.UnobservedTaskException += (_, unobserved) => unobserved.SetObserved();
+        TaskScheduler.UnobservedTaskException += (_, unobserved) =>
+        {
+            LogError(unobserved.Exception);
+            unobserved.SetObserved();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, unhandled) => LogError(unhandled.ExceptionObject);
         var args = StartupArgs.Parse(e.Args);
+        if (args.Error is { } problem)
+        {
+            if (!args.SmokeTest)
+            {
+                MessageBox.Show($"One Thing could not start:\n\n{problem}", "One Thing", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+
+            Shutdown(1);
+            return;
+        }
 
         // One sidebar at a time (tests included): a second launch brings the running one to the front instead, or hands
         // it the deep link it was started with (onething://task/<id>).
@@ -78,21 +92,89 @@ public partial class App : Application
                 }
                 catch (Exception ex) when (args.Restart && attempt < 20 && ex is StoreLockedException or IOException)
                 {
+                    // Let go of what this try opened (the data folder's lock above all), or every retry fails on it.
+                    await ReleaseFailedStartAsync().ConfigureAwait(true);
                     await Task.Delay(500).ConfigureAwait(true);
                 }
             }
         }
         catch (StoreLockedException)
         {
-            MessageBox.Show("One Thing is already running.", "One Thing", MessageBoxButton.OK, MessageBoxImage.Information);
+            await ReleaseFailedStartAsync().ConfigureAwait(true);
+            MessageBox.Show(
+                args.Restart ? "One Thing is still closing. Start it again in a moment." : "One Thing is already running.",
+                "One Thing",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             Shutdown(0);
         }
 #pragma warning disable CA1031 // Last-chance handler: show the problem instead of crashing silently.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            LogError(ex);
+            await ReleaseFailedStartAsync().ConfigureAwait(true);
             MessageBox.Show($"One Thing could not start:\n\n{ex.Message}", "One Thing", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    /// <summary>Closes and disposes whatever a start that failed half way had already opened, so it can start again.</summary>
+    private async Task ReleaseFailedStartAsync()
+    {
+        if (_window is { } window)
+        {
+            // Not the main window any more: closing it must not quit the app.
+            MainWindow = null;
+            _window = null;
+            window.ReleaseScreenEdge();
+            window.Close();
+        }
+
+        DisposeParts();
+        if (_server is { } server)
+        {
+            _server = null;
+            await StopServerAsync(server).ConfigureAwait(true);
+        }
+    }
+
+    private void DisposeParts()
+    {
+        _tray?.Dispose();
+        _toasts?.Dispose();
+        _breaks?.Dispose();
+        _appHost?.Dispose();
+        _viewModel?.Ask?.Dispose();
+        _ask?.Dispose();
+        _viewModel?.Dispose();
+        _tray = null;
+        _toasts = null;
+        _breaks = null;
+        _appHost = null;
+        _ask = null;
+        _viewModel = null;
+    }
+
+    /// <summary>Runs off the UI thread: host shutdown continuations would otherwise deadlock on the WPF dispatcher.</summary>
+    private static Task StopServerAsync(WebApplication server) =>
+        Task.Run(async () =>
+        {
+            using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            await server.StopAsync(stop.Token).ConfigureAwait(false);
+            await server.DisposeAsync().ConfigureAwait(false);
+        });
+
+    /// <summary>Best effort: what went wrong goes to errors.log in the data folder.</summary>
+    private void LogError(object? exception)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(_dataDirectory, "errors.log"), $"{DateTimeOffset.Now:o} {exception}{Environment.NewLine}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Logging is best effort; never let a last-chance handler throw.
         }
     }
 
@@ -118,13 +200,13 @@ public partial class App : Application
     private void OnUnhandledUiException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
     {
         e.Handled = true;
-        try
+        LogError(e.Exception);
+        if (_window is null && _instance is null)
         {
-            File.AppendAllText(Path.Combine(_dataDirectory, "errors.log"), $"{DateTimeOffset.Now:o} {e.Exception}{Environment.NewLine}");
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Logging is best effort; never let the last-chance handler throw.
+            // Failed before anything started: with no window to show it, quitting beats running on unseen.
+            MessageBox.Show($"One Thing could not start:\n\n{e.Exception.Message}", "One Thing", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
         }
 
         if (_viewModel is not null)
@@ -135,23 +217,10 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _tray?.Dispose();
-        _toasts?.Dispose();
-        _breaks?.Dispose();
-        _appHost?.Dispose();
-        _viewModel?.Ask?.Dispose();
-        _ask?.Dispose();
-        _viewModel?.Dispose();
+        DisposeParts();
         if (_server is not null)
         {
-            // Run off the UI thread: host shutdown continuations would otherwise deadlock on the WPF dispatcher.
-            var server = _server;
-            Task.Run(async () =>
-            {
-                using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                await server.StopAsync(stop.Token).ConfigureAwait(false);
-                await server.DisposeAsync().ConfigureAwait(false);
-            }).Wait(TimeSpan.FromSeconds(5));
+            StopServerAsync(_server).Wait(TimeSpan.FromSeconds(5));
         }
 
         _instance?.Dispose();
@@ -166,9 +235,30 @@ public partial class App : Application
             Port = args.Port ?? OneThingServerOptions.DefaultPort,
             ApiToken = token,
         };
+        if (!interactive)
+        {
+            // Automated runs (the smoke test) keep everything in their own folder: not the folder ONETHING_VAULT names,
+            // and no locks or version history in local app data.
+            options.VaultPath = Path.Combine(options.DataDirectory, "vault");
+            options.LockDirectory = Path.Combine(options.DataDirectory, "locks");
+            options.EnableHistory = false;
+        }
+
         ApplyTheme(args.Theme);
         _dataDirectory = options.DataDirectory;
-        _server = OneThingHost.Build(OneThingHost.CreateBuilder(options));
+        var server = OneThingHost.CreateBuilder(options).Build();
+        try
+        {
+            OneThingHost.Configure(server);
+        }
+        catch
+        {
+            // Configure takes the data folder's lock before it opens the tasks: a failure must let go of it again.
+            await server.DisposeAsync().ConfigureAwait(true);
+            throw;
+        }
+
+        _server = server;
         string? serverProblem = null;
         try
         {
@@ -229,6 +319,7 @@ public partial class App : Application
         {
             _ask = new AgentChatAsk(chat);
             var shell = new WpfShell();
+            var askSidebar = _viewModel;
             _viewModel.Ask = new AskViewModel(_ask, run => Dispatcher.BeginInvoke(run), () =>
             {
                 if (appHost is not null)
@@ -237,7 +328,14 @@ public partial class App : Application
                 }
                 else
                 {
-                    shell.OpenUrl(OneThingHost.CreateLaunchUrl(services, "/?ask=1"));
+                    try
+                    {
+                        shell.OpenUrl(OneThingHost.CreateLaunchUrl(services, "/?ask=1"));
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        askSidebar.StatusMessage = "Couldn't open your browser. Check that you have a default browser, then try again.";
+                    }
                 }
             });
         }
@@ -246,6 +344,7 @@ public partial class App : Application
         window.Vault = services.GetRequiredService<OneThing.Core.Vault.VaultBoardStore>();
         var plugins = services.GetRequiredService<OneThing.Server.Plugins.PluginHost>();
         window.Plugins = plugins;
+        window.RestartArguments = args.RestartArguments();
         window.Sync = services.GetService<OneThing.Server.Plugins.Sync.SyncService>();
         _viewModel.ShowFocusTimer = plugins.IsRunning("focus-timer");
         _viewModel.ShowEnergy = plugins.IsRunning("energy");
@@ -335,6 +434,7 @@ public partial class App : Application
         {
             // The user's own app (not a test run on another folder or port) answers onething:// links.
             DeepLinkRegistration.Register();
+            StartupRegistration.Refresh();
         }
 
         if (_pendingLink is { } link)
@@ -560,45 +660,3 @@ public partial class App : Application
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 }
-
-internal sealed record StartupArgs(bool SmokeTest, string? SmokeLog, string? DataDirectory, int? Port, bool NoDock, string? Screenshot = null, string? Theme = null, bool Restart = false, string? Link = null)
-{
-    public static StartupArgs Parse(string[] args)
-    {
-        // Started for a link: only the link counts. Windows pastes the raw link into the command line, so a link
-        // with a quote in it could otherwise add options of its own (--data, --screenshot…).
-        if (args.FirstOrDefault(a => a.StartsWith(TaskLinks.Scheme + ":", StringComparison.OrdinalIgnoreCase)) is { } link)
-        {
-            return new StartupArgs(false, null, null, null, false, Link: link);
-        }
-
-        var result = new StartupArgs(false, null, null, null, false);
-        for (var i = 0; i < args.Length; i++)
-        {
-            result = args[i] switch
-            {
-                "--smoke-test" => result with { SmokeTest = true },
-                "--smoke-log" when i + 1 < args.Length => result with { SmokeLog = args[++i] },
-                "--data" when i + 1 < args.Length => result with { DataDirectory = args[++i] },
-                "--port" when i + 1 < args.Length => result with { Port = int.Parse(args[++i], CultureInfo.InvariantCulture) },
-                "--no-dock" => result with { NoDock = true },
-                "--restart" => result with { Restart = true },
-                "--screenshot" when i + 1 < args.Length => result with { Screenshot = args[++i] },
-                "--theme" when i + 1 < args.Length => result with { Theme = args[++i] },
-                _ => result,
-            };
-        }
-
-        return result;
-    }
-}
-
-
-
-
-
-
-
-
-
-

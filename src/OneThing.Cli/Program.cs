@@ -4,7 +4,7 @@ using OneThing.Cli;
 Console.OutputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 Console.InputEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 using var cancel = new CancellationTokenSource();
-if (args.Length > 0 && args[0] == "mcp")
+if (CliApp.StopsOnCtrlC(args))
 {
     // The MCP server shuts down cleanly on Ctrl+C; every other command just stops.
     Console.CancelKeyPress += (_, e) =>

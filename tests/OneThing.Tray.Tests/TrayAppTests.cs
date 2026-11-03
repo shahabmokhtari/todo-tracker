@@ -73,7 +73,11 @@ public sealed class TrayAppTests : IDisposable
     public async Task It_runs_the_server_and_a_second_copy_opens_the_first_ones_window_instead()
     {
         Environment.SetEnvironmentVariable("ONETHING_CLOUD", "off");
+        Environment.SetEnvironmentVariable("ONETHING_VAULT", null);
+        var locks = Path.Combine(_data, "locks");
         var options = TrayHost.Options(new TrayArgs(_data, FreePort()));
+        options.LockDirectory = locks;
+        options.EnableHistory = false;
         var first = new RecordingShell();
         await using var host = await TrayHost.StartAsync(options, first);
         Assert.NotNull(host);
@@ -81,7 +85,10 @@ public sealed class TrayAppTests : IDisposable
         Assert.StartsWith("http://127.0.0.1:", host.LaunchUrl("/"), StringComparison.Ordinal);
 
         var second = new RecordingShell();
-        var again = await TrayHost.StartAsync(TrayHost.Options(new TrayArgs(_data, options.Port)), second, "/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f");
+        var secondOptions = TrayHost.Options(new TrayArgs(_data, options.Port));
+        secondOptions.LockDirectory = locks;
+        secondOptions.EnableHistory = false;
+        var again = await TrayHost.StartAsync(secondOptions, second, "/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f");
 
         Assert.Null(again);
         Assert.Single(second.Opened);
