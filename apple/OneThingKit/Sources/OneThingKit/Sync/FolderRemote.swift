@@ -175,7 +175,15 @@ public final class FolderRemote: SyncRemote {
             var partial = waiting
             for (name, content) in files {
                 do {
-                    if let snapshot = try DeviceSnapshot.decode(content), Ordinal.equalIgnoreCase(snapshot.device, String(name.dropLast(5))) { devices.append(snapshot) }
+                    guard let o = try JSONText.parse(content).objectValue else { throw SyncDataError("Not a device file.") }
+                    guard let id = o.get("device")?.stringValue, Ordinal.equalIgnoreCase(id, String(name.dropLast(5))) else { continue }
+                    if let snapshot = try DeviceSnapshot.from(.object(o)) {
+                        devices.append(snapshot)
+                    } else {
+                        // From a newer version (another schema) or half written (no entries): not merged, and this
+                        // version isn't taken as merged.
+                        partial = true
+                    }
                 } catch {
                     // Half-synced or from a newer version: skipped, and looked at again next time.
                     partial = true

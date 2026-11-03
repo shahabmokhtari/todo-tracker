@@ -67,13 +67,14 @@ final class QuickCaptureTests: XCTestCase {
 
     /// tests/fixtures/quick-capture.json, shared with C# and Kotlin.
     func testQuickCaptureMatchesTheSharedFixture() throws {
-        let file = Fixtures.root.appendingPathComponent("quick-capture.json")
-        guard FileManager.default.fileExists(atPath: file.path) else { throw XCTSkip("tests/fixtures/quick-capture.json isn't there yet") }
         let fixture = try Fixtures.json("quick-capture.json")
         let fixtureNow = try XCTUnwrap(instant(fixture["now"]))
         let zone = try XCTUnwrap((fixture["timeZone"] as? String).flatMap(TimeZone.init(identifier:)))
         let cases = try XCTUnwrap(fixture["cases"] as? [[String: Any]])
         XCTAssertFalse(cases.isEmpty)
+        for text in fixture["rejected"] as? [String] ?? [] {
+            XCTAssertThrowsError(try QuickCaptureParser.parse(text, now: fixtureNow, timeZone: zone), "rejected: \(text)")
+        }
         for c in cases {
             let text = try XCTUnwrap(c["text"] as? String)
             guard let title = c["title"] as? String else {

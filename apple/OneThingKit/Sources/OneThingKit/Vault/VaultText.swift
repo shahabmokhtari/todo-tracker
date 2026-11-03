@@ -103,8 +103,9 @@ enum VaultText {
     static func localDay(_ date: Date, _ tz: TimeZone) -> LocalDay { toLocal(date, tz).date }
 
     /// The instant of a local wall-clock time, with .NET's `TimeZoneInfo.GetUtcOffset` rule: a time in the hour
-    /// skipped by daylight saving, or in the repeated hour, gets the zone's standard offset.
-    static func atLocal(_ local: LocalDateTime, _ tz: TimeZone) -> Date {
+    /// skipped by daylight saving, or in the repeated hour, gets the zone's standard offset. A time that falls outside
+    /// the years .NET keeps (1 to 9999, in UTC) is a format error, as in C#.
+    static func atLocal(_ local: LocalDateTime, _ tz: TimeZone) throws -> Date {
         let wall = local.wallMillis
         let guess = date(millis: wall)
         var candidates: [Int] = []
@@ -121,12 +122,16 @@ enum VaultText {
             let at = date(millis: wall - Int64(candidates.min()!) * 1000)
             offset = tz.secondsFromGMT(for: at) - Int(tz.daylightSavingTimeOffset(for: at))
         }
-        return date(millis: wall - Int64(offset) * 1000)
+        let utcMillis = wall - Int64(offset) * 1000
+        guard utcMillis >= -Instant.unixEpochTicks / 10_000, utcMillis <= (Instant.maxTicks - Instant.unixEpochTicks) / 10_000 else {
+            throw VaultFormatError("\(four(local.year))-\(two(local.month))-\(two(local.day)) \(two(local.hour)):\(two(local.minute)) is too far away to use.")
+        }
+        return date(millis: utcMillis)
     }
 
-    static func atLocal(_ day: LocalDay, _ time: String, _ tz: TimeZone) -> Date {
+    static func atLocal(_ day: LocalDay, _ time: String, _ tz: TimeZone) throws -> Date {
         let parts = time.oSplit(":").compactMap { Int($0) }
-        return atLocal(LocalDateTime(year: day.year, month: day.month, day: day.day, hour: parts[0], minute: parts[1]), tz)
+        return try atLocal(LocalDateTime(year: day.year, month: day.month, day: day.day, hour: parts[0], minute: parts[1]), tz)
     }
 
     /// `yyyy-MM-dd` exactly (after trimming).
@@ -151,14 +156,14 @@ enum VaultText {
         let value = text.oTrim().oTrim("\"'")
         if value.isEmpty { return nil }
         if hasZone.isMatch(value), let exact = parseInstant(value) { return exact }
-        if let day = parseDate(value) { return atLocal(day, defaultTime, tz) }
+        if let day = parseDate(value) { return try atLocal(day, defaultTime, tz) }
         if let m = localFormats.match(value) {
             let y = Int(m.group(1))!, mo = Int(m.group(2))!, d = Int(m.group(3))!
             let h = Int(m.has(4) ? m.group(4) : m.group(8))!, mi = Int(m.has(5) ? m.group(5) : m.group(9))!
             let s = m.has(6) ? Int(m.group(6))! : m.has(10) ? Int(m.group(10))! : 0
             let ms = m.has(7) ? Int(m.group(7))! : 0
             if (1...12).contains(mo), d >= 1, d <= LocalDay.length(y, mo), h < 24, mi < 60, s < 60 {
-                return atLocal(LocalDateTime(year: y, month: mo, day: d, hour: h, minute: mi, second: s, millisecond: ms), tz)
+                return try atLocal(LocalDateTime(year: y, month: mo, day: d, hour: h, minute: mi, second: s, millisecond: ms), tz)
             }
         }
         throw VaultFormatError("\"\(text)\" isn't a date (use 2026-01-31, 2026-01-31T17:00, or an ISO time).")
@@ -179,35 +184,32 @@ enum VaultText {
 
     private static let durationPart = Rx(#"(\d+)\s*([dhm])"#, ignoreCase: true)
 
-    /// The longest duration a file may give (.NET's `TimeSpan.MaxValue`): a longer one is a problem with that file.
-    static let maxDurationSeconds: TimeInterval = 922_337_203_685
-    static let maxDurationMinutes: Int64 = 15_372_286_728
+    /// The longest duration a file can hold (ten years, in minutes); longer ones are read as this (C# MaxDuration).
+    static let maxDurationMinutes: Double = 5_256_000
 
+    /// Minutes as a duration in seconds, no longer than `maxDurationMinutes` either way (C# VaultText.Minutes).
+    static func minutes(_ minutes: Double) -> TimeInterval {
+        Swift.min(Swift.max(minutes, -maxDurationMinutes), maxDurationMinutes) * 60
+    }
+
+    /// A number that doesn't fit in 64 bits is a format error; a duration longer than ten years is read as ten years.
     static func parseDuration(_ text: String?) throws -> TimeInterval? {
         guard let value = text?.oTrim(), !value.isEmpty else { return nil }
-        if let plain = parseLong(value) {
-            guard plain >= -maxDurationMinutes, plain <= maxDurationMinutes else { throw tooLong(text!) }
-            return TimeInterval(plain) * 60
-        }
+        if let plain = parseLong(value) { return minutes(Double(plain)) }
         let parts = durationPart.matches(value)
         if parts.isEmpty || parts.map({ $0.value.oRep(" ", "") }).joined().u16 != value.oRep(" ", "").u16 {
             throw VaultFormatError("\"\(text!)\" isn't a duration (use 90m, 24h, or 1d).")
         }
-        var total: TimeInterval = 0
+        var total = 0.0
         for part in parts {
             guard let n = Int64(part.group(1)) else { throw VaultFormatError("\"\(text!)\" isn't a duration (use 90m, 24h, or 1d).") }
             switch part.group(2).lowercased() {
-            case "d": total += TimeInterval(n) * 86_400
-            case "h": total += TimeInterval(n) * 3600
-            default: total += TimeInterval(n) * 60
+            case "d": total += Double(n) * 1440
+            case "h": total += Double(n) * 60
+            default: total += Double(n)
             }
         }
-        guard total <= maxDurationSeconds else { throw tooLong(text!) }
-        return total
-    }
-
-    private static func tooLong(_ text: String) -> VaultFormatError {
-        VaultFormatError("\"\(text)\" is too long for a duration (use 90m, 24h, or 1d).")
+        return minutes(total)
     }
 
     /// `long.TryParse(NumberStyles.Integer)`: optional white space and sign, ASCII digits.
@@ -422,7 +424,10 @@ public struct Instant: Comparable, Hashable, Sendable, CustomStringConvertible {
         }
         let day = Int64(LocalDay(year: y, month: mo, day: d).epochDay + 719_162)
         let seconds = day * 86_400 + Int64(h * 3600 + mi * 60 + s - offset)
-        return seconds * ticksPerSecond + frac
+        let ticks = seconds * ticksPerSecond + frac
+        // Past what .NET keeps once moved to UTC (9999-12-31T23:00-05:00): not a time (DateTimeOffset.TryParse).
+        guard ticks >= 0, ticks <= maxTicks else { return nil }
+        return ticks
     }
 
     public init?(parsing text: String) {

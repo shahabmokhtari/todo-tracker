@@ -438,7 +438,7 @@ public enum TaskMarkdown {
         let createdMeta = VaultText.parseInstant(str(meta, "created"))
         state.needsWrite = state.needsWrite || createdMeta == nil || isPlain
 
-        func resolve(_ visible: LocalDay?, _ exact: String?, _ defaultTime: String) -> Date? {
+        func resolve(_ visible: LocalDay?, _ exact: String?, _ defaultTime: String) throws -> Date? {
             let precise = VaultText.parseInstant(exact)
             guard let visible else {
                 state.needsWrite = state.needsWrite || precise != nil
@@ -446,21 +446,15 @@ public enum TaskMarkdown {
             }
             if let p = precise, VaultText.localDay(p, tz) == visible { return p }
             state.needsWrite = true
-            return VaultText.atLocal(visible, defaultTime, tz)
+            return try VaultText.atLocal(visible, defaultTime, tz)
         }
 
         let item = WorkItem(id: id, title: title, priority: priority, createdAt: createdMeta ?? ctx.now, groupId: emptyGuid)
-        item.deadline = resolve(due, str(meta, "due"), VaultText.defaultDueTime)
-        item.nextActionAt = resolve(scheduled, str(meta, "next"), VaultText.defaultScheduledTime)
+        item.deadline = try resolve(due, str(meta, "due"), VaultText.defaultDueTime)
+        item.nextActionAt = try resolve(scheduled, str(meta, "next"), VaultText.defaultScheduledTime)
         item.afterId = parseGuid(str(meta, "after"))
         item.sequential = meta?["seq"]?.boolValue ?? false
-        if let delay = long(meta, "delay") {
-            // Out of range (a hand-edited file): a problem with this file, never a crash.
-            guard delay >= -VaultText.maxDurationMinutes, delay <= VaultText.maxDurationMinutes else {
-                throw VaultFormatError("A step's delay in \"\(title)\" is too long (\(delay) minutes).")
-            }
-            item.stepDelay = TimeInterval(delay) * 60
-        }
+        if let delay = long(meta, "delay") { item.stepDelay = VaultText.minutes(Double(delay)) }
         item.icon = cleanIcon(str(meta, "icon"))
         item.color = cleanColor(str(meta, "color"))
         item.repeatRule = Recurrence.parseOrNil(str(meta, "repeat"))
@@ -499,7 +493,7 @@ public enum TaskMarkdown {
         let doneMeta = VaultText.parseInstant(str(meta, "done"))
         if isDoneChar(check) {
             if let d = doneDate, doneMeta == nil || VaultText.localDay(doneMeta!, tz) != d {
-                item.completedAt = VaultText.atLocal(d, VaultText.defaultDoneTime, tz)
+                item.completedAt = try VaultText.atLocal(d, VaultText.defaultDoneTime, tz)
             } else {
                 item.completedAt = doneMeta ?? ctx.now
             }

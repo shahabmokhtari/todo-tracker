@@ -54,21 +54,49 @@ public final class SyncState {
 
     public let deviceId: String
     public let deviceName: String
+    /// Why sync can't run with this state (this device's identity can't be read), or nil.
+    public let problem: String?
 
     /// `directory`: this place's state; `deviceDirectory`: shared by every place this vault syncs with (one device id
-    /// per vault).
+    /// per vault). A damaged `device.json` keeps the id it still holds; with none left, sync is paused (`problem`)
+    /// rather than joining as a new device (as C#).
     public init(directory: URL, deviceDirectory: URL, deviceName: String? = nil) throws {
         dir = directory
         try fm.createDirectory(at: directory, withIntermediateDirectories: true)
         try fm.createDirectory(at: deviceDirectory, withIntermediateDirectories: true)
         let devicePath = deviceDirectory.appendingPathComponent("device.json")
-        var info = (try? Data(contentsOf: devicePath)).flatMap { try? JSONText.parse($0).objectValue }
-        if info?["id"]?.stringValue == nil {
-            info = JSONObject([("id", .string(guidN(UUID()))), ("name", .string(deviceName ?? Self.defaultName))])
-            try Self.write(devicePath, .object(info!))
+        let text = fm.contents(atPath: devicePath.path).map { String(decoding: $0, as: UTF8.self) }
+        var device = text.flatMap(Self.readDevice)
+        if device == nil, let text, let found = Self.idInText.match(text) {
+            // Damaged, but the id is still there: this device stays who it was (a new id would merge it as a stranger).
+            device = (id: found.group(1), name: deviceName ?? Self.defaultName)
+            try Self.writeDevice(devicePath, device!)
         }
-        deviceId = info!["id"]!.stringValue!
-        self.deviceName = deviceName ?? info?["name"]?.stringValue ?? Self.defaultName
+        if device == nil && text != nil {
+            problem = "This device's sync identity (\(devicePath.path)) can't be read, so sync is paused rather than joining as a new device. Put back an earlier copy of the file, or remove it to join as a new device."
+            deviceId = ""
+            self.deviceName = deviceName ?? Self.defaultName
+            return
+        }
+        if device == nil {
+            device = (id: guidN(UUID()), name: deviceName ?? Self.defaultName)
+            try Self.writeDevice(devicePath, device!)
+        }
+        problem = nil
+        deviceId = device!.id
+        self.deviceName = deviceName ?? device!.name
+    }
+
+    private static let idInText = Rx(#""id"\s*:\s*"([0-9a-fA-F]{32})""#)
+
+    private static func readDevice(_ text: String) -> (id: String, name: String)? {
+        guard let o = (try? JSONText.parse(text))?.objectValue, let id = o.get("id")?.stringValue,
+              id.utf16.count > 1, id.utf16.count <= 64, Ordinal.isAsciiLetterOrDigit(id) else { return nil }
+        return (id: id, name: o.get("name")?.stringValue ?? defaultName)
+    }
+
+    private static func writeDevice(_ path: URL, _ device: (id: String, name: String)) throws {
+        try write(path, .object(JSONObject([("id", .string(device.id)), ("name", .string(device.name))])))
     }
 
     /// A fixed name until the app passes the person's device name (looking up the host name can block on slow DNS).
@@ -155,7 +183,7 @@ public final class SyncState {
         let path = try blobPath(hash)
         if fm.fileExists(atPath: path.path) { return }
         try fm.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try content.write(to: path, options: .atomic)
+        try VaultFiles.writeAtomic(path.path, content)
     }
 
     /// Drops cached contents no merge base or open conflict needs any more.
@@ -212,8 +240,9 @@ public final class SyncState {
 
     private func read(_ url: URL) -> JSONValue? { fm.contents(atPath: url.path).flatMap { try? JSONText.parse($0) } }
 
+    /// Flushed to the disk before it takes the real name: a power cut can't leave an empty file (a lost base or identity).
     private static func write(_ url: URL, _ value: JSONValue) throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data(JSONText.write(value, indented: true).utf8).write(to: url, options: .atomic)
+        try VaultFiles.writeAtomic(url.path, Data(JSONText.write(value, indented: true).utf8))
     }
 }

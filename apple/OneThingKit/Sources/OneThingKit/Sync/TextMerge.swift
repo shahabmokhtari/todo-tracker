@@ -3,8 +3,10 @@ import Foundation
 public struct TextMergeResult: Equatable, Sendable {
     public var text: String
     public var conflicted: Bool
+    /// Too big to merge line by line (the files differ in too many lines): `text` is the first side, and both versions
+    /// should be kept whole.
+    public var tooLarge = false
 }
-
 /// What to do where both sides changed the same lines differently.
 public enum ConflictPolicy: Sendable {
     /// Keep both sides' lines (the first side's first): nothing typed is lost.
@@ -19,14 +21,13 @@ public enum ConflictPolicy: Sendable {
 /// sides changed the same lines differently, both versions' lines are kept (the first side's first). Lines compare
 /// ordinally and keep their own line endings.
 public enum TextMerge {
-    /// The most cells a line-matching table may have (the lines left once the common start and end are set aside,
-    /// one side's times the other's). Files that differ in more than that are kept whole, both sides' lines, as a
-    /// conflict: matching them would take too long and too much memory.
+    /// The most cells one line-matching table may have (4 million); bigger differences aren't merged line by line.
     static let maxCells = 4_000_000
 
     /// `lineKeys` gives each line of a file its identity (or nil), e.g. a step's block id: keyed lines merge one by one.
     public static func merge(base: String, first: String, second: String, lineKeys: (([String]) -> [String?])? = nil, policy: ConflictPolicy = .both) -> TextMergeResult {
-        let o = split(base), a = split(first), b = split(second)
+        let fo = split(base), fa = split(first), fb = split(second)
+        let fko = lineKeys?(fo), fka = lineKeys?(fa), fkb = lineKeys?(fb)
         // Lines as numbers (equal text, equal number), so comparing is ordinal and cheap.
         var ids: [OKey: Int] = [:]
         func number(_ lines: [String]) -> [Int] {
@@ -36,15 +37,40 @@ public enum TextMerge {
                 return ids.count - 1
             }
         }
-        let no = number(o), na = number(a), nb = number(b)
-        // Too different to match line by line: one side's change if only one changed, else both kept whole.
-        func whole() -> TextMergeResult {
-            let kept = resolve(o: o, co: no, a: a, ca: na, b: b, cb: nb, ko: nil, ka: nil, kb: nil, policy: policy)
-            return TextMergeResult(text: join(kept.lines), conflicted: kept.conflicted)
+        let nfo = number(fo), nfa = number(fa), nfb = number(fb)
+
+        // Lines all three share at the start and the end are kept as they are; only the stretch between is matched.
+        var head = 0
+        while head < nfo.count && head < nfa.count && head < nfb.count && nfo[head] == nfa[head] && nfo[head] == nfb[head] { head += 1 }
+        var tail = 0
+        while tail < nfo.count - head && tail < nfa.count - head && tail < nfb.count - head
+            && nfo[nfo.count - 1 - tail] == nfa[nfa.count - 1 - tail] && nfo[nfo.count - 1 - tail] == nfb[nfb.count - 1 - tail] {
+            tail += 1
         }
-        guard let ma = match(no, na), let ab = match(na, nb), let mb = matchAgreeing(no, nb, ma, ab) else { return whole() }
-        let ko = lineKeys?(o), ka = lineKeys?(a), kb = lineKeys?(b)
-        var output: [String] = []
+
+        // Only lines that appear nowhere in the stretch between: then no line there could pair with them, and the
+        // result is exactly what matching everything gives (repeated lines, like blank ones, stay in the stretch).
+        while true {
+            var middle = Set<Int>()
+            middle.formUnion(nfo[head..<(nfo.count - tail)])
+            middle.formUnion(nfa[head..<(nfa.count - tail)])
+            middle.formUnion(nfb[head..<(nfb.count - tail)])
+            let safeHead = safeEdge(Array(nfo[0..<head]), middle)
+            let safeTail = safeEdge(Array(nfo[(nfo.count - tail)...].reversed()), middle)
+            if safeHead == head && safeTail == tail { break }
+            head = safeHead
+            tail = safeTail
+        }
+
+        func inner<T>(_ lines: [T]) -> [T] { Array(lines[head..<(lines.count - tail)]) }
+        let o = inner(fo), a = inner(fa), b = inner(fb)
+        let no = inner(nfo), na = inner(nfa), nb = inner(nfb)
+        // Matching that many lines would take more memory than a merge is worth: both versions are kept whole.
+        let tooLarge = TextMergeResult(text: first, conflicted: true, tooLarge: true)
+        if cells(no, na) > maxCells || cells(no, nb) > maxCells || cells(na, nb) > maxCells { return tooLarge }
+        let ko = fko.map { inner($0) }, ka = fka.map { inner($0) }, kb = fkb.map { inner($0) }
+        guard let ma = match(no, na), let ab = match(na, nb), let mb = matchAgreeing(no, nb, ma, ab) else { return tooLarge }
+        var output = Array(fo[0..<head])
         var conflicted = false
         var io = 0, ia = 0, ib = 0
         while true {
@@ -98,7 +124,28 @@ public enum TextMerge {
             ia = ea
             ib = eb
         }
+        output.append(contentsOf: fo[(fo.count - tail)...])
         return TextMergeResult(text: join(output), conflicted: conflicted)
+    }
+
+    private static func cells(_ x: [Int], _ y: [Int]) -> Int { (x.count + 1) * (y.count + 1) }
+
+    /// How many of `edge`'s lines (from the outside in) can stay set aside: none of them may appear in `middle` or in
+    /// the lines of the edge that go back to it (as C#'s `SafeEdge`).
+    private static func safeEdge(_ edge: [Int], _ middle: Set<Int>) -> Int {
+        var first: [Int: Int] = [:]
+        for (i, line) in edge.enumerated() where first[line] == nil { first[line] = i }
+        var keep = edge.count
+        for line in middle {
+            if let at = first[line] { keep = min(keep, at) }
+        }
+        // Lines that go back to the stretch take their earlier copies with them.
+        var i = edge.count - 1
+        while i >= keep {
+            keep = min(keep, first[edge[i]]!)
+            i -= 1
+        }
+        return keep
     }
 
     /// A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict. `co`, `ca`, `cb`
