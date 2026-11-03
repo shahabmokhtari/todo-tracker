@@ -380,11 +380,11 @@ internal static class ApiEndpoints
             return Results.NoContent();
         });
 
-        api.MapPost("/now/first", async (OrderRequest request, IBoardStore store, TimeProvider time) =>
+        api.MapPost("/now/first", async (OrderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b =>
             {
-                b.PutFirst(request.Ids ?? [], time.GetUtcNow());
+                b.PutFirst(request.Ids ?? [], Security.ActorOf(http), time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return Results.NoContent();

@@ -216,7 +216,7 @@ internal static class CliCommands
         IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
         await s.Store.UpdateAsync(b =>
         {
-            b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Now);
+            b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Actor, s.Now);
             return true;
         }).ConfigureAwait(false);
         var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, null, 5, s.Links)).ConfigureAwait(false);

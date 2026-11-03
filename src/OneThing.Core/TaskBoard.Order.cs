@@ -73,11 +73,12 @@ public sealed partial class TaskBoard
 
     /// <summary>
     /// Puts <paramref name="ids"/> at the top of Do now, in that order (only a reminder going off later comes above
-    /// them); the first becomes the focus.
+    /// them); the first becomes the focus. The timeline says who put it first.
     /// </summary>
-    public void PutFirst(IReadOnlyList<Guid> ids, DateTimeOffset now)
+    public void PutFirst(IReadOnlyList<Guid> ids, Actor actor, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(actor);
         if (ids.Select(Get).FirstOrDefault(i => i.IsDone) is { } done)
         {
             throw new InvalidOperationException($"\"{done.Title}\" is already done.");
@@ -85,6 +86,10 @@ public sealed partial class TaskBoard
 
         var current = Agenda.Build(this, now, recentNoteCount: 0).Now.Select(e => e.Item.Id).Where(id => !ids.Contains(id));
         ArrangeNow([.. ids, .. current], now);
+        if (ids.Count > 0)
+        {
+            Log(now, ids[0], ActivityKind.Updated, $"Put \"{Get(ids[0]).Title}\" first", actor);
+        }
     }
 
     /// <summary>Moves a task among its siblings, before <paramref name="before"/> (or to the end). Its parent stays.</summary>

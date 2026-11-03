@@ -287,7 +287,7 @@ public sealed class SyncEngineTests : IDisposable
         var b = await laptop.AddTask("Bravo");
         await Settle();
 
-        await desktop.Store.UpdateAsync(x => { x.PutFirst([b.Id], T0); return 0; });
+        await desktop.Store.UpdateAsync(x => { x.PutFirst([b.Id], Actor.User, T0); return 0; });
         await Settle();
 
         Assert.Equal(b.Id, await laptop.Store.ReadAsync(x => x.NowOrder.Count > 0 ? x.NowOrder[0] : Guid.Empty));

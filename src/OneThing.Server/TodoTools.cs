@@ -255,13 +255,13 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "put_first"), Description("Put tasks at the top of Do now, in this order; the first becomes the focus (only a reminder going off later comes above them). Use it when the user says what matters most (\"do X first\").")]
-    public Task<DashboardDto> PutFirst([Description("Task ids, most important first.")] string[] taskIds) =>
+    public Task<DashboardDto> PutFirst(McpServer server, [Description("Task ids, most important first.")] string[] taskIds) =>
         Guard(async () =>
         {
             var ids = taskIds.Select(ParseId).ToList();
             await store.UpdateAsync(b =>
             {
-                b.PutFirst(ids, time.GetUtcNow());
+                b.PutFirst(ids, ActorOf(server), time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return await store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), null, 0, links)).ConfigureAwait(false);
