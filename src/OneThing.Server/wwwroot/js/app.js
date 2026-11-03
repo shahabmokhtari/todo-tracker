@@ -1803,12 +1803,18 @@ function historySection(item) {
   box.addEventListener('toggle', async () => {
     if (!box.open || box.dataset.loaded) return;
     box.dataset.loaded = '1';
-    const versions = await api(`/api/items/${item.id}/history`).catch(() => []);
+    const [versions, skipped] = await Promise.all([
+      api(`/api/items/${item.id}/history`).catch(() => []),
+      api('/api/history/skipped').catch(() => []),
+    ]);
+    const note = skipped.length
+      ? h('li', { class: 'muted small history-skipped' }, `Not in history: ${skipped.join(', ')}. ${skipped.length === 1 ? "It's a git repository of its own, so its own git keeps its versions." : "They're git repositories of their own, so their own git keeps their versions."}`)
+      : null;
     if (!versions.length) {
-      list.replaceChildren(h('li', { class: 'muted small' }, 'Versions appear here a few seconds after changes (needs git).'));
+      list.replaceChildren(h('li', { class: 'muted small' }, 'Versions appear here a few seconds after changes (needs git).'), ...(note ? [note] : []));
       return;
     }
-    list.replaceChildren(...versions.map((v, i) => h('li', null,
+    list.replaceChildren(...(note ? [note] : []), ...versions.map((v, i) => h('li', null,
       h('span', { class: 'when', title: new Date(v.at).toLocaleString() }, relativeTime(v.at)),
       h('span', { class: 'what' }, v.message.split('\n')[0]),
       h('button', { class: 'link', onclick: async () => {

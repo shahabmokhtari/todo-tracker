@@ -58,7 +58,7 @@ public sealed class ExportFixtureTests
         var work = board.AddGroup("Launch team", "#3b82f6", user, T0);
         board.DefineLabel("Urgent", "#e11d48", user, T0);
         var launch = board.AddTask(new NewTask("Launch the site") { GroupId = work.Id, Priority = Priority.High, Details = "Hero copy first.", Deadline = T0.AddDays(3), Tags = ["deep work", "q3"], Labels = ["Urgent"], Icon = "🚀", Color = "#0ea5e9", Energy = 3 }, user, T0);
-        board.SetEnergyPerDay(8);
+        board.SetEnergyPerDay(8, Actor.User, DateTimeOffset.UnixEpoch);
         var copy = board.AddTask(new NewTask("Write the copy") { ParentId = launch.Id, Tags = ["writing"] }, new Actor(ActorKind.Agent, "copilot"), T0);
         var images = board.AddTask(new NewTask("Pick images") { ParentId = launch.Id }, new Actor(ActorKind.Browser, "edge"), T0);
         board.Complete(images.Id, user, T0.AddHours(1));

@@ -320,6 +320,35 @@ public sealed class SyncRobustnessTests
     }
 
     [Fact]
+    public async Task A_damaged_sync_identity_is_shown_as_a_problem_that_says_what_to_do()
+    {
+        var cloud = Directory.CreateTempSubdirectory("onething-onedrive-").FullName;
+        try
+        {
+            await using var app = await ServerFixture.StartAsync(services: s => s.AddSingleton(
+                new CloudEnvironment(name => name == "OneDriveCommercial" ? cloud : null, Path.GetTempPath(), Directory.Exists, _ => [], IsWindows: true, IsMac: false)));
+            var sync = app.App.Services.GetRequiredService<SyncService>();
+            _ = sync.View;
+            var device = Directory.EnumerateFiles(Path.Combine(app.DataDirectory, "sync"), "device.json", SearchOption.AllDirectories).Single();
+            await File.WriteAllTextAsync(device, "{ not json", TestContext.Current.CancellationToken);
+
+            var before = sync.View;
+            var after = await sync.SyncNowAsync(TestContext.Current.CancellationToken);
+
+            foreach (var view in new[] { before, after })
+            {
+                Assert.Equal("error", view.State);
+                Assert.Contains("can't be read", view.Problem, StringComparison.Ordinal);
+                Assert.Contains("Put back an earlier copy", view.Problem, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            Directory.Delete(cloud, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task The_background_loop_syncs_without_being_asked()
     {
         var cloud = Directory.CreateTempSubdirectory("onething-onedrive-").FullName;

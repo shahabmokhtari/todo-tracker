@@ -25,7 +25,7 @@ public class ManualOrderTests
         var low = _board.Items[0];
         Assert.Equal(["High", "Low"], Now());
 
-        _board.ArrangeNow([low.Id, high.Id], T0);
+        _board.ArrangeNow([low.Id, high.Id], Actor.User, T0);
 
         Assert.Equal(["Low", "High"], Now());
         Assert.Equal("Low", Agenda.Build(_board, T0).Focus!.Item.Title);
@@ -37,7 +37,7 @@ public class ManualOrderTests
         var a = Add("A");
         var b = Add("B", Priority.High);
         var c = Add("C", Priority.Low);
-        _board.ArrangeNow([a.Id, b.Id, c.Id], T0);
+        _board.ArrangeNow([a.Id, b.Id, c.Id], Actor.User, T0);
 
         Add("Normal later");
         Add("Urgent", Priority.Critical);
@@ -71,7 +71,7 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([a.Id, b.Id], T0.AddMinutes(-5));
+        _board.ArrangeNow([a.Id, b.Id], Actor.User, T0.AddMinutes(-5));
         _board.AddReminder(b.Id, T0.AddMinutes(-1), "now!", Actor.User, T0.AddMinutes(-2));
 
         Assert.Equal(["B", "A"], Now());
@@ -85,7 +85,7 @@ public class ManualOrderTests
         _board.AddReminder(b.Id, T0.AddMinutes(-1), "now!", Actor.User, T0.AddMinutes(-2));
         Assert.Equal(["B", "A"], Now());
 
-        _board.ArrangeNow([a.Id, b.Id], T0);
+        _board.ArrangeNow([a.Id, b.Id], Actor.User, T0);
 
         Assert.Equal(["A", "B"], Now());
     }
@@ -99,9 +99,9 @@ public class ManualOrderTests
         var p1 = Add("P1", group: personal);
         var w2 = Add("W2", group: work);
         var p2 = Add("P2", group: personal);
-        _board.ArrangeNow([w1.Id, p1.Id, w2.Id, p2.Id], T0);
+        _board.ArrangeNow([w1.Id, p1.Id, w2.Id, p2.Id], Actor.User, T0);
 
-        _board.ArrangeNow([p2.Id, p1.Id], T0);
+        _board.ArrangeNow([p2.Id, p1.Id], Actor.User, T0);
 
         Assert.Equal(["W1", "P2", "W2", "P1"], Now());
         Assert.Equal(["P2", "P1"], Now(personal));
@@ -138,11 +138,11 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([b.Id, a.Id], T0);
+        _board.ArrangeNow([b.Id, a.Id], Actor.User, T0);
         _board.Complete(b.Id, Actor.User, T0);
         _board.Delete(a.Id, Actor.User, T0);
 
-        _board.ArrangeNow([], T0);
+        _board.ArrangeNow([], Actor.User, T0);
 
         Assert.Empty(_board.NowOrder);
     }
@@ -152,8 +152,8 @@ public class ManualOrderTests
     {
         var a = Add("A");
 
-        Assert.Throws<ArgumentException>(() => _board.ArrangeNow([a.Id, a.Id], T0));
-        Assert.Throws<TaskNotFoundException>(() => _board.ArrangeNow([Guid.NewGuid()], T0));
+        Assert.Throws<ArgumentException>(() => _board.ArrangeNow([a.Id, a.Id], Actor.User, T0));
+        Assert.Throws<TaskNotFoundException>(() => _board.ArrangeNow([Guid.NewGuid()], Actor.User, T0));
     }
 
     [Fact]
@@ -164,14 +164,13 @@ public class ManualOrderTests
         var hotel = Add("Hotel", parent: trip);
         var visa = Add("Visa", parent: trip);
 
-        _board.Reorder(visa.Id, before: flights.Id);
+        _board.Reorder(visa.Id, before: flights.Id, Actor.User, T0);
         Assert.Equal(["Visa", "Flights", "Hotel"], trip.Children.Select(c => c.Title));
 
-        _board.Reorder(visa.Id, before: null);
+        _board.Reorder(visa.Id, before: null, Actor.User, T0);
         Assert.Equal(["Flights", "Hotel", "Visa"], trip.Children.Select(c => c.Title));
         Assert.Equal(trip, visa.Parent);
-        Assert.Throws<ArgumentException>(() => _board.Reorder(visa.Id, before: trip.Id));
-        Assert.DoesNotContain(_board.Activity, e => e.Kind == ActivityKind.Moved);
+        Assert.Throws<ArgumentException>(() => _board.Reorder(visa.Id, before: trip.Id, Actor.User, T0));
         _ = hotel;
     }
 
@@ -184,12 +183,12 @@ public class ManualOrderTests
         Add("Hotel", parent: trip);
         var visa = Add("Visa", parent: trip);
 
-        _board.ReorderAfter(visa.Id, flights.Id);
+        _board.ReorderAfter(visa.Id, flights.Id, Actor.User, T0);
         Assert.Equal(["Flights", "Visa", "Hotel"], trip.Children.Select(c => c.Title));
 
-        _board.ReorderAfter(visa.Id, visa.Id);
+        _board.ReorderAfter(visa.Id, visa.Id, Actor.User, T0);
         Assert.Equal(["Flights", "Visa", "Hotel"], trip.Children.Select(c => c.Title));
-        Assert.Throws<ArgumentException>(() => _board.ReorderAfter(visa.Id, trip.Id));
+        Assert.Throws<ArgumentException>(() => _board.ReorderAfter(visa.Id, trip.Id, Actor.User, T0));
     }
 
     [Fact]
@@ -198,7 +197,7 @@ public class ManualOrderTests
         var a = Add("A");
         var b = Add("B");
 
-        _board.Reorder(b.Id, before: a.Id);
+        _board.Reorder(b.Id, before: a.Id, Actor.User, T0);
 
         Assert.Equal(["B", "A"], _board.Items.Select(i => i.Title));
     }
@@ -208,7 +207,7 @@ public class ManualOrderTests
     {
         var a = Add("A");
         var b = Add("B");
-        _board.ArrangeNow([b.Id, a.Id], T0);
+        _board.ArrangeNow([b.Id, a.Id], Actor.User, T0);
 
         var loaded = BoardSerializer.Deserialize(BoardSerializer.Serialize(_board));
 

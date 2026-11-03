@@ -129,7 +129,7 @@ public sealed class BreakScreenTests : IDisposable
         await _store.UpdateAsync(b => b.TickPomodoro(_time.GetUtcNow()));
         await _vm.RefreshAsync();
         _time.Advance(TimeSpan.FromMinutes(2));
-        await _store.UpdateAsync(b => b.SkipFocus(_time.GetUtcNow())); // in another window
+        await _store.UpdateAsync(b => b.SkipFocus(Actor.User, _time.GetUtcNow())); // in another window
         await _vm.RefreshAsync();
 
         _time.Advance(TimeSpan.FromMinutes(4));

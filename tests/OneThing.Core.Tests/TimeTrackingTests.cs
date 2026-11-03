@@ -17,7 +17,7 @@ public class TimeTrackingTests
 
         _board.StartTimer(item.Id, Actor.User, T0, "laptop");
         Assert.Equal(TimeSpan.FromMinutes(10), item.TimeSpent(T0.AddMinutes(10)));
-        _board.StopTimer(T0.AddMinutes(25));
+        _board.StopTimer(Actor.User, T0.AddMinutes(25));
 
         var entry = Assert.Single(item.TimeEntries);
         Assert.Equal(T0, entry.Start);
@@ -156,9 +156,9 @@ public class TimeTrackingTests
         var item = Task("Write report");
         _board.StartFocus(item.Id, Actor.User, T0);
 
-        _board.PauseFocus(T0.AddMinutes(10));
-        _board.ResumeFocus(T0.AddMinutes(20));
-        _board.ResetFocus(T0.AddMinutes(30));
+        _board.PauseFocus(Actor.User, T0.AddMinutes(10));
+        _board.ResumeFocus(Actor.User, T0.AddMinutes(20));
+        _board.ResetFocus(Actor.User, T0.AddMinutes(30));
 
         Assert.Equal([TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(10)], item.TimeEntries.Select(e => e.End!.Value - e.Start));
         Assert.Null(_board.RunningTimer());
@@ -170,7 +170,7 @@ public class TimeTrackingTests
         var item = Task("Write report");
         var other = Task("Inbox zero");
         _board.StartFocus(item.Id, Actor.User, T0);
-        _board.SkipFocus(T0.AddMinutes(5));
+        _board.SkipFocus(Actor.User, T0.AddMinutes(5));
         Assert.Null(_board.RunningTimer());
 
         _board.StartTimer(other.Id, Actor.User, T0.AddMinutes(6));
@@ -186,7 +186,7 @@ public class TimeTrackingTests
         var item = Task("Write report");
         _board.StartFocus(item.Id, Actor.User, T0);
 
-        _board.SkipFocus(T0.AddMinutes(25).AddSeconds(3));
+        _board.SkipFocus(Actor.User, T0.AddMinutes(25).AddSeconds(3));
 
         Assert.Equal(PomodoroPhase.Idle, _board.Pomodoro.Phase);
         Assert.Equal(1, _board.Pomodoro.CompletedFocusCount);
@@ -234,10 +234,10 @@ public class TimeTrackingTests
         var focused = Task("Write report");
         var other = Task("Urgent call");
         _board.StartFocus(focused.Id, Actor.User, T0);
-        _board.PauseFocus(T0.AddMinutes(5));
+        _board.PauseFocus(Actor.User, T0.AddMinutes(5));
         _board.StartTimer(other.Id, Actor.User, T0.AddMinutes(6));
 
-        _board.ResumeFocus(T0.AddMinutes(10));
+        _board.ResumeFocus(Actor.User, T0.AddMinutes(10));
 
         Assert.Equal(other, _board.RunningTimer()!.Value.Item);
     }
@@ -281,7 +281,7 @@ public class TimeTrackingTests
         TaskBoard.AddRunningEntryForTest(b, T0.AddMinutes(10), "laptop");
 
         Assert.Equal(b, _board.RunningTimer()!.Value.Item);
-        _board.StopTimer(T0.AddMinutes(30));
+        _board.StopTimer(Actor.User, T0.AddMinutes(30));
 
         Assert.All(_board.AllItems().SelectMany(i => i.TimeEntries), e => Assert.NotNull(e.End));
         Assert.Equal(T0.AddMinutes(10), Assert.Single(a.TimeEntries).End);

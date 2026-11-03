@@ -40,6 +40,19 @@ public sealed class HistoryApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Folders_left_out_of_history_are_listed_so_the_app_can_say_so()
+    {
+        Directory.CreateDirectory(Path.Combine(_server.VaultDirectory, "Work", "Project", ".git"));
+        await File.WriteAllTextAsync(Path.Combine(_server.VaultDirectory, "Work", "Project", "Plan.md"), "# Plan\n");
+        await _client.PostJson("/api/items", new { title = "Ship" });
+        await _client.PostJson("/api/history/commit");
+
+        var skipped = await _client.GetJson("/api/history/skipped");
+
+        Assert.Equal(["Work/Project"], skipped.AsArray().Select(s => s!.GetValue<string>()));
+    }
+
+    [Fact]
     public async Task Bad_version_ids_are_rejected()
     {
         var item = await _client.PostJson("/api/items", new { title = "Ship" });

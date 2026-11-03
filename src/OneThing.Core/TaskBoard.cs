@@ -588,20 +588,29 @@ public sealed partial class TaskBoard
         }
     }
 
-    public void PauseFocus(DateTimeOffset now)
+    /// <summary>Pauses the focus session (its task's focus time stops). The timeline says who paused it.</summary>
+    public void PauseFocus(Actor actor, DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         if (Pomodoro.Phase == PomodoroPhase.Focus)
         {
             StopFocusTimer(now);
+            LogFocus(now, "Paused focus on", actor);
         }
 
         Pomodoro.Pause(now);
     }
 
-    public void ResumeFocus(DateTimeOffset now, string? device = null)
+    /// <summary>Goes on with a paused session (timing its task again on this <paramref name="device"/>).</summary>
+    public void ResumeFocus(Actor actor, DateTimeOffset now, string? device = null)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         var resuming = Pomodoro.Phase == PomodoroPhase.Focus && !Pomodoro.IsRunning;
         Pomodoro.Resume(now);
+        if (resuming)
+        {
+            LogFocus(now, "Resumed focus on", actor);
+        }
 
         // A timer started by hand meanwhile keeps running: the session goes on without timing its task.
         if (resuming && Pomodoro.ItemId is { } id && Find(id) is { IsDone: false } item && RunningTimer(now) is null)
@@ -610,22 +619,41 @@ public sealed partial class TaskBoard
         }
     }
 
-    public void SkipFocus(DateTimeOffset now)
+    /// <summary>Ends the session or break now and goes on to the next one.</summary>
+    public void SkipFocus(Actor actor, DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(actor);
+
         // A session that has already run out ends on time first, so Skip skips the break that followed it.
         TickPomodoro(now);
         if (Pomodoro.Phase == PomodoroPhase.Focus)
         {
             StopFocusTimer(now);
+            LogFocus(now, "Ended focus early on", actor);
         }
 
         Pomodoro.Skip(now);
     }
 
-    public void ResetFocus(DateTimeOffset now)
+    /// <summary>Stops focus altogether (a running session's time is kept).</summary>
+    public void ResetFocus(Actor actor, DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         StopFocusTimer(now);
+        if (Pomodoro.Phase == PomodoroPhase.Focus)
+        {
+            LogFocus(now, "Stopped focus on", actor);
+        }
+
         Pomodoro.Reset();
+    }
+
+    private void LogFocus(DateTimeOffset now, string what, Actor actor)
+    {
+        if (Pomodoro.ItemId is { } id && Find(id) is { } item)
+        {
+            Log(now, id, ActivityKind.TimeLogged, $"{what} \"{item.Title}\"", actor);
+        }
     }
 
     /// <summary>

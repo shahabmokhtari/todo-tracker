@@ -47,11 +47,11 @@ public sealed class EnergyTests
     public void A_day_has_ten_unless_said_otherwise()
     {
         Assert.Equal(Energy.DefaultPerDay, _board.DailyEnergy);
-        _board.SetEnergyPerDay(6);
+        _board.SetEnergyPerDay(6, Actor.User, DateTimeOffset.UnixEpoch);
         Assert.Equal(6, _board.DailyEnergy);
-        Assert.Throws<ArgumentOutOfRangeException>(() => _board.SetEnergyPerDay(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _board.SetEnergyPerDay(0, Actor.User, DateTimeOffset.UnixEpoch));
         Assert.Equal(6, BoardSerializer.Deserialize(BoardSerializer.Serialize(_board)).DailyEnergy);
-        _board.SetEnergyPerDay(null);
+        _board.SetEnergyPerDay(null, Actor.User, DateTimeOffset.UnixEpoch);
         Assert.Equal(Energy.DefaultPerDay, _board.DailyEnergy);
     }
 

@@ -213,10 +213,10 @@ public sealed class BoardMovesFixtureTests
                 board.StartTimer(Task(), user, at);
                 break;
             case "reorder":
-                board.Reorder(Task(), step["before"] is { } before ? tasks[(string)before!].Id : null);
+                board.Reorder(Task(), step["before"] is { } before ? tasks[(string)before!].Id : null, Actor.User, DateTimeOffset.UnixEpoch);
                 break;
             case "reorderAfter":
-                board.ReorderAfter(Task(), Task("after"));
+                board.ReorderAfter(Task(), Task("after"), Actor.User, DateTimeOffset.UnixEpoch);
                 break;
             case "move":
                 board.Move(Task(), step["parent"] is { } into ? tasks[(string)into!].Id : null, (int?)step["index"], Group(), user, at);
@@ -242,7 +242,7 @@ public sealed class BoardMovesFixtureTests
                     var item = board.Get(Task());
                     var parent = item.Parent ?? throw new InvalidOperationException("Already at the top level.");
                     board.Move(item.Id, parent.Parent?.Id, null, parent.Parent is null ? parent.GroupId : null, user, at);
-                    board.ReorderAfter(item.Id, parent.Id);
+                    board.ReorderAfter(item.Id, parent.Id, Actor.User, DateTimeOffset.UnixEpoch);
                     break;
                 }
 

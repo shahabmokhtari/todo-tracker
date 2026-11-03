@@ -162,4 +162,4 @@ under the files that need fixing, never written over).
   (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
   versioned). Any task can be viewed or restored from its history; a
   restore is itself a version. Needs `git`. A `.gitignore` in the folder doesn't keep tasks out of it; a folder that
-  is a git repository of its own (it has a `.git`) is left out, and the app says which.
+  is a git repository of its own (it has a `.git`) is left out, and the app says which (in a task's History).

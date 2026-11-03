@@ -475,6 +475,14 @@ public partial class App : Application
 
             using var http = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
             http.DefaultRequestHeaders.Authorization = new("Bearer", token);
+
+            // As the owner's own app (like the Mac app and the tray): its changes are "You", not an API client.
+            if (OneThing.Server.OwnerKey.Read(dataDir) is { } ownerKey)
+            {
+                http.DefaultRequestHeaders.Add(OneThing.Server.OwnerKey.Header, ownerKey);
+            }
+
+            log.Add($"owner key sent={http.DefaultRequestHeaders.Contains(OneThing.Server.OwnerKey.Header)}");
             var health = await http.GetStringAsync(new Uri("/health", UriKind.Relative), timeout.Token).ConfigureAwait(true);
             log.Add($"health={health}");
             var page = await http.GetStringAsync(new Uri("/", UriKind.Relative), timeout.Token).ConfigureAwait(true);
@@ -482,6 +490,8 @@ public partial class App : Application
 
             using var created = await http.PostAsJsonAsync(new Uri("/api/items", UriKind.Relative), new { title = "Smoke test task", priority = "high" }, timeout.Token).ConfigureAwait(true);
             Check(created.StatusCode == HttpStatusCode.Created, $"create via API returned {(int)created.StatusCode}");
+            var timeline = await http.GetFromJsonAsync<JsonElement>(new Uri("/api/timeline?limit=1", UriKind.Relative), timeout.Token).ConfigureAwait(true);
+            Check(timeline[0].GetProperty("actorKind").GetString() == "user", "the owner's changes are yours, not an API client's");
 
             while (_viewModel!.Focus?.Title != "Smoke test task")
             {

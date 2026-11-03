@@ -116,6 +116,9 @@ public sealed class SyncService : IDisposable
                 problem = _problem;
             }
 
+            // A damaged identity is said at once (not only after a sync tried), with what to do.
+            problem ??= states.Select(s => s.State.Problem).FirstOrDefault(p => p is not null);
+
             var places = Providers.Select(p =>
             {
                 var use = uses.FirstOrDefault(u => u.Provider == p);

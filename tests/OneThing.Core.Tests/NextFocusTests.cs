@@ -91,12 +91,12 @@ public sealed class NextFocusTests
         Assert.Null(_board.Pomodoro.BreakEndedAt);
 
         _board.TickPomodoro(T0.AddMinutes(32 + 26)); // in the next break
-        _board.SkipFocus(T0.AddMinutes(32 + 27));
+        _board.SkipFocus(Actor.User, T0.AddMinutes(32 + 27));
         Assert.Null(_board.Pomodoro.BreakEndedAt);
 
         _board.StartFocus(null, Actor.User, T0.AddHours(2));
         _board.TickPomodoro(T0.AddHours(2).AddMinutes(26));
-        _board.PauseFocus(T0.AddHours(2).AddMinutes(27)); // a paused break never runs out
+        _board.PauseFocus(Actor.User, T0.AddHours(2).AddMinutes(27)); // a paused break never runs out
         _board.TickPomodoro(T0.AddHours(3));
         Assert.Null(_board.Pomodoro.BreakEndedAt);
     }

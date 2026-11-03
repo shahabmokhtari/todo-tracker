@@ -13,8 +13,11 @@ test.describe.configure({ mode: 'serial' });
 let group;
 let other;
 
-async function open(page, request, where = '/') {
-  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: where } })).json();
+// What the person at this computer's own apps send (the owner key from the data folder): their window may delete.
+const ownerHeaders = () => ({ ...auth, 'X-OneThing-Owner-Key': fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim() });
+
+async function open(page, request, where = '/', { asOwner = false } = {}) {
+  const launch = await (await request.post('/api/launch', { headers: asOwner ? ownerHeaders() : auth, data: { return: where } })).json();
   await page.goto(launch.url);
   await expect(page.locator('#board')).toBeVisible();
 }
@@ -38,8 +41,7 @@ function watchErrors(page) {
 }
 
 test.beforeAll(async ({ request, browser }, testInfo) => {
-  const ownerKey = fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim();
-  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-OneThing-Owner-Key': ownerKey }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: ownerHeaders(), data: { return: '/' } })).json();
   owner = await (await browser.newContext()).newPage();
   await owner.goto(launch.url);
   const suffix = testInfo.retry ? ` ${testInfo.retry}` : '';
@@ -166,7 +168,8 @@ test('Task details: the keyboard goes in, stays in, and comes back when it close
 test('Groups: ⋯ renames a group and deletes it (its tasks move, after asking)', async ({ page, request }) => {
   const errands = await (await request.post('/api/groups', { headers: auth, data: { name: 'Errands' } })).json();
   const task = await add(request, 'Post the parcel', errands.id);
-  await open(page, request);
+  // Deleting is only for the owner's own window (as the desktop apps open it), not one signed in with the token.
+  await open(page, request, '/', { asOwner: true });
 
   const more = page.getByRole('button', { name: 'More for Errands' });
   await more.focus();

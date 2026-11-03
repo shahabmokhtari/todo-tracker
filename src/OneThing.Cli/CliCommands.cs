@@ -263,7 +263,7 @@ internal static class CliCommands
         a.Allow();
         var (stopped, timer) = await s.Store.UpdateAsync(b =>
         {
-            var running = b.StopTimer(s.Now);
+            var running = b.StopTimer(s.Actor, s.Now);
             return (running, Wire.Timer(b, s.Now));
         }).ConfigureAwait(false);
         await s.SaveVersion().ConfigureAwait(false);
@@ -436,7 +436,7 @@ internal static class CliCommands
                 : throw new CliUsageException($"ot energy takes a number from 1 to {Energy.MaxPerDay}, or default.");
             energy = await s.Store.UpdateAsync(b =>
             {
-                b.SetEnergyPerDay(perDay);
+                b.SetEnergyPerDay(perDay, s.Actor, s.Now);
                 return Wire.EnergyToday(b, s.Now, s.Zone);
             }).ConfigureAwait(false);
         }
