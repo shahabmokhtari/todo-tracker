@@ -110,12 +110,11 @@ Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-you
 * **The first time** it joins: everything the other devices have comes in first, then the tasks the app kept before
   are brought in beside them (a task already there is never copied), and only then does it publish. If something
   hasn't arrived yet, it waits and joins on a later sync.
-* **When:** at launch and back in front, a few seconds after a change, every minute while open, and in the background
-  when iOS allows.
+* **When:** at launch and back in front, a few seconds after a change, every minute while open, when you pull the list
+  down, and in the background when iOS allows.
 * Changed on both shows on the Sync screen; choosing a side (**Keep mine**, **Keep both**, a merge tool) happens on a
   computer.
-* **One way at a time:** a device connected to a computer (above) doesn't sync on its own; connecting turns it off.
-  Turning sync off keeps the tasks on the device.
+* Turning sync off keeps the tasks on the device.
 * The first launch of this version moves the tasks the app kept (`board.json`, or its backup) into the tasks folder and
   sets the file aside as `board.json.migrated` (never deleted). If they can't be read, nothing is made over them: the
   app says so and keeps changes off.

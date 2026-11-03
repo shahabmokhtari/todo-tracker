@@ -17,7 +17,7 @@ Product principles:
 5. **Local-first, AI-native, and yours.** Tasks are plain markdown files in a folder you own (an Obsidian vault works
    as is), readable and writable by people, apps, and AI agents. No account or cloud needed; every change is versioned.
 6. **Agents are collaborators.** Copilot and other agents use MCP tools. Their changes are attributed, visible, and non-destructive.
-7. **One set of rules.** Scheduling and ordering live in the core. The Swift port is checked against the same fixtures.
+7. **One set of rules.** Scheduling and ordering live in the core. The Swift and Kotlin ports are checked against the same fixtures.
 
 ## 2. Users and key scenarios
 
@@ -69,7 +69,8 @@ apple/           – OneThingKit (Swift port of Core) + SwiftUI apps for iOS and
   viewed or restored from its history. Off when git isn't installed. A folder that is a git repository of its own is
   left out, and a task's History says which. Each version says who made the changes in it (you, an agent, the app).
 * **Data folder.** `%LOCALAPPDATA%\OneThing` (override with `ONETHING_DATA` or `--data`) holds
-  `settings.json` (Teams webhook, vault folder), `api-token`, and `desktop.json` (window placement).
+  `settings.json` (Teams webhook, vault folder), `api-token`, `owner-key` (makes a request the owner's, below), and
+  `desktop.json` (window placement).
 
 ## 4. Domain model
 
@@ -307,7 +308,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * **Plan** (`PlanView`): the web Plan view's grid (`PlanGrid`: week or day, work hours stretched to show blocks outside them, work days, Monday or Sunday weeks, 15-minute snapping, 15 minutes to 12 hours when resizing; iPhone (compact width) shows a day). Blocks, deadlines, *Not planned* and *Later* come from `PlanDays` (port of `PlanDays.cs`, which `GET /api/plan` uses; shared fixture `tests/fixtures/plan.json`), planning from `TaskBoard.plan/unplan` (5 minutes to 12 hours, 30 kept as none, done tasks refused; same fixture). Drag and drop (touch, pointer), long-press-then-drag to move a block on touch, a resize handle, a context menu, VoiceOver actions and arrow keys; *Plan…* opens a sheet (task, start, length). On the Mac (server), planning is `POST /api/items/{id}/plan` (`ServerAction.plan/.unplan`). Plan settings (view, hours, work hours/days, week start) are kept per group on the device (UserDefaults), not in the server's settings.
 * **Reports** (`ReportsView`, Swift Charts): range 7 days / 4 weeks / 3 months / year / custom dates; KPIs, time per day (stacked focus/other, weekly for ranges over 120 days), by group (donut), top tasks, weekday × hour heat map, active-days calendar (90 days or more), and the Timeline (work bars, created→done/due line, ◆ due, ● done; tap a row to open the task). The numbers are `TimeReport` (port of `TimeReport.cs`) computed on the device from the board (its time entries and focus activity are in `/api/export`), so it works the same in every mode and offline; shared fixture `tests/fixtures/reports.json` (across midnight and the change to winter time, a running timer, focus, archived tasks).
 * The macOS app runs the bundled server (`OneThing.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/OneThing/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below). Settings says which it is (syncing on its own, or only on this device); switching never deletes tasks. Phones don't connect to a computer: they sync through the same places computers do.
-* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › OneThingSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<OneThingSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "One Thing" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.onething.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
+* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › OneThingSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<OneThingSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "One Thing" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, pull to refresh (waits for the sync), `BGAppRefreshTask` `com.onething.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
 
 * **Widgets** (WidgetKit; extensions `OneThingWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `OneThingWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.onething`; on a Mac `$(TeamIdentifierPrefix)group.com.onething`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the Mac's server isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
 
@@ -346,7 +347,10 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   `board.json.migrated` (never deleted); one left behind by an interrupted move is imported beside (tasks already there
   are skipped). A `board.json` from a newer app version is neither moved nor changed (changes are off).
 * **Two modes** (Settings says which): only on this phone, or syncing on its own. Switching never deletes tasks.
-* **Sync on its own** (Settings › Sync with your other devices; phase 2 of the [phone sync design](design/phone-sync.md)):
+* **The core has more than the screens show yet:** board moves (`BoardMoves.kt`), planning and the Plan view's days
+  (`Plan.kt`) and reports (`TimeReport.kt`) are ports of the C# core, checked against `board-moves.json`, `plan.json`
+  and `reports.json`, so the Board, Plan and Reports screens can come without new rules.
+* **Sync on its own** (Settings › Sync with your other devices; [phone sync design](design/phone-sync.md)):
   the phone is a sync device of its own through a GitHub gist (`GistRemote`, the same `device-<id>.json` bundles as the
   computers), merging three-way like `SyncPlanner`. Sign-in: a pasted classic token with the `gist` scope (a button opens
   `github.com/settings/tokens/new?scopes=gist&description=One%20Thing`; no OAuth device flow, as there's no OAuth
@@ -434,9 +438,15 @@ the docs explain the options and risks. The server sends the same short instruct
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |
 | `schedule_next_action`, `add_reminder` | Defer and remind |
+| `wait_for_task` | Wait until another task is done, then come back with a reminder |
+| `put_first` | Put tasks at the top of Do now |
+| `plan_task`, `set_daily_energy` | A block of time on the plan; energy in a day |
 | `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon, color and repeat rule; completing a repeating task moves it on, reopening undoes that) |
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
-| `move_task`, `list_labels` | Reorganize the hierarchy; curated labels |
+| `move_task`, `move_card`, `list_labels` | Reorganize the hierarchy; board columns; curated labels |
+| `archive_task`, `unarchive_task` | Put finished tasks away, and back |
+| `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time tracking and where the time went |
+| `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks (an agent's wait for approval; it can switch off or remove only its own) |
 | `attach_text`, `get_rich_html`, `set_rich_html` | Text attachments and the rich HTML version |
 | `task_history`, `restore_task_version` | Versions of a task's file, and going back (itself undoable) |
 | `vault_info` | Where the markdown lives, files that need fixing, and the format guide (for agents with file tools) |
@@ -563,27 +573,30 @@ by `ot open`.
 
 | Platform | Tech | CI |
 |---|---|---|
-| Core, server, and view models | .NET 10, xUnit v3 (Microsoft Testing Platform), coverage gates (Core ≥90%, Server ≥85%, Desktop ≥85%) | Linux |
+| Core, server, CLI and view models | .NET 10, xUnit v3 (Microsoft Testing Platform), coverage gates (Core ≥90%, Server ≥85%, Desktop ≥85%, CLI ≥85%) | Linux |
 | Web and extension | Vanilla ES modules (no build step), `node --test`, Playwright e2e | Linux |
 | Windows | WPF (.NET 10, Fluent theme), Win32 AppBar, toast notifications | Windows: build, tests, publish, and a real-app `--smoke-test` with a screenshot artifact |
 | macOS and iOS | Swift 5.9, SwiftUI, XcodeGen | macOS: `swift test` (shared scenarios), iOS simulator build, macOS build and zip |
 | Android | Kotlin, Jetpack Compose (min SDK 26, target 35), AlarmManager and notifications for reminders and the focus timer | Linux: `gradle testDebugUnitTest` (shared fixtures) and `assembleDebug` |
 
 The **shared scenarios** in `tests/fixtures/scenarios/*.json` hold a board, a time, and the expected Now, Waiting,
-focus, attention, and states. Both the C# and Swift test suites run them.
+focus, attention, and states. The C#, Swift and Kotlin test suites all run them.
+
+Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Release with the apps it built
+(`.github/workflows/release.yml`).
 
 ## 10. Roadmap
 
 * **Next:**
   * Rotate the API token, and compact the activity log.
-  * Phones sync on their own, with conflict-free merges (Android through a gist, iPhone and iPad through iCloud Drive or
-    a gist; they never connect to a computer directly). Next: Keep mine / Keep theirs on phones, OneDrive on phones.
+  * Phones: **Keep mine** / **Keep theirs** for lines changed on both, and OneDrive (they sync on their own today:
+    Android through a gist, iPhone and iPad through iCloud Drive or a gist).
+  * Android: the Board, Plan and Reports screens (the core already has their rules).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
-  * Recurring tasks.
   * Keyboard navigation of cards.
 * **Later:**
   * A Teams bot with actionable buttons (Done and Snooze from Teams), which needs an Entra app registration.
-  * Widgets and Live Activities on iOS and macOS.
+  * Live Activities on iOS.
   * Calendar-aware scheduling.
   * Undo for recent actions.
 
@@ -616,7 +629,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Smart, not busy UI with collapsible panels | ✅ |
 | Browser integration and a sidebar extension for Edge/Chrome | ✅ |
 | Lightweight, fast, native | ✅ WPF, SwiftUI, vanilla web |
-| iOS, macOS, and web versions | ✅ (Apple apps are local-only until sync lands) |
+| iOS, macOS, and web versions | ✅ SwiftUI apps for iPhone, iPad and Mac, and the web app; Android too. Phones sync on their own (iCloud Drive or a gist), the Mac through its own server like Windows |
 | Color coding and priority | ✅ |
 | High-level glance: what to do now | ✅ focus card, workstreams, tab badges |
 | Pomodoro | ✅ linked to tasks |
@@ -633,4 +646,4 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Ask AI as a full chat with sessions and history; ACP plus API keys for OpenAI- and Anthropic-compatible APIs | ✅ chats kept, searched, reopened (ACP `session/load` or a primer), renamed, deleted with undo; API models with presets, encrypted keys, same tools and permissions (tested live with Copilot; Claude untested on the dev machine) |
 | Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar; into quick add (they wait under the box and go into the new task's details; a picture alone names the task) and a task's title (goes into its details). A paste counts as a picture unless real text comes with it (an office copy); a link, file name/path, blank text or HTML that's only the image (browser/Teams "Copy image") doesn't count. Sidebar: Ctrl+V, Shift+Insert and right-click › Paste, also image files copied in Explorer |
 | Browser extension for Edge/Chrome and Safari, with a setup guide while unsigned | ✅ one source, side panel (Edge/Chrome) and popup (Safari app built in CI); guided setup and pairing codes with per-browser access |
-| Notion, MS To Do, Loop, Apple Notes | ⏳ planned as sync plugins |
+| Notion, MS To Do, Loop, Apple Notes | ✅ Notion and Microsoft To Do connectors (both ways), Copy for Loop, and GitHub Issues; ⏳ Apple Notes |

@@ -299,7 +299,7 @@ public struct DashboardView: View {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(Theme.brand)
                 .frame(width: 32, height: 32)
-                .overlay(Image(systemName: "checkmark").font(.system(size: 15, weight: .heavy)).foregroundStyle(.white))
+                .overlay(AppIconGlyph())
                 .shadow(color: Theme.accent.opacity(0.35), radius: 6, y: 3)
             VStack(alignment: .leading, spacing: 1) {
                 Text(Presentation.greeting(model.now)).font(.title3.weight(.bold))
@@ -1117,6 +1117,31 @@ struct PomodoroBar: View {
         }
         if p.phase != .idle, let id = p.itemId, let item = model.board.find(id) { return "\(phase) · \(item.title)" }
         return phase
+    }
+}
+
+/// The app icon's mark (wwwroot/img/logo.svg): one lit task, the rest faint. Drawn in the icon's 1024-unit grid.
+struct AppIconGlyph: View {
+    var body: some View {
+        GeometryReader { geometry in
+            let s = min(geometry.size.width, geometry.size.height) / 1024
+            ZStack(alignment: .topLeading) {
+                mark(Circle(), x: 212, y: 220, width: 220, height: 220, opacity: 1, scale: s)
+                mark(Capsule(), x: 482, y: 290, width: 332, height: 80, opacity: 1, scale: s)
+                mark(Circle(), x: 260, y: 498, width: 124, height: 124, opacity: 0.3, scale: s)
+                mark(Capsule(), x: 442, y: 534, width: 300, height: 52, opacity: 0.3, scale: s)
+                mark(Circle(), x: 260, y: 678, width: 124, height: 124, opacity: 0.18, scale: s)
+                mark(Capsule(), x: 442, y: 714, width: 240, height: 52, opacity: 0.18, scale: s)
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func mark<S: Shape>(_ shape: S, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, opacity: Double, scale: CGFloat) -> some View {
+        shape.fill(Color.white.opacity(opacity))
+            .frame(width: width * scale, height: height * scale)
+            .offset(x: x * scale, y: y * scale)
     }
 }
 #endif

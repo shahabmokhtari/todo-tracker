@@ -1,11 +1,22 @@
-// Screenshots for the README and docs, from a made-up demo board (never anyone's real tasks).
+// Screenshots and pictures for the README, the docs and the website, from a made-up demo board (never anyone's real
+// tasks).
 //
 //   cd tests/e2e && npm install && npx playwright install chromium
-//   node screenshots.mjs                 # web views (any OS) + the Windows sidebar (Windows; quit One Thing first)
-//   node screenshots.mjs --web-only
+//   node screenshots.mjs                      # everything below (the Windows sidebar on Windows; quit One Thing first)
+//   node screenshots.mjs --web-only           # everything but the Windows sidebar
+//   node screenshots.mjs --only board,og      # just these (names as in docs/images, without .png)
+//   node screenshots.mjs --webp-only --only macos-ios-light,macos-ios-dark   # only the website's WebP copies
 //
 // It starts its own One Thing on a throwaway data folder and port, fills it with the demo tasks below through the
-// API (as you and as an AI agent), and saves the pictures to docs/images. Your own app and tasks are never touched.
+// API (as you and as an AI agent), and saves to docs/images:
+//   today-light, today-dark, board, tasks, plan, reports, task-details, phone   the web app
+//   browser-extension                                                           the extension's side panel, paired
+//   logo                                                                        the app icon (from wwwroot/img/logo.svg)
+//   windows-sidebar, windows-sidebar-dark                                       the Windows sidebar (Windows only)
+// and to website/public/img: og.png (the link preview) and a WebP copy of each picture the site shows (at most 1600
+// wide, quality 82), with the sizes in index.html kept up to date. macos-ios-light/-dark come from the iPhone
+// simulator (.github/workflows/screenshots.yml); the app icons from build/icons.py. Your own app and tasks are never
+// touched.
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,17 +27,39 @@ import { chromium } from '@playwright/test';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..', '..');
 const out = path.join(root, 'docs', 'images');
+const site = path.join(root, 'website', 'public');
 const port = Number(process.env.SHOT_PORT || 5391);
 const token = 'screenshots-token-0123456789abcdefghijkl';
-const data = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-shots-'));
+const args = process.argv.slice(2);
+const webOnly = args.includes('--web-only');
+const webpOnly = args.includes('--webp-only');
+const onlyAt = args.indexOf('--only');
+const only = onlyAt >= 0 ? (args[onlyAt + 1] ?? '').split(',').map((n) => n.trim().replace(/\.png$/, '')).filter(Boolean) : null;
+const wanted = (name) => !only || only.includes(name);
 const base = `http://127.0.0.1:${port}`;
-const webOnly = process.argv.includes('--web-only');
+
+const webViews = ['today-light', 'today-dark', 'board', 'tasks', 'plan', 'reports', 'task-details', 'phone'];
+const sidebarShots = ['windows-sidebar', 'windows-sidebar-dark'];
+// The pictures the website shows (website/public/index.html), as WebP.
+const onWebsite = ['today-light', 'today-dark', 'board', 'plan', 'reports', 'tasks', ...sidebarShots, 'macos-ios-light', 'macos-ios-dark', 'browser-extension'];
+const known = [...webViews, 'browser-extension', 'logo', 'og', ...sidebarShots, 'macos-ios-light', 'macos-ios-dark'];
+for (const name of only ?? []) {
+  if (!known.includes(name)) {
+    console.error(`Unknown picture "${name}". These are: ${known.join(', ')}`);
+    process.exit(2);
+  }
+}
+
+const data = webpOnly ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'onething-shots-'));
+
+/** The PNGs saved in this run (their WebP copies are made at the end). */
+const saved = [];
 const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
 // Everything in the throwaway folder: ONETHING_VAULT (or _DATA) set in your shell would otherwise win over --data and
 // put the demo tasks in your own tasks folder. No cloud sync either.
 // ONETHING_FEEDBACK_SEND=0: a demo never sends feedback anywhere.
-const isolated = { ...process.env, ONETHING_DATA: data, ONETHING_VAULT: path.join(data, 'vault'), ONETHING_CLOUD: 'off', ONETHING_FEEDBACK_SEND: '0' };
+const isolated = data ? { ...process.env, ONETHING_DATA: data, ONETHING_VAULT: path.join(data, 'vault'), ONETHING_CLOUD: 'off', ONETHING_FEEDBACK_SEND: '0' } : null;
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -166,9 +199,17 @@ async function seed() {
   return { release, review, design };
 }
 
-async function captureWeb(ids) {
-  const browser = await chromium.launch();
+/** Saves a picture to docs/images (or another folder) and notes it for its WebP copy. */
+async function save(page, name, options = {}, folder = out) {
+  const file = path.join(folder, `${name}.png`);
+  await page.screenshot({ path: file, ...options });
+  saved.push(name);
+  console.log(`saved ${path.relative(root, file).replaceAll('\\', '/')}`);
+}
+
+async function captureWeb(browser, ids) {
   const shoot = async (name, { hash = '#/today', dark = false, width = 1440, height = 900, full = false, prepare } = {}) => {
+    if (!wanted(name)) return;
     const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1.5, colorScheme: dark ? 'dark' : 'light' });
     const page = await context.newPage();
     const launch = await api('POST', '/api/launch', { return: '/' });
@@ -177,9 +218,8 @@ async function captureWeb(ids) {
     await page.evaluate((h) => { location.hash = h; }, hash);
     await wait(1200);
     if (prepare) await prepare(page);
-    await page.screenshot({ path: path.join(out, `${name}.png`), fullPage: full });
+    await save(page, name, { fullPage: full });
     await context.close();
-    console.log(`saved docs/images/${name}.png`);
   };
 
   await shoot('today-light');
@@ -190,7 +230,135 @@ async function captureWeb(ids) {
   await shoot('reports', { hash: '#/reports' });
   await shoot('task-details', { hash: `#/task/${ids.release.id}` });
   await shoot('phone', { width: 390, height: 844 });
-  await browser.close();
+}
+
+/**
+ * The browser extension's side panel, paired with the demo board the way a person does it (a code from the app).
+ * Extensions only load in a persistent profile, in Playwright's own Chromium (as in extension.spec.js).
+ */
+async function captureExtension() {
+  const extensionDir = path.join(root, 'extension');
+  const profile = path.join(data, 'browser-profile');
+  const context = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium',
+    viewport: { width: 380, height: 929 },
+    deviceScaleFactor: 2,
+    colorScheme: 'light',
+    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],
+  });
+  try {
+    const isOurs = (w) => w.url().endsWith('/background.js');
+    const worker = context.serviceWorkers().find(isOurs) ?? await context.waitForEvent('serviceworker', { predicate: isOurs, timeout: 30000 });
+    const id = new URL(worker.url()).host;
+    const panel = context.pages()[0] ?? await context.newPage();
+    await panel.goto(`chrome-extension://${id}/sidepanel.html`);
+    await panel.locator('#setup').waitFor();
+    await panel.locator('#advanced summary').click();
+    await panel.locator('#server').fill(base);
+    const { code } = await api('POST', '/api/plugins/browser-extension/pair');
+    await panel.locator('#code').fill(`${code.slice(0, 3)} ${code.slice(3)}`);
+    await panel.getByRole('button', { name: 'Connect' }).click();
+    await panel.locator('#main').waitFor({ timeout: 15000 });
+    await panel.getByText('Reply to the security review').first().waitFor({ timeout: 15000 });
+    await panel.locator('#status').evaluate((el) => { el.hidden = true; }); // "Paired": only once, right after pairing
+    // A page to take a note on, in the tab beside the panel (the panel shows its title under "Attach this page").
+    await context.route('https://wiki.example.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Security review: findings and replies</title><h1>Security review</h1>' }));
+    const article = await context.newPage();
+    await article.goto('https://wiki.example.com/security-review');
+    await article.bringToFront();
+    await panel.locator('#page').filter({ hasText: 'Security review' }).waitFor({ timeout: 10000 });
+    await panel.mouse.move(0, 0);
+    await wait(1200);
+    await save(panel, 'browser-extension');
+  } finally {
+    await context.close();
+  }
+}
+
+/** The app icon at 256×256 for the README, from the logo the web app shows (build/icons.py draws it). */
+async function captureLogo(browser) {
+  const svg = fs.readFileSync(path.join(root, 'src', 'OneThing.Server', 'wwwroot', 'img', 'logo.svg'), 'utf8');
+  const page = await browser.newPage({ viewport: { width: 256, height: 256 }, deviceScaleFactor: 1 });
+  await page.setContent(`<style>html,body{margin:0;background:transparent}svg{display:block;width:256px;height:256px}</style>${svg}`);
+  await save(page, 'logo', { omitBackground: true });
+  await page.close();
+}
+
+/** The link preview (Open Graph, 1200×630): the name, the icon, what it does, and the Today view beside them. */
+async function captureOg(browser) {
+  const today = path.join(out, 'today-light.png');
+  if (!fs.existsSync(today)) throw new Error('og needs docs/images/today-light.png: run with --only today-light,og');
+  const logo = fs.readFileSync(path.join(root, 'website', 'public', 'img', 'favicon.svg'), 'utf8');
+  const shot = `data:image/png;base64,${fs.readFileSync(today).toString('base64')}`;
+  const page = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 1, colorScheme: 'light' });
+  await page.setContent(`<!doctype html><meta charset="utf-8"><style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+    body { font-family: "Segoe UI Variable Display", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: #11142b;
+      background: radial-gradient(circle at 12% 18%, #e0e7ff 0, transparent 42%), radial-gradient(circle at 88% 100%, #fce7f3 0, transparent 45%), #f6f7fb; position: relative; }
+    .copy { position: absolute; left: 64px; top: 0; bottom: 0; width: 420px; display: flex; flex-direction: column; justify-content: center; }
+    .brand { display: flex; align-items: center; gap: 18px; margin-bottom: 34px; }
+    .brand svg { width: 84px; height: 84px; display: block; }
+    .brand span { font-size: 46px; font-weight: 700; letter-spacing: -0.02em; }
+    h1 { margin: 0 0 22px; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em; }
+    h1 em { font-style: normal; background: linear-gradient(90deg, #4f46e5, #7c3aed, #db2777); -webkit-background-clip: text; color: transparent; }
+    p { margin: 0; font-size: 22px; line-height: 1.4; color: #4b5068; }
+    .shot { position: absolute; left: 520px; top: 64px; width: 1040px; border-radius: 18px; border: 1px solid #e3e5ee;
+      box-shadow: 0 24px 60px rgba(49, 46, 129, .22), 0 4px 14px rgba(17, 20, 43, .08); }
+  </style>
+  <div class="copy">
+    <div class="brand">${logo}<span>One Thing</span></div>
+    <h1>The to-do list that tells you what to do <em>now</em>.</h1>
+    <p>Later work stays out of sight until it's due. Your AI agents can help.</p>
+  </div>
+  <img class="shot" src="${shot}" alt="">`);
+  await page.locator('.shot').evaluate((img) => img.decode());
+  await save(page, 'og', {}, path.join(site, 'img'));
+  await page.close();
+}
+
+/**
+ * The website's WebP copy of a picture (the site's img folder, at most 1600 wide, quality 82), encoded by the browser
+ * so no other tool is needed. The width and height in index.html follow the new size.
+ */
+async function writeWebp(browser, name) {
+  const png = path.join(out, `${name}.png`);
+  if (!fs.existsSync(png)) {
+    console.log(`no docs/images/${name}.png, so no ${name}.webp`);
+    return;
+  }
+
+  const page = await browser.newPage();
+  const result = await page.evaluate(async ({ source, maxWidth, quality }) => {
+    const img = new Image();
+    img.src = source;
+    await img.decode();
+    const scale = Math.min(1, maxWidth / img.naturalWidth);
+    const width = Math.round(img.naturalWidth * scale);
+    const height = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { type: blob.type, base64: btoa(binary), width, height };
+  }, { source: `data:image/png;base64,${fs.readFileSync(png).toString('base64')}`, maxWidth: 1600, quality: 0.82 });
+  await page.close();
+  if (result.type !== 'image/webp') throw new Error(`This browser can't write WebP (it gave ${result.type}).`);
+
+  const file = path.join(site, 'img', `${name}.webp`);
+  fs.writeFileSync(file, Buffer.from(result.base64, 'base64'));
+  console.log(`saved website/public/img/${name}.webp (${result.width}×${result.height})`);
+
+  const index = path.join(site, 'index.html');
+  const html = fs.readFileSync(index, 'utf8');
+  const sized = html.replace(new RegExp(`(<img src="/img/${name}\\.webp" width=")\\d+(" height=")\\d+(")`, 'g'), `$1${result.width}$2${result.height}$3`);
+  if (sized !== html) fs.writeFileSync(index, sized);
 }
 
 /** Whether a One Thing sidebar is running (only one runs at a time: a second one would just bring it forward). */
@@ -212,7 +380,9 @@ async function captureSidebar() {
   const exe = path.join(root, 'src', 'OneThing.Windows', 'bin', 'Debug', 'net10.0-windows10.0.19041.0', 'OneThing.exe');
   execFileSync('dotnet', ['build', path.join(root, 'src', 'OneThing.Windows'), '-v', 'q', '--nologo'], { stdio: 'inherit' });
   for (const theme of ['light', 'dark']) {
-    const file = path.join(out, theme === 'light' ? 'windows-sidebar.png' : 'windows-sidebar-dark.png');
+    const name = theme === 'light' ? 'windows-sidebar' : 'windows-sidebar-dark';
+    if (!wanted(name)) continue;
+    const file = path.join(out, `${name}.png`);
     fs.rmSync(file, { force: true });
     // The demo data folder: your own tasks are never opened.
     // The AI apps installed here count (Ask AI shows as it would for you); the tasks are only the demo ones.
@@ -224,22 +394,54 @@ async function captureSidebar() {
     await wait(500);
     stop(app);
     await wait(1500);
-    console.log(fs.existsSync(file) ? `saved docs/images/${path.basename(file)}` : `no ${path.basename(file)} (the sidebar didn't start)`);
+    if (fs.existsSync(file)) {
+      saved.push(name);
+      console.log(`saved docs/images/${name}.png`);
+    } else {
+      console.log(`no ${name}.png (the sidebar didn't start)`);
+    }
   }
 }
 
 fs.mkdirSync(out, { recursive: true });
-let server = await startServer();
-try {
-  const ids = await seed();
-  await captureWeb(ids);
-} finally {
-  stop(server);
+if (webpOnly) {
+  const browser = await chromium.launch();
+  try {
+    for (const name of onWebsite.filter(wanted)) await writeWebp(browser, name);
+  } finally {
+    await browser.close();
+  }
+  process.exit(0);
 }
 
-if (!webOnly && process.platform === 'win32') {
+const sidebar = !webOnly && process.platform === 'win32' && sidebarShots.some(wanted);
+if (webViews.some(wanted) || wanted('browser-extension') || sidebar) {
+  const server = await startServer();
+  const browser = await chromium.launch();
+  try {
+    const ids = await seed();
+    await captureWeb(browser, ids);
+    if (wanted('browser-extension')) await captureExtension();
+  } finally {
+    await browser.close();
+    stop(server);
+  }
+}
+
+if (sidebar) {
   await wait(2000); // the demo server lets go of the tasks folder
   await captureSidebar();
+}
+
+{
+  const browser = await chromium.launch();
+  try {
+    if (wanted('logo')) await captureLogo(browser);
+    if (wanted('og')) await captureOg(browser);
+    for (const name of saved.filter((n) => onWebsite.includes(n))) await writeWebp(browser, name);
+  } finally {
+    await browser.close();
+  }
 }
 
 // Files can stay locked a moment after the apps stop.

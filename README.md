@@ -54,25 +54,25 @@ calm until it matters.
 | ![Reports: time tracked, tasks done, a streak, time per day, a donut by group, where the time went, and when you work](docs/images/reports.png) | ![Tasks: an outline of every task with icons, labels, tags, deadlines and time spent; a rollout expanded into its steps](docs/images/tasks.png) |
 | See **where the time went**: by day, group and task, and when you work best. | **Type an outline**: Enter for the next task, Tab to nest, Space to finish. |
 
-| Everything about a task | The Windows sidebar | On your phone |
+| Everything about a task | The Windows sidebar | In a narrow window |
 |---|---|---|
-| ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
-| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
+| ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app in a narrow window: Today with the focus card and a tab bar](docs/images/phone.png) |
+| Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | Native Android and iPhone apps. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
-<summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>
+<summary>More: dark mode, the sidebar in dark, the iPhone app, the browser extension</summary>
 
 | Dark mode | Sidebar, dark |
 |---|---|
 | ![Today in dark mode](docs/images/today-dark.png) | ![The Windows sidebar in dark mode](docs/images/windows-sidebar-dark.png) |
 
-| Mac and iPhone (SwiftUI) | Browser side panel |
+| iPhone (SwiftUI) | Browser side panel |
 |---|---|
-| ![The SwiftUI app on macOS and iOS](docs/images/macos-ios-light.png) | ![The Edge and Chrome side panel](docs/images/browser-extension.png) |
+| ![The SwiftUI app on iPhone: the focus card, Do now, Waiting, Done today and Workstreams](docs/images/macos-ios-light.png) | ![The Edge and Chrome side panel](docs/images/browser-extension.png) |
 
 </details>
 
-*Every screenshot shows a made-up demo board (`node tests/e2e/screenshots.mjs` makes them).*
+*Every screenshot shows a made-up demo board (`node tests/e2e/screenshots.mjs` makes them; the iPhone ones come from the Screenshots workflow).*
 
 ## Your AI can use it too
 
@@ -93,7 +93,8 @@ claude mcp add onething --scope user -- onething mcp    # Claude Code
 copilot plugin install onething@onething            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
 ```
 
-…or **⋯ › Connect an AI app** in the app, which writes the setup for Claude Desktop, VS Code, Cursor and others. Every
+…or **⋯ › Connect an AI app** in the app, which gives you the setup to copy for Claude Desktop, VS Code, ChatGPT and
+others. Every
 change an agent makes is **attributed to it and versioned**, there's deliberately **no delete tool**, and hooks an
 agent adds wait until you allow them.
 

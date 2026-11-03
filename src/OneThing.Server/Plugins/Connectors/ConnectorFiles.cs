@@ -176,7 +176,7 @@ public sealed class ConnectorFiles(string dataDirectory, string id)
 
         try
         {
-            return JsonSerializer.Deserialize<T>(File.ReadAllText(path), Json);
+            return JsonSerializer.Deserialize<T>(Retry(() => ReadShared(path)), Json);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
         {
@@ -188,8 +188,45 @@ public sealed class ConnectorFiles(string dataDirectory, string id)
     {
         Directory.CreateDirectory(Folder);
         var path = Path.Combine(Folder, name);
-        var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(value, Json));
-        File.Move(temp, path, overwrite: true);
+
+        // Its own temp file, so two saves at once (the sync loop and Settings) never write into each other's.
+        var temp = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temp, JsonSerializer.Serialize(value, Json));
+            Retry(() =>
+            {
+                File.Move(temp, path, overwrite: true);
+                return true;
+            });
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
+    }
+
+    /// <summary>Opened so a save can still replace the file while it's being read.</summary>
+    private static string ReadShared(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    /// <summary>A read and a replace that meet on Windows fail with a sharing violation for a moment: tried again briefly.</summary>
+    private static TResult Retry<TResult>(Func<TResult> action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return action();
+            }
+            catch (IOException ex) when (attempt < 10 && ex is not FileNotFoundException and not DirectoryNotFoundException)
+            {
+                Thread.Sleep(10 * attempt);
+            }
+        }
     }
 }

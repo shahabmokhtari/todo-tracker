@@ -10,7 +10,7 @@ It's served by Cloudflare Workers static assets (the Worker is named `onething-s
 | `public/main.js` | The small "Do this now" demo card in the hero (the page works without it) |
 | `public/404.html` | Shown for any path that doesn't exist |
 | `public/privacy.html` | Privacy: what Send feedback sends and where (the same as `docs/privacy.md`); served at `/privacy` |
-| `public/img/` | Favicon, Open Graph image (`og.png`) and screenshots (WebP copies of `docs/images/*.png`) |
+| `public/img/` | Favicon, Open Graph image (`og.png`) and screenshots (WebP copies of `docs/images/*.png`), all made by tools (see below) |
 | `public/_headers` | Security headers and caching |
 | `public/robots.txt`, `public/sitemap.xml` | For search engines |
 | `wrangler.jsonc` | Worker name, the assets folder and the custom domain. No account id or token. |
@@ -40,14 +40,18 @@ the DNS records and certificates); `src/worker.js` sends the old address to the 
 
 ## Updating screenshots
 
-The screenshots come from `docs/images/` (made by `node tests/e2e/screenshots.mjs` from a made-up demo board).
-After they change, make the WebP copies again, for example:
+Every picture here is made by a tool, from a made-up demo board:
 
-```bash
-cwebp -q 82 -resize 1600 0 docs/images/today-light.png -o website/public/img/today-light.webp
-```
-
-`og.png` is the top 1200×630 of `today-light.png` scaled to 1200 wide (`sips -Z 1200`, then `sips -c 630 1200`).
+- `node tests/e2e/screenshots.mjs` (in `tests/e2e`, after `npm install` and `npx playwright install chromium`)
+  saves the screenshots to `docs/images/`, draws `og.png` (the link preview: the name, the icon and the Today view),
+  and writes the WebP copies here (at most 1600 wide, quality 82, encoded by the browser, so no `cwebp` needed). It
+  also keeps the `width` and `height` of those pictures in `index.html` right. `--web-only` skips the Windows
+  sidebar; `--only today-light,og` makes just those.
+- The iPhone pictures (`macos-ios-light`/`-dark`) come from the **Screenshots** workflow
+  (`.github/workflows/screenshots.yml`, run it by hand or push to a branch named `screenshots`): unzip its artifact
+  at the root of the repository. To redo only their WebP copies:
+  `node tests/e2e/screenshots.mjs --webp-only --only macos-ios-light,macos-ios-dark`.
+- `favicon.svg` and `apple-touch-icon.png` come from `build/icons.py`, with the app icon.
 
 ## Words
 

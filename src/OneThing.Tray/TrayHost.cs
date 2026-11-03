@@ -104,7 +104,10 @@ internal sealed class TrayHost : IAsyncDisposable
         return new TrayHost(server, viewModel, connection.BaseUrl);
     }
 
-    /// <summary>Another copy runs the tasks folder: open its full window (with its token, from the data folder).</summary>
+    /// <summary>
+    /// Another copy runs the tasks folder: open its full window (with its token, from the data folder). It may still be
+    /// starting or busy, so asking is tried a few times before giving up.
+    /// </summary>
     private static async Task OpenRunningAsync(OneThingServerOptions options, IDesktopShell shell, string path)
     {
         var tokenFile = Path.Combine(options.DataDirectory, "api-token");
@@ -113,28 +116,47 @@ internal sealed class TrayHost : IAsyncDisposable
             return;
         }
 
-        try
+        using var http = new HttpClient { BaseAddress = new Uri(options.BaseUrl), Timeout = TimeSpan.FromSeconds(5) };
+        for (var attempt = 1; attempt <= 4; attempt++)
         {
-            using var http = new HttpClient { BaseAddress = new Uri(options.BaseUrl), Timeout = TimeSpan.FromSeconds(5) };
-            http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await File.ReadAllTextAsync(tokenFile).ConfigureAwait(false)).Trim());
+            try
+            {
+                if (await AskForWindowAsync(http, tokenFile, options.DataDirectory, path).ConfigureAwait(false) is { } link)
+                {
+                    shell.OpenUrl(link);
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
+            {
+                // Not answering yet: try again in a moment.
+            }
 
-            // The owner key (next to the token) makes it the owner's session, as when the tray that runs the server opens it.
-            if (OwnerKey.Read(options.DataDirectory) is { } key)
-            {
-                http.DefaultRequestHeaders.Add(OwnerKey.Header, key);
-            }
-            using var body = new StringContent(JsonSerializer.Serialize(new { @return = path }), System.Text.Encoding.UTF8, "application/json");
-            using var response = await http.PostAsync(new Uri("/api/launch", UriKind.Relative), body).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
-            if (doc.RootElement.TryGetProperty("url", out var url) && url.GetString() is { } link)
-            {
-                shell.OpenUrl(link);
-            }
+            await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt)).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or IOException)
+    }
+
+    /// <summary>The running copy's sign-in link for <paramref name="path"/>, or null when it didn't give one.</summary>
+    private static async Task<string?> AskForWindowAsync(HttpClient http, string tokenFile, string dataDirectory, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("/api/launch", UriKind.Relative));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", (await File.ReadAllTextAsync(tokenFile).ConfigureAwait(false)).Trim());
+
+        // The owner key (next to the token) makes it the owner's session, as when the tray that runs the server opens it.
+        if (OwnerKey.Read(dataDirectory) is { } key)
         {
-            // It's running but not answering: nothing more to do from here.
+            request.Headers.Add(OwnerKey.Header, key);
         }
+
+        request.Content = new StringContent(JsonSerializer.Serialize(new { @return = path }), System.Text.Encoding.UTF8, "application/json");
+        using var response = await http.SendAsync(request).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+        return doc.RootElement.TryGetProperty("url", out var url) ? url.GetString() : null;
     }
 
     public async ValueTask DisposeAsync()

@@ -25,7 +25,8 @@ Edge may ask at startup whether to keep "developer mode extensions": choose **Ke
 
 Safari extensions come inside a small Mac app.
 
-1. Get **One Thing Extension.app**: CI builds it on every change (the `safari-extension` artifact). To build it
+1. Get **One Thing Extension.app**: it's on the Releases page (`OneThing-Safari-Extension.zip`), and CI builds it on
+   every change (the `safari-extension` artifact). To build it
    yourself (needs Xcode), download the Safari version from the setup panel, unzip it, and run
    `xcrun safari-web-extension-converter onething-extension-safari --macos-only --app-name "One Thing Extension"`,
    then build and run the project Xcode opens.
