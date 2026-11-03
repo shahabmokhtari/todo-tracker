@@ -1299,6 +1299,8 @@ const taskActionButton = (a, id) => h('button', { class: 'icon-btn', type: 'butt
 const pluginHost = {
   api, post, put, del, h, icon, toast, openPanel, closePanel: closeDrawer,
   refresh: () => refresh({ background: true }),
+  /** Whether this window is signed in (a plugin's own checks wait while it isn't). */
+  signedIn: () => !!state.signedIn,
   /** The group picked in the tabs (null: all), and every group. */
   group: () => state.group,
   groups: () => state.dashboard?.groups ?? [],
