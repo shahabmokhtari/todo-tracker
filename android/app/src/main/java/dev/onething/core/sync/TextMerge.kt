@@ -20,17 +20,58 @@ enum class ConflictPolicy {
  * is the same on every device as long as callers order the sides the same way.
  */
 object TextMerge {
+    /**
+     * Above this many cells in a diff table (lines of one side times lines of another, once the lines all three share at
+     * the start are set aside) the sides aren't diffed: what's left is one clash, kept as the policy says. A huge file
+     * can't make a sync run out of memory or time.
+     */
+    const val MAX_TABLE_CELLS = 4_000_000L
+
     /** [lineKeys] gives each line its identity (or null), e.g. a step's block id: keyed lines merge one by one. */
     fun merge(base: String, first: String, second: String, lineKeys: ((List<String>) -> List<String?>)? = null, policy: ConflictPolicy = ConflictPolicy.BOTH): TextMergeResult {
-        val o = split(base)
-        val a = split(first)
-        val b = split(second)
-        val ko = lineKeys?.invoke(o)
-        val ka = lineKeys?.invoke(a)
-        val kb = lineKeys?.invoke(b)
+        val o0 = split(base)
+        val a0 = split(first)
+        val b0 = split(second)
+        // Lines all three have at the start stay as they are (they'd pair up the same way): only the rest is diffed.
+        // (Not at the end: equal lines pair from the start, so trimming there could pair them differently.)
+        var pre = 0
+        while (pre < o0.size && pre < a0.size && pre < b0.size && o0[pre] == a0[pre] && o0[pre] == b0[pre]) pre++
+        val o = o0.subList(pre, o0.size)
+        val a = a0.subList(pre, a0.size)
+        val b = b0.subList(pre, b0.size)
+        val ko = lineKeys?.invoke(o0)?.let { it.subList(pre, it.size) }
+        val ka = lineKeys?.invoke(a0)?.let { it.subList(pre, it.size) }
+        val kb = lineKeys?.invoke(b0)?.let { it.subList(pre, it.size) }
+        val output = mutableListOf<String>()
+        output.addAll(o0.subList(0, pre))
+        val cells = maxOf((o.size + 1L) * (a.size + 1L), (o.size + 1L) * (b.size + 1L), (a.size + 1L) * (b.size + 1L))
+        val conflicted = if (cells > MAX_TABLE_CELLS) {
+            val (lines, clash) = whole(o, a, b, policy)
+            output.addAll(lines)
+            clash
+        } else {
+            mergeLines(o, a, b, ko, ka, kb, policy, output)
+        }
+        return TextMergeResult(join(output), conflicted)
+    }
+
+    /** Too big to diff: one side's change, or a clash kept as [policy] says. */
+    private fun whole(o: List<String>, a: List<String>, b: List<String>, policy: ConflictPolicy): Pair<List<String>, Boolean> {
+        if (o == a) return b to false
+        if (o == b || a == b) return a to false
+        return when (policy) {
+            ConflictPolicy.FIRST -> a
+            ConflictPolicy.SECOND -> b
+            ConflictPolicy.BOTH -> {
+                val seen = a.toHashSet()
+                a + b.filter { it !in seen }
+            }
+        } to true
+    }
+
+    private fun mergeLines(o: List<String>, a: List<String>, b: List<String>, ko: List<String?>?, ka: List<String?>?, kb: List<String?>?, policy: ConflictPolicy, output: MutableList<String>): Boolean {
         val ma = match(o, a)
         val mb = matchAgreeing(o, b, ma, match(a, b))
-        val output = mutableListOf<String>()
         var conflicted = false
         var io = 0
         var ia = 0
@@ -92,7 +133,7 @@ object TextMerge {
             ia = ea
             ib = eb
         }
-        return TextMergeResult(join(output), conflicted)
+        return conflicted
     }
 
     /** A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict. */

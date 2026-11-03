@@ -52,6 +52,11 @@ data class DeviceSnapshot(
     val schema: Int = 1,
     /** What this device deleted lately (so a device that comes back with old copies doesn't bring them back). */
     val deleted: List<SyncTombstone> = emptyList(),
+    /**
+     * Keys this device still has but can't share right now (too big, a link, a name other devices can't use): the
+     * others leave theirs as they are, and never take them as deleted. Written only when there are some.
+     */
+    val held: List<String>? = null,
 )
 
 object SyncLimits {
@@ -68,8 +73,14 @@ object SyncLimits {
 /** One side of a merge: its entries and a way to read an entry's content. */
 class SyncSide(val device: String, val name: String, val entries: Map<String, SyncEntry>, val read: (SyncEntry) -> ByteArray)
 
-/** This vault's syncable entries; [read] throws [SyncStaleException] if a file changed since. */
-class SyncSnapshot(val entries: Map<String, SyncEntry>, val read: (SyncEntry) -> ByteArray)
+/** This vault's syncable entries; [read] throws [SyncStaleException] if a file changed since. [held]: here, but can't sync right now. */
+class SyncSnapshot(val entries: Map<String, SyncEntry>, val held: List<SyncHeld> = emptyList(), val read: (SyncEntry) -> ByteArray)
+
+/**
+ * An entry one side has but can't sync right now, and why (said to the person). It's never written, moved or deleted
+ * by a sync, on either side, and never counts as deleted.
+ */
+data class SyncHeld(val key: String, val path: String, val reason: String)
 
 /** The vault changed while a sync was being worked out; the sync starts over. */
 class SyncStaleException(message: String) : Exception(message)

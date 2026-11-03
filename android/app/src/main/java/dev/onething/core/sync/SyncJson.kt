@@ -30,7 +30,7 @@ object SyncJson {
             "entries" to JsonArray(s.entries.map(::entry)),
             "schema" to JsonPrimitive(s.schema),
             "deleted" to JsonArray(s.deleted.map { JsonObject(linkedMapOf("key" to JsonPrimitive(it.key), "hash" to JsonPrimitive(it.hash), "at" to NetTime.json(it.at))) }),
-        ),
+        ).also { o -> s.held?.let { o["held"] = JsonArray(it.map(::JsonPrimitive)) } },
     )
 
     fun write(e: JsonElement): String = NetJson.write(e, JsonEscaping.DEFAULT)
@@ -57,7 +57,8 @@ object SyncJson {
             SyncTombstone(key, hash, time(t, "at") ?: NetTime.MIN)
         } ?: emptyList()
         val schema = prop(o, "schema")?.let { NetJson.long(it)?.toInt() ?: throw SyncFormatException("\"schema\" isn't a number.") } ?: 1
-        return DeviceSnapshot(string(o, "device") ?: "", string(o, "name") ?: "", time(o, "at") ?: NetTime.MIN, entries ?: NO_ENTRIES, schema, deleted)
+        val held = (prop(o, "held") as? JsonArray)?.mapNotNull { NetJson.str(it) }
+        return DeviceSnapshot(string(o, "device") ?: "", string(o, "name") ?: "", time(o, "at") ?: NetTime.MIN, entries ?: NO_ENTRIES, schema, deleted, held)
     }
 
     /** Stands for "entries": null (a file that isn't a device snapshot). */

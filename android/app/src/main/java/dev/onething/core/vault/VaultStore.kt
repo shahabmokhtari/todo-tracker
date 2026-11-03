@@ -17,6 +17,7 @@ import dev.onething.core.WorkItem
 import dev.onething.core.sync.NetTime
 import dev.onething.core.sync.SyncEntry
 import dev.onething.core.sync.SyncHash
+import dev.onething.core.sync.SyncHeld
 import dev.onething.core.sync.SyncKeys
 import dev.onething.core.sync.SyncLimits
 import dev.onething.core.sync.SyncOp
@@ -939,12 +940,18 @@ class VaultStore(
             throw IOException("\"$rel\" can't be read (${state.error}). Sync waits until it's fixed, so your other devices keep the task.")
         }
         val entries = LinkedHashMap<String, SyncEntry>()
+        val held = mutableListOf<SyncHeld>()
         val memory = HashMap<String, ByteArray>()
         val covered = HashSet<String>()
         val seen = HashSet<String>()
         fun add(key: String, rel: String) {
             val file = full(rel)
-            if (file.isFile && file.length() <= SyncLimits.MAX_FILE_BYTES && !Files.isSymbolicLink(file.toPath())) {
+            val link = Files.isSymbolicLink(file.toPath())
+            if (link || (file.isFile && file.length() > SyncLimits.MAX_FILE_BYTES)) {
+                // Here but can't be shared: the other devices leave theirs alone (never taken as deleted).
+                held.add(SyncHeld(key, rel, if (link) "it's a link to somewhere else" else "it's bigger than ${SyncLimits.MAX_FILE_BYTES / (1024 * 1024)} MB"))
+                covered.add(Net.ci(rel))
+            } else if (file.isFile) {
                 val stamp = stamp(file)
                 var known = syncHashes[Net.ci(rel)]
                 if (known == null || known.first != stamp) {
@@ -970,7 +977,7 @@ class VaultStore(
         File(meta, "activity.jsonl").takeIf { it.exists() }?.let { remember(SyncKeys.ACTIVITY, SyncKeys.ACTIVITY_PATH, it.readBytes()) }
         syncHashes.keys.retainAll(seen)
         val hashes = syncHashes
-        return SyncSnapshot(entries) { e ->
+        return SyncSnapshot(entries, held = held) { e ->
             memory[e.key] ?: run {
                 val file = full(e.path)
                 val content = if (file.exists()) file.readBytes() else ByteArray(0)
@@ -984,16 +991,16 @@ class VaultStore(
         }
     }
 
-    /** Files in the vault's folders (never root files like AGENTS.md, hidden ones, or links that lead elsewhere). */
+    /** Files in the vault's folders (never root files like AGENTS.md or hidden ones; links are listed, to be held back). */
     private fun syncableFiles(): List<String> {
-        fun plain(f: File) = !f.name.startsWith('.') && !Files.isSymbolicLink(f.toPath())
+        fun plain(f: File) = !f.name.startsWith('.')
         val result = mutableListOf<String>()
-        val pending = ArrayDeque((root.listFiles() ?: emptyArray()).filter { it.isDirectory && plain(it) }.sortedBy { it.name })
+        val pending = ArrayDeque((root.listFiles() ?: emptyArray()).filter { it.isDirectory && plain(it) && !Files.isSymbolicLink(it.toPath()) }.sortedBy { it.name })
         while (pending.isNotEmpty()) {
             val dir = pending.removeLast()
             val children = (dir.listFiles() ?: emptyArray()).sortedBy { it.name }
-            for (f in children) if (f.isFile && plain(f)) relative(f).takeIf(VaultFiles::isSyncablePath)?.let(result::add)
-            for (d in children) if (d.isDirectory && plain(d)) pending.addLast(d)
+            for (f in children) if ((f.isFile || Files.isSymbolicLink(f.toPath())) && plain(f)) relative(f).takeIf(VaultFiles::isSyncablePath)?.let(result::add)
+            for (d in children) if (d.isDirectory && plain(d) && !Files.isSymbolicLink(d.toPath())) pending.addLast(d)
         }
         return result
     }
