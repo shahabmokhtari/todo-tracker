@@ -691,16 +691,16 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         }
         else
         {
-            _shell.OpenUrl(Launch(path));
+            Browse(Launch(path));
         }
     }
 
     [RelayCommand]
-    private void OpenReport(CardViewModel? card) => _shell.OpenUrl(Launch(card is null ? "/report.html" : $"/report.html?id={card.Id}"));
+    private void OpenReport(CardViewModel? card) => Browse(Launch(card is null ? "/report.html" : $"/report.html?id={card.Id}"));
 
     [RelayCommand]
     private void OpenWorkstreamReport(WorkstreamViewModel? workstream) =>
-        _shell.OpenUrl(Launch(workstream is null ? "/report.html" : $"/report.html?id={workstream.Id}"));
+        Browse(Launch(workstream is null ? "/report.html" : $"/report.html?id={workstream.Id}"));
 
     /// <summary>The task full size in the app window (the browser when there's no app window).</summary>
     [RelayCommand]
@@ -727,7 +727,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     {
         if (card is not null)
         {
-            _shell.OpenUrl(Launch($"/#/task/{card.Id}"));
+            Browse(Launch($"/#/task/{card.Id}"));
         }
     }
 
@@ -740,21 +740,23 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _shell.CopyLink(TaskLinks.ForTask(card.Id), card.Title);
-        StatusMessage = "Link copied. Clicking it opens this task in the app.";
+        if (TryCopy(() => _shell.CopyLink(TaskLinks.ForTask(card.Id), card.Title)))
+        {
+            StatusMessage = "Link copied. Clicking it opens this task in the app.";
+        }
     }
 
     /// <summary>Opens "Connect an AI app" (Claude, Copilot, VS Code, ChatGPT…) in the browser.</summary>
     [RelayCommand]
-    private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));
+    private void ConnectAi() => Browse(Launch("/?connect=1"));
 
     /// <summary>Opens the Sync panel (where it syncs, and anything changed on two computers) in the browser.</summary>
     [RelayCommand]
-    private void OpenSync() => _shell.OpenUrl(Launch("/?sync=1"));
+    private void OpenSync() => Browse(Launch("/?sync=1"));
 
     /// <summary>Opens the step-by-step browser extension setup (Edge, Chrome, Safari) with a pairing code.</summary>
     [RelayCommand]
-    private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
+    private void SetUpBrowserExtension() => Browse(Launch("/?extension=1"));
 
     /// <summary>The feedback sheet of the app (one sheet for every desktop app): a bug, an idea, anything.</summary>
     [RelayCommand]
@@ -763,15 +765,19 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void CopyMcpConfig()
     {
-        _shell.CopyToClipboard(_options.McpConfigJson);
-        StatusMessage = "MCP config copied. Paste it into your Copilot MCP settings.";
+        if (TryCopy(() => _shell.CopyToClipboard(_options.McpConfigJson)))
+        {
+            StatusMessage = "MCP config copied. Paste it into your Copilot MCP settings.";
+        }
     }
 
     [RelayCommand]
     private void CopyApiToken()
     {
-        _shell.CopyToClipboard(_options.ApiToken);
-        StatusMessage = "API token copied. Paste it into the browser extension.";
+        if (TryCopy(() => _shell.CopyToClipboard(_options.ApiToken)))
+        {
+            StatusMessage = "API token copied. Paste it into the browser extension.";
+        }
     }
 
     [RelayCommand]
@@ -831,8 +837,36 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
 
     private Task OpenItem(Guid itemId)
     {
-        _shell.OpenUrl(Launch($"/?item={itemId}"));
+        OpenApp($"/#/task/{itemId}");
         return Task.CompletedTask;
+    }
+
+    /// <summary>Opens a page in the browser; no browser to open it says so in the sidebar.</summary>
+    private void Browse(string url)
+    {
+        try
+        {
+            _shell.OpenUrl(url);
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            StatusMessage = "Couldn't open your browser. Check that you have a default browser, then try again.";
+        }
+    }
+
+    /// <summary>Copies; a clipboard another app holds open says so in the sidebar (and returns false).</summary>
+    private bool TryCopy(Action copy)
+    {
+        try
+        {
+            copy();
+            return true;
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            StatusMessage = "Couldn't copy: another app is using the clipboard. Try again in a moment.";
+            return false;
+        }
     }
 
     public void Dispose()
