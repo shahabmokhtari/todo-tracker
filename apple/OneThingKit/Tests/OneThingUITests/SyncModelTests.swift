@@ -198,6 +198,20 @@ final class SyncModelTests: XCTestCase {
         XCTAssertEqual(syncer.runs, 2, "the ones asked for meanwhile: one more")
     }
 
+    func testAChangeWaitingItsFewSecondsSyncsWhenTheAppGoesToTheBackground() async throws {
+        let syncer = FakeSyncer()
+        let sync = syncModel(syncer)
+        sync.debounce = 60
+        sync.stop()
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 0, "nothing waiting: nothing to sync")
+
+        sync.changed()
+        sync.stop()
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 1, "the last change doesn't wait for the app to come back")
+    }
+
     func testNotEverythingDownloadedIsSaid() async throws {
         let syncer = FakeSyncer()
         syncer.result.complete = false
