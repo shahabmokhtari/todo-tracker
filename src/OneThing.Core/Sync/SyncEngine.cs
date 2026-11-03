@@ -37,6 +37,7 @@ public sealed class SyncEngine : IDisposable
     private readonly string _lockPath;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _verifiedRestored;
 
     public SyncEngine(VaultBoardStore store, ISyncRemote remote, SyncState state, string lockPath, TimeProvider? time = null)
     {
@@ -62,6 +63,11 @@ public sealed class SyncEngine : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_state.Problem is { } problem)
+            {
+                throw new InvalidDataException(problem);
+            }
+
             using var crossProcess = await VaultFiles.AcquireLockAsync(_lockPath, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
             for (var attempt = 1; ; attempt++)
             {
@@ -157,6 +163,7 @@ public sealed class SyncEngine : IDisposable
             _state.RemoteVersion = null;
             _state.SeenVersion = null;
             _state.Published = null;
+            _state.Verified = new Dictionary<string, SyncVerified>();
         }
 
         // Read: what's merged up to ("merged up to here"). Written only: what was last seen there (nothing is merged,
@@ -291,7 +298,20 @@ public sealed class SyncEngine : IDisposable
                 .ToList();
             var mine = new DeviceSnapshot(_state.DeviceId, _state.DeviceName, now, entriesNow) { Deleted = tombstones, Held = held.Count > 0 ? [.. held.Order(StringComparer.Ordinal)] : null };
             byte[] Read(SyncEntry e) => held.Contains(e.Key) ? _state.ReadBlob(e.Hash) ?? throw new SyncStaleException($"{e.Path} is missing.") : local.Read(e);
+            var cache = _remote as ISyncVerifiedCache;
+            if (cache is not null && !_verifiedRestored)
+            {
+                // What was found whole before a restart isn't read (downloaded from a cloud drive) again.
+                cache.Restore(_state.Verified);
+                _verifiedRestored = true;
+            }
+
             var version = await _remote.PublishAsync(mine, Read, reading ? _state.RemoteVersion : _state.SeenVersion, cancellationToken).ConfigureAwait(false);
+            if (cache is not null)
+            {
+                _state.Verified = cache.Verified;
+            }
+
             _state.Tombstones = tombstones;
             _state.PublishedEntries = entriesNow;
             _state.Published = fingerprint;
