@@ -124,4 +124,61 @@ final class WidgetModelTests: XCTestCase {
         XCTAssertEqual(completes.count, 1)
         XCTAssertEqual(shelf.pendingDone(), [])
     }
+
+    /// The Mac's board.json after the server moved the tasks into the tasks folder: empty, and an old copy.
+    private func migratedStore() throws -> BoardFileStore {
+        let board = folder.appendingPathComponent("board", isDirectory: true)
+        try FileManager.default.createDirectory(at: board, withIntermediateDirectories: true)
+        let old = TaskBoard()
+        _ = try old.addTask(NewTask("Moved to the folder"), now: Date())
+        try BoardCodec.encode(old).write(to: board.appendingPathComponent("board.json.migrated"))
+        let store = BoardFileStore(url: board.appendingPathComponent("board.json"))
+        XCTAssertTrue(store.wasMigrated)
+        return store
+    }
+
+    func testTheWidgetsKeepWhatTheyShowWhileTheBoardHereIsAnOldCopy() throws {
+        let shelf = WidgetShelf(directory: folder.appendingPathComponent("shelf", isDirectory: true))
+        let shown = TaskBoard()
+        _ = try shown.addTask(NewTask("Answer mail"), now: Date())
+        try shelf.write(WidgetSnapshot.build(shown, now: Date(), timeZone: .current))
+
+        let model = BoardModel(store: try migratedStore())
+        model.widgetShelf = shelf
+        model.reportLocalOnly("it stopped")
+        model.refresh()
+
+        XCTAssertEqual(shelf.snapshot()?.view(at: Date()).focus?.title, "Answer mail", "not replaced by an empty board")
+    }
+
+    func testDoneOnAWidgetWaitsWhileTheBoardHereIsAnOldCopy() throws {
+        let shelf = WidgetShelf(directory: folder.appendingPathComponent("shelf", isDirectory: true))
+        let model = BoardModel(store: try migratedStore())
+        model.widgetShelf = shelf
+        model.reportLocalOnly("it stopped")
+
+        try shelf.requestDone(UUID())
+        model.applyWidgetRequests()
+
+        XCTAssertEqual(shelf.pendingDone().count, 1, "kept for when the tasks folder is open (not thrown away as not found)")
+    }
+
+    func testOnTheServerTheWidgetsWaitForTheServersBoard() async throws {
+        let remote = TaskBoard()
+        _ = try remote.addTask(NewTask("Synced from Windows"), now: Date())
+        FakeServer.board = try BoardCodec.encode(remote)
+        let shelf = WidgetShelf(directory: folder.appendingPathComponent("shelf", isDirectory: true))
+        let model = BoardModel(store: try migratedStore())
+        model.beginConnecting()
+        model.widgetShelf = shelf
+        XCTAssertNil(shelf.snapshot(), "nothing written while the tasks folder opens")
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [FakeServer.self]
+        model.use(server: ServerClient(baseURL: URL(string: "http://127.0.0.1:5317")!, token: "test", session: URLSession(configuration: configuration)))
+        model.refresh()
+        XCTAssertNil(shelf.snapshot(), "not before the server's board came in")
+
+        try await waitUntil { shelf.snapshot()?.view(at: Date()).focus?.title == "Synced from Windows" }
+    }
 }

@@ -90,6 +90,9 @@ public final class BoardModel: ObservableObject {
     var widgetSnapshot: WidgetSnapshot?
     private var widgetCheckedAt = Date.distantPast
     private var etag: String?
+    /// The server's board came in since `use(server:)` (until then the board shown is this Mac's, maybe the empty one
+    /// left after the tasks moved into the tasks folder).
+    private var serverBoardRead = false
     private var themeSettled = false
 
     /// The phone itself (iPhone and iPad; nil on the Mac): its name and what it is.
@@ -198,6 +201,7 @@ public final class BoardModel: ObservableObject {
         isReadOnly = false
         unansweredReads = 0
         etag = nil
+        serverBoardRead = false
         themeSettled = false
         status = nil
         Task { await reload() }
@@ -218,6 +222,7 @@ public final class BoardModel: ObservableObject {
             server = nil
             serverURL = nil
             etag = nil
+            serverBoardRead = false
             board = (try? store?.load()) ?? TaskBoard()
             refresh()
         }
@@ -266,6 +271,7 @@ public final class BoardModel: ObservableObject {
             etag = tag
             if let fresh {
                 board = fresh
+                serverBoardRead = true
                 NotificationScheduler.sync(board)
             }
             if let theme { adopt(theme: theme, from: server) }
@@ -323,6 +329,15 @@ public final class BoardModel: ObservableObject {
             // Done, failed or not: the board as the server has it now is read back.
             onSettled?()
         }
+    }
+
+    /// The board shown is the user's tasks as they are: not while the tasks folder opens, not this Mac's board once
+    /// the tasks moved into the folder (an empty or old copy), not a board that couldn't be opened. Only then do the
+    /// widgets show it and Done tapped on them get made (else the widgets keep what they showed, the requests wait).
+    var boardIsTheTasks: Bool {
+        if isConnecting { return false }
+        if server != nil { return serverBoardRead }
+        return storeFailure == nil && store?.wasMigrated != true
     }
 
     /// While the tasks folder is opening, changes wait (says so). True when it's opening.

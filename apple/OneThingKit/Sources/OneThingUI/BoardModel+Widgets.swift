@@ -17,7 +17,8 @@ import WidgetKit
 extension BoardModel {
     /// Writes what the widgets show when the board changed, and every 15 minutes (the day ahead moves on).
     func updateWidgets(force: Bool = false) {
-        guard let shelf = widgetShelf else { return }
+        // An empty or old board (the tasks folder is opening, or the tasks moved there): the widgets keep what they show.
+        guard let shelf = widgetShelf, boardIsTheTasks else { return }
         let current = Date()
         let key = "\(ObjectIdentifier(board))|\(board.activity.count)|\(board.activity.last?.at.timeIntervalSince1970 ?? 0)|\(board.nowOrder)|\(board.nowArrangedAt?.timeIntervalSince1970 ?? 0)"
         guard force || key != widgetKey || current.timeIntervalSince(widgetWrittenAt) >= 15 * 60 else { return }
@@ -37,14 +38,15 @@ extension BoardModel {
     }
 
     /// Marks done what was tapped Done on a widget: the same change as Mark done here (to this device's tasks, or the
-    /// Mac's server). Waits while the app is connecting; a task that can't be done here (it
+    /// Mac's server). Waits while the app is connecting (or has only an old copy of the tasks); a task that can't be done here (it
     /// has open subtasks, or the change didn't go through) opens instead, with why.
     public func applyWidgetRequests() {
         guard let shelf = widgetShelf else { return }
         let pending = shelf.pendingDone()
         guard !pending.isEmpty else { return }
-        // Opening the tasks folder: they wait (the widget keeps them out).
-        if isConnecting { return }
+        // Opening the tasks folder, or the board here isn't the tasks (they moved into the folder and the server isn't
+        // there): they wait (the widget keeps them out). Against that board a task would be "not found", so "done".
+        if !boardIsTheTasks { return }
         // One change per task: two taps (or Now and Today both tapped) are one Done, and while a Done for a task is
         // still on its way the board here doesn't show it yet, so a repeating task would move on twice.
         var handled = widgetDoneSending
