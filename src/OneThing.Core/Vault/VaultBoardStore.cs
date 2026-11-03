@@ -266,7 +266,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         using (VaultFiles.AcquireLock(_lockPath, LockTimeout))
         {
             Directory.CreateDirectory(_root);
-            var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && !EnumerateTaskFiles().Any();
+            var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && EnumerateTaskFiles().Count == 0;
             if (fresh && _options.LegacyBoardPath is { } legacy && ReadLegacy(legacy) is { } legacyBoard)
             {
                 Migrate(legacy, legacyBoard);
@@ -478,7 +478,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     {
         var caches = _caches;
         var seen = 0;
-        foreach (var file in EnumerateTaskFiles())
+        var unreadable = new List<string>();
+        foreach (var file in EnumerateTaskFiles(unreadable))
         {
             seen++;
             if (!caches.Files.TryGetValue(VaultFiles.Relative(_root, file), out var state) || state.Stamp != Stamp(file))
@@ -487,13 +488,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             }
         }
 
-        if (seen != caches.Files.Count || !TopFolders().ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(caches.GroupFolders.Values))
+        if (unreadable.Count > 0 || seen != caches.Files.Count || !TopFolders().ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(caches.GroupFolders.Values))
         {
             return true;
         }
 
-        return ReadOrEmpty(Path.Combine(MetaDir, "config.json")) != _configText
-            || ReadOrEmpty(Path.Combine(MetaDir, "state.json")) != _stateText
+        return TryReadText(Path.Combine(MetaDir, "config.json")) != _configText
+            || TryReadText(Path.Combine(MetaDir, "state.json")) != _stateText
             || FileLength(Path.Combine(MetaDir, "activity.jsonl")) != _activityLength;
     }
 
@@ -517,7 +518,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         var problems = new List<VaultProblem>();
         foreach (var folder in folders)
         {
-            foreach (var file in EnumerateTaskFiles(Path.Combine(_root, folder)))
+            var unreadable = new List<string>();
+            foreach (var file in EnumerateTaskFiles(Path.Combine(_root, folder), unreadable))
             {
                 var rel = VaultFiles.Relative(_root, file);
                 var state = ReadFile(file, rel, oldCaches, forceContent);
@@ -531,6 +533,25 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 {
                     parsedByFolder[folder].Add((rel, ParseText(state.Good, rel)));
                 }
+            }
+
+            foreach (var dir in unreadable)
+            {
+                // A folder that can't be listed right now (offline, no permission): its tasks stay as last read, and it
+                // counts as a file that can't be read (sync waits, so the other devices keep its tasks).
+                var dirRel = VaultFiles.Relative(_root, dir);
+                var error = "This folder can't be opened right now. Its tasks are shown as they were, and it's read again shortly.";
+                foreach (var (rel, old) in oldCaches.Files.Where(f => f.Key.StartsWith(dirRel + "/", StringComparison.OrdinalIgnoreCase) && !files.ContainsKey(f.Key)))
+                {
+                    files[rel] = old with { Stamp = Unread, Error = error };
+                    if (old.Good is not null)
+                    {
+                        parsedByFolder[folder].Add((rel, ParseText(old.Good, rel)));
+                    }
+                }
+
+                files[dirRel] = new FileState(string.Empty, null, Unread, error);
+                problems.Add(new VaultProblem(dirRel, error));
             }
         }
 
@@ -778,8 +799,20 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return cached;
         }
 
-        var text = File.ReadAllText(full);
-        if (cached is not null && cached.Text == text)
+        string text;
+        try
+        {
+            text = File.ReadAllText(full);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not downloaded yet (a cloud placeholder), or locked by another app: the last good version stays, and the
+            // file is read again next time (no stamp matches Unread).
+            var error = $"It can't be opened right now ({ex.Message}). It's read again shortly.";
+            return cached is null ? new FileState(string.Empty, null, Unread, error) : cached with { Stamp = Unread, Error = error };
+        }
+
+        if (cached is not null && cached.Text == text && cached.Stamp != Unread)
         {
             return cached with { Stamp = stamp };
         }
@@ -1466,7 +1499,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private void LoadState(TaskBoard board)
     {
-        var text = ReadOrEmpty(Path.Combine(MetaDir, "state.json"));
+        // Locked by another app right now: the timer state last read stays.
+        var text = TryReadText(Path.Combine(MetaDir, "state.json")) ?? _stateText;
         _stateText = text;
         try
         {
@@ -1587,44 +1621,75 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private static bool IsGroupFolder(string name) => name.Length > 0 && name[0] is not ('.' or '_');
 
-    private IEnumerable<string> EnumerateTaskFiles() => TopFolders().SelectMany(f => EnumerateTaskFiles(Path.Combine(_root, f)));
+    private List<string> EnumerateTaskFiles(List<string>? unreadable = null) => TopFolders().SelectMany(f => EnumerateTaskFiles(Path.Combine(_root, f), unreadable)).ToList();
 
-    private static IEnumerable<string> EnumerateTaskFiles(string folder)
+    /// <summary>The task files under a folder; folders that can't be listed right now go to <paramref name="unreadable"/>.</summary>
+    private static List<string> EnumerateTaskFiles(string folder, List<string>? unreadable = null)
     {
-        if (!Directory.Exists(folder))
-        {
-            yield break;
-        }
+        var found = new List<string>();
+        Collect(folder);
+        return found;
 
-        foreach (var file in Directory.EnumerateFiles(folder, "*.md"))
+        void Collect(string dir)
         {
-            if (!Path.GetFileName(file).StartsWith('.'))
+            string[] files;
+            string[] subs;
+            try
             {
-                yield return file;
-            }
-        }
-
-        foreach (var dir in Directory.EnumerateDirectories(folder))
-        {
-            if (IsGroupFolder(Path.GetFileName(dir)))
-            {
-                foreach (var file in EnumerateTaskFiles(dir))
+                if (!Directory.Exists(dir))
                 {
-                    yield return file;
+                    return;
                 }
+
+                files = Directory.GetFiles(dir, "*.md");
+                subs = Directory.GetDirectories(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                unreadable?.Add(dir);
+                return;
+            }
+
+            found.AddRange(files.Where(f => !Path.GetFileName(f).StartsWith('.')));
+            foreach (var sub in subs.Where(s => IsGroupFolder(Path.GetFileName(s))))
+            {
+                Collect(sub);
             }
         }
     }
 
     private static (DateTime Time, long Size) Stamp(string path)
     {
-        var info = new FileInfo(path);
-        return info.Exists ? (info.LastWriteTimeUtc, info.Length) : (DateTime.MinValue, -1);
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? (info.LastWriteTimeUtc, info.Length) : (DateTime.MinValue, -1);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Unread;
+        }
     }
+
+    /// <summary>The stamp of a file that couldn't be read: never matches, so it's read again next time.</summary>
+    private static readonly (DateTime Time, long Size) Unread = (DateTime.MinValue, -2);
 
     private static long FileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
     private static string ReadOrEmpty(string path) => File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+
+    /// <summary>The file's text, empty when there's none, or null when it can't be read right now (locked, offline).</summary>
+    private static string? TryReadText(string path)
+    {
+        try
+        {
+            return ReadOrEmpty(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>What we last saw of a file: its text, the last version that parsed, and why it doesn't parse now.</summary>
     private sealed record FileState(string Text, string? Good, (DateTime Time, long Size) Stamp, string? Error);

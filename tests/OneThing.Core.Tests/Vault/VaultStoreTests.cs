@@ -313,6 +313,34 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_task_file_another_app_has_locked_keeps_its_last_version_and_the_rest_still_loads()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks files against reading.");
+        var store = Open();
+        var plan = await Add(store, "Plan");
+        await Add(store, "Fine");
+
+        using (new FileStream(P("Work", "Plan.md"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        using (new FileStream(P("Work", "New.md"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        {
+            store.MarkDirty();
+            var titles = await store.ReadAsync(b => b.Items.Select(i => i.Title).Order().ToList());
+
+            // An offline cloud file or one another app holds open: shown as it was, said, never a failed board.
+            Assert.Equal(["Fine", "Plan"], titles);
+            Assert.Contains(store.Problems, p => p.Path == "Work/Plan.md");
+            Assert.Contains(store.Problems, p => p.Path == "Work/New.md");
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.UpdateAsync(b => b.Update(plan.Id, new TaskChanges { Title = "Plan B" }, Actor.User, T0)));
+        }
+
+        File.Delete(P("Work", "New.md"));
+
+        // Once it can be read again, it is (no change needed to notice).
+        Assert.Equal("Plan", await store.ReadAsync(b => b.Get(plan.Id).Title));
+        Assert.Empty(store.Problems);
+    }
+
+    [Fact]
     public async Task A_new_task_never_replaces_a_file_that_appeared_while_it_was_saved()
     {
         var written = false;
