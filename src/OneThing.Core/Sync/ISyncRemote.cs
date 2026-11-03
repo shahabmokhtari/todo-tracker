@@ -12,6 +12,20 @@ public interface ISyncPeek
     Task<IReadOnlyList<SyncDevice>> PeekAsync(string self, CancellationToken cancellationToken);
 }
 
+/// <summary>A stored content found whole: its size and time then (unchanged since, it isn't read again).</summary>
+public sealed record SyncVerified(long Length, DateTime Written);
+
+/// <summary>
+/// A place that remembers which of this device's stored contents it found whole, so they aren't read (downloaded)
+/// again on each publish. The engine keeps it in <see cref="SyncState"/>, so it lasts across restarts.
+/// </summary>
+public interface ISyncVerifiedCache
+{
+    IReadOnlyDictionary<string, SyncVerified> Verified { get; }
+
+    void Restore(IReadOnlyDictionary<string, SyncVerified> verified);
+}
+
 /// <summary>
 /// Where devices meet: a shared folder (OneDrive, iCloud Drive, a network share), a gist, ... Each device only ever
 /// writes its own snapshot (and contents), so two devices never write the same thing.

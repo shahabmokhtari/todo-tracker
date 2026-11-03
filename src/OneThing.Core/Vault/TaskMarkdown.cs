@@ -100,9 +100,10 @@ public static partial class TaskMarkdown
         {
             return ParseCore(text, fileStem, context);
         }
-        catch (FormatException ex)
+        catch (Exception ex) when (ex is FormatException or OverflowException or ArgumentOutOfRangeException)
         {
-            throw new VaultFormatException(ex.Message, ex);
+            // A value too big for its kind (a date past year 9999, a number past what fits) is a file to fix, not a crash.
+            throw new VaultFormatException(ex is FormatException ? ex.Message : $"A value in this file is too big to use ({ex.Message}).", ex);
         }
     }
 
@@ -625,7 +626,7 @@ public static partial class TaskMarkdown
             NextActionAt = Resolve(scheduled, Str(meta, "next"), VaultText.DefaultScheduledTime),
             AfterId = Guid.TryParse(Str(meta, "after"), out var after) ? after : null,
             Sequential = meta?["seq"] is JsonValue seq && seq.TryGetValue<bool>(out var s) && s,
-            StepDelay = Long(meta, "delay") is { } delay ? TimeSpan.FromMinutes(delay) : null,
+            StepDelay = Long(meta, "delay") is { } delay ? VaultText.Minutes(delay) : null,
             Icon = TaskBoard.Lenient(TaskBoard.CleanIcon, Str(meta, "icon")),
             Color = TaskBoard.Lenient(TaskBoard.CleanColor, Str(meta, "color")),
             Repeat = TaskBoard.ReadRepeat(Str(meta, "repeat")),

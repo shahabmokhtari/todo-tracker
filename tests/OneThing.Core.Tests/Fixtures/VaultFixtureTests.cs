@@ -661,5 +661,8 @@ public sealed class VaultFixtureTests
         yield return ("frontmatter-not-a-mapping", "Work/List.md", "---\n- just\n- a list\n---\n# Not properties\n");
         yield return ("duplicate-frontmatter-key", "Work/Twice.md", "---\nenergy: 2\nenergy: 3\n---\n# Twice\n");
         yield return ("unclosed-frontmatter-is-a-rule", "Work/Rule.md", "---\nnot closed\n# Rule\n");
+        yield return ("step-delay-longer-than-ten-years-is-ten-years", "Work/Wait.md", "---\nsequential: true\nstep-delay: 99999999999999\n---\n# Wait\n");
+        yield return ("duration-too-big-for-a-number", "Work/Huge.md", "---\nstep-delay: 99999999999999999999d\n---\n# Huge\n");
+        yield return ("date-past-the-last-moment-there-is", "Work/End.md", "---\ndue: 9999-12-31T23:30\n---\n# End\n");
     }
 }

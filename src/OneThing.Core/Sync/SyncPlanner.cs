@@ -45,6 +45,9 @@ public sealed record SyncPlanOptions
 
     /// <summary>Whether merged text is still a valid task file (else both versions are kept whole).</summary>
     public Func<string, string, bool> IsValidTask { get; init; } = (_, _) => true;
+
+    /// <summary>Entries one side can't sync right now: left as they are here (never written, moved or deleted).</summary>
+    public IReadOnlyCollection<SyncHeld> Held { get; init; } = [];
 }
 
 /// <summary>
@@ -62,9 +65,16 @@ public static partial class SyncPlanner
         ArgumentNullException.ThrowIfNull(readBase);
         var ctx = new Context(local, peer, @base, readBase, options ?? new SyncPlanOptions());
         var files = new List<(string Key, SyncEntry? L, SyncEntry P, SyncEntry? B)>();
+        var held = ctx.Options.Held.Select(h => h.Key).ToHashSet(StringComparer.Ordinal);
         var keys = local.Entries.Keys.Union(peer.Entries.Keys).Union(@base.Keys).Order(StringComparer.Ordinal);
         foreach (var key in keys)
         {
+            if (held.Contains(key))
+            {
+                // Here (or there) but can't sync right now: left as it is, never taken as deleted.
+                continue;
+            }
+
             var l = local.Entries.GetValueOrDefault(key);
             var p = peer.Entries.GetValueOrDefault(key);
             var b = @base.GetValueOrDefault(key);
@@ -162,7 +172,7 @@ public static partial class SyncPlanner
         public List<SyncConflict> Conflicts { get; } = [];
 
         /// <summary>Paths in use here (and planned), to never write over another entry's file.</summary>
-        public HashSet<string> Taken { get; } = new(local.Entries.Values.Select(e => e.Path), StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Taken { get; } = new(local.Entries.Values.Select(e => e.Path).Concat(options.Held.Select(h => h.Path)), StringComparer.OrdinalIgnoreCase);
 
         public bool LocalWins { get; } = string.CompareOrdinal(local.Device, peer.Device) < 0;
 
@@ -293,7 +303,7 @@ public static partial class SyncPlanner
 
             // A merge that isn't a valid task any more (say, both changed the same frontmatter) isn't written: both
             // versions are kept whole instead.
-            if (kind != SyncKind.Task || ctx.Options.IsValidTask(current.Path, merged.Text))
+            if (!merged.TooLarge && (kind != SyncKind.Task || ctx.Options.IsValidTask(current.Path, merged.Text)))
             {
                 var text = Encoding.UTF8.GetBytes(merged.Text);
                 if (merged.Conflicted)
@@ -416,6 +426,11 @@ public static partial class SyncPlanner
         if (l is null || (b is not null && l.Hash == b.Hash))
         {
             content = ctx.Peer.Read(p);
+            if (Parse(content) is null)
+            {
+                // Settings another device can't read itself aren't taken here either.
+                return;
+            }
         }
         else if (b is not null && p.Hash == b.Hash)
         {
@@ -533,6 +548,26 @@ public static partial class SyncPlanner
 
     private static JsonArray MergeList(JsonArray? b, JsonArray winner, JsonArray loser)
     {
+        if ((b ?? []).Concat(winner).Concat(loser).All(x => x is JsonValue))
+        {
+            // Plain values (ids, names): compared by their JSON text in sets, so a long list merges in linear time.
+            static string K(JsonNode? x) => x!.ToJsonString();
+            var inWinner = winner.Select(K).ToHashSet(StringComparer.Ordinal);
+            var inLoser = loser.Select(K).ToHashSet(StringComparer.Ordinal);
+            var gone = (b ?? []).Select(K).Where(x => !inWinner.Contains(x) || !inLoser.Contains(x)).ToHashSet(StringComparer.Ordinal);
+            var added = new HashSet<string>(StringComparer.Ordinal);
+            var plain = new JsonArray();
+            foreach (var item in winner.Concat(loser.Where(l => !inWinner.Contains(K(l)))))
+            {
+                if (!gone.Contains(K(item)) && added.Add(K(item)))
+                {
+                    plain.Add(item?.DeepClone());
+                }
+            }
+
+            return plain;
+        }
+
         var removed = (b ?? []).Where(x => !winner.Any(w => JsonNode.DeepEquals(w, x)) || !loser.Any(l => JsonNode.DeepEquals(l, x))).ToList();
         var result = new JsonArray();
         foreach (var item in winner.Concat(loser.Where(l => !winner.Any(w => JsonNode.DeepEquals(w, l)))))
@@ -549,9 +584,22 @@ public static partial class SyncPlanner
     private static JsonArray MergeKeyed(JsonArray? b, JsonArray winner, JsonArray loser, string keyName)
     {
         static string Key(JsonNode? node, string keyName) => node![keyName]!.ToJsonString();
-        var old = (b ?? []).Where(x => x is JsonObject o && o[keyName] is JsonValue).ToDictionary(x => Key(x, keyName));
-        var w = winner.ToDictionary(x => Key(x, keyName));
-        var l = loser.ToDictionary(x => Key(x, keyName));
+
+        // Two entries with the same id (a hand edit, an older version): the first is kept, never a failed sync.
+        static Dictionary<string, JsonNode?> ByKey(IEnumerable<JsonNode?> nodes, string keyName)
+        {
+            var byKey = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                byKey.TryAdd(Key(node, keyName), node);
+            }
+
+            return byKey;
+        }
+
+        var old = ByKey((b ?? []).Where(x => x is JsonObject o && o[keyName] is JsonValue), keyName);
+        var w = ByKey(winner, keyName);
+        var l = ByKey(loser, keyName);
         var result = new JsonArray();
         foreach (var key in w.Keys.Concat(l.Keys.Where(k => !w.ContainsKey(k))))
         {

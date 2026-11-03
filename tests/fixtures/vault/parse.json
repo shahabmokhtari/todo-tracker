@@ -432,6 +432,35 @@
         "groupId": "00000000-0000-0000-0000-000000000000"
       },
       "rewritten": "---\nid: f2297563-6b01-8aad-9b68-59dfba4ff0ad\nstatus: open\ncreated: 2026-01-05T14:00:00.000Z\n---\n# Rule\n\n---\nnot closed\n"
+    },
+    {
+      "name": "step-delay-longer-than-ten-years-is-ten-years",
+      "path": "Work/Wait.md",
+      "text": "---\nsequential: true\nstep-delay: 99999999999999\n---\n# Wait\n",
+      "needsWrite": true,
+      "hasAppId": false,
+      "item": {
+        "id": "3929bacd-7231-8142-9543-e6ae8717bed3",
+        "title": "Wait",
+        "priority": "normal",
+        "createdAt": "2026-01-05T14:00:00.000Z",
+        "sequential": true,
+        "stepDelayMinutes": 5256000,
+        "groupId": "00000000-0000-0000-0000-000000000000"
+      },
+      "rewritten": "---\nsequential: true\nstep-delay: 99999999999999\nid: 3929bacd-7231-8142-9543-e6ae8717bed3\nstatus: open\ncreated: 2026-01-05T14:00:00.000Z\n---\n# Wait\n"
+    },
+    {
+      "name": "duration-too-big-for-a-number",
+      "path": "Work/Huge.md",
+      "text": "---\nstep-delay: 99999999999999999999d\n---\n# Huge\n",
+      "error": true
+    },
+    {
+      "name": "date-past-the-last-moment-there-is",
+      "path": "Work/End.md",
+      "text": "---\ndue: 9999-12-31T23:30\n---\n# End\n",
+      "error": true
     }
   ]
 }

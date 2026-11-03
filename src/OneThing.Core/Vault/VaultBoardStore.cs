@@ -76,10 +76,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             lock (_problems)
             {
-                return _legacyProblem is null ? _problems.ToList() : [.. _problems, _legacyProblem];
+                return [.. _problems, .. new[] { _legacyProblem, _afterCommitProblem }.OfType<VaultProblem>()];
             }
         }
     }
+
+    /// <summary>What couldn't follow the last saved change (a file it moves or writes); gone once one goes through.</summary>
+    private volatile VaultProblem? _afterCommitProblem;
 
     /// <summary>An old board.json that couldn't be brought in (its tasks aren't here; the file is left as it is).</summary>
     private VaultProblem? _legacyProblem;
@@ -200,31 +203,49 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     changed |= Reload();
                 }
 
-                var snapshot = BoardSerializer.Serialize(_board);
+                // Without the activity log (it only grows, and can be long): put back with as many entries as it had.
+                var snapshot = BoardSerializer.SerializeWithoutActivity(_board);
+                var logged = _board.ActivityList.Count;
                 try
                 {
                     // Only what this change did to completion is "handled"; edits still settling stay pending.
                     _mutationBaseline = _board.AllItems().ToDictionary(i => i.Id, i => i.IsDone);
                     result = mutate(_board);
                     changed |= Persist();
-                    afterCommit?.Invoke(result);
                     break;
                 }
                 catch (VaultConflictException) when (attempt < 3)
                 {
                     // Someone saved a file between our read and our write (nothing was written): re-read, re-apply.
-                    _board = BoardSerializer.Deserialize(snapshot);
+                    _board = Restore(snapshot, logged);
                     MarkDirty();
                 }
                 catch
                 {
-                    _board = BoardSerializer.Deserialize(snapshot);
+                    _board = Restore(snapshot, logged);
                     MarkDirty();
                     throw;
                 }
                 finally
                 {
                     _mutationBaseline = null;
+                }
+            }
+
+            if (afterCommit is not null)
+            {
+                try
+                {
+                    afterCommit(result);
+                    _afterCommitProblem = null;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The change is saved (never undone in memory only): what couldn't follow it is said, not a failed change.
+                    MarkDirty();
+                    _afterCommitProblem = new VaultProblem(string.Empty, $"Your change was saved, but a file that goes with it couldn't be updated ({ex.Message}). Try again in a moment.");
+
+                    changed = true;
                 }
             }
         }
@@ -239,6 +260,18 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         return result;
+    }
+
+    /// <summary>The board as it was before a change that failed: its activity log as it was, without copying it through JSON.</summary>
+    private TaskBoard Restore(string snapshot, int logged)
+    {
+        var board = BoardSerializer.Deserialize(snapshot);
+        foreach (var entry in _board.ActivityList.Take(logged))
+        {
+            board.AddLoadedActivity(entry);
+        }
+
+        return board;
     }
 
     public void Dispose()
@@ -266,7 +299,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         using (VaultFiles.AcquireLock(_lockPath, LockTimeout))
         {
             Directory.CreateDirectory(_root);
-            var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && !EnumerateTaskFiles().Any();
+            var fresh = !File.Exists(Path.Combine(MetaDir, "config.json")) && EnumerateTaskFiles().Count == 0;
             if (fresh && _options.LegacyBoardPath is { } legacy && ReadLegacy(legacy) is { } legacyBoard)
             {
                 Migrate(legacy, legacyBoard);
@@ -402,9 +435,12 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _watcher.Error += (_, _) => OnFileEvent(_root, contentCheck: true);
         _watcher.EnableRaisingEvents = true;
 
-        // Cloud folders and network shares can miss notifications (or keep timestamps): re-check contents now and then.
-        _rescan = new Timer(_ => OnFileEvent(_root, contentCheck: true), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        // Cloud folders and network shares can miss notifications: look at names, sizes and times every 30 seconds, and
+        // read contents again only every 10 minutes (reading every file would download cloud-only ones each time).
+        _rescan = new Timer(_ => OnFileEvent(_root, contentCheck: Interlocked.Increment(ref _rescans) % 20 == 0), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
+
+    private int _rescans;
 
     private void OnFileEvent(string path, bool contentCheck = false)
     {
@@ -463,9 +499,10 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return false;
         }
 
+        // Cleared before looking, so a change noticed while we look is looked at again (never lost).
+        _dirty = false;
         if (!_forceContent && !_reactionPending && !DiskDiffers())
         {
-            _dirty = false;
             return false;
         }
 
@@ -478,7 +515,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     {
         var caches = _caches;
         var seen = 0;
-        foreach (var file in EnumerateTaskFiles())
+        var unreadable = new List<string>();
+        foreach (var file in EnumerateTaskFiles(unreadable))
         {
             seen++;
             if (!caches.Files.TryGetValue(VaultFiles.Relative(_root, file), out var state) || state.Stamp != Stamp(file))
@@ -487,14 +525,15 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             }
         }
 
-        if (seen != caches.Files.Count || !TopFolders().ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(caches.GroupFolders.Values))
+        if (unreadable.Count > 0 || seen != caches.Files.Count || !TopFolders().ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(caches.GroupFolders.Values))
         {
             return true;
         }
 
-        return ReadOrEmpty(Path.Combine(MetaDir, "config.json")) != _configText
-            || ReadOrEmpty(Path.Combine(MetaDir, "state.json")) != _stateText
-            || FileLength(Path.Combine(MetaDir, "activity.jsonl")) != _activityLength;
+        return TryReadText(Path.Combine(MetaDir, "config.json")) != _configText
+            || TryReadText(Path.Combine(MetaDir, "state.json")) != _stateText
+            || FileLength(Path.Combine(MetaDir, "activity.jsonl")) != _activityLength
+            || (_activityLength > 0 && !ActivityTailMatches(Path.Combine(MetaDir, "activity.jsonl")));
     }
 
     /// <summary>Rebuilds the board from disk (caller holds the lock). Returns whether anything changed.</summary>
@@ -505,7 +544,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _forceContent = false;
         var initial = !_loadedOnce;
         _loadedOnce = true;
-        var before = BoardSerializer.Serialize(_board);
+        var before = (Board: BoardSerializer.SerializeWithoutActivity(_board), Logged: _board.ActivityList.Count, Last: _board.ActivityList.LastOrDefault());
         var oldBoard = _board;
         var oldCaches = _caches;
         var config = ReadConfig();
@@ -517,7 +556,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         var problems = new List<VaultProblem>();
         foreach (var folder in folders)
         {
-            foreach (var file in EnumerateTaskFiles(Path.Combine(_root, folder)))
+            var unreadable = new List<string>();
+            foreach (var file in EnumerateTaskFiles(Path.Combine(_root, folder), unreadable))
             {
                 var rel = VaultFiles.Relative(_root, file);
                 var state = ReadFile(file, rel, oldCaches, forceContent);
@@ -531,6 +571,25 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 {
                     parsedByFolder[folder].Add((rel, ParseText(state.Good, rel)));
                 }
+            }
+
+            foreach (var dir in unreadable)
+            {
+                // A folder that can't be listed right now (offline, no permission): its tasks stay as last read, and it
+                // counts as a file that can't be read (sync waits, so the other devices keep its tasks).
+                var dirRel = VaultFiles.Relative(_root, dir);
+                var error = "This folder can't be opened right now. Its tasks are shown as they were, and it's read again shortly.";
+                foreach (var (rel, old) in oldCaches.Files.Where(f => f.Key.StartsWith(dirRel + "/", StringComparison.OrdinalIgnoreCase) && !files.ContainsKey(f.Key)))
+                {
+                    files[rel] = old with { Stamp = Unread, Error = error };
+                    if (old.Good is not null)
+                    {
+                        parsedByFolder[folder].Add((rel, ParseText(old.Good, rel)));
+                    }
+                }
+
+                files[dirRel] = new FileState(string.Empty, null, Unread, error);
+                problems.Add(new VaultProblem(dirRel, error));
             }
         }
 
@@ -654,6 +713,11 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             Blocked = blocked,
         };
         PublishIndex();
+        if (_configProblem is { } configProblem)
+        {
+            problems.Add(configProblem);
+        }
+
         lock (_problems)
         {
             _problems.Clear();
@@ -675,7 +739,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         }
 
         var changed = reacted ? Persist() : WriteMetadataIfChanged();
-        return changed | BoardSerializer.Serialize(_board) != before;
+        return changed | (BoardSerializer.SerializeWithoutActivity(_board), _board.ActivityList.Count, _board.ActivityList.LastOrDefault()) != before;
     }
 
     /// <summary>Applies what the app would have done for edits made in the files. Returns whether the board changed.</summary>
@@ -778,8 +842,20 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             return cached;
         }
 
-        var text = File.ReadAllText(full);
-        if (cached is not null && cached.Text == text)
+        string text;
+        try
+        {
+            text = File.ReadAllText(full);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Not downloaded yet (a cloud placeholder), or locked by another app: the last good version stays, and the
+            // file is read again next time (no stamp matches Unread).
+            var error = $"It can't be opened right now ({ex.Message}). It's read again shortly.";
+            return cached is null ? new FileState(string.Empty, null, Unread, error) : cached with { Stamp = Unread, Error = error };
+        }
+
+        if (cached is not null && cached.Text == text && cached.Stamp != Unread)
         {
             return cached with { Stamp = stamp };
         }
@@ -1337,12 +1413,26 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     // ---- Settings, timer state, activity ------------------------------------------------
 
-    internal sealed record ConfigGroup(Guid Id, string Folder, string? Color);
+    internal sealed record ConfigGroup(Guid Id, string Folder, string? Color)
+    {
+        /// <summary>What a newer version keeps about the tab (kept as it is).</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
-    private sealed record ConfigLabel(string Name, string Color);
+    private sealed record ConfigLabel(string Name, string Color)
+    {
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
     /// <param name="EnergyPerDay">How much energy there is in a day (null: the default); in config.json because it syncs.</param>
-    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null);
+    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null)
+    {
+        /// <summary>Settings a newer version keeps here (kept as they are, so they aren't lost when this one saves).</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
     // "\n" on every system (the default is the system's line ending): these files sync, so their bytes must match.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -1355,26 +1445,58 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private static readonly JsonSerializerOptions JsonLine = new(Json) { WriteIndented = false };
 
+    /// <summary>The settings as last read well (their unknown fields are written back from here).</summary>
+    private ConfigDocument _config = new(2, [], [], []);
+
+    /// <summary>Why config.json can't be read right now (then it's never written, and doesn't sync).</summary>
+    private VaultProblem? _configProblem;
+
+    private const string ConfigProblemText = "Your tabs and labels settings can't be read, so they're used as they were and left as they are. Fix the file (or put back an earlier version) to change them again.";
+
     private ConfigDocument ReadConfig()
     {
-        var text = ReadOrEmpty(Path.Combine(MetaDir, "config.json"));
+        var text = TryReadText(Path.Combine(MetaDir, "config.json"));
+        if (text is null)
+        {
+            // Locked or offline right now: the last good settings stay; nothing is written over the file.
+            _configProblem = new VaultProblem(Sync.SyncKeys.ConfigPath, "Your tabs and labels settings can't be opened right now. They're read again shortly.");
+            _configText = string.Empty;
+            return _config;
+        }
+
         _configText = text;
+        _configProblem = null;
+        if (text.Trim().Length == 0)
+        {
+            return _config = new ConfigDocument(2, [], [], []);
+        }
+
         try
         {
-            var doc = text.Length == 0 ? null : JsonSerializer.Deserialize<ConfigDocument>(text, Json);
-            return doc is null
-                ? new ConfigDocument(2, [], [], [])
-                : doc with { Groups = doc.Groups ?? [], Labels = doc.Labels ?? [], Order = doc.Order ?? [] };
+            if (JsonSerializer.Deserialize<ConfigDocument>(text, Json) is not { } doc)
+            {
+                throw new JsonException("The file holds no settings.");
+            }
+
+            // Entries that aren't there (null, or without a folder or name) are skipped, never a failed read.
+            return _config = doc with
+            {
+                Groups = [.. (doc.Groups ?? []).Where(g => g?.Folder is not null)],
+                Labels = [.. (doc.Labels ?? []).Where(l => l?.Name is not null && l.Color is not null)],
+                Order = doc.Order ?? [],
+            };
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
         {
-            return new ConfigDocument(2, [], [], []);
+            // Never replaced by an empty one (that would lose the tabs' order, colours and labels everywhere it syncs).
+            _configProblem = new VaultProblem(Sync.SyncKeys.ConfigPath, ConfigProblemText);
+            return _config;
         }
     }
 
     private bool WriteMetadataIfChanged(Stack<Action>? undo = null)
     {
-        var changed = WriteIfChanged(Path.Combine(MetaDir, "config.json"), ConfigText(), ref _configText, undo);
+        var changed = _configProblem is null && WriteIfChanged(Path.Combine(MetaDir, "config.json"), ConfigText(), ref _configText, undo);
         changed |= WriteIfChanged(Path.Combine(MetaDir, "state.json"), StateText(), ref _stateText, undo);
         changed |= AppendActivity(undo);
         return changed;
@@ -1429,12 +1551,16 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private string ConfigText()
     {
         var folders = _caches.GroupFolders;
+        var known = _config;
+        var groupExtra = known.Groups.Where(g => g.Extra is not null).GroupBy(g => g.Id).ToDictionary(g => g.Key, g => g.First().Extra);
+        var labelExtra = known.Labels.Where(l => l.Extra is not null).GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Extra, StringComparer.OrdinalIgnoreCase);
         var doc = new ConfigDocument(
             2,
-            GroupsInOrder(_board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color)).ToList(), _dormantGroups),
-            _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color)).ToList(),
+            GroupsInOrder(_board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color) { Extra = groupExtra.GetValueOrDefault(g.Id) }).ToList(), _dormantGroups),
+            _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color) { Extra = labelExtra.GetValueOrDefault(l.Name) }).ToList(),
             _board.Items.Select(i => i.Id).ToList(),
-            _board.EnergyPerDay);
+            _board.EnergyPerDay)
+        { Extra = known.Extra };
         return JsonSerializer.Serialize(doc, Json) + "\n";
     }
 
@@ -1466,7 +1592,8 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private void LoadState(TaskBoard board)
     {
-        var text = ReadOrEmpty(Path.Combine(MetaDir, "state.json"));
+        // Locked by another app right now: the timer state last read stays.
+        var text = TryReadText(Path.Combine(MetaDir, "state.json")) ?? _stateText;
         _stateText = text;
         try
         {
@@ -1494,48 +1621,96 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private sealed record ActivityLine(DateTimeOffset At, Guid ItemId, ActivityKind Kind, string Summary, ActorKind ActorKind, string? Actor);
 
-    /// <summary>Reads only what other processes appended since the last read; a shorter file means it was replaced.</summary>
+    /// <summary>
+    /// Reads only what other processes appended since the last read (counted in bytes, a byte-order mark skipped). A
+    /// shorter file, or one whose bytes before that point aren't the ones read (replaced by a sync client, a restored
+    /// copy), is read again from the start.
+    /// </summary>
     private void LoadActivity(TaskBoard board)
     {
         var path = Path.Combine(MetaDir, "activity.jsonl");
-        var length = FileLength(path);
-        if (length < _activityLength)
+        try
         {
-            _activity.Clear();
-            _activityLength = 0;
-        }
-
-        if (length > _activityLength)
-        {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            stream.Seek(_activityLength, SeekOrigin.Begin);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
-            var text = reader.ReadToEnd();
-            var complete = text.LastIndexOf('\n');
-            if (complete >= 0)
+            var length = FileLength(path);
+            if (length < _activityLength || (_activityLength > 0 && !ActivityTailMatches(path)))
             {
-                foreach (var line in text[..complete].Split('\n'))
+                _activity.Clear();
+                _activityLength = 0;
+                _activityTail = [];
+            }
+
+            if (length > _activityLength)
+            {
+                byte[] bytes;
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 {
-                    try
-                    {
-                        if (line.Length > 0 && JsonSerializer.Deserialize<ActivityLine>(line, JsonLine) is { } a)
-                        {
-                            _activity.Add(new ActivityEntry(a.At, a.ItemId, a.Kind, a.Summary, new Actor(a.ActorKind, a.Actor)));
-                        }
-                    }
-                    catch (JsonException)
-                    {
-                        // A torn line (crash mid-append) is skipped.
-                    }
+                    stream.Seek(_activityLength, SeekOrigin.Begin);
+                    using var copy = new MemoryStream();
+                    stream.CopyTo(copy);
+                    bytes = copy.ToArray();
                 }
 
-                _activityLength += Encoding.UTF8.GetByteCount(text[..(complete + 1)]);
+                var start = _activityLength == 0 && bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble) ? Encoding.UTF8.Preamble.Length : 0;
+                var complete = Array.LastIndexOf(bytes, (byte)'\n');
+                if (complete >= start)
+                {
+                    foreach (var line in Encoding.UTF8.GetString(bytes, start, complete - start).Split('\n'))
+                    {
+                        try
+                        {
+                            if (line.TrimEnd('\r') is { Length: > 0 } text && JsonSerializer.Deserialize<ActivityLine>(text, JsonLine) is { } a)
+                            {
+                                _activity.Add(new ActivityEntry(a.At, a.ItemId, a.Kind, a.Summary, new Actor(a.ActorKind, a.Actor)));
+                            }
+                        }
+                        catch (JsonException)
+                        {
+                            // A torn line (crash mid-append) is skipped.
+                        }
+                    }
+
+                    _activityLength += complete + 1;
+                    RememberActivityTail(path);
+                }
             }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Locked or offline right now: the entries read so far stay, the rest is read next time.
         }
 
         foreach (var entry in _activity)
         {
             board.AddLoadedActivity(entry);
+        }
+    }
+
+    // The last bytes read of the activity log (up to 4 KB before _activityLength): if they're different now, it was replaced.
+    private byte[] _activityTail = [];
+
+    private const int ActivityTailBytes = 4096;
+
+    private byte[] ReadActivityTail(string path)
+    {
+        var size = (int)Math.Min(ActivityTailBytes, _activityLength);
+        var tail = new byte[size];
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        stream.Seek(_activityLength - size, SeekOrigin.Begin);
+        stream.ReadExactly(tail);
+        return tail;
+    }
+
+    private void RememberActivityTail(string path) => _activityTail = ReadActivityTail(path);
+
+    private bool ActivityTailMatches(string path)
+    {
+        try
+        {
+            return ReadActivityTail(path).AsSpan().SequenceEqual(_activityTail);
+        }
+        catch (Exception ex) when (ex is EndOfStreamException or IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 
@@ -1575,6 +1750,7 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         });
         _activity.AddRange(pending);
         _activityLength = FileLength(path);
+        RememberActivityTail(path);
         return true;
     }
 
@@ -1587,44 +1763,75 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private static bool IsGroupFolder(string name) => name.Length > 0 && name[0] is not ('.' or '_');
 
-    private IEnumerable<string> EnumerateTaskFiles() => TopFolders().SelectMany(f => EnumerateTaskFiles(Path.Combine(_root, f)));
+    private List<string> EnumerateTaskFiles(List<string>? unreadable = null) => TopFolders().SelectMany(f => EnumerateTaskFiles(Path.Combine(_root, f), unreadable)).ToList();
 
-    private static IEnumerable<string> EnumerateTaskFiles(string folder)
+    /// <summary>The task files under a folder; folders that can't be listed right now go to <paramref name="unreadable"/>.</summary>
+    private static List<string> EnumerateTaskFiles(string folder, List<string>? unreadable = null)
     {
-        if (!Directory.Exists(folder))
-        {
-            yield break;
-        }
+        var found = new List<string>();
+        Collect(folder);
+        return found;
 
-        foreach (var file in Directory.EnumerateFiles(folder, "*.md"))
+        void Collect(string dir)
         {
-            if (!Path.GetFileName(file).StartsWith('.'))
+            string[] files;
+            string[] subs;
+            try
             {
-                yield return file;
-            }
-        }
-
-        foreach (var dir in Directory.EnumerateDirectories(folder))
-        {
-            if (IsGroupFolder(Path.GetFileName(dir)))
-            {
-                foreach (var file in EnumerateTaskFiles(dir))
+                if (!Directory.Exists(dir))
                 {
-                    yield return file;
+                    return;
                 }
+
+                files = Directory.GetFiles(dir, "*.md");
+                subs = Directory.GetDirectories(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                unreadable?.Add(dir);
+                return;
+            }
+
+            found.AddRange(files.Where(f => !Path.GetFileName(f).StartsWith('.')));
+            foreach (var sub in subs.Where(s => IsGroupFolder(Path.GetFileName(s))))
+            {
+                Collect(sub);
             }
         }
     }
 
     private static (DateTime Time, long Size) Stamp(string path)
     {
-        var info = new FileInfo(path);
-        return info.Exists ? (info.LastWriteTimeUtc, info.Length) : (DateTime.MinValue, -1);
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? (info.LastWriteTimeUtc, info.Length) : (DateTime.MinValue, -1);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Unread;
+        }
     }
+
+    /// <summary>The stamp of a file that couldn't be read: never matches, so it's read again next time.</summary>
+    private static readonly (DateTime Time, long Size) Unread = (DateTime.MinValue, -2);
 
     private static long FileLength(string path) => File.Exists(path) ? new FileInfo(path).Length : 0;
 
     private static string ReadOrEmpty(string path) => File.Exists(path) ? File.ReadAllText(path) : string.Empty;
+
+    /// <summary>The file's text, empty when there's none, or null when it can't be read right now (locked, offline).</summary>
+    private static string? TryReadText(string path)
+    {
+        try
+        {
+            return ReadOrEmpty(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>What we last saw of a file: its text, the last version that parsed, and why it doesn't parse now.</summary>
     private sealed record FileState(string Text, string? Good, (DateTime Time, long Size) Stamp, string? Error);

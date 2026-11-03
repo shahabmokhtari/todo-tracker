@@ -137,8 +137,11 @@ Port these exactly; the fixtures say what "exactly" means.
 | `order` | `.onething/order.json` (virtual) | Order | JSON list |
 | `activity` | `.onething/activity.jsonl` | Activity | union of lines |
 
-Files over 50 MB, links, hidden paths, `AGENTS.md` and anything `IsSyncablePath` refuses are left out. The hash is
-SHA-256 of the exact bytes, lowercase hex.
+Hidden paths and `AGENTS.md` are left out. A task file, rich page or other file that is here but can't be shared
+(over 50 MB, a link, or a path `IsSyncablePath` refuses, say a task renamed to `Fix: login.md` on a Mac) is **held**:
+not listed with its content, but named in the snapshot's `held` list (keys, sorted), with its last published entry
+kept in `entries` when this device still has that content (for older versions), and reported ("`<path>` doesn't sync
+for now: <why>"). Left out, it would look deleted to the others. The hash is SHA-256 of the exact bytes, lowercase hex.
 
 **Accepting a peer's manifest** (`SyncEngine.Valid`): device id 2–64 ASCII letters/digits; hash 64 lowercase hex;
 `config`/`order`/`activity` only at their path; `t/`,`h/` keys parse as 32-hex GUIDs and paths end in `.md`/`.html`;
@@ -146,7 +149,9 @@ SHA-256 of the exact bytes, lowercase hex.
 empty segment, none starting with `.`, ending with `.`, or starting or ending with white space, no control or
 Windows-invalid characters, no `CON`/`PRN`/`AUX`/`NUL`/`COM0-9`/`LPT0-9` names, not `.tmp`, no segment over 255
 UTF-8 bytes (the longest name ext4, APFS and the phones take), under 400 characters;
-fixture: `vault/names.json` `syncablePaths`). A missing `since` means "oldest possible".
+fixture: `vault/names.json` `syncablePaths`). A missing `since` means "oldest possible". An entry with a key that
+fails any of these, and every key in the peer's `held` list, is **withheld**: dropped from the peer's entries, passed
+to the planner as held (so it's never taken as deleted here), and reported.
 
 **Fetching** (`FetchAsync`): every peer content not held locally (by hash) is downloaded, its SHA-256 checked, and
 kept in the local blob cache; any missing or mismatching content means "merge this device next time" (never a
@@ -171,6 +176,8 @@ devices). Rules the cases pin:
 * Merged task text must still parse (`IsValidTask` = the vault parser accepts it), else both versions are kept whole.
   **This check must accept and refuse exactly what C# does**, or the two devices plan differently.
 * Ops are ordered: moves, deletes, writes, settings/order, activity.
+* A held key (`held` in the case: held here, or withheld from the peer) is skipped whole: no write, move or delete,
+  whatever the base says; its path still counts as taken (a new file there gets another name).
 
 **Text merge** (`TextMerge.Merge`, `SyncPlanner.TaskLineKeys`): port as is. Fixture: `sync/textmerge.json` (39 cases
 incl. CRLF, missing final newline, empty base, keyed step merges, both logging time, frontmatter clashes, the three
@@ -183,6 +190,13 @@ conflict policies, the same line added or removed on both sides where the diffs 
   a plain `Match`). Ties break like the plain LCS backtrack (skip a base line first).
 * In a stretch where both changed, lines both sides have at its start or end are kept once (with the base lines
   both kept there), after one-by-one keyed merging of the whole stretch was tried, and the rest is merged as before.
+* Size limit: lines all three share at the start and the end are set aside first, but only lines that appear nowhere
+  in the stretch between (on any side); a line that does goes back into the stretch with every earlier copy of it at
+  that edge (repeat until nothing moves). If then `(n + 1) × (m + 1)` is over 4,000,000 for base×first, base×second
+  or first×second, nothing is matched: the result is `TooLarge` (text = the first side, conflicted), and the planner
+  keeps both versions whole as for an invalid merge.
+* Settings lists: two entries with the same `id`/`name` keep the first; lists of plain values are compared by their
+  JSON text (same result as comparing values).
 
 **Applying** (`VaultBoardStore.ApplySyncAsync` + `Verify`): before anything is written, check every op against the
 files as they are (a write's `expected` hash, `null` = must not exist; a move's target must be free unless only the
@@ -204,8 +218,10 @@ changed while syncing": start over (up to 3 attempts). Apply in order with an un
 5. `RemoteVersion` = the remote's version, only when every peer merged and nothing was partial.
 6. Publish when the vault changed since the last publish (fingerprint of sorted `key|path|hash`), the heartbeat is
    due, or the remote doesn't have this device: tombstones = last ones younger than 180 days whose key is still gone
-   + every task/rich/file entry published last time and gone now (at = now); entries sorted by key, each with
-   `since` = when this device first published that exact version (else now).
+   + every task/rich/file entry published last time and gone now (at = now), never a held key; entries sorted by key,
+   each with `since` = when this device first published that exact version (else now), plus each held key's last
+   published entry when its content is in the blob cache; `held` = the held keys (sorted, left out when none). The
+   fingerprint also covers the held keys (`held|<key>` lines after the entries).
 7. Drop cached contents no base and no open conflict needs.
 
 **State the phone must remember** (`SyncState`, in the app's private storage, never in the vault or the cloud), per

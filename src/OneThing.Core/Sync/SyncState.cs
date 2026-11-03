@@ -26,7 +26,7 @@ public sealed record SyncStatus(DateTimeOffset? LastSync, string? LastError, int
 /// this device's id, what it last agreed on with each other device (the merge base), the contents those bases need,
 /// what it last published, and the open conflicts.
 /// </summary>
-public sealed class SyncState
+public sealed partial class SyncState
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
     private readonly string _dir;
@@ -41,7 +41,23 @@ public sealed class SyncState
 
         // One id per vault on this device, shared by every remote it syncs with.
         var devicePath = Path.Combine(deviceDirectory, "device.json");
-        var device = Read<DeviceInfo>(devicePath);
+        var text = File.Exists(devicePath) ? File.ReadAllText(devicePath) : null;
+        var device = text is null ? null : ReadDevice(text);
+        if (device is null && text is not null && IdInText().Match(text) is { Success: true } found)
+        {
+            // Damaged, but the id is still there: this device stays who it was (a new id would merge it as a stranger).
+            device = new DeviceInfo(found.Groups[1].Value, deviceName ?? Environment.MachineName);
+            Write(devicePath, device);
+        }
+
+        if (device is null && text is not null)
+        {
+            Problem = $"This computer's sync identity ({devicePath}) can't be read, so sync is paused rather than joining as a new device. Put back an earlier copy of the file, or remove it to join as a new device.";
+            DeviceId = string.Empty;
+            DeviceName = deviceName ?? Environment.MachineName;
+            return;
+        }
+
         if (device is null)
         {
             device = new DeviceInfo(Guid.NewGuid().ToString("N"), deviceName ?? Environment.MachineName);
@@ -51,6 +67,24 @@ public sealed class SyncState
         DeviceId = device.Id;
         DeviceName = deviceName ?? device.Name;
     }
+
+    /// <summary>Why sync can't run with this state (its identity can't be read), or null.</summary>
+    public string? Problem { get; }
+
+    private static DeviceInfo? ReadDevice(string text)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<DeviceInfo>(text, Json) is { Id: { Length: > 1 and <= 64 } id } info && id.All(char.IsAsciiLetterOrDigit) ? info with { Name = info.Name ?? Environment.MachineName } : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"""id""\s*:\s*""([0-9a-fA-F]{32})""")]
+    private static partial System.Text.RegularExpressions.Regex IdInText();
 
     public string DeviceId { get; }
 
@@ -114,6 +148,13 @@ public sealed class SyncState
         set => Write(Path.Combine(_dir, "deleted.json"), value);
     }
 
+    /// <summary>What the place last found whole of this device's stored contents (see <see cref="ISyncVerifiedCache"/>).</summary>
+    public IReadOnlyDictionary<string, SyncVerified> Verified
+    {
+        get => Read<Dictionary<string, SyncVerified>>(Path.Combine(_dir, "verified.json")) ?? [];
+        set => Write(Path.Combine(_dir, "verified.json"), value);
+    }
+
     private string MarksPath => Path.Combine(_dir, "marks.json");
 
     private string BlobDir => Path.Combine(_dir, "blobs");
@@ -137,10 +178,7 @@ public sealed class SyncState
         var path = BlobPath(hash);
         if (!File.Exists(path))
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
-            File.WriteAllBytes(temp, content);
-            File.Move(temp, path, overwrite: true);
+            Vault.VaultFiles.WriteAtomic(path, content);
         }
     }
 
@@ -200,13 +238,8 @@ public sealed class SyncState
         }
     }
 
-    private static void Write<T>(string path, T value)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temp = path + "." + Guid.NewGuid().ToString("N")[..8] + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(value, Json));
-        File.Move(temp, path, overwrite: true);
-    }
+    // Flushed to the disk before it takes the real name: a power cut can't leave an empty file (a lost base or identity).
+    private static void Write<T>(string path, T value) => Vault.VaultFiles.WriteAtomic(path, JsonSerializer.Serialize(value, Json));
 
     private sealed record DeviceInfo(string Id, string Name);
 

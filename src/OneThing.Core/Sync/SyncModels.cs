@@ -78,6 +78,14 @@ public sealed record DeviceSnapshot(
     [JsonPropertyName("deleted")]
     public IReadOnlyList<SyncTombstone> Deleted { get; init; } = [];
 
+    /// <summary>
+    /// Keys this device still has but can't share right now (too big, a link, a name other devices can't use, a file
+    /// it can't read): the others leave theirs as they are, and never take them as deleted.
+    /// </summary>
+    [JsonPropertyName("held")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Held { get; init; }
+
     public Dictionary<string, SyncEntry> ByKey() => Entries.ToDictionary(e => e.Key, StringComparer.Ordinal);
 }
 
@@ -100,7 +108,17 @@ public static class SyncLimits
 public sealed record SyncSide(string Device, string Name, IReadOnlyDictionary<string, SyncEntry> Entries, Func<SyncEntry, byte[]> Read);
 
 /// <summary>This vault's syncable entries; <see cref="Read"/> throws <see cref="SyncStaleException"/> if a file changed since.</summary>
-public sealed record SyncSnapshot(IReadOnlyDictionary<string, SyncEntry> Entries, Func<SyncEntry, byte[]> Read);
+public sealed record SyncSnapshot(IReadOnlyDictionary<string, SyncEntry> Entries, Func<SyncEntry, byte[]> Read)
+{
+    /// <summary>Entries that are here but can't sync right now: left alone on every device until they can.</summary>
+    public IReadOnlyList<SyncHeld> Held { get; init; } = [];
+}
+
+/// <summary>
+/// An entry one side has but can't sync right now, and why (shown to the person). It's never written, moved or
+/// deleted by a sync, on either side, and never counts as deleted.
+/// </summary>
+public sealed record SyncHeld(string Key, string Path, string Reason);
 
 /// <summary>Raised when the vault changed while a sync was being worked out; the sync starts over.</summary>
 public sealed class SyncStaleException(string message) : Exception(message);

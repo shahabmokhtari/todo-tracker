@@ -313,6 +313,143 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task A_task_file_another_app_has_locked_keeps_its_last_version_and_the_rest_still_loads()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks files against reading.");
+        var store = Open();
+        var plan = await Add(store, "Plan");
+        await Add(store, "Fine");
+
+        using (new FileStream(P("Work", "Plan.md"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        using (new FileStream(P("Work", "New.md"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        {
+            store.MarkDirty();
+            var titles = await store.ReadAsync(b => b.Items.Select(i => i.Title).Order().ToList());
+
+            // An offline cloud file or one another app holds open: shown as it was, said, never a failed board.
+            Assert.Equal(["Fine", "Plan"], titles);
+            Assert.Contains(store.Problems, p => p.Path == "Work/Plan.md");
+            Assert.Contains(store.Problems, p => p.Path == "Work/New.md");
+            await Assert.ThrowsAsync<InvalidOperationException>(() => store.UpdateAsync(b => b.Update(plan.Id, new TaskChanges { Title = "Plan B" }, Actor.User, T0)));
+        }
+
+        File.Delete(P("Work", "New.md"));
+
+        // Once it can be read again, it is (no change needed to notice).
+        Assert.Equal("Plan", await store.ReadAsync(b => b.Get(plan.Id).Title));
+        Assert.Empty(store.Problems);
+    }
+
+    [Fact]
+    public async Task Settings_that_cant_be_read_are_never_written_over_or_synced()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+        var config = P(".onething", "config.json");
+        var broken = (await File.ReadAllTextAsync(config, TestContext.Current.CancellationToken))[..40];
+        await File.WriteAllTextAsync(config, broken, TestContext.Current.CancellationToken);
+        store.MarkDirty();
+
+        await Add(store, "Another");
+
+        // Rewritten from nothing, every tab's order, colour and label would be gone (and synced away everywhere).
+        Assert.Equal(broken, await File.ReadAllTextAsync(config, TestContext.Current.CancellationToken));
+        Assert.Contains(store.Problems, p => p.Path == ".onething/config.json");
+        var snapshot = await store.ReadSyncAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(OneThing.Core.Sync.SyncKeys.Config, snapshot.Entries.Keys);
+        Assert.Contains(snapshot.Held, h => h.Key == OneThing.Core.Sync.SyncKeys.Config);
+        Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+    }
+
+    [Fact]
+    public async Task Settings_a_newer_version_added_are_kept_when_this_one_saves()
+    {
+        var store = Open();
+        var config = P(".onething", "config.json");
+        var text = await File.ReadAllTextAsync(config, TestContext.Current.CancellationToken);
+        text = text.Replace("\"schemaVersion\": 2,", "\"schemaVersion\": 2,\n  \"focusMusic\": \"rain\",", StringComparison.Ordinal);
+        text = text.Replace("\"folder\": \"Work\",", "\"folder\": \"Work\",\n      \"emoji\": \"briefcase\",", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(config, text, TestContext.Current.CancellationToken);
+        store.MarkDirty();
+
+        await Add(store, "Plan");
+
+        var saved = await File.ReadAllTextAsync(config, TestContext.Current.CancellationToken);
+        Assert.Contains("\"focusMusic\": \"rain\"", saved, StringComparison.Ordinal);
+        Assert.Contains("\"emoji\": \"briefcase\"", saved, StringComparison.Ordinal);
+        Assert.Empty(store.Problems);
+    }
+
+    [Fact]
+    public async Task An_empty_entry_in_the_settings_is_skipped()
+    {
+        Directory.CreateDirectory(P(".onething"));
+        Directory.CreateDirectory(P("Work"));
+        await File.WriteAllTextAsync(P(".onething", "config.json"), "{\"schemaVersion\":2,\"groups\":[null,{\"id\":\"00000000-0000-4000-8000-000000000001\",\"folder\":\"Work\"}],\"labels\":[null],\"order\":[]}", TestContext.Current.CancellationToken);
+
+        var store = Open();
+
+        Assert.Equal(["Work"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+        Assert.Empty(store.Problems);
+    }
+
+    [Fact]
+    public async Task An_activity_log_replaced_by_a_longer_one_is_read_again_from_the_start()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+        var log = P(".onething", "activity.jsonl");
+        var mine = await File.ReadAllTextAsync(log, TestContext.Current.CancellationToken);
+
+        // A sync client puts back another copy: different from the first byte, and longer.
+        var other = "\uFEFF" + mine.Replace("Plan", "Plot", StringComparison.Ordinal) + mine.Replace("Plan", "Pile", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(log, other, new System.Text.UTF8Encoding(false), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+
+        var summaries = await store.ReadAsync(b => b.Activity.Select(a => a.Summary).ToList());
+
+        Assert.Equal(["Created \"Plot\"", "Created \"Pile\""], summaries);
+    }
+
+    [Fact]
+    public async Task An_activity_log_that_starts_with_a_byte_order_mark_reads_every_line_once()
+    {
+        var store = Open();
+        await Add(store, "Plan");
+        var log = P(".onething", "activity.jsonl");
+        var line = (await File.ReadAllTextAsync(log, TestContext.Current.CancellationToken)).Replace("Plan", "Plot", StringComparison.Ordinal);
+        await File.WriteAllTextAsync(log, "\uFEFF" + line, new System.Text.UTF8Encoding(false), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+        await store.ReadAsync(_ => 0);
+
+        await File.AppendAllTextAsync(log, line.Replace("Plot", "Pile", StringComparison.Ordinal), TestContext.Current.CancellationToken);
+        store.MarkDirty();
+        var summaries = await store.ReadAsync(b => b.Activity.Select(a => a.Summary).ToList());
+
+        Assert.Equal(["Created \"Plot\"", "Created \"Pile\""], summaries);
+    }
+
+    [Fact]
+    public async Task An_attachment_file_that_cant_go_to_the_trash_doesnt_undo_removing_it_from_the_task()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks files against moving.");
+        var store = Open();
+        var task = await Add(store, "Plan");
+        using var content = new MemoryStream("map"u8.ToArray());
+        var attachment = await store.AddAttachmentAsync(task.Id, "map.png", content, Actor.User, TestContext.Current.CancellationToken);
+        var file = (await store.GetAttachmentFileAsync(task.Id, attachment.Id, TestContext.Current.CancellationToken)).FullPath;
+
+        using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            // Saved in the task file already: failing now would show the attachment again in the app only.
+            await store.RemoveAttachmentAsync(task.Id, attachment.Id, Actor.User, TestContext.Current.CancellationToken);
+
+            Assert.Empty(await store.ReadAsync(b => b.Get(task.Id).Attachments.ToList()));
+            Assert.Contains(store.Problems, p => p.Message.StartsWith("Your change was saved", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public async Task A_new_task_never_replaces_a_file_that_appeared_while_it_was_saved()
     {
         var written = false;
@@ -1154,6 +1291,23 @@ public sealed class VaultStoreTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => store.UpdateAsync(b => b.Move(task.Id, project.Id, null, null, Actor.User, T0)));
         Assert.True(File.Exists(P("Work", "Plan.html")));
+    }
+
+    [Fact]
+    public async Task A_wiki_linked_file_that_isnt_there_isnt_looked_for_again_at_once()
+    {
+        var store = Open();
+        await File.WriteAllTextAsync(P("Work", "Ship.md"), "# Ship\n\n## Attachments\n\n- ![[later.png]]\n", TestContext.Current.CancellationToken);
+        var (id, attachment) = await store.ReadAsync(b => (b.Items.Single().Id, b.Items.Single().Attachments.Single().Id));
+        Assert.False(File.Exists((await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath));
+
+        // Each look walks the whole vault: a page showing a missing image asks again and again.
+        Directory.CreateDirectory(P("Images"));
+        await File.WriteAllTextAsync(P("Images", "later.png"), "png", TestContext.Current.CancellationToken);
+        Assert.False(File.Exists((await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath));
+
+        _time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(P("Images", "later.png"), (await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath);
     }
 
     [Fact]

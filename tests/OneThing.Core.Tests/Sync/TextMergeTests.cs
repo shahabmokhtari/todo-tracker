@@ -8,6 +8,36 @@ public class TextMergeTests
     private static string L(params string[] lines) => string.Concat(lines.Select(l => l + "\n"));
 
     [Fact]
+    public void A_long_file_changed_near_the_same_place_on_each_side_merges_without_a_huge_table()
+    {
+        var lines = Enumerable.Range(0, 30_000).Select(i => $"line {i}").ToArray();
+        var first = (string[])lines.Clone();
+        first[15_000] = "first changed this";
+        var second = (string[])lines.Clone();
+        second[15_020] = "second changed this";
+
+        var result = TextMerge.Merge(L(lines), L(first), L(second));
+
+        Assert.False(result.Conflicted);
+        Assert.Contains("first changed this", result.Text, StringComparison.Ordinal);
+        Assert.Contains("second changed this", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Two_long_files_that_differ_everywhere_are_kept_whole_instead_of_merged()
+    {
+        var first = L([.. Enumerable.Range(0, 3_000).Select(i => $"a {i}")]);
+        var second = L([.. Enumerable.Range(0, 3_000).Select(i => $"b {i}")]);
+
+        var result = TextMerge.Merge(string.Empty, first, second);
+
+        // 3,000 × 3,000 lines to match: past the limit, so nothing is matched (and no memory runs out).
+        Assert.True(result.TooLarge);
+        Assert.True(result.Conflicted);
+        Assert.Equal(first, result.Text);
+    }
+
+    [Fact]
     public void Changes_to_different_lines_are_combined()
     {
         var b = L("# Plan trip", "- [ ] Book flights", "- [ ] Pack", "- [ ] Hotel");

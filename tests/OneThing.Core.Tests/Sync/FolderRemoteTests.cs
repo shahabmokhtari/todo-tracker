@@ -59,4 +59,35 @@ public sealed class FolderRemoteTests : IDisposable
 
         Assert.Equal(Content, await File.ReadAllBytesAsync(BlobPath(), TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task What_was_found_whole_is_remembered_across_a_restart()
+    {
+        var first = new FolderRemote(_root);
+        await first.PublishAsync(Snapshot(), _ => Content, null, TestContext.Current.CancellationToken);
+        var written = File.GetLastWriteTimeUtc(BlobPath());
+        await File.WriteAllBytesAsync(BlobPath(), "Plan the TRIP"u8.ToArray(), TestContext.Current.CancellationToken);
+        File.SetLastWriteTimeUtc(BlobPath(), written);
+
+        // The app started again: what the last run knew comes back (the engine keeps it in its sync state).
+        var again = new FolderRemote(_root);
+        again.Restore(first.Verified);
+        var reads = 0;
+        await again.PublishAsync(Snapshot(), _ => { reads++; return Content; }, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, reads);
+    }
+
+    [Fact]
+    public async Task A_snapshot_from_a_newer_version_isnt_taken_as_merged()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "devices"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "devices", "phone0000000000000000000000000000.json"), "{\"device\":\"phone0000000000000000000000000000\",\"name\":\"Phone\",\"at\":\"2026-10-06T09:00:00Z\",\"entries\":[],\"schema\":2}", TestContext.Current.CancellationToken);
+
+        var read = await new FolderRemote(_root).ReadAsync("laptop00000000000000000000000000", null, TestContext.Current.CancellationToken);
+
+        // Like a gist: tried again next time, never marked as merged.
+        Assert.True(read!.Partial);
+        Assert.Empty(read.Devices);
+    }
 }

@@ -103,7 +103,9 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
         for (var page = 1; ; page++)
         {
             var batch = await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues?state=all&per_page={PageSize}&page={page}{Scope}", null, cancellationToken).ConfigureAwait(false) as JsonArray ?? [];
-            items.AddRange(batch.OfType<JsonObject>().Where(i => i["pull_request"] is null && InScope(i)).Select(ItemOf));
+            var issues = batch.OfType<JsonObject>().Where(i => i["pull_request"] is null && InScope(i)).ToList();
+            await KnowViewerAsync(issues, cancellationToken).ConfigureAwait(false);
+            items.AddRange(issues.Select(ItemOf));
             if (batch.Count < PageSize)
             {
                 return items;
@@ -112,10 +114,16 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     }
 
     /// <summary>The issue, or null when it's gone, or in another group now (its group label changed on GitHub).</summary>
-    public async Task<RemoteItem?> FindAsync(string id, CancellationToken cancellationToken) =>
-        await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false) is JsonObject issue && issue["pull_request"] is null && InScope(issue)
-            ? ItemOf(issue)
-            : null;
+    public async Task<RemoteItem?> FindAsync(string id, CancellationToken cancellationToken)
+    {
+        if (await SendAsync(HttpMethod.Get, $"repos/{Repo}/issues/{Number(id)}", null, cancellationToken, missingIsNull: true).ConfigureAwait(false) is not JsonObject issue || issue["pull_request"] is not null || !InScope(issue))
+        {
+            return null;
+        }
+
+        await KnowViewerAsync([issue], cancellationToken).ConfigureAwait(false);
+        return ItemOf(issue);
+    }
 
     public async Task<string> CreateAsync(Guid localId, SyncedFields fields, CancellationToken cancellationToken)
     {
@@ -473,11 +481,33 @@ public sealed partial class GitHubRemote(HttpClient http, Func<CancellationToken
     private static IEnumerable<string> LabelNames(JsonObject? issue) =>
         (issue?["labels"] as JsonArray ?? []).Select(l => l is JsonObject o ? o["name"]?.GetValue<string>() : l?.GetValue<string>()).OfType<string>();
 
-    private static RemoteItem ItemOf(JsonObject issue)
+    private RemoteItem ItemOf(JsonObject issue)
     {
         var closed = issue["state"]?.GetValue<string>() == "closed";
         var fields = Read(issue["title"]?.GetValue<string>() ?? string.Empty, closed, issue["body"]?.GetValue<string>(), LabelNames(issue), out var marker);
-        return new RemoteItem(issue["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture), fields, marker, Dropped: closed && issue["state_reason"]?.GetValue<string>() == "not_planned");
+        return new RemoteItem(issue["number"]!.GetValue<int>().ToString(CultureInfo.InvariantCulture), fields, marker, Dropped: closed && issue["state_reason"]?.GetValue<string>() == "not_planned")
+        {
+            // Anyone can open an issue in a public repository, marker and all: only the token's own issues are believed.
+            MarkerTrusted = marker is null || AuthorOf(issue) is not { } author || _viewer is null || string.Equals(author, _viewer, StringComparison.OrdinalIgnoreCase),
+        };
+    }
+
+    private static string? AuthorOf(JsonObject issue) => issue["user"]?["login"]?.GetValue<string>();
+
+    // The signed-in account (null until needed, or when GitHub doesn't say).
+    private string? _viewer;
+    private bool _viewerAsked;
+
+    /// <summary>Looks up who the token belongs to, once, when an issue carries a marker and says who opened it.</summary>
+    private async Task KnowViewerAsync(IEnumerable<JsonObject> issues, CancellationToken cancellationToken)
+    {
+        if (_viewerAsked || !issues.Any(i => AuthorOf(i) is not null && MarkerOf(i["body"]?.GetValue<string>()) is not null))
+        {
+            return;
+        }
+
+        _viewerAsked = true;
+        _viewer = (await SendAsync(HttpMethod.Get, "user", null, cancellationToken).ConfigureAwait(false))?["login"]?.GetValue<string>();
     }
 
     private static string Number(string id) =>

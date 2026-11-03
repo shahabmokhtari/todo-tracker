@@ -77,7 +77,7 @@ public sealed partial class VaultHistory : IDisposable
             RemoveStaleIndexLock();
 
             // Hash new content without holding the vault lock (that can take a while); the add under the lock is then quick.
-            Run(Args("add", "--all", "--", "."));
+            Run(Args(AddArgs()));
             return await _store.WithLockAsync(() =>
             {
                 AddAll();
@@ -211,12 +211,47 @@ public sealed partial class VaultHistory : IDisposable
     private static string Marker(ActivityEntry entry) =>
         $"{entry.At.UtcTicks.ToString(CultureInfo.InvariantCulture)} {entry.ItemId:N} {entry.Kind} {Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(entry.Summary)))[..16]}";
 
+    /// <summary>
+    /// Folders in the vault that are git repositories of their own (they have a <c>.git</c>): git would keep only a
+    /// pointer to them, not their tasks, so they're left out of history, and said here.
+    /// </summary>
+    public IReadOnlyList<string> Skipped { get; private set; } = [];
+
+    /// <summary>
+    /// "git add" of everything history keeps. A <c>.gitignore</c> in the vault (synced from somewhere, or a folder of
+    /// notes that is also a repository) must not drop tasks from history: ignore files are passed over (<c>--force</c>)
+    /// and what history leaves out is said here, as pathspecs.
+    /// </summary>
+    private string[] AddArgs()
+    {
+        var nested = new List<string>();
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 };
+        foreach (var entry in Directory.EnumerateFileSystemEntries(_store.RootPath, ".git", options))
+        {
+            var folder = VaultFiles.Relative(_store.RootPath, Path.GetDirectoryName(entry)!);
+            if (folder.Length > 0 && folder != "." && !folder.Split('/').Any(s => s.StartsWith('.')))
+            {
+                nested.Add(folder);
+            }
+        }
+
+        Skipped = nested;
+        return
+        [
+            "add", "--all", "--force", "--", ".",
+            $":(exclude){VaultFiles.MetaFolder}", $":(exclude){VaultFiles.AttachmentsFolder}",
+            ":(exclude,glob)**/.obsidian/**", ":(exclude,glob)**/.trash/**", ":(exclude,glob)**/.git", ":(exclude,glob)**/.git/**",
+            ":(exclude,glob)**/*.tmp", ":(exclude,glob)**/.DS_Store",
+            .. nested.Select(n => $":(exclude,literal){n}"),
+        ];
+    }
+
     /// <summary>Stages everything; another process's quick git command may briefly hold the index, so retry.</summary>
     private void AddAll()
     {
         for (var attempt = 1; ; attempt++)
         {
-            var (code, _, error) = Run(Args("add", "--all", "--", "."));
+            var (code, _, error) = Run(Args(AddArgs()));
             if (code == 0)
             {
                 return;
@@ -273,7 +308,7 @@ public sealed partial class VaultHistory : IDisposable
     [
         "-c", "core.autocrlf=false", "-c", "core.quotepath=off", "-c", "core.longpaths=true", "-c", "commit.gpgsign=false",
         "-c", "user.name=One Thing", "-c", "user.email=onething@localhost", "-c", "core.safecrlf=false",
-        "-c", "core.fsmonitor=false", "-c", "core.hooksPath=" + Path.Combine(_gitDir, "no-hooks"),
+        "-c", "core.fsmonitor=false", "-c", "core.excludesFile=", "-c", "core.hooksPath=" + Path.Combine(_gitDir, "no-hooks"),
         $"--git-dir={_gitDir}", $"--work-tree={_store.RootPath}", .. args,
     ];
 

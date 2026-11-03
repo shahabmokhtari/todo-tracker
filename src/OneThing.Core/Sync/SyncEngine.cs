@@ -37,6 +37,7 @@ public sealed class SyncEngine : IDisposable
     private readonly string _lockPath;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _verifiedRestored;
 
     public SyncEngine(VaultBoardStore store, ISyncRemote remote, SyncState state, string lockPath, TimeProvider? time = null)
     {
@@ -62,6 +63,11 @@ public sealed class SyncEngine : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (_state.Problem is { } problem)
+            {
+                throw new InvalidDataException(problem);
+            }
+
             using var crossProcess = await VaultFiles.AcquireLockAsync(_lockPath, TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
             for (var attempt = 1; ; attempt++)
             {
@@ -157,6 +163,7 @@ public sealed class SyncEngine : IDisposable
             _state.RemoteVersion = null;
             _state.SeenVersion = null;
             _state.Published = null;
+            _state.Verified = new Dictionary<string, SyncVerified>();
         }
 
         // Read: what's merged up to ("merged up to here"). Written only: what was last seen there (nothing is merged,
@@ -201,18 +208,20 @@ public sealed class SyncEngine : IDisposable
 
         var changes = 0;
         var conflicts = new List<SyncConflictRecord>();
-        var problems = new List<string>();
+        var problems = local.Held.Select(h => $"\"{h.Path}\" doesn't sync for now: {h.Reason}. Your other devices keep their copy.").ToList();
         var complete = remote is not { Partial: true };
         foreach (var peer in peers)
         {
             try
             {
-                var entries = Valid(peer);
+                var withheld = new List<SyncHeld>();
+                var entries = Valid(peer, withheld);
                 if (entries is null)
                 {
                     continue;
                 }
 
+                problems.AddRange(withheld.Select(w => $"\"{w.Path}\" on {peer.Name} doesn't sync here: {w.Reason}. The copy here stays as it is."));
                 if (!await FetchAsync(peer, entries, local, cancellationToken).ConfigureAwait(false))
                 {
                     complete = false;
@@ -225,7 +234,7 @@ public sealed class SyncEngine : IDisposable
                     new SyncSide(peer.Device, peer.Name, entries, e => _state.ReadBlob(e.Hash) ?? throw new SyncStaleException($"{e.Path} is missing.")),
                     @base,
                     _state.ReadBlob,
-                    options);
+                    options with { Held = [.. local.Held, .. withheld] });
 
                 // Both versions of a clash stay available (to keep one of them, or open them in a merge tool).
                 foreach (var conflict in plan.Conflicts)
@@ -275,17 +284,34 @@ public sealed class SyncEngine : IDisposable
         if (mode.HasFlag(SyncMode.Write) && (fingerprint != _state.Published || heartbeatDue || remote is { SelfMissing: true }))
         {
             // What disappeared since the last publish was deleted here: say so (for months) so it stays gone everywhere.
-            var tombstones = _state.Tombstones.Where(t => now - t.At < SyncLimits.Memory && !local.Entries.ContainsKey(t.Key))
-                .Concat(_state.PublishedEntries.Where(e => !local.Entries.ContainsKey(e.Key) && SyncKeys.KindOf(e.Key) is SyncKind.Task or SyncKind.Rich or SyncKind.File)
+            // What's here but held back isn't deleted: it's listed as held (and as last published, for older versions).
+            var held = local.Held.Select(h => h.Key).ToHashSet(StringComparer.Ordinal);
+            var tombstones = _state.Tombstones.Where(t => now - t.At < SyncLimits.Memory && !local.Entries.ContainsKey(t.Key) && !held.Contains(t.Key))
+                .Concat(_state.PublishedEntries.Where(e => !local.Entries.ContainsKey(e.Key) && !held.Contains(e.Key) && SyncKeys.KindOf(e.Key) is SyncKind.Task or SyncKind.Rich or SyncKind.File)
                     .Select(e => new SyncTombstone(e.Key, e.Hash, now)))
                 .DistinctBy(t => (t.Key, t.Hash))
                 .ToList();
             var entriesNow = local.Entries.Values
                 .Select(e => e with { Since = publishedSince.TryGetValue((e.Key, e.Hash), out var since) ? since : now })
+                .Concat(_state.PublishedEntries.Where(e => held.Contains(e.Key) && !local.Entries.ContainsKey(e.Key) && _state.HasBlob(e.Hash)))
                 .OrderBy(e => e.Key, StringComparer.Ordinal)
                 .ToList();
-            var mine = new DeviceSnapshot(_state.DeviceId, _state.DeviceName, now, entriesNow) { Deleted = tombstones };
-            var version = await _remote.PublishAsync(mine, local.Read, reading ? _state.RemoteVersion : _state.SeenVersion, cancellationToken).ConfigureAwait(false);
+            var mine = new DeviceSnapshot(_state.DeviceId, _state.DeviceName, now, entriesNow) { Deleted = tombstones, Held = held.Count > 0 ? [.. held.Order(StringComparer.Ordinal)] : null };
+            byte[] Read(SyncEntry e) => held.Contains(e.Key) ? _state.ReadBlob(e.Hash) ?? throw new SyncStaleException($"{e.Path} is missing.") : local.Read(e);
+            var cache = _remote as ISyncVerifiedCache;
+            if (cache is not null && !_verifiedRestored)
+            {
+                // What was found whole before a restart isn't read (downloaded from a cloud drive) again.
+                cache.Restore(_state.Verified);
+                _verifiedRestored = true;
+            }
+
+            var version = await _remote.PublishAsync(mine, Read, reading ? _state.RemoteVersion : _state.SeenVersion, cancellationToken).ConfigureAwait(false);
+            if (cache is not null)
+            {
+                _state.Verified = cache.Verified;
+            }
+
             _state.Tombstones = tombstones;
             _state.PublishedEntries = entriesNow;
             _state.Published = fingerprint;
@@ -340,8 +366,12 @@ public sealed class SyncEngine : IDisposable
         return true;
     }
 
-    /// <summary>The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere).</summary>
-    private static Dictionary<string, SyncEntry>? Valid(DeviceSnapshot peer)
+    /// <summary>
+    /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere). Entries it
+    /// lists that can't be taken here (and those it says it holds back) go to <paramref name="withheld"/>: left alone
+    /// here, never taken as deleted.
+    /// </summary>
+    private static Dictionary<string, SyncEntry>? Valid(DeviceSnapshot peer, List<SyncHeld> withheld)
     {
         if (peer.Device is not { Length: > 1 and <= 64 } id || !id.All(char.IsAsciiLetterOrDigit) || peer.Entries is null)
         {
@@ -351,12 +381,12 @@ public sealed class SyncEngine : IDisposable
         var entries = new Dictionary<string, SyncEntry>(StringComparer.Ordinal);
         foreach (var e in peer.Entries)
         {
-            if (e?.Key is null || e.Path is null || e.Hash is not { Length: 64 } hash || !hash.All(char.IsAsciiHexDigitLower))
+            if (e?.Key is null)
             {
                 continue;
             }
 
-            var ok = SyncKeys.KindOf(e.Key) switch
+            var ok = e.Path is not null && e.Hash is { Length: 64 } hash && hash.All(char.IsAsciiHexDigitLower) && SyncKeys.KindOf(e.Key) switch
             {
                 SyncKind.Config => e.Path == SyncKeys.ConfigPath,
                 SyncKind.Order => e.Path == SyncKeys.OrderPath,
@@ -370,6 +400,24 @@ public sealed class SyncEngine : IDisposable
                 // Older devices don't say since when they have a version: oldest possible (a later delete wins).
                 entries[e.Key] = e.Since is null ? e with { Since = DateTimeOffset.MinValue } : e;
             }
+            else
+            {
+                withheld.Add(new SyncHeld(e.Key, e.Path ?? e.Key, "its name can't be used on this device; rename it there to sync it"));
+            }
+        }
+
+        foreach (var key in peer.Held ?? [])
+        {
+            if (key is null)
+            {
+                continue;
+            }
+
+            entries.Remove(key, out var kept);
+            if (!withheld.Exists(w => w.Key == key))
+            {
+                withheld.Add(new SyncHeld(key, kept?.Path ?? key, "it can't sync from there right now"));
+            }
         }
 
         return entries;
@@ -378,7 +426,8 @@ public sealed class SyncEngine : IDisposable
     private static bool NeedsBase(string key) => SyncKeys.KindOf(key) is SyncKind.Task or SyncKind.Rich or SyncKind.Config or SyncKind.Order;
 
     private static string Fingerprint(SyncSnapshot snapshot) =>
-        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', snapshot.Entries.Values.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => $"{e.Key}|{e.Path}|{e.Hash}")))));
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', snapshot.Entries.Values.OrderBy(e => e.Key, StringComparer.Ordinal).Select(e => $"{e.Key}|{e.Path}|{e.Hash}")
+            .Concat(snapshot.Held.Select(h => $"held|{h.Key}").Order(StringComparer.Ordinal))))));
 
     private void CollectBlobs(IEnumerable<SyncConflictRecord> fresh)
     {

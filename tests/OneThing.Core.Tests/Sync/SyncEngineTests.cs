@@ -149,6 +149,112 @@ public sealed class SyncEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_task_renamed_to_a_name_other_devices_cant_use_stays_on_every_device()
+    {
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        await laptop.AddTask("Fix login");
+        await Settle();
+
+        // Fine here, but longer than 255 bytes in UTF-8: phones and Macs can't name a file like that.
+        var tooLong = Path.Combine(Path.GetDirectoryName(laptop.File("Fix login"))!, new string('é', 130) + ".md");
+        File.Move(laptop.File("Fix login"), tooLong);
+        laptop.Store.MarkDirty();
+        var result = await laptop.Sync();
+        await desktop.Sync();
+        await laptop.Sync();
+
+        Assert.Contains("Fix login", await desktop.Titles());
+        Assert.Contains("Fix login", await laptop.Titles());
+        Assert.True(File.Exists(tooLong));
+        Assert.Contains("rename it", result.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_page_too_big_to_sync_isnt_taken_as_deleted_by_the_other_devices()
+    {
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        await laptop.AddTask("Huge notes");
+        var page = Path.ChangeExtension(laptop.File("Huge notes"), ".html");
+        File.WriteAllText(page, "<p>Notes</p>");
+        await Settle();
+        var there = Path.ChangeExtension(desktop.File("Huge notes"), ".html");
+        Assert.True(File.Exists(there));
+
+        using (var file = new FileStream(page, FileMode.Append))
+        {
+            file.SetLength(SyncLimits.MaxFileBytes + 1);
+        }
+
+        laptop.Store.MarkDirty();
+        var result = await laptop.Sync();
+        await desktop.Sync();
+        await laptop.Sync();
+
+        Assert.True(File.Exists(there));
+        Assert.True(File.Exists(page));
+        Assert.Contains("50 MB", result.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_task_another_device_lists_under_a_name_this_one_cant_use_is_kept_here()
+    {
+        var laptop = Add("Laptop");
+        var desktop = Add("Desktop");
+        var task = await laptop.AddTask("Fix login");
+        await Settle();
+
+        // An older version on a Mac renamed it "Fix: login" (fine there, impossible on Windows) and published that.
+        var snapshot = Path.Combine(Remote, "devices", desktop.State.DeviceId + ".json");
+        var json = File.ReadAllText(snapshot).Replace("Work/Fix login.md", "Work/Fix: login.md", StringComparison.Ordinal);
+        File.WriteAllText(snapshot, json);
+        var result = await laptop.Sync();
+
+        Assert.Contains("Fix login", await laptop.Titles());
+        Assert.Contains("Fix: login", result.Problem, StringComparison.Ordinal);
+        Assert.Equal(task.Id, (await laptop.Find("Fix login"))!.Id);
+    }
+
+    [Fact]
+    public async Task What_the_folder_found_whole_is_kept_for_the_next_start()
+    {
+        var laptop = Add("Laptop");
+        await laptop.AddTask("Book flights");
+
+        await laptop.Sync();
+
+        Assert.NotEmpty(laptop.State.Verified);
+    }
+
+    [Fact]
+    public void A_damaged_identity_file_keeps_the_device_id_it_still_holds()
+    {
+        var home = Path.Combine(_root, "damaged");
+        var id = new SyncState(Path.Combine(home, "sync"), home, "Laptop").DeviceId;
+        File.WriteAllText(Path.Combine(home, "device.json"), "{\"id\":\"" + id + "\",\"name\":");
+
+        Assert.Equal(id, new SyncState(Path.Combine(home, "sync"), home, "Laptop").DeviceId);
+    }
+
+    [Fact]
+    public async Task An_identity_file_that_cant_be_read_pauses_sync_instead_of_making_a_new_device()
+    {
+        var laptop = Add("Laptop");
+        await laptop.Sync();
+        var home = Path.Combine(_root, "Laptop");
+        File.WriteAllText(Path.Combine(home, "device", "device.json"), "garbled");
+        var state = new SyncState(Path.Combine(home, "sync"), Path.Combine(home, "device"), "Laptop");
+        using var engine = new SyncEngine(laptop.Store, new FolderRemote(Remote), state, Path.Combine(home, "sync2.lock"));
+
+        var failure = await Assert.ThrowsAsync<InvalidDataException>(() => engine.SyncAsync(TestContext.Current.CancellationToken));
+
+        // A new id would publish this computer's tasks as a stranger's (and merge everything against nothing).
+        Assert.Contains("can't be read", failure.Message, StringComparison.Ordinal);
+        Assert.Single(Directory.GetFiles(Path.Combine(Remote, "devices")));
+    }
+
+    [Fact]
     public async Task A_task_added_on_one_device_shows_up_on_the_other()
     {
         var laptop = Add("Laptop");

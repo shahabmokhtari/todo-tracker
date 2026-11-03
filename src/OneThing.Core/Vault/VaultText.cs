@@ -45,7 +45,15 @@ internal static partial class VaultText
     public static DateTimeOffset AtLocal(DateOnly date, TimeOnly time, TimeZoneInfo tz)
     {
         var local = date.ToDateTime(time, DateTimeKind.Unspecified);
-        return new DateTimeOffset(local, tz.GetUtcOffset(local));
+        try
+        {
+            return new DateTimeOffset(local, tz.GetUtcOffset(local));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // 9999-12-31 late in the evening west of Greenwich is past the last moment there is.
+            throw new FormatException($"{date:yyyy-MM-dd} {time:HH:mm} is too far away to use.");
+        }
     }
 
     public static DateTimeOffset AtLocal(DateOnly date, string time, TimeZoneInfo tz) =>
@@ -92,6 +100,13 @@ internal static partial class VaultText
         return minutes % 1440 == 0 ? $"{minutes / 1440}d" : minutes % 60 == 0 ? $"{minutes / 60}h" : $"{minutes}m";
     }
 
+    /// <summary>The longest duration a file can hold (ten years); longer ones are read as this.</summary>
+    public static readonly TimeSpan MaxDuration = TimeSpan.FromDays(3650);
+
+    /// <summary>Minutes as a duration, no longer than <see cref="MaxDuration"/> either way.</summary>
+    public static TimeSpan Minutes(double minutes) =>
+        TimeSpan.FromMinutes(Math.Clamp(minutes, -MaxDuration.TotalMinutes, MaxDuration.TotalMinutes));
+
     public static TimeSpan? ParseDuration(string? text)
     {
         var value = text?.Trim();
@@ -102,7 +117,7 @@ internal static partial class VaultText
 
         if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var plainMinutes))
         {
-            return TimeSpan.FromMinutes(plainMinutes);
+            return Minutes(plainMinutes);
         }
 
         var parts = DurationPart().Matches(value);
@@ -111,19 +126,23 @@ internal static partial class VaultText
             throw new FormatException($"\"{text}\" isn't a duration (use 90m, 24h, or 1d).");
         }
 
-        var total = TimeSpan.Zero;
+        var total = 0d;
         foreach (Match part in parts)
         {
-            var n = long.Parse(part.Groups[1].Value, CultureInfo.InvariantCulture);
-            total += part.Groups[2].Value.ToLowerInvariant() switch
+            if (!long.TryParse(part.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n))
             {
-                "d" => TimeSpan.FromDays(n),
-                "h" => TimeSpan.FromHours(n),
-                _ => TimeSpan.FromMinutes(n),
+                throw new FormatException($"\"{text}\" isn't a duration (use 90m, 24h, or 1d).");
+            }
+
+            total += n * part.Groups[2].Value.ToLowerInvariant() switch
+            {
+                "d" => 1440d,
+                "h" => 60d,
+                _ => 1d,
             };
         }
 
-        return total;
+        return Minutes(total);
     }
 
     /// <summary>A YAML scalar: plain when unambiguous, otherwise a double-quoted (JSON-compatible) string.</summary>

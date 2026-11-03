@@ -5,6 +5,11 @@ public sealed partial class VaultBoardStore
 {
     private readonly Dictionary<string, string> _wikiLinkCache = new(StringComparer.OrdinalIgnoreCase);
 
+    // Names looked for and not found, and when: not looked for again for a while (each look walks the whole vault).
+    private readonly Dictionary<string, DateTimeOffset> _wikiLinkMisses = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly TimeSpan WikiLinkMissTime = TimeSpan.FromSeconds(30);
+
     public async Task<Attachment> AddAttachmentAsync(Guid itemId, string fileName, Stream content, Actor actor, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -205,6 +210,11 @@ public sealed partial class VaultBoardStore
                 return cached;
             }
 
+            if (_wikiLinkMisses.TryGetValue(relative, out var missed) && Now - missed < WikiLinkMissTime)
+            {
+                return full;
+            }
+
             var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive };
             string? Find(string root) => Directory.EnumerateFiles(root, relative, options)
                 .FirstOrDefault(f => !VaultFiles.Relative(root, f).Split('/').Any(s => s.StartsWith('.')));
@@ -214,6 +224,16 @@ public sealed partial class VaultBoardStore
             if (match is not null)
             {
                 _wikiLinkCache[relative] = match;
+                _wikiLinkMisses.Remove(relative);
+            }
+            else
+            {
+                if (_wikiLinkMisses.Count > 1000)
+                {
+                    _wikiLinkMisses.Clear();
+                }
+
+                _wikiLinkMisses[relative] = Now;
             }
 
             return match ?? full;

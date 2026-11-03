@@ -1,6 +1,10 @@
 namespace OneThing.Core.Sync;
 
-public sealed record TextMergeResult(string Text, bool Conflicted);
+public sealed record TextMergeResult(string Text, bool Conflicted)
+{
+    /// <summary>Too big to merge line by line (the files differ in too many lines): <see cref="Text"/> is the first side, and both versions should be kept whole.</summary>
+    public bool TooLarge { get; init; }
+}
 
 /// <summary>What to do where both sides changed the same lines differently.</summary>
 public enum ConflictPolicy
@@ -22,18 +26,66 @@ public enum ConflictPolicy
 /// </summary>
 public static class TextMerge
 {
+    /// <summary>The most cells one line-matching table may have (4 million: 16 MB); bigger differences aren't merged line by line.</summary>
+    public const long MaxCells = 4_000_000;
+
     /// <param name="lineKeys">Gives each line of a file its identity (or null), e.g. a step's block id: keyed lines merge one by one.</param>
     public static TextMergeResult Merge(string @base, string first, string second, Func<IReadOnlyList<string>, string?[]>? lineKeys = null, ConflictPolicy policy = ConflictPolicy.Both)
     {
-        var o = Split(@base);
-        var a = Split(first);
-        var b = Split(second);
-        var ko = lineKeys?.Invoke(o);
-        var ka = lineKeys?.Invoke(a);
-        var kb = lineKeys?.Invoke(b);
+        var fo = Split(@base);
+        var fa = Split(first);
+        var fb = Split(second);
+        var fko = lineKeys?.Invoke(fo);
+        var fka = lineKeys?.Invoke(fa);
+        var fkb = lineKeys?.Invoke(fb);
+
+        // Lines all three share at the start and the end are kept as they are; only the stretch between is matched.
+        var head = 0;
+        while (head < fo.Length && head < fa.Length && head < fb.Length && fo[head] == fa[head] && fo[head] == fb[head])
+        {
+            head++;
+        }
+
+        var tail = 0;
+        while (tail < fo.Length - head && tail < fa.Length - head && tail < fb.Length - head && fo[^(tail + 1)] == fa[^(tail + 1)] && fo[^(tail + 1)] == fb[^(tail + 1)])
+        {
+            tail++;
+        }
+
+        // Only lines that appear nowhere in the stretch between: then no line there could pair with them, and the
+        // result is exactly what matching everything gives (repeated lines, like blank ones, stay in the stretch).
+        while (true)
+        {
+            var middle = new HashSet<string>(StringComparer.Ordinal);
+            middle.UnionWith(fo[head..^tail]);
+            middle.UnionWith(fa[head..^tail]);
+            middle.UnionWith(fb[head..^tail]);
+            var safeHead = SafeEdge(fo[..head], middle);
+            var safeTail = SafeEdge([.. fo[^tail..].Reverse()], middle);
+            if (safeHead == head && safeTail == tail)
+            {
+                break;
+            }
+
+            head = safeHead;
+            tail = safeTail;
+        }
+
+        var o = fo[head..^tail];
+        var a = fa[head..^tail];
+        var b = fb[head..^tail];
+        if (Cells(o, a) > MaxCells || Cells(o, b) > MaxCells || Cells(a, b) > MaxCells)
+        {
+            // Matching that many lines would take more memory than a merge is worth: both versions are kept whole.
+            return new TextMergeResult(first, true) { TooLarge = true };
+        }
+
+        var ko = fko?[head..^tail];
+        var ka = fka?[head..^tail];
+        var kb = fkb?[head..^tail];
         var ma = Match(o, a);
         var mb = MatchAgreeing(o, b, ma, Match(a, b));
-        var output = new List<string>();
+        var output = new List<string>(fo[..head]);
         var conflicted = false;
         int io = 0, ia = 0, ib = 0;
         while (true)
@@ -125,7 +177,40 @@ public static class TextMerge
             ib = eb;
         }
 
+        output.AddRange(fo[^tail..]);
         return new TextMergeResult(Join(output), conflicted);
+    }
+
+    private static long Cells(string[] x, string[] y) => (x.Length + 1L) * (y.Length + 1L);
+
+    /// <summary>
+    /// How many of <paramref name="edge"/>'s lines (from the outside in) can stay trimmed: none of them may appear in
+    /// <paramref name="middle"/> or in the lines of the edge that go back to it.
+    /// </summary>
+    private static int SafeEdge(string[] edge, HashSet<string> middle)
+    {
+        var first = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < edge.Length; i++)
+        {
+            first.TryAdd(edge[i], i);
+        }
+
+        var keep = edge.Length;
+        foreach (var line in middle)
+        {
+            if (first.TryGetValue(line, out var at))
+            {
+                keep = Math.Min(keep, at);
+            }
+        }
+
+        // Lines that go back to the stretch take their earlier copies with them.
+        for (var i = edge.Length - 1; i >= keep; i--)
+        {
+            keep = Math.Min(keep, first[edge[i]]);
+        }
+
+        return keep;
     }
 
     /// <summary>A stretch where the sides differ: one side's change, keyed lines one by one, or a conflict.</summary>

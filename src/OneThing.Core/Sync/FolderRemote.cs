@@ -9,7 +9,7 @@ namespace OneThing.Core.Sync;
 /// <c>devices/&lt;id&gt;.json</c> per device and <c>blobs/&lt;ab&gt;/&lt;hash&gt;</c> for contents. Files are only ever
 /// added or replaced whole (temp file + rename), contents before the snapshot that lists them.
 /// </summary>
-public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
+public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek, ISyncVerifiedCache
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private DateTime _lastCollect = DateTime.MinValue;
@@ -17,6 +17,20 @@ public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
     // Stored contents this device read and found whole, by hash: their size and time then. Reading every one again on
     // each publish would download them all from a cloud drive that keeps files online only (OneDrive Files On-Demand).
     private readonly Dictionary<string, (long Length, DateTime Written)> _verified = new(StringComparer.Ordinal);
+
+    public IReadOnlyDictionary<string, SyncVerified> Verified => _verified.ToDictionary(v => v.Key, v => new SyncVerified(v.Value.Length, v.Value.Written), StringComparer.Ordinal);
+
+    public void Restore(IReadOnlyDictionary<string, SyncVerified> verified)
+    {
+        ArgumentNullException.ThrowIfNull(verified);
+        foreach (var (hash, seen) in verified)
+        {
+            if (seen is not null)
+            {
+                _verified.TryAdd(hash, (seen.Length, seen.Written));
+            }
+        }
+    }
 
     public string Root { get; } = root ?? throw new ArgumentNullException(nameof(root));
 
@@ -101,10 +115,18 @@ public sealed class FolderRemote(string root) : ISyncRemote, ISyncPeek
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                if (JsonSerializer.Deserialize<DeviceSnapshot>(content, Json) is { Schema: 1, Entries: not null } device
+                if (JsonSerializer.Deserialize<DeviceSnapshot>(content, Json) is { } device
                     && string.Equals(device.Device, Path.GetFileNameWithoutExtension(name), StringComparison.OrdinalIgnoreCase))
                 {
-                    devices.Add(device);
+                    if (device is { Schema: 1, Entries: not null })
+                    {
+                        devices.Add(device);
+                    }
+                    else
+                    {
+                        // From a newer version (or half written): not merged, and this version isn't taken as merged.
+                        partial = true;
+                    }
                 }
             }
             catch (JsonException)

@@ -27,6 +27,10 @@ OneThing/                        ← the vault (default: Documents/OneThing)
 * A task's identity is the `id` in its frontmatter, not its file name. Files are never renamed when a title changes,
   so links to them keep working. Moving a task to another group moves its file and keeps its name and subfolder.
 * Renaming a group folder in Obsidian keeps the group (recognized by the tasks inside it).
+* `config.json` fields this version doesn't know (from a newer one) are kept when it saves. If the file can't be read
+  (broken JSON, or locked), the tabs and labels stay as last read, the file is never written over and it doesn't
+  sync until it's fixed; the app lists it under the files that need fixing. An empty entry (`null`, a tab without a
+  `folder`, a label without a `name` or `color`) is skipped.
 
 ## A task file
 
@@ -90,6 +94,11 @@ comments) is kept exactly as written and in place. An owned property whose value
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
 example a Zettelkasten id), it stays and the app keeps its id in `onething-id`.
 
+Durations (`step-delay`, `planned-length`, a step's `delay`) are read as at most ten years (3650 days, either way): a
+longer one counts as ten years and stays as typed until the task changes. A value too big to be a number at all, or a
+date past the last moment there is (`9999-12-31` late in the day west of Greenwich), makes the file one to fix (shown
+under the files that need fixing, never written over).
+
 ### Subtasks
 
 * `## Subtasks` (or `## Steps`, `## Tasks`, `## Checklist`) holds checkbox list items. Nest them with tabs or spaces,
@@ -152,4 +161,5 @@ example a Zettelkasten id), it stays and the app keeps its id in `onething-id`.
 * **History.** Every change, in the app or outside it, is kept as a version in a private git repository on this device
   (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
   versioned). Any task can be viewed or restored from its history; a
-  restore is itself a version. Needs `git`.
+  restore is itself a version. Needs `git`. A `.gitignore` in the folder doesn't keep tasks out of it; a folder that
+  is a git repository of its own (it has a `.git`) is left out, and the app says which.
