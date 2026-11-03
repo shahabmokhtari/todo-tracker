@@ -213,6 +213,16 @@ test('a late answer to an older load is dropped', async () => {
   assert.deepEqual(replies, [{ current: true, value: 'week' }, { current: false }]);
 });
 
+test('an older load that fails after a newer one started is dropped quietly', async () => {
+  const load = latest((ms, fail) => new Promise((resolve, reject) => { setTimeout(() => (fail ? reject(new Error('gone')) : resolve('ok')), ms); }));
+  const old = load(30, true);
+  const fresh = load(1, false);
+  assert.deepEqual(await fresh, { current: true, value: 'ok' });
+  assert.deepEqual(await old, { current: false });
+  // The newest one failing still says so.
+  await assert.rejects(load(1, true), /gone/);
+});
+
 test('changes run one at a time, in order, even when one fails', async () => {
   const run = serial();
   const log = [];
