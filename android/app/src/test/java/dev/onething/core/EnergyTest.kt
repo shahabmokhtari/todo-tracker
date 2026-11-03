@@ -48,11 +48,11 @@ class EnergyTest {
         assertEquals(3, Energy.of(task))
         assertThrows(BoardException::class.java) { board.setEnergy(task.id, 4, now = t0) }
         assertEquals(10, board.dailyEnergy)
-        board.setEnergyPerDay(6)
+        board.setEnergyPerDay(6, Actor.USER, Instant.parse("2026-01-05T09:00:00Z"))
         val again = BoardCodec.decode(BoardCodec.encode(board))
         assertEquals(6, again.dailyEnergy)
         assertEquals(3, again.find(task.id)?.energy)
-        assertThrows(BoardException::class.java) { board.setEnergyPerDay(0) }
+        assertThrows(BoardException::class.java) { board.setEnergyPerDay(0, Actor.USER, Instant.parse("2026-01-05T09:00:00Z")) }
     }
 
     @Test
@@ -68,7 +68,7 @@ class EnergyTest {
         assertEquals("⚡ 6 of 4 planned today: 2 too much.", Energy.line(6.0, 4))
         assertEquals("⚡ 4.5 of 10 planned today.", Energy.line(4.5, 10))
         assertFalse(Energy.overToday(board, t0, utc))
-        board.setEnergyPerDay(2)
+        board.setEnergyPerDay(2, Actor.USER, Instant.parse("2026-01-05T09:00:00Z"))
         assertTrue(Energy.overToday(board, t0, utc))
     }
 }

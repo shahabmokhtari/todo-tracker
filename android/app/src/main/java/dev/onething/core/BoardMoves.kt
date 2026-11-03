@@ -63,8 +63,8 @@ fun TaskBoard.move(id: UUID, parentId: UUID?, index: Int? = null, groupId: UUID?
     log(now, id, "moved", if (parent != null) "Moved \"${item.title}\" under \"${parent.title}\"" else "Moved \"${item.title}\" to ${group!!.name}", actor)
 }
 
-/** Moves a task among its siblings, before [before] (null: to the end). Its parent stays. */
-fun TaskBoard.reorder(id: UUID, before: UUID?) {
+/** Moves a task among its siblings, before [before] (null: to the end). Its parent stays. The timeline says who moved it. */
+fun TaskBoard.reorder(id: UUID, before: UUID?, actor: Actor, now: Instant) {
     val item = get(id)
     val siblings = item.parent?.children ?: items
     if (before == id) return
@@ -74,10 +74,11 @@ fun TaskBoard.reorder(id: UUID, before: UUID?) {
     }
     siblings.removeAll { it === item }
     siblings.add(if (target == null) siblings.size else siblings.indexOfFirst { it === target }, item)
+    log(now, item.id, "moved", if (target == null) "Moved \"${item.title}\" to the end" else "Moved \"${item.title}\" before \"${target.title}\"", actor)
 }
 
 /** Puts a task right after another one next to it (whatever is between them on screen). */
-fun TaskBoard.reorderAfter(id: UUID, after: UUID) {
+fun TaskBoard.reorderAfter(id: UUID, after: UUID, actor: Actor, now: Instant) {
     val item = get(id)
     val target = get(after)
     val siblings = item.parent?.children ?: items
@@ -87,6 +88,7 @@ fun TaskBoard.reorderAfter(id: UUID, after: UUID) {
     }
     siblings.removeAll { it === item }
     siblings.add(siblings.indexOfFirst { it === target } + 1, item)
+    log(now, item.id, "moved", "Moved \"${item.title}\" after \"${target.title}\"", actor)
 }
 
 /** Makes one change of a move. */
@@ -95,8 +97,8 @@ fun TaskBoard.applyMove(change: BoardMove, actor: Actor = Actor.USER, now: Insta
         is BoardMove.Complete -> complete(change.id, actor, now)
         is BoardMove.SetStage -> setStage(change.id, change.stage, actor, now)
         is BoardMove.Move -> move(change.id, change.parentId, change.index, change.groupId, actor, now)
-        is BoardMove.Reorder -> reorder(change.id, change.before)
-        is BoardMove.ReorderAfter -> reorderAfter(change.id, change.after)
+        is BoardMove.Reorder -> reorder(change.id, change.before, actor, now)
+        is BoardMove.ReorderAfter -> reorderAfter(change.id, change.after, actor, now)
     }
 }
 
