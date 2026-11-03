@@ -37,6 +37,31 @@ public sealed class VaultHistoryTests : IDisposable
     }
 
     [Fact]
+    public async Task A_gitignore_in_the_tasks_folder_never_keeps_tasks_out_of_history()
+    {
+        // Synced from another computer, or the folder is also someone's repository.
+        await File.WriteAllTextAsync(Path.Combine(_root, ".gitignore"), "*.md\n");
+        await File.WriteAllTextAsync(Path.Combine(_root, "Work", ".gitignore"), "*\n");
+        var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Ship"), Actor.User, T0));
+
+        await _history.CommitAsync();
+
+        Assert.Single(await _history.TaskHistoryAsync(task.Id));
+    }
+
+    [Fact]
+    public async Task A_folder_that_is_a_repository_of_its_own_is_said_instead_of_silently_missing()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "Work", "Project", ".git"));
+        await File.WriteAllTextAsync(Path.Combine(_root, "Work", "Project", "Plan.md"), "# Plan\n");
+        await _store.UpdateAsync(b => b.AddTask(new NewTask("Ship"), Actor.User, T0));
+
+        Assert.True(await _history.CommitAsync());
+
+        Assert.Equal(["Work/Project"], _history.Skipped);
+    }
+
+    [Fact]
     public async Task Each_change_can_be_snapshotted_with_a_readable_message()
     {
         var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Ship"), Actor.User, T0));

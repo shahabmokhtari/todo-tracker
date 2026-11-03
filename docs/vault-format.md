@@ -161,4 +161,5 @@ under the files that need fixing, never written over).
 * **History.** Every change, in the app or outside it, is kept as a version in a private git repository on this device
   (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
   versioned). Any task can be viewed or restored from its history; a
-  restore is itself a version. Needs `git`.
+  restore is itself a version. Needs `git`. A `.gitignore` in the folder doesn't keep tasks out of it; a folder that
+  is a git repository of its own (it has a `.git`) is left out, and the app says which.
