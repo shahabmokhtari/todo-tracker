@@ -94,6 +94,27 @@ public sealed class ServerFixture : IAsyncDisposable
         return client;
     }
 
+    /// <summary>An app of the person at this computer: the API token and the owner key from the data folder, as the Mac app sends them.</summary>
+    public HttpClient OwnerClient(string? actor = null)
+    {
+        var client = Client(actor: actor);
+        client.DefaultRequestHeaders.Add(OwnerKey.Header, OwnerKey.Read(App.Services.GetRequiredService<OneThingServerOptions>().DataDirectory));
+        return client;
+    }
+
+    /// <summary>The owner's session in the web app: opened from a link the app made itself (as the sidebar and the tray do).</summary>
+    public async Task<HttpClient> AppSessionClientAsync()
+    {
+        var link = new Uri(OneThingHost.CreateLaunchUrl(App.Services));
+        using var signIn = Client(authenticated: false);
+        using var response = await signIn.GetAsync(link.PathAndQuery);
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("onething_session=", StringComparison.Ordinal)).Split(';')[0];
+        var client = Client(authenticated: false);
+        client.DefaultRequestHeaders.Add("Cookie", cookie);
+        client.DefaultRequestHeaders.Add("X-OneThing-Client", "web");
+        return client;
+    }
+
     public async ValueTask DisposeAsync()
     {
         await App.StopAsync();

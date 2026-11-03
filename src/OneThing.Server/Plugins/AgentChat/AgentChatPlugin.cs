@@ -62,7 +62,7 @@ public sealed class AgentChatPlugin : ITodoPlugin
 
             var dir = Path.Combine(options.DataDirectory, "agent-chat");
             var token = sp.GetRequiredService<ApiToken>().Value;
-            return new AgentChatService(sp.GetRequiredService<AgentCatalog>(), new AgentChatOptions
+            var service = new AgentChatService(sp.GetRequiredService<AgentCatalog>(), new AgentChatOptions
             {
                 WorkDirectory = Path.Combine(dir, "work"),
                 SettingsPath = Path.Combine(dir, "settings.json"),
@@ -83,12 +83,42 @@ public sealed class AgentChatPlugin : ITodoPlugin
                 }),
                 McpHttp = new McpHttpServer(options.BaseUrl + "/mcp", token),
             });
+
+            // Switched off: the agent stops at once (its routes are gone, so nothing could stop it later).
+            if (sp.GetService<PluginHost>() is { } host)
+            {
+                host.Settings.Changed += (_, id) =>
+                {
+                    if (id == Info.Id && !host.IsRunning(id))
+                    {
+                        _ = StopQuietlyAsync(service);
+                    }
+                };
+            }
+
+            return service;
         });
+    }
+
+    private static async Task StopQuietlyAsync(AgentChatService chat)
+    {
+        try
+        {
+            await chat.StopAsync().ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // Still stopping: it ends on its own.
+        }
     }
 
     public void MapEndpoints(RouteGroupBuilder group)
     {
         ArgumentNullException.ThrowIfNull(group);
+
+        // Ask AI runs an agent that can run commands once its questions are answered: only the person at this computer
+        // chats, answers and adds models, not something holding the API token.
+        group.OwnerOnly("Only you can use Ask AI: in the One Thing app on this computer.");
         group.MapGet("/", (AgentChatService chat) =>
         {
             // The panel was opened: look for newly installed agents (slow, so not on every update).
@@ -102,7 +132,8 @@ public sealed class AgentChatPlugin : ITodoPlugin
         });
         group.MapPost("/message", (ChatMessageRequest request, AgentChatService chat) =>
         {
-            // The answer streams through /stream; this only starts it (busy or no agent → 409 with the reason).
+            // The answer streams through /stream; this only starts it (busy or no agent: SendAsync throws at once, so 409
+            // with the reason, and the app keeps what was typed).
             _ = chat.SendAsync(request.Text ?? string.Empty);
             return Results.Accepted(value: chat.State);
         });

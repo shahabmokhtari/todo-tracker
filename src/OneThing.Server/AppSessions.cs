@@ -101,7 +101,8 @@ public sealed class AppSessions
 /// <summary>
 /// A second secret in the data folder (<c>owner-key</c>, readable only by this user) that the server never hands out:
 /// apps on this computer that start or find the server (the Mac app, a second tray) send it to ask for a launch link
-/// that opens the owner's session. Something with only the API token can't.
+/// that opens the owner's session, or with every request (the Mac app) to act as the owner. Something with only the
+/// API token can't.
 /// </summary>
 public sealed class OwnerKey
 {

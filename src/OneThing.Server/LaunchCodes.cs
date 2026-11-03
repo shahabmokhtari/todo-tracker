@@ -25,9 +25,10 @@ public sealed class LaunchCodes(TimeProvider time)
             _codes.TryRemove(expired, out _);
         }
 
-        if (_codes.Count >= MaxOutstanding)
+        // Links asked for with only the API token can't use up the room for the owner's own (and the other way round).
+        if (_codes.Count(c => c.Value.Owner == owner) >= MaxOutstanding)
         {
-            throw new InvalidOperationException("Too many outstanding launch links.");
+            throw new InvalidOperationException("Too many sign-in links were asked for at once. Wait two minutes and try again.");
         }
 
         var code = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');

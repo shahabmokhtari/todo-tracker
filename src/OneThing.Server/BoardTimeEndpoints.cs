@@ -137,7 +137,7 @@ internal static class BoardTimeEndpoints
         {
             await store.UpdateAsync(b => b.RemoveTime(id, entryId, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();
-        });
+        }).OwnerOnly(ApiEndpoints.DeleteRefusal);
 
         // Reports between two local dates (inclusive); without dates, the last four weeks up to today.
         api.MapGet("/reports", (DateOnly? from, DateOnly? to, Guid? group, IBoardStore store, TimeProvider time, OneThingServerOptions options) =>

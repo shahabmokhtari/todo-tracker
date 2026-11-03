@@ -192,7 +192,9 @@ public sealed class PluginHost
 
             host.Settings.SetEnabled(id, request.Enabled);
             return Results.Ok(new { id, request.Enabled, restartRequired = host.IsRunning(id) != request.Enabled });
-        });
+        })
+            .OwnerOnly("Only you can switch extras on or off: in Settings › Extras of the One Thing app.")
+            .AddEndpointFilter(ApiEndpoints.MapDomainErrors);
 
         foreach (var (plugin, enabled) in host.Plugins)
         {

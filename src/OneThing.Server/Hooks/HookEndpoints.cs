@@ -58,7 +58,8 @@ internal static class HookEndpoints
 
         // "Don't allow" in the app: removed only if it still waits in the version that was shown.
         api.MapPost("/hooks/{id}/reject", (string id, HookApproveRequest request, HookStore store) =>
-            store.Reject(id, request.Version ?? throw new ArgumentException("Say which version you looked at (version).")) ? Results.NoContent() : Results.Problem("This hook was allowed or changed meanwhile: it was kept. See Settings › Hooks.", statusCode: StatusCodes.Status409Conflict));
+            store.Reject(id, request.Version ?? throw new ArgumentException("Say which version you looked at (version).")) ? Results.NoContent() : Results.Problem("This hook was allowed or changed meanwhile: it was kept. See Settings › Hooks.", statusCode: StatusCodes.Status409Conflict))
+            .OwnerOnly("Only you can turn down a hook: in Settings › Hooks of the One Thing app, or with ot hooks.");
 
         api.MapDelete("/hooks/{id}", (string id, HookStore store) =>
         {
@@ -80,7 +81,7 @@ internal static class HookEndpoints
             var task = new EventTask(Guid.Empty, "Example task", ["Example task"], group, [], [], "normal", null, name == "taskCompleted", null, null);
             var e = new TaskEvent(TaskEvent.CurrentVersion, $"test-{Guid.NewGuid():N}"[..17], name, now, new EventActor("user", null), "A test from Settings › Hooks", task);
             return Results.Ok(await hooks.RunAsync(e, cancellationToken).ConfigureAwait(false));
-        });
+        }).OwnerOnly("Only you can try hooks: in Settings › Hooks of the One Thing app.");
 
         // Server-sent events: each one as `event: <name>` with the JSON in `data:`; `?events=a,b` picks some. A comment
         // every 20 s keeps the connection open through proxies.

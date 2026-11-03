@@ -122,7 +122,7 @@ public sealed class SyncApiTests : IAsyncLifetime
 
     private static async Task<JsonNode> Sync(ServerFixture app)
     {
-        using var client = app.Client();
+        using var client = app.OwnerClient();
         var response = await client.PostAsync(new Uri("/api/plugins/sync/now", UriKind.Relative), null, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
@@ -130,7 +130,7 @@ public sealed class SyncApiTests : IAsyncLifetime
 
     private static async Task<JsonNode> View(ServerFixture app)
     {
-        using var client = app.Client();
+        using var client = app.OwnerClient();
         return JsonNode.Parse(await client.GetStringAsync(new Uri("/api/plugins/sync", UriKind.Relative), TestContext.Current.CancellationToken))!;
     }
 
@@ -156,7 +156,7 @@ public sealed class SyncApiTests : IAsyncLifetime
     [Fact]
     public async Task Sync_can_be_switched_off()
     {
-        using var client = _laptop.Client();
+        using var client = _laptop.OwnerClient();
         var response = await client.PutAsJsonAsync(new Uri("/api/plugins/sync/provider", UriKind.Relative), new { provider = "off" }, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -187,7 +187,7 @@ public sealed class SyncApiTests : IAsyncLifetime
         Assert.Contains("Ask about Sunday", details, StringComparison.Ordinal);
         Assert.Contains("Ask about the car", details, StringComparison.Ordinal);
 
-        using var client = _desktop.Client();
+        using var client = _desktop.OwnerClient();
         var key = conflict["key"]!.GetValue<string>();
 
         // Review finding: choosing a side before the other computer had the merged task was undone by its merge.
@@ -224,7 +224,7 @@ public sealed class SyncApiTests : IAsyncLifetime
         var key = (await Sync(_desktop))["conflicts"]![0]!["key"]!.GetValue<string>();
         await Sync(_laptop);
         await Sync(_desktop);
-        using var client = _desktop.Client();
+        using var client = _desktop.OwnerClient();
 
         var compare = await client.PostAsJsonAsync(new Uri("/api/plugins/sync/compare", UriKind.Relative), new { key, tool = "no-such-tool" }, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, compare.StatusCode);
@@ -238,7 +238,7 @@ public sealed class SyncApiTests : IAsyncLifetime
     [Fact]
     public async Task The_sync_plugins_are_listed_and_the_gist_starts_off()
     {
-        using var client = _laptop.Client();
+        using var client = _laptop.OwnerClient();
         var plugins = JsonNode.Parse(await client.GetStringAsync(new Uri("/api/plugins", UriKind.Relative), TestContext.Current.CancellationToken))!.AsArray();
 
         Assert.True(plugins.Single(p => p!["id"]!.GetValue<string>() == "sync-onedrive")!["enabled"]!.GetValue<bool>());
@@ -249,7 +249,7 @@ public sealed class SyncApiTests : IAsyncLifetime
     [Fact]
     public async Task A_different_library_name_keeps_tasks_apart_and_forgotten_computers_are_gone()
     {
-        using var desktop = _desktop.Client();
+        using var desktop = _desktop.OwnerClient();
         (await desktop.PutAsJsonAsync(new Uri("/api/plugins/sync/library", UriKind.Relative), new { library = "Side project" }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         await _laptop.Store.UpdateAsync(b => b.AddTask(new NewTask("Work only"), Actor.User, ServerFixture.T0));
         await Sync(_laptop);

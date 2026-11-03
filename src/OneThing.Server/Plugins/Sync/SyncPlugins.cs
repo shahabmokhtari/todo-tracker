@@ -173,7 +173,8 @@ public static class SyncEndpoints
             return;
         }
 
-        var group = app.MapGroup("/api/plugins/sync").AddEndpointFilter(ApiEndpoints.MapDomainErrors);
+        var group = app.MapGroup("/api/plugins/sync").AddEndpointFilter(ApiEndpoints.MapDomainErrors)
+            .OwnerOnlyChanges("Only you can change how your tasks sync: in Settings › Sync of the One Thing app.");
         group.MapGet("/", (SyncService sync) => sync.View);
         group.MapPost("/now", (SyncService sync, CancellationToken cancellationToken) => sync.SyncNowAsync(cancellationToken));
         group.MapPut("/provider", async (SyncChoiceRequest request, SyncService sync, CancellationToken cancellationToken) =>

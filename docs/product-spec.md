@@ -440,8 +440,9 @@ the docs explain the options and risks. The server sends the same short instruct
 | `task_history`, `restore_task_version` | Versions of a task's file, and going back (itself undoable) |
 | `vault_info` | Where the markdown lives, files that need fixing, and the format guide (for agents with file tools) |
 
-Every change is attributed as `Agent: <client name>`. There is intentionally **no delete tool**, and completion can
-be undone with `reopen_task`. There is no tool that copies arbitrary local files into the vault (that would let a
+Every change is attributed as `Agent: <client name>`. There is intentionally **no delete tool** (and over REST only the
+owner deletes), and completion can be undone with `reopen_task`. An agent can switch off or remove only the hooks it
+added. There is no tool that copies arbitrary local files into the vault (that would let a
 remote connector read files from the machine).
 
 ### Obsidian
@@ -537,6 +538,16 @@ by `ot open`.
   must be local and free of control characters.
 * Mutations authenticated by cookie also need the `X-OneThing-Client` header. This forces a CORS preflight, so
   other localhost origins cannot forge writes. No CORS policy is enabled.
+* **The owner and everything else.** The person at this computer is a session the app opened itself (launch links made
+  in its own process, or asked for with the owner key) or a request that sends the owner key with the token (the Mac
+  app; `owner-key` in the data folder, mode 600, never handed out). Anything holding only the token (an AI agent, a
+  script) can read and change tasks, but not: delete anything (tasks, groups, labels, time entries, attachments), use
+  Ask AI, switch extras, move the tasks folder, set the Teams webhook, change sync or connected apps (GitHub, Notion,
+  To Do; reading them is fine), approve, turn down or try hooks, see hook runs or the secret part of a hook's address,
+  or switch off or remove a hook it didn't add. Those answer 403. Its changes are recorded as `Agent: <X-OneThing-Actor>`,
+  or `Agent: API client` when it doesn't say (never as you).
+* Sign-in links asked for with only the token are capped (256 open at once) apart from the owner's, so they can't
+  block the app's own.
 * Strict CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), `nosniff`, `no-referrer`, and
   `Cache-Control: no-store` on the API. The DOM is built with `textContent` only. Links are http(s) only.
 * Input limits: titles ≤300 characters, notes ≤10k, attachments ≤25 MB, rich HTML ≤2 MB. Unknown groups and ids

@@ -13,7 +13,7 @@ public sealed class ApiTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _server = await ServerFixture.StartAsync();
-        _client = _server.Client();
+        _client = _server.OwnerClient();
     }
 
     public async ValueTask DisposeAsync() => await _server.DisposeAsync();
@@ -586,7 +586,7 @@ public sealed class ApiTests : IAsyncLifetime
     public async Task Connect_lists_ready_made_setups_for_ai_apps()
     {
         await using var server = await ServerFixture.StartAsync(o => o.CliPath = @"C:\Program Files\One Thing\cli\onething.exe");
-        using var client = server.Client();
+        using var client = server.OwnerClient();
 
         var connect = await client.GetJson("/api/plugins/connect-ai");
 

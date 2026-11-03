@@ -13,7 +13,7 @@ public sealed class BoardTimeApiTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _server = await ServerFixture.StartAsync();
-        _client = _server.Client();
+        _client = _server.OwnerClient();
     }
 
     public async ValueTask DisposeAsync() => await _server.DisposeAsync();

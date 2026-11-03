@@ -318,6 +318,23 @@ public sealed partial class AgentChatService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Ask AI was switched off: stops the answer being written and the agent (questions waiting are refused). The chat
+    /// is kept; switched on again, the next message starts the agent afresh.
+    /// </summary>
+    public async Task StopAsync()
+    {
+        await ResetAsync(async () =>
+        {
+            await StopAgentAsync().ConfigureAwait(false);
+            lock (_lock)
+            {
+                _status = IdleStatus();
+            }
+        }).ConfigureAwait(false);
+        Notify();
+    }
+
     /// <summary>Starts over: a new chat (the one before is kept), with your usual agent or model if it's available.</summary>
     public async Task NewChatAsync()
     {

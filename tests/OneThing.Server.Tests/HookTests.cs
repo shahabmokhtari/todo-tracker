@@ -18,7 +18,7 @@ public sealed class HookTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _server = await ServerFixture.StartAsync();
-        _client = _server.Client();
+        _client = _server.OwnerClient();
         await Hooks.ScanAsync(); // the first look: what's already there isn't news
     }
 
@@ -218,7 +218,7 @@ public sealed class HookTests : IAsyncLifetime
 
 
         // Names come back as written (the API's camelCase doesn't touch them: variable names are case-sensitive).
-        Assert.Equal("•••", (await _client.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
+        Assert.Equal("•••", (await _server.Client().GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
         Assert.Equal("Bearer secret", (await app.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
     }
 
@@ -312,12 +312,12 @@ public sealed class HookTests : IAsyncLifetime
         var added = await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 });
         var id = added["id"]!.GetValue<string>();
         Assert.Equal(("needs approval", "claude"), (added["state"]!.GetValue<string>(), added["hook"]!["addedBy"]!.GetValue<string>()));
-        Assert.Empty((await agent.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
+        Assert.Empty((await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
 
         // The agent (anything with the token) can't approve its own hook; the app can.
         Assert.Equal(HttpStatusCode.Forbidden, (await agent.PostAsync($"/api/hooks/{id}/approve", null)).StatusCode);
         Assert.Equal("on", (await app.PostJson($"/api/hooks/{id}/approve"))["state"]!.GetValue<string>());
-        Assert.Single((await agent.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
+        Assert.Single((await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
 
         // A change by the agent needs approval again; your change to it keeps it waiting (only approving approves),
         // and one to a hook that isn't waiting runs at once.

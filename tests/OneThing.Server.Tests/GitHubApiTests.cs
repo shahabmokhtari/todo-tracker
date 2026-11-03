@@ -53,7 +53,7 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        var client = server.OwnerClient();
         var group = await server.Store.UpdateAsync(b => b.AddGroup("Side projects", null, Actor.User, ServerFixture.T0).Id);
         await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Ship the beta") { GroupId = group, Priority = Priority.High }, Actor.User, ServerFixture.T0));
 
@@ -86,7 +86,7 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        var client = server.OwnerClient();
         github.AddRepo("me/todo-personal", "My own notes");
         var groups = await server.Store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList());
 
@@ -109,17 +109,17 @@ public sealed class GitHubApiTests
         await using (server)
         {
             cli.Token = null;
-            var view = await server.Client().GetJson(Base);
+            var view = await server.OwnerClient().GetJson(Base);
             Assert.Equal("Sign in to GitHub: run gh auth login (then try again).", view["missing"]!.GetValue<string>());
             var group = await server.Store.ReadAsync(b => b.Groups[0].Id);
-            Assert.Equal(HttpStatusCode.Conflict, (await server.Client().PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await server.OwnerClient().PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).StatusCode);
         }
 
         var (off, _, offCli) = await StartAsync(on: false);
         await using (off)
         {
             var group = await off.Store.ReadAsync(b => b.Groups[0].Id);
-            Assert.Equal(HttpStatusCode.NotFound, (await off.Client().PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await off.OwnerClient().PostAsJsonAsync($"{Base}/groups/{group}/connect", new { })).StatusCode);
             Assert.Empty(offCli.Created);
         }
     }
@@ -129,7 +129,7 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        var client = server.OwnerClient();
         var group = await server.Store.UpdateAsync(b => b.AddGroup("Errands", null, Actor.User, ServerFixture.T0).Id);
         github.AddRepo("me/open-notes")["private"] = false;
 
@@ -258,7 +258,7 @@ public sealed class GitHubApiTests
         Assert.Equal((groups["Errands"], new DateTimeOffset(2026, 1, 9, 8, 0, 0, TimeSpan.Zero)), (stamps.GroupId, stamps.NextActionAt));
 
         // Work had a repository made for it elsewhere (its description): joined, not made again. The rest get theirs.
-        var view = await server.Client().GetJson(Base);
+        var view = await server.OwnerClient().GetJson(Base);
         Assert.Equal("me/todo-work", view["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Work")!["repo"]!.GetValue<string>());
         Assert.DoesNotContain(cli.Created, c => c.Name is "todo-work" or "todo-errands");
         Assert.All(view["groups"]!.AsArray(), g => Assert.NotNull(g!["repo"]));
@@ -274,7 +274,7 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        var client = server.OwnerClient();
         var errands = await server.Store.UpdateAsync(b => b.AddGroup("Errands", null, Actor.User, ServerFixture.T0).Id);
         var reading = await server.Store.UpdateAsync(b => b.AddGroup("Reading", null, Actor.User, ServerFixture.T0).Id);
         await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Buy stamps") { GroupId = errands }, Actor.User, ServerFixture.T0));
@@ -304,7 +304,7 @@ public sealed class GitHubApiTests
     {
         var (server, github, cli) = await StartAsync();
         await using var _ = server;
-        var client = server.Client();
+        var client = server.OwnerClient();
         github.AddRepo("me/everything", null, "notes");
         var groups = await server.Store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList());
 
@@ -346,7 +346,7 @@ public sealed class GitHubApiTests
         Assert.Equal(groups["Errands"], (await server.Store.ReadAsync(b => b.Find(elsewhere)))?.GroupId);
         Assert.Contains(await server.Store.ReadAsync(b => b.AllItems().ToList()), t => t.Title == "Finish Dune" && t.GroupId == groups["Reading"]);
         Assert.False(groups.ContainsKey("life"));
-        var view = await server.Client().GetJson(Base);
+        var view = await server.OwnerClient().GetJson(Base);
         // Work joined the repository made for it elsewhere (before labels); the rest are in the shared one.
         Assert.All(view["groups"]!.AsArray().Where(g => g!["group"]!.GetValue<string>() != "Work"), g => Assert.Equal("me/life", g!["repo"]!.GetValue<string>()));
         Assert.Equal("me/todo-work", view["groups"]!.AsArray().Single(g => g!["group"]!.GetValue<string>() == "Work")!["repo"]!.GetValue<string>());
@@ -370,7 +370,7 @@ public sealed class GitHubApiTests
         github.Add("Old issue", $"<!-- onething:id={task.Id:D} -->");
         issues.FilesOf(garden).Update(s => s with { Target = "me/todo-garden", TargetName = "Garden", GroupId = garden, Enabled = true });
 
-        var view = await (await server.Client().PostAsync($"{Base}/groups/{garden}/sync", null)).Json();
+        var view = await (await server.OwnerClient().PostAsync($"{Base}/groups/{garden}/sync", null)).Json();
 
         Assert.Equal(("group:Garden", 1), (view["label"]!.GetValue<string>(), view["linked"]!.GetValue<int>()));
         Assert.Contains("group:Garden", github.LabelsOf(1));

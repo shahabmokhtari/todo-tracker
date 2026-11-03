@@ -31,7 +31,10 @@ const isolated = { ...process.env, ONETHING_DATA: data, ONETHING_VAULT: path.joi
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(method, url, body, actor) {
-  const headers = { ...auth, ...(actor ? { 'X-OneThing-Actor': actor } : {}) };
+  // As the person at this computer (the owner key the app keeps in its data folder): the demo board is "yours".
+  const keyFile = path.join(data, 'owner-key');
+  const owner = fs.existsSync(keyFile) ? { 'X-OneThing-Owner-Key': fs.readFileSync(keyFile, 'utf8').trim() } : {};
+  const headers = { ...auth, ...owner, ...(actor ? { 'X-OneThing-Actor': actor } : {}) };
   const res = await fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!res.ok) throw new Error(`${method} ${url}: ${res.status} ${await res.text()}`);
   return res.status === 204 ? null : res.json();
