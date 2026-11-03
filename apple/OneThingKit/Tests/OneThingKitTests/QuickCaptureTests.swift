@@ -14,7 +14,7 @@ final class QuickCaptureTests: XCTestCase {
     func testHashWordsAreTagsAndWordsThatCantBeTagsStayInTheTitle() throws {
         let c = try QuickCaptureParser.parse("Plan the week #work #\"deep work\" #123 ##x #Work", now: now, timeZone: utc)
         XCTAssertEqual(c.title, "Plan the week #123 ##x")
-        XCTAssertEqual(c.tags, ["work", "deep work"], "each once, ignoring case")
+        XCTAssertEqual(c.tags, ["deep work", "work"], "each once, ignoring case; quoted ones first, as C#")
     }
 
     func testATagOfSeveralWordsCanBeInCurlyQuotes() throws {
@@ -61,7 +61,7 @@ final class QuickCaptureTests: XCTestCase {
         let board = TaskBoard()
         let c = try QuickCaptureParser.parse("Plan #work #\"deep work\"", now: now, timeZone: utc)
         let item = try board.addTask(NewTask(c.title, tags: c.tags), now: now)
-        XCTAssertEqual(item.tags, ["work", "deep work"])
+        XCTAssertEqual(item.tags, ["deep work", "work"], "quoted tags are read first, as C#")
         XCTAssertThrowsError(try board.addTask(NewTask("Bad", tags: ["123"]), now: now))
     }
 
