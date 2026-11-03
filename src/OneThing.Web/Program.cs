@@ -15,7 +15,13 @@ for (var i = 0; i < args.Length; i++)
             options.DataDirectory = args[++i];
             break;
         case "--port" when i + 1 < args.Length:
-            options.Port = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            if (!int.TryParse(args[++i], NumberStyles.None, CultureInfo.InvariantCulture, out var port) || port is < 1 or > 65535)
+            {
+                Console.Error.WriteLine($"The port must be a number from 1 to 65535, not \"{args[i]}\".");
+                return 1;
+            }
+
+            options.Port = port;
             break;
         case "--import-legacy":
             // Started by the Mac app: the tasks it kept on its own join the tasks folder, even one that has tasks.
@@ -40,3 +46,4 @@ Console.WriteLine($"One Thing is running. Open within 15 minutes: {OneThingHost.
 Console.WriteLine("Later visits: paste the API token on the sign-in page.");
 Console.WriteLine($"MCP endpoint: {connection.McpUrl} (Bearer token stored in {Path.Combine(options.DataDirectory, "api-token")})");
 await app.RunAsync();
+return 0;
