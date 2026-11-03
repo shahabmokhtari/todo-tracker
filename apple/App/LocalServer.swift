@@ -99,8 +99,32 @@ final class LocalServer {
             }
         }
     }
+    /// The server this app started, if it still runs (it stopped answering): ended before another one starts, so two
+    /// never hold the port and the tasks folder. Asked to stop first; after 5 s, made to.
+    private func endStartedServer() async {
+        guard let old = process else { return }
+        process = nil
+        // Its end isn't a loss to reconnect from: this is the reconnecting.
+        old.terminationHandler = nil
+        guard old.isRunning else { return }
+        old.terminate()
+        var waited = 0
+        while old.isRunning && waited < 20 {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            waited += 1
+        }
+        guard old.isRunning else { return }
+        kill(old.processIdentifier, SIGKILL)
+        waited = 0
+        while old.isRunning && waited < 8 {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            waited += 1
+        }
+    }
+
     private func start() async -> Result<ServerClient, Failure> {
         #if arch(arm64)
+        await endStartedServer()
         let probe = ServerClient(baseURL: Self.base, token: "")
         if await probe.isUp() {
             // Most likely the server of this app's last run, stopping (its app is gone): give it time.
