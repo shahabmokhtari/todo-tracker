@@ -48,9 +48,13 @@ that web pages can't send to the app.
 A paired browser's token can do what the extension does and nothing more: see what to do now, add tasks, finish
 and snooze them, and add notes. Everything else (deleting, settings, plugins, the AI tools over MCP, sign-in links)
 is refused, including anything added to the app later, and whatever it does is recorded as the browser. **Paired browsers** in the setup panel lists them; **Remove**
-takes one's access away at once (the extension then asks for a new code). Switching the plugin off stops them all at once.
+takes one's access away at once (the extension then asks for a new code). Switching the plugin off stops them all at once
+(the extension then says to switch it back on, or to get a new code; pairing while it's off says to switch it on first).
 Pasting the app's own token (**⋯ › Copy API token**, under *Other server, or paste a token instead*) still works and
-has full access.
+has full access; the extension checks it with the app before keeping it.
+
+The gear (**Connection settings**) opens the same screen; **Cancel** goes back to your tasks without changing anything.
+The side panel checks for changes every 30 seconds, but not while that screen is open.
 
 ## For developers
 

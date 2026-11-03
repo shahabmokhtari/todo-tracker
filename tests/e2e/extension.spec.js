@@ -29,10 +29,17 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
     await panel.goto(`chrome-extension://${id}/sidepanel.html`);
     await expect(panel.locator('#setup')).toBeVisible();
 
-    // The code the dashboard's setup guide shows.
-    const { code } = await (await request.post('/api/plugins/browser-extension/pair', { headers: auth })).json();
+    // A pasted token that One Thing doesn't take is never kept.
     await panel.locator('#advanced summary').click();
     await panel.locator('#server').fill(baseURL);
+    await panel.locator('#token').fill('not-a-token');
+    await panel.getByRole('button', { name: 'Connect' }).click();
+    await expect(panel.locator('#setup-error')).toContainText('didn’t accept that token');
+    expect((await worker.evaluate(() => chrome.storage.local.get('token'))).token).toBeUndefined();
+    await panel.locator('#token').fill('');
+
+    // The code the dashboard's setup guide shows.
+    const { code } = await (await request.post('/api/plugins/browser-extension/pair', { headers: auth })).json();
     await panel.locator('#code').fill(`${code.slice(0, 3)} ${code.slice(3)}`);
     await panel.getByRole('button', { name: 'Connect' }).click();
 
@@ -45,6 +52,15 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
     expect(stored.token).not.toBe(token);
     const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-OneThing-Client': 'browser-extension' }, data: { code } });
     expect(reuse.status()).toBe(400);
+
+    // Connection settings, then Cancel: back to the tasks, nothing changed.
+    await panel.getByRole('button', { name: 'Connection settings' }).click();
+    await expect(panel.locator('#setup')).toBeVisible();
+    await panel.getByRole('button', { name: 'Cancel' }).click();
+    await expect(panel.locator('#main')).toBeVisible();
+    await expect(panel.locator('body')).toContainText('Seen from the extension');
+    // The task the note goes to is picked with a button (the keyboard can do it too).
+    await expect(panel.getByRole('button', { name: 'Seen from the extension' }).first()).toBeVisible();
     expect(errors).toEqual([]);
   } finally {
     await context.close();
