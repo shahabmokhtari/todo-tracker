@@ -111,7 +111,14 @@ public sealed record LocalItem(Guid Id, SyncedFields Fields, bool Discoverable, 
 
 /// <summary>An item in the outside list; <paramref name="Marker"/> is the task id it carries (set by us).
 /// <paramref name="Dropped"/>: put away without being done (a GitHub issue closed as "not planned").</summary>
-public sealed record RemoteItem(string Id, SyncedFields Fields, Guid? Marker, bool Dropped = false);
+public sealed record RemoteItem(string Id, SyncedFields Fields, Guid? Marker, bool Dropped = false)
+{
+    /// <summary>
+    /// Whether <see cref="Marker"/> can be believed. False for an item someone else made (an issue opened by another
+    /// account in a public repository can carry any marker): it's then taken as a new item, never linked by its marker.
+    /// </summary>
+    public bool MarkerTrusted { get; init; } = true;
+}
 
 /// <summary>A task and its outside item, with the fields as they were when they last agreed.</summary>
 public sealed record ConnectorLink(Guid LocalId, string RemoteId, SyncedFields? Snapshot, LinkState State = LinkState.Active);
@@ -256,9 +263,11 @@ public static class ConnectorPlan
         {
             var importId = ImportId(input.Connector, there.Id);
             var canImport = input.Direction != ConnectorDirection.ExportOnly && !there.Fields.Done && !string.IsNullOrWhiteSpace(there.Fields.Title);
-            // A copy of a linked item (Notion's Duplicate copies the id column) is an item of its own.
-            var copied = there.Marker is { } m && m != importId && linkedLocal.Contains(m);
-            if (there.Marker is { } marker && !copied)
+            // A copy of a linked item (Notion's Duplicate copies the id column) is an item of its own; so is one whose
+            // marker can't be believed (made by someone else).
+            var claimed = there.MarkerTrusted ? there.Marker : null;
+            var copied = claimed is { } m && m != importId && linkedLocal.Contains(m);
+            if (claimed is { } marker && !copied)
             {
                 // Ours: linked to its task (never copied). Its task isn't here: deleted, or not on this computer yet, or
                 // (its own import id) the import failed after the mark was written: then it's tried again.

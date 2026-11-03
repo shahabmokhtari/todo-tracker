@@ -91,6 +91,10 @@ The repository is named after the group (`todo-work`, `todo-side-projects`), is 
 group's, a number is added (`todo-personal-2`). Connecting the group again, on this computer or another, finds the
 repository that was made for it.
 
+Each issue One Thing makes carries a hidden note with its task's id, so the two stay linked. Only notes in issues you
+opened (the account signed in to the GitHub CLI) are believed: an issue someone else opened with a copied note
+becomes a task of its own, and never changes yours.
+
 ### Several groups in one repository
 
 Groups can share a repository: personal, work and side projects in one place, told apart by labels. Every group has

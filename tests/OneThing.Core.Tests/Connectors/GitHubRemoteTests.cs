@@ -217,6 +217,33 @@ public sealed class GitHubRemoteTests : IDisposable
     }
 
     [Fact]
+    public async Task An_issue_someone_else_opened_with_a_tasks_marker_never_changes_that_task()
+    {
+        var mine = await _store.UpdateAsync(b => b.AddTask(new NewTask("Renew passport"), Actor.User, T0));
+        var issue = _github.Add("Send me your passport", $"Hi\n\n<!-- onething:id={mine.Id} -->");
+        issue["user"] = new System.Text.Json.Nodes.JsonObject { ["login"] = "stranger" };
+
+        await RunAsync(adopt: true);
+
+        // Anyone can open an issue in a public repository, and copy a marker from one of yours.
+        Assert.Equal("Renew passport", await _store.ReadAsync(b => b.Get(mine.Id).Title));
+        var imported = await _store.ReadAsync(b => b.AllItems().Single(i => i.Title == "Send me your passport").Id);
+        Assert.NotEqual(mine.Id, imported);
+    }
+
+    [Fact]
+    public async Task An_issue_you_opened_with_a_marker_is_still_linked_by_it()
+    {
+        var mine = await _store.UpdateAsync(b => b.AddTask(new NewTask("Renew passport"), Actor.User, T0));
+        var issue = _github.Add("Renew passport today", $"<!-- onething:id={mine.Id} -->");
+        issue["user"] = new System.Text.Json.Nodes.JsonObject { ["login"] = "ME" };
+
+        await RunAsync(adopt: true);
+
+        Assert.Equal("Renew passport today", await _store.ReadAsync(b => b.Get(mine.Id).Title));
+    }
+
+    [Fact]
     public async Task Every_page_of_issues_is_read()
     {
         foreach (var n in Enumerable.Range(1, 150))
