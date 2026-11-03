@@ -220,7 +220,7 @@ public actor SyncEngine {
             do {
                 let state = self.state
                 var withheld: [SyncHeld] = []
-                guard var entries = Self.valid(peer, &withheld) else { continue }
+                guard let entries = Self.valid(peer, &withheld) else { continue }
                 problems += withheld.map { "\"\($0.path)\" on \(peer.name) doesn't sync here: \($0.reason). The copy here stays as it is." }
                 let fetched = try await fetch(peer, entries, local)
                 if !fetched.ok {
@@ -228,14 +228,7 @@ public actor SyncEngine {
                     complete = false
                     continue
                 }
-                // Contents this device won't take (too big, or damaged where they're kept) are held like a name it
-                // can't use: left as they are here, never taken as deleted.
-                for e in fetched.refused {
-                    entries[OrdinalString(e.key)] = nil
-                    let held = SyncHeld(key: e.key, path: e.path, reason: "it's too big to sync, or damaged where it's kept")
-                    withheld.append(held)
-                    problems.append("\"\(held.path)\" on \(peer.name) doesn't sync here: \(held.reason). The copy here stays as it is.")
-                }
+
                 let base = try state.loadBase(peer.device)
                 var planOptions = options
                 planOptions.held = local.held + withheld
@@ -330,10 +323,9 @@ public actor SyncEngine {
                           problem: problems.isEmpty ? nil : problems.joined(separator: " "), devices: devices, complete: complete)
     }
 
-    /// Brings the peer's contents we don't have yet into the local cache. Not ok if some haven't arrived; `refused`:
-    /// the entries whose contents this device won't take (too big, or damaged where they're kept).
-    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?, refused: [SyncEntry]) {
-        var refused: [SyncEntry] = []
+    /// Brings the peer's contents we don't have yet into the local cache. Not ok if some haven't arrived (or are too big,
+    /// or damaged where they're kept): that device is merged next time, as C#'s `FetchAsync`.
+    private func fetch(_ peer: DeviceSnapshot, _ entries: SyncEntries, _ local: SyncSnapshot) async throws -> (ok: Bool, problem: String?) {
         for entry in entries.values {
             if local.entries[OrdinalString(entry.key)]?.hash == entry.hash || state.hasBlob(entry.hash) { continue }
             let content: Data
@@ -341,23 +333,16 @@ public actor SyncEngine {
                 content = try await remote.readContent(peer, entry)
             } catch is CancellationError {
                 throw CancellationError()
-            } catch is SyncDataError {
-                // Too big to sync (or damaged where it's kept): held, never taken as a delete; the rest syncs.
-                refused.append(entry)
-                continue
             } catch {
-                // Not there yet, still downloading (iCloud placeholders): this device is merged later.
-                return (false, nil, [])
+                // Not there yet, still downloading (iCloud placeholders), too big or damaged: this device is merged later.
+                return (false, nil)
             }
-            if Int64(content.count) > SyncLimits.maxFileBytes {
-                refused.append(entry)
-                continue
-            }
+            if Int64(content.count) > SyncLimits.maxFileBytes { return (false, nil) }
             // Still being written (or damaged): said, and tried again next time (that device rewrites it when it syncs).
-            if SyncHash.of(content) != entry.hash { return (false, "\(entry.path) from \(peer.name) didn't arrive whole; it's tried again.", []) }
+            if SyncHash.of(content) != entry.hash { return (false, "\(entry.path) from \(peer.name) didn't arrive whole; it's tried again.") }
             try state.writeBlob(entry.hash, content)
         }
-        return (true, nil, refused)
+        return (true, nil)
     }
 
     /// The peer's entries we accept: well-formed ids, hashes and paths only (it's data from elsewhere).
