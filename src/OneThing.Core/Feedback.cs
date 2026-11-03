@@ -123,6 +123,23 @@ public static class Feedback
     /// <summary>How many code points the note has as it would be sent (for the counter near the limit).</summary>
     public static int Length(string? text) => CleanMessage(text, int.MaxValue).EnumerateRunes().Count();
 
+    /// <summary>The longest issue title GitHub takes, in code points.</summary>
+    public const int MaxTitle = 256;
+
+    /// <summary>
+    /// "&lt;prefix&gt;&lt;the note's first line, trimmed&gt;"; longer than <see cref="MaxTitle"/> code points: cut to one
+    /// less, trimmed, and ended with "…". The whole note is in the issue's body.
+    /// </summary>
+    public static string Title(string prefix, string message)
+    {
+        ArgumentNullException.ThrowIfNull(prefix);
+        ArgumentNullException.ThrowIfNull(message);
+        var title = prefix + message.Split('\n')[0].Trim();
+        return title.EnumerateRunes().Count() <= MaxTitle
+            ? title
+            : string.Concat(title.EnumerateRunes().Take(MaxTitle - 1).Select(r => r.ToString())).TrimEnd() + "…";
+    }
+
     /// <summary>The request body for the relay, or null when there's nothing to send.</summary>
     /// <exception cref="ArgumentException">An unknown kind or source.</exception>
     public static JsonObject? Body(FeedbackDraft draft, FeedbackDevice device, int maxMessage = MaxMessage)
@@ -150,7 +167,7 @@ public static class Feedback
         var body = new JsonObject
         {
             ["message"] = message,
-            ["title"] = $"{kind.Label} · {device.Platform}: {message}",
+            ["title"] = Title($"{kind.Label} · {device.Platform}: ", message),
         };
         if (CleanContact(draft.Contact) is { Length: > 0 } contact)
         {
