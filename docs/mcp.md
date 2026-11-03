@@ -1,8 +1,8 @@
 # MCP tools
 
-<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->
+<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->
 
-One Thing's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
+One Thing's MCP server is `onething mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while
 the app runs (with the API token). Setup for each AI app: [ai-connectors.md](ai-connectors.md). Changes are
 attributed to the agent and versioned; there is deliberately no tool that deletes a task.
 
@@ -363,7 +363,7 @@ The hooks set up on this computer: what runs (a command or a web address) when s
 
 ### `add_hook`
 
-Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: One Thing asks them (a notification or a prompt in the app; also Settings › Hooks, or tt hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
+Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. It doesn't run until the user allows it: One Thing asks them (a notification or a prompt in the app; also Settings › Hooks, or ot hooks approve); tell them so. Events: taskCreated, taskUpdated, taskCompleted, taskReopened, taskDeleted, taskScheduled, taskMoved, taskArchived, noteAdded, reminderAdded, reminderDue, reminderDismissed, attachmentAdded, attachmentRemoved, labelChanged, groupChanged, timeLogged, focusStarted, focusEnded, breakEnded, or * for every event.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |

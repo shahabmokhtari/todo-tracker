@@ -8,7 +8,7 @@ namespace OneThing.Core.Tests.Fixtures;
 /// <summary>
 /// Shared fixtures under tests/fixtures that this version of the C# core generates and the Swift and Kotlin ports
 /// read. Each is worked out again on every run and must match the committed file exactly, so the file can't drift
-/// from what the code does. Regenerate: <c>TT_WRITE_FIXTURES=1 dotnet test --filter FullyQualifiedName~Fixtures</c>.
+/// from what the code does. Regenerate: <c>ONETHING_WRITE_FIXTURES=1 dotnet test --filter FullyQualifiedName~Fixtures</c>.
 /// </summary>
 internal static partial class FixtureFile
 {
@@ -18,7 +18,7 @@ internal static partial class FixtureFile
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static bool Writing => Environment.GetEnvironmentVariable("TT_WRITE_FIXTURES") == "1";
+    public static bool Writing => Environment.GetEnvironmentVariable("ONETHING_WRITE_FIXTURES") == "1";
 
     /// <summary>Writes the fixture (regenerating) or checks the committed one is exactly <paramref name="generated"/>.</summary>
     public static void Check(string relative, JsonNode generated)
@@ -33,7 +33,7 @@ internal static partial class FixtureFile
         }
 
         var committed = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", relative.Replace('/', Path.DirectorySeparatorChar))).ReplaceLineEndings("\n");
-        Assert.True(committed == text, $"tests/fixtures/{relative} is not what this version generates. Regenerate it (TT_WRITE_FIXTURES=1) and review the diff. {FirstDifference(JsonNode.Parse(committed), generated, "$")}");
+        Assert.True(committed == text, $"tests/fixtures/{relative} is not what this version generates. Regenerate it (ONETHING_WRITE_FIXTURES=1) and review the diff. {FirstDifference(JsonNode.Parse(committed), generated, "$")}");
     }
 
     /// <summary>Where two JSON documents first differ, with both values (so a failure on another OS says why).</summary>

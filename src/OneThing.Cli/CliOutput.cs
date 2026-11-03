@@ -19,7 +19,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
 
         if (d.Focus is null && d.Now.Count == 0 && d.Waiting.Count == 0)
         {
-            output.WriteLine(d.Query is null ? "Nothing to do right now. Add something: tt add \"…\"" : $"Nothing matches {d.Query}.");
+            output.WriteLine(d.Query is null ? "Nothing to do right now. Add something: ot add \"…\"" : $"Nothing matches {d.Query}.");
             return;
         }
 
@@ -200,7 +200,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
 
         if (hooks.Count == 0)
         {
-            output.WriteLine($"No hooks yet ({path}). Add one: tt hooks add taskCompleted --bash 'cat >> ~/done.jsonl' --powershell '$input | Add-Content $HOME\\done.jsonl'");
+            output.WriteLine($"No hooks yet ({path}). Add one: ot hooks add taskCompleted --bash 'cat >> ~/done.jsonl' --powershell '$input | Add-Content $HOME\\done.jsonl'");
             return;
         }
 
@@ -213,7 +213,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
             if (h.Hook.NeedsApproval == true)
             {
                 HookDetails(h, indent: "    ");
-                output.WriteLine($"    Approve it: tt hooks approve {h.Id} {h.Version[..OneThing.Server.Hooks.HookStore.MinVersionPrefix]}");
+                output.WriteLine($"    Approve it: ot hooks approve {h.Id} {h.Version[..OneThing.Server.Hooks.HookStore.MinVersionPrefix]}");
             }
         }
 
@@ -270,7 +270,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
     {
         if (labels.Count == 0)
         {
-            output.WriteLine("No labels yet. Add one: tt label <task> \"Deep work\"");
+            output.WriteLine("No labels yet. Add one: ot label <task> \"Deep work\"");
         }
 
         foreach (var l in labels)
@@ -288,7 +288,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
             output.WriteLine($"! {p.Path}: {p.Message}");
         }
 
-        output.WriteLine("File format: tt vault guide");
+        output.WriteLine("File format: ot vault guide");
     }
 
     public void ObsidianVaults(IReadOnlyList<ObsidianVault> vaults)

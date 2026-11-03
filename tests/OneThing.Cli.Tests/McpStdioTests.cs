@@ -5,7 +5,7 @@ using ModelContextProtocol.Protocol;
 namespace OneThing.Cli.Tests;
 
 /// <summary>
-/// <c>tt mcp</c> as Claude Desktop, Claude Code, Copilot CLI or VS Code launch it: a child process speaking MCP over stdio.
+/// <c>onething mcp</c> as Claude Desktop, Claude Code, Copilot CLI or VS Code launch it: a child process speaking MCP over stdio.
 /// </summary>
 public sealed class McpStdioTests : IDisposable
 {
@@ -14,7 +14,7 @@ public sealed class McpStdioTests : IDisposable
     public void Dispose() => _tt.Dispose();
 
     [Fact]
-    public async Task Tt_mcp_serves_the_task_tools_over_stdio()
+    public async Task Onething_mcp_serves_the_task_tools_over_stdio()
     {
         await using var client = await Connect();
 
@@ -44,7 +44,7 @@ public sealed class McpStdioTests : IDisposable
         // The CLI (and the app) see it immediately: same vault, shared lock.
         Assert.Equal(["Prepare demo"], (await _tt.Json("list", "#demo")).Titles());
         var activity = await File.ReadAllTextAsync(Path.Combine(_tt.VaultDirectory, ".onething", "activity.jsonl"), TestContext.Current.CancellationToken);
-        Assert.Contains("tt-tests", activity, StringComparison.Ordinal);
+        Assert.Contains("onething-tests", activity, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class McpStdioTests : IDisposable
         await _tt.Ok("add", "Added from the terminal");
 
         // Not caused by the reopen change (failed once on PR #29's Windows CI, "[]"): the running server notices the
-        // new file through the file system's change notifications, which can arrive a moment after `tt add` returns.
+        // new file through the file system's change notifications, which can arrive a moment after `ot add` returns.
         // "Visible" means shortly after, so the search is retried for a few seconds.
         var text = string.Empty;
         for (var attempt = 0; attempt < 20 && !text.Contains("Added from the terminal", StringComparison.Ordinal); attempt++)
@@ -73,19 +73,19 @@ public sealed class McpStdioTests : IDisposable
 
     private async Task<McpClient> Connect()
     {
-        var tt = Path.Combine(AppContext.BaseDirectory, "tt.dll");
+        var cli = Path.Combine(AppContext.BaseDirectory, "onething.dll");
         Directory.CreateDirectory(_tt.VaultDirectory);
-        Assert.True(File.Exists(tt), $"{tt} is missing");
+        Assert.True(File.Exists(cli), $"{cli} is missing");
         var transport = new StdioClientTransport(new StdioClientTransportOptions
         {
-            Name = "tt",
+            Name = "onething",
             Command = "dotnet",
-            Arguments = [tt, "mcp", "--data", _tt.DataDirectory, "--vault", _tt.VaultDirectory, "--no-history"],
-            EnvironmentVariables = new Dictionary<string, string?> { ["ONETHING_VAULT"] = null, ["ONETHING_DATA"] = null, ["TT_AGENT"] = null },
+            Arguments = [cli, "mcp", "--data", _tt.DataDirectory, "--vault", _tt.VaultDirectory, "--no-history"],
+            EnvironmentVariables = new Dictionary<string, string?> { ["ONETHING_VAULT"] = null, ["ONETHING_DATA"] = null, ["ONETHING_AGENT"] = null },
         });
         return await McpClient.CreateAsync(
             transport,
-            new McpClientOptions { ClientInfo = new Implementation { Name = "tt-tests", Version = "1.0" } },
+            new McpClientOptions { ClientInfo = new Implementation { Name = "onething-tests", Version = "1.0" } },
             cancellationToken: TestContext.Current.CancellationToken);
     }
 }

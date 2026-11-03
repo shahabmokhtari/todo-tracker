@@ -153,9 +153,9 @@ public sealed class GitHubApiTests
         var link = new Uri(OneThingHost.CreateLaunchUrl(server.App.Services));
         using var client = server.Client(authenticated: false);
         using var response = await client.GetAsync(link.PathAndQuery);
-        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0]["tt_session=".Length..];
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("onething_session=", StringComparison.Ordinal)).Split(';')[0]["onething_session=".Length..];
         var session = server.Client(authenticated: false);
-        session.DefaultRequestHeaders.Add("Cookie", $"tt_session={cookie}");
+        session.DefaultRequestHeaders.Add("Cookie", $"onething_session={cookie}");
         session.DefaultRequestHeaders.Add("X-OneThing-Client", "web");
         return session;
     }
@@ -175,7 +175,7 @@ public sealed class GitHubApiTests
         Assert.Equal(HttpStatusCode.Forbidden, (await server.Client().PutAsJsonAsync($"{Base}/main-place", new { on = true })).StatusCode);
         var on = await (await app.PutAsJsonAsync($"{Base}/main-place", new { on = true })).Json();
 
-        // Asked, not done: tt and tt mcp keep using the tasks folder until the app moves them at its next start.
+        // Asked, not done: ot and onething mcp keep using the tasks folder until the app moves them at its next start.
         var copy = OneThingHost.GitHubCopyOf(options);
         Assert.Equal((copy, true), (on["path"]!.GetValue<string>(), on["restartRequired"]!.GetValue<bool>()));
         Assert.Equal(folder, OneThingHost.VaultPathOf(options, settings));
@@ -227,9 +227,9 @@ public sealed class GitHubApiTests
     [Fact]
     public void A_tasks_folder_holding_the_data_folder_is_refused()
     {
-        var data = Path.Combine(Path.GetTempPath(), "tt-nest", "data");
+        var data = Path.Combine(Path.GetTempPath(), "onething-nest", "data");
         var options = new OneThingServerOptions { DataDirectory = data };
-        Assert.NotNull(OneThingHost.StorageProblem(options, Path.Combine(Path.GetTempPath(), "tt-nest")));
+        Assert.NotNull(OneThingHost.StorageProblem(options, Path.Combine(Path.GetTempPath(), "onething-nest")));
         Assert.NotNull(OneThingHost.StorageProblem(options, Path.Combine(data, "github-tasks", "inner")));
         Assert.Null(OneThingHost.StorageProblem(options, Path.Combine(data, "vault")));
         Assert.Null(OneThingHost.StorageProblem(options, Path.Combine(Path.GetTempPath(), "elsewhere")));

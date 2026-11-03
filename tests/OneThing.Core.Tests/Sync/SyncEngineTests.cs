@@ -8,7 +8,7 @@ namespace OneThing.Core.Tests.Sync;
 public sealed class SyncEngineTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 6, 9, 0, 0, TimeSpan.Zero);
-    private readonly string _root = Directory.CreateTempSubdirectory("tt-sync-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("onething-sync-").FullName;
     private readonly List<Device> _devices = [];
 
     private string Remote => Path.Combine(_root, "remote");

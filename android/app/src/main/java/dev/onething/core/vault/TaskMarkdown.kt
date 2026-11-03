@@ -132,18 +132,18 @@ object TaskMarkdown {
         val state = ParseState(ctx)
         state.needsWrite = !present
 
-        // The app's id: tt-id, else a GUID id. A non-GUID id belongs to the person (a Zettelkasten id) and stays.
+        // The app's id: onething-id, else a GUID id. A non-GUID id belongs to the person (a Zettelkasten id) and stays.
         var idKey = "id"
         var appId: UUID? = null
-        val ttId = Net.parseGuid(fm.scalar("tt-id"))
+        val ownId = Net.parseGuid(fm.scalar("onething-id"))
         val plainId = Net.parseGuid(fm.scalar("id"))
-        if (ttId != null) {
-            idKey = "tt-id"
-            appId = ttId
+        if (ownId != null) {
+            idKey = "onething-id"
+            appId = ownId
         } else if (plainId != null) {
             appId = plainId
         } else if (fm.has("id")) {
-            idKey = "tt-id"
+            idKey = "onething-id"
         }
         val id = state.newId(appId, "root")
 

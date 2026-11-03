@@ -12,7 +12,7 @@ namespace OneThing.Core.Vault;
 /// when the app changes that task (or reacts to an edit, e.g. checking a step unlocks the next one).</item>
 /// <item>A change rewrites only the tasks it touched. Saves are all-or-nothing: every file is checked against what the
 /// app last read (by content) before anything is written, and a failure part-way puts every file back.</item>
-/// <item>Several processes (the app, the <c>tt</c> CLI, an MCP server) can share a vault: each change runs under a
+/// <item>Several processes (the app, the <c>ot</c> CLI, an MCP server) can share a vault: each change runs under a
 /// per-vault lock kept in local app data (never in the synced folder) and re-reads the disk first.</item>
 /// </list>
 /// </summary>

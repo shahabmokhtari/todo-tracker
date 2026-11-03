@@ -14,7 +14,7 @@ public sealed class LaunchCodes(TimeProvider time)
     private readonly ConcurrentDictionary<string, (DateTimeOffset Expires, bool Owner)> _codes = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// A code; <paramref name="owner"/>: made by the app itself (the sidebar, the tray, tt, the console), so the session
+    /// A code; <paramref name="owner"/>: made by the app itself (the sidebar, the tray, ot, the console), so the session
     /// it opens is the owner's (see <see cref="AppSessions"/>). One asked for over HTTP with the API token isn't.
     /// </summary>
     public string Create(TimeSpan? lifetime = null, bool owner = false)

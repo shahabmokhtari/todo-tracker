@@ -45,14 +45,14 @@ public sealed partial class IntegrationFilesTests
     }
 
     [Fact]
-    public void The_plugin_and_vscode_sample_launch_tt_mcp()
+    public void The_plugin_and_vscode_sample_launch_onething_mcp()
     {
         var plugin = Read("integrations", "agent-plugin", ".mcp.json")["mcpServers"]!["onething"]!;
         var vscode = Read("integrations", "vscode", "mcp.json")["servers"]!["onething"]!;
 
         foreach (var server in new[] { plugin, vscode })
         {
-            Assert.Equal("tt", server["command"]!.GetValue<string>());
+            Assert.Equal("onething", server["command"]!.GetValue<string>());
             Assert.Equal(["mcp"], server["args"]!.AsArray().Select(a => a!.GetValue<string>()));
         }
     }
@@ -66,6 +66,8 @@ public sealed partial class IntegrationFilesTests
         Assert.Equal(Tools.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
         Assert.Equal("binary", manifest["server"]!["type"]!.GetValue<string>());
         Assert.Equal(["mcp"], manifest["server"]!["mcp_config"]!["args"]!.AsArray().Select(a => a!.GetValue<string>()));
+        Assert.Equal("server/onething", manifest["server"]!["entry_point"]!.GetValue<string>());
+        Assert.EndsWith("/server/onething", manifest["server"]!["mcp_config"]!["command"]!.GetValue<string>(), StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(Root, "integrations", "claude-desktop", manifest["icon"]!.GetValue<string>())));
     }
 
@@ -88,7 +90,7 @@ public sealed partial class IntegrationFilesTests
 
         var mentionedCommands = CommandMention().Matches(text).Select(m => m.Groups[1].Value).ToHashSet();
         Assert.Contains("now", mentionedCommands);
-        Assert.All(mentionedCommands, c => Assert.True(CliCommands.All.ContainsKey(c), $"tt {c} isn't a command"));
+        Assert.All(mentionedCommands, c => Assert.True(CliCommands.All.ContainsKey(c), $"ot {c} isn't a command"));
     }
 
     private static JsonNode Read(params string[] parts) => JsonNode.Parse(File.ReadAllText(Path.Combine([Root, .. parts])))!;
@@ -112,6 +114,6 @@ public sealed partial class IntegrationFilesTests
     [GeneratedRegex(@"`([a-z]+(?:_[a-z]+)+)`")]
     private static partial Regex ToolMention();
 
-    [GeneratedRegex(@"`tt ([a-z]+)")]
+    [GeneratedRegex(@"`ot ([a-z]+)")]
     private static partial Regex CommandMention();
 }

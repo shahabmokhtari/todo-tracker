@@ -149,7 +149,7 @@ export function createSettingsView(ctx) {
               if (confirm(`Remove the hook "${x.label}"?`)) call(`/api/hooks/${encodeURIComponent(x.id)}`, { method: 'DELETE' }, 'Removed');
             } }, icon('trash', { size: 14 })))),
         pending ? h('p', { class: 'small hook-why' }, `Added or changed by ${x.hook.addedBy ?? 'an agent'}. It runs only after you approve it. What it would do:`) : null,
-        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the One Thing app (the sidebar, Open in browser from the tray, or the Mac app), or run: tt hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
+        pending && !status.canApprove ? h('p', { class: 'small muted' }, `To approve it, open Settings from the One Thing app (the sidebar, Open in browser from the tray, or the Mac app), or run: ot hooks approve ${x.id} ${x.version.slice(0, 12)}`) : null,
         pending ? h('pre', { class: 'hook-sample' }, what) : null,
         x.problem ? h('p', { class: 'hook-problem small' }, x.problem) : null);
     };
@@ -170,7 +170,7 @@ export function createSettingsView(ctx) {
 
     return section('hooks', 'Hooks',
       'Run your own script, or call a web address, when something happens: a task done, a reminder, a break. Hooks you add here run right away; ones an AI agent adds or changes wait for your approval.',
-      h('p', { class: 'small' }, h('span', { class: 'muted' }, 'File: '), h('code', null, status.path), h('span', { class: 'muted' }, ' (also: tt hooks)')),
+      h('p', { class: 'small' }, h('span', { class: 'muted' }, 'File: '), h('code', null, status.path), h('span', { class: 'muted' }, ' (also: ot hooks)')),
       status.problem ? h('p', { class: 'hook-problem', role: 'alert' }, status.problem) : null,
       status.hooks.length ? h('ul', { class: 'hook-list' }, ...status.hooks.map(row)) : h('p', { class: 'muted small' }, 'No hooks yet.'),
       h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => form.open(null) }, icon('plus', { size: 14 }), 'Add a hook'), pick, tryIt),

@@ -17,7 +17,7 @@ public final class ParsedTaskFile {
     public internal(set) var warnings: [String] = []
 
     var frontmatter = Frontmatter.empty
-    /// Frontmatter key holding the app's id: `id`, or `tt-id` when the person's own `id` isn't a GUID.
+    /// Frontmatter key holding the app's id: `id`, or `onething-id` when the person's own `id` isn't a GUID.
     var idKey = "id"
     /// What each owned property meant when read; unchanged values are written back exactly as typed.
     var keySignatures: [OIKey: String] = [:]
@@ -107,16 +107,16 @@ public enum TaskMarkdown {
         let state = ParseState(ctx)
         state.needsWrite = !present
 
-        // The app's id: tt-id, else a GUID id. A non-GUID id belongs to the person (a Zettelkasten id) and stays.
+        // The app's id: onething-id, else a GUID id. A non-GUID id belongs to the person (a Zettelkasten id) and stays.
         var idKey = "id"
         var appId: UUID?
-        if let ttId = parseGuid(fm.scalar("tt-id")) {
-            idKey = "tt-id"
-            appId = ttId
+        if let ownId = parseGuid(fm.scalar("onething-id")) {
+            idKey = "onething-id"
+            appId = ownId
         } else if let plainId = parseGuid(fm.scalar("id")) {
             appId = plainId
         } else if fm.has("id") {
-            idKey = "tt-id"
+            idKey = "onething-id"
         }
         let id = state.newId(appId, "root")
 

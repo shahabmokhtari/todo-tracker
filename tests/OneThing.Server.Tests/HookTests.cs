@@ -34,8 +34,8 @@ public sealed class HookTests : IAsyncLifetime
     private static JsonObject SaveTo(string file, JsonObject? match = null) => new()
     {
         ["type"] = "command",
-        ["powershell"] = $"[Console]::In.ReadToEnd() | Set-Content -Encoding utf8 -NoNewline {file}; Write-Output \"saved $env:TT_EVENT\"",
-        ["bash"] = $"cat > {file}; echo saved $TT_EVENT",
+        ["powershell"] = $"[Console]::In.ReadToEnd() | Set-Content -Encoding utf8 -NoNewline {file}; Write-Output \"saved $env:ONETHING_EVENT\"",
+        ["bash"] = $"cat > {file}; echo saved $ONETHING_EVENT",
         ["match"] = match,
     };
 
@@ -108,13 +108,13 @@ public sealed class HookTests : IAsyncLifetime
     private HttpClient SessionClient(string cookie)
     {
         var client = _server.Client(authenticated: false);
-        client.DefaultRequestHeaders.Add("Cookie", $"tt_session={cookie}");
+        client.DefaultRequestHeaders.Add("Cookie", $"onething_session={cookie}");
         client.DefaultRequestHeaders.Add("X-OneThing-Client", "web");
         return client;
     }
 
     private static string SessionCookie(HttpResponseMessage response) =>
-        response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0]["tt_session=".Length..];
+        response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("onething_session=", StringComparison.Ordinal)).Split(';')[0]["onething_session=".Length..];
 
     /// <summary>The owner's session: opened from a link the app made itself (as the sidebar and the tray do).</summary>
     private HttpClient AppClient()
@@ -187,7 +187,7 @@ public sealed class HookTests : IAsyncLifetime
         // An ordinary link opened in that browser leaves its owner session as it is.
         var ordinary = new Uri((await agent.PostJson("/api/launch", new { }))["url"]!.GetValue<string>());
         using var again = new HttpRequestMessage(HttpMethod.Get, ordinary.PathAndQuery);
-        again.Headers.Add("Cookie", $"tt_session={cookie}");
+        again.Headers.Add("Cookie", $"onething_session={cookie}");
         Assert.False((await browser.SendAsync(again)).Headers.Contains("Set-Cookie"));
         Assert.Equal("on", (await owner.PostJson($"/api/hooks/{id}/approve", new { }))["state"]!.GetValue<string>());
     }
@@ -272,7 +272,7 @@ public sealed class HookTests : IAsyncLifetime
         var id = shown["id"]!.GetValue<string>();
         var version = shown["version"]!.GetValue<string>();
 
-        // Changed since it was shown, or allowed meanwhile (another window, tt): kept.
+        // Changed since it was shown, or allowed meanwhile (another window, ot): kept.
         await agent.PutAsJsonAsync($"/api/hooks/{id}", new { @event = "taskCompleted", hook = new { type = "command", powershell = "exit 1", bash = "exit 1" } });
         Assert.Equal(HttpStatusCode.Conflict, (await app.PostAsJsonAsync($"/api/hooks/{id}/reject", new { version })).StatusCode);
         var current = (await app.GetJson("/api/hooks"))["hooks"]![0]!["version"]!.GetValue<string>();

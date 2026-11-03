@@ -19,7 +19,7 @@ public enum Feedback {
     public static let sentText = "Thanks — we read every note."
     public static let retryText = "Couldn’t send — check your connection and try again."
     public static let failedText = "Couldn’t send your note: something went wrong on our side. Please try again later."
-    public static let finePrint = "We’ll include your app version, device model and language."
+    public static let finePrint = "We’ll include the app version, your OS and its version, device model, language and screen size."
     public static let contactHint = "Only if you’d like a reply. It’s shown with your note on GitHub."
 
     /// The note as it's sent: control characters gone (new lines and tabs stay), trimmed, at most

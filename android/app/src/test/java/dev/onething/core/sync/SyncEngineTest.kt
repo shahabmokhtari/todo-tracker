@@ -18,7 +18,7 @@ import org.junit.Test
 
 /** Phones as sync devices of their own: two tasks folders meet through a folder or a gist and end with the same files. */
 class SyncEngineTest {
-    private val dir: File = Files.createTempDirectory("tt-sync").toFile()
+    private val dir: File = Files.createTempDirectory("onething-sync").toFile()
     private var now = Instant.parse("2026-01-05T14:00:00Z")
 
     @After

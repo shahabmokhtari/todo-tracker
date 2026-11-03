@@ -6,7 +6,7 @@ namespace OneThing.Server.Tests.AgentChat;
 /// <summary>Chats are kept, one file each, so they can be reopened, searched, renamed and deleted (with undo).</summary>
 public sealed class ChatHistoryStoreTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("tt-chats-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("onething-chats-").FullName;
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero));
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);

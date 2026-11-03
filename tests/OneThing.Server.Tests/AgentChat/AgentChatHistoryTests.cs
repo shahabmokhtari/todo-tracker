@@ -10,7 +10,7 @@ namespace OneThing.Server.Tests.AgentChat;
 public sealed class AgentChatHistoryTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
-    private readonly string _dir = Directory.CreateTempSubdirectory("tt-chats-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("onething-chats-").FullName;
     private readonly FakeModel _model = new();
     private readonly FakeTools _tools = new();
     private readonly List<AgentChatService> _services = [];

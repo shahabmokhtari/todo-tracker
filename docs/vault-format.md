@@ -1,7 +1,7 @@
 # Vault format (v2)
 
 One Thing stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
-Obsidian vault, in a git repository, or in any sync service. People, the apps, the `tt` CLI, and AI agents all edit
+Obsidian vault, in a git repository, or in any sync service. People, the apps, the `ot` CLI, and AI agents all edit
 the same files. A vault the app creates gets a copy of this guide for agents in `AGENTS.md` at the vault root (a folder
 of existing notes is left as it is).
 
@@ -83,12 +83,12 @@ Free-form details in markdown. Any other headings, tables, embeds, or sections b
 
 ### Properties
 
-The app owns `id` (or `tt-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
+The app owns `id` (or `onething-id`), `status`, `board`, `priority`, `created`, `completed`, `archived`, `due`,
 `scheduled`, `sequential`, `step-delay`, `icon`, `color`, `repeat`, `planned`, `planned-length`, `energy`, `tags`, `labels`,
 and `reminders`. A subtask keeps the same in its `%%{…}%%` (`energy`, `plan`, `planMin`…). Everything else (`aliases`, `cssclasses`, plugin properties,
 comments) is kept exactly as written and in place. An owned property whose value hasn't changed is written back
 exactly as typed (a date-only `due`, a flow list `[a, b]`, quotes). If `id` already holds the user's own value (for
-example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
+example a Zettelkasten id), it stays and the app keeps its id in `onething-id`.
 
 ### Subtasks
 

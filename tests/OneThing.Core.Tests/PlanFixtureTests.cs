@@ -8,7 +8,7 @@ namespace OneThing.Core.Tests;
 /// <summary>
 /// tests/fixtures/plan.json: what the Plan view shows for some days (blocks, deadlines, not planned, later, energy) and
 /// what planning a task does, from a board as the apps export it. The Swift port (PlanFixtureTests) reads the same file.
-/// Regenerate: set TT_WRITE_FIXTURES=1 and run this test.
+/// Regenerate: set ONETHING_WRITE_FIXTURES=1 and run this test.
 /// </summary>
 public sealed class PlanFixtureTests
 {
@@ -20,7 +20,7 @@ public sealed class PlanFixtureTests
     [Fact]
     public void The_plan_fixture_is_what_the_core_shows_and_does()
     {
-        if (Environment.GetEnvironmentVariable("TT_WRITE_FIXTURES") == "1")
+        if (Environment.GetEnvironmentVariable("ONETHING_WRITE_FIXTURES") == "1")
         {
             var built = BoardSerializer.Serialize(Build());
             File.WriteAllText(Path.Combine(FixtureFiles.Source(), "plan.json"), Fixture(BoardSerializer.Deserialize(built), JsonNode.Parse(built)!).ToJsonString(FixtureFiles.Pretty).ReplaceLineEndings("\n") + "\n");
@@ -30,7 +30,7 @@ public sealed class PlanFixtureTests
         var fixture = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "plan.json")))!;
         var board = BoardSerializer.Deserialize(fixture["board"]!.ToJsonString());
         var again = Fixture(board, fixture["board"]!.DeepClone());
-        Assert.True(JsonNode.DeepEquals(fixture, again), "The plan rules changed: regenerate tests/fixtures/plan.json (TT_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
+        Assert.True(JsonNode.DeepEquals(fixture, again), "The plan rules changed: regenerate tests/fixtures/plan.json (ONETHING_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
     }
 
     private static JsonObject Fixture(TaskBoard board, JsonNode boardJson)

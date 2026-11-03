@@ -18,7 +18,7 @@ public sealed record HookApproveRequest(string? Version);
 /// <summary>
 /// Settings › Hooks: what's set up, adding and changing hooks, recent runs, trying one; and the event stream. What the
 /// signed-in app changes runs at once; what anything with the API token (an AI agent, a script) adds or changes waits
-/// until it's approved, which only the app (or tt on this computer) can do.
+/// until it's approved, which only the app (or ot on this computer) can do.
 /// </summary>
 internal static class HookEndpoints
 {

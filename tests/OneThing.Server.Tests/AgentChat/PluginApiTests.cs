@@ -53,7 +53,7 @@ public sealed class PluginApiTests : IAsyncLifetime
         var saved = await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "plugins.json"), TestContext.Current.CancellationToken);
 
         // The next start (another data folder with the same plugins.json) runs without it.
-        var data = Directory.CreateTempSubdirectory("tt-plugins-").FullName;
+        var data = Directory.CreateTempSubdirectory("onething-plugins-").FullName;
         try
         {
             await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), saved, TestContext.Current.CancellationToken);
@@ -71,7 +71,7 @@ public sealed class PluginApiTests : IAsyncLifetime
     [Fact]
     public async Task Extras_that_only_change_what_the_app_shows_switch_on_and_off_without_a_restart()
     {
-        var data = Directory.CreateTempSubdirectory("tt-plugins-").FullName;
+        var data = Directory.CreateTempSubdirectory("onething-plugins-").FullName;
         try
         {
             await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), "{\"obsidian\": false, \"loop\": false, \"plan\": false, \"focus-timer\": false, \"connect-ai\": false, \"browser-extension\": false, \"sync-gist\": false}", TestContext.Current.CancellationToken);
@@ -121,7 +121,7 @@ public sealed class PluginApiTests : IAsyncLifetime
     [Fact]
     public async Task Turning_version_history_off_means_no_versions_even_when_git_is_there()
     {
-        var data = Directory.CreateTempSubdirectory("tt-plugins-").FullName;
+        var data = Directory.CreateTempSubdirectory("onething-plugins-").FullName;
         try
         {
             await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), "{\"history\": false}", TestContext.Current.CancellationToken);

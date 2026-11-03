@@ -38,7 +38,7 @@ class ManifestFixtureTest {
 
     @Test
     fun aFolderGetsTheSameDeviceFileAndBlobs() {
-        val dir = Files.createTempDirectory("tt-folder").toFile()
+        val dir = Files.createTempDirectory("onething-folder").toFile()
         try {
             val snapshot = snapshot()
             for (e in snapshot.entries) assertEquals(e.path, true, contents.containsKey(e.hash))

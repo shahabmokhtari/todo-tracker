@@ -31,5 +31,5 @@ test('a read started while the choice is being saved is ignored too; later ones 
 
   await followTheme(async () => 'light'); // changed in the sidebar later
   assert.equal(shown(), 'light');
-  assert.equal(stored.get('tt.theme'), 'light');
+  assert.equal(stored.get('onething.theme'), 'light');
 });

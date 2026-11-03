@@ -62,7 +62,7 @@ apple/           – OneThingKit (Swift port of Core) + SwiftUI apps for iOS and
 * **Vault location.** `Documents/OneThing` by default, or a folder chosen in the app (for example
   `<Obsidian vault>/One Thing`), `ONETHING_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
   from earlier versions is imported once (and renamed to `board.json.migrated`).
-* **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
+* **Several processes.** The app, the `ot` CLI, and MCP servers can share a vault; a per-vault lock in local app data
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
 * **History.** Every change is kept as a version in a private git repository on this device (local app data, never in the synced vault), saved a
   few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
@@ -102,7 +102,7 @@ container items in *Do now*.
 **Do now** holds actionable items plus attention items. A task whose reminder just went off comes first: one never
 placed, or whose reminder went off after Do now was last arranged (`NowArrangedAt`, kept with the order). After that,
 **the person's own order wins**: they arrange Do now by dragging cards, with ↑/↓ buttons, or Alt+↑/↓ (agents use
-`put_first`, the CLI `tt first`), anywhere in the list: a task whose reminder was already due when they arranged it
+`put_first`, the CLI `ot first`), anywhere in the list: a task whose reminder was already due when they arranged it
 stays where they put it. Tasks they never placed come after
 the ones they did, in the automatic order: effective priority (the maximum of the item and its ancestors), then
 overdue, then deadline, then age, so capturing something new never takes over the chosen focus. The first one is the
@@ -128,13 +128,13 @@ dismisses the previous undelivered schedule reminder and any reminder that is al
   (next 9:00; before 4:00 that's this morning), `2d`, `monday` (next Monday; a week on when it's Monday), `week`, `month`
   (9:00 local on that day; a month from Jan 31 is the end of February). Each shows when it ends: "today 17:00",
   "tomorrow 9:00", "Fri 14:30", "Mon 12 Jan, 9:00".
-* **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `tt snooze`):
+* **Typed rules** (`Snooze.Parse`, "Pick a time…" with a live preview, `schedule {rule}`, MCP `when`, `ot snooze`):
   spans count from now, like `@3d` always has (`45m`, `2h`, `3d`, `2 weeks`, `1 month`); day words land at 9:00 (`fri`, `next fri`; a weekday with a time still ahead today means today: `mon 14:00` on a Monday morning), `tonight`,
   `tomorrow 14:00`, `tomorrow at 9` (after `at`, a bare 1 to 7 is the afternoon and `tonight at 9` is 21:00), `weekend` (Saturday), `next week` (Monday), `next month` (the 1st); a time alone (`9am`, `14:30`;
   today, or tomorrow when it's past); dates (`2026-03-01`, with an optional time); an optional leading `in` (`in 3 days`). A rule that isn't
   understood is refused with examples; one already past (`tonight` at 19:00) says so. Phones offer the quick choices and a date picker.
 * **After another task** (`after: <id>` in the file; `POST /api/items/{id}/after`, MCP `wait_for_task`,
-  `tt snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
+  `ot snooze <task> after <other>`): the task is *Waiting* ("after “X”") until X is done, then comes back with a
   reminder ("X is done: back to Y"). It replaces a snooze until a time (and snoozing or *Do now* replaces it). Refused:
   itself, a done task (either one), its own subtasks or parents, or a circle (also through a parent that can't finish while its subtask waits); the pickers only offer what's allowed (`GET /api/items/{id}/wait-candidates`). It comes back the same way when X is finished outside the app (a box checked in Obsidian, or by sync), and when X is deleted (\"X\" was deleted). In *Waiting*, tasks
   back at a time come first (soonest first), then those waiting for a task.
@@ -268,17 +268,17 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   done ones included, archived ones not, a block over midnight counting on both days (`Energy.PlannedOn`; same rule in
   Swift and Kotlin, shared fixture `tests/fixtures/energy.json`). Cards show `⚡⚡`; Today's summary says
   "⚡ 4.5 of 10 planned today" (in red, with by how much, past it); each Plan day head has a meter that turns red past it.
-  Set a task's energy in its details (web, Android), ⋯ › Energy (sidebar, Mac/iPhone), `tt edit --energy`, or MCP
-  `update_task`; the day's in Settings › Energy (web, Android), the sidebar menu, ⋯ on Mac/iPhone, `tt energy 8`, `PUT
+  Set a task's energy in its details (web, Android), ⋯ › Energy (sidebar, Mac/iPhone), `ot edit --energy`, or MCP
+  `update_task`; the day's in Settings › Energy (web, Android), the sidebar menu, ⋯ on Mac/iPhone, `ot energy 8`, `PUT
   /api/energy` or MCP `set_daily_energy`. Frontmatter `energy: 2`; GitHub label `energy:2`. Today's line shows once
   something is planned today (every app).
 * **Hooks and events** ([hooks.md](hooks.md)): `hooks.json` in the data folder (this computer only; edited in Settings ›
-  Hooks, with `tt hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
+  Hooks, with `ot hooks`, by AI agents through MCP `add_hook`/`list_hooks`/`set_hook_enabled`/`remove_hook` or the REST API,
   or by hand) runs a command (PowerShell on Windows, bash elsewhere; the event as JSON on stdin) or posts
   to a URL when something happens: `taskCompleted`, `reminderDue`, `noteAdded`, `focusEnded`… with filters by group,
   tag, label and who did it. Events come from the activity log (app, agents, Obsidian, sync), each once, also across
   restarts; hooks run one at a time in the background with a timeout. A hook an agent (anything with the API token, or
-  `tt --as`) adds or changes waits for approval (`needsApproval`) that only the signed-in app or `tt` can give; the app
+  `ot --as`) adds or changes waits for approval (`needsApproval`) that only the signed-in app or `ot` can give; the app
   shows exactly what it would run. Settings › Hooks lists the hooks (on, off, needs approval), adds and changes them, shows
   their last runs and tries an event. `GET /api/events` streams every event (server-sent events) to extensions
   and scripts; server plugins subscribe to `HookService.Published`.
@@ -409,17 +409,17 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 ### AI apps (MCP, CLI, OpenAPI)
 AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-connectors.md)):
 
-* **`tt mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
+* **`onething mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
   on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, as a
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
-* **`tt`**: the same operations from a terminal (`tt now`, `tt add …`, `tt done …`); `--json` returns the API shapes and
+* **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
 * **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
 * **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
   subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test
   enforces it).
 
-**Connect an AI app** (sidebar menu, ✨ in the web header) lists a ready snippet per app with the real `tt` path.
+**Connect an AI app** (sidebar menu, ✨ in the web header) lists a ready snippet per app with the real path of `onething`.
 A plugin marketplace in this repository (`.claude-plugin/`, `.github/plugin/`) installs the MCP server plus a skill
 that teaches agents how to help (capture in the user's words, make big things small, log progress, defer, never
 delete) in Claude Code and Copilot CLI. Cloud apps (ChatGPT, Claude.ai, Copilot Studio) need a public HTTPS tunnel;
@@ -516,8 +516,8 @@ Every task has a link that opens the installed app on it (`TaskLinks` in the cor
 Kotlin; shared test cases). Only two shapes are followed: `onething://task/<guid>` (any case, with or without
 dashes, a trailing `/`, `?…` or `#…` ignored) and the bare scheme (just the app); anything else is ignored, so a
 crafted link can't reach another page or action. Copied from the task header (web) or a sidebar card (Windows) as
-plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `tt show`, opened
-by `tt open`.
+plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `ot show`, opened
+by `ot open`.
 
 * A link is the only argument that counts when the app is started with one: its text can never add options.
 * **Windows**: the app writes `HKCU\Software\Classes\onething` at each start (only the user's own instance: the
@@ -588,7 +588,7 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Web front-end | Vanilla JS served by the server | Instant load, no toolchain, strict CSP |
 | Teams | Workflows webhook | Works without an app registration |
 | Feedback | A create-only relay (issues.awesomehq.app) with a public key; the web app goes through the local server | A token that can open issues can also read them, and anything in an app can be extracted; the web app has no fixed origin to put on the relay's list |
-| MCP transport | Streamable HTTP inside the running app, plus `tt mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
+| MCP transport | Streamable HTTP inside the running app, plus `onething mcp` over stdio | Local AI apps launch servers themselves and must work without the app; the vault's per-folder lock makes several processes safe, and the app picks their changes up. |
 
 ## 12. Requirement traceability
 
@@ -612,11 +612,11 @@ focus, attention, and states. Both the C# and Swift test suites run them.
 | Sidebar placement: dock left/right on any monitor, float with always-on-top, monitor hot-plug | ✅ follow-up requests |
 | AI-native: data as markdown in folders, HTML version when needed | ✅ vault format v2, rich HTML companion |
 | Obsidian (must) | ✅ the vault *is* Obsidian markdown; open in Obsidian; keep tasks in an Obsidian vault |
-| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); subtasks in the web task panel; `put_first` for agents, `tt first` |
+| Easy ordering: drag and drop, arrow keys/icons | ✅ Do now: drag, ↑/↓ buttons, Alt+↑/↓ (web and sidebar); subtasks in the web task panel; `put_first` for agents, `ot first` |
 | Hierarchy, notes, attachments, tags, labels; intuitive and minimal | ✅ any depth with moves, notes, attachments, tags, colored labels, one filter box |
 | Autosave, notes without a Save button | ✅ web drawer and notes, sidebar notes |
 | Versioning ("use git or something like that") | ✅ private git history with view/restore (UI, REST, MCP) |
-| Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `tt`, `tt mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
+| Available to AI tools: CLI, API, Claude Desktop, Claude Code, Copilot CLI, VS Code, ChatGPT/Copilot Studio; "MCP connectors" | ✅ `ot`, `onething mcp`, `/mcp`, OpenAPI 3.1 + Swagger 2.0, `.mcpb` extension, plugin + skill marketplace, Connect dialog; cloud apps via tunnel (documented) |
 | In-app terminal/chat driving Copilot/Claude CLI over ACP (warm, MCP loaded, choose when both installed); features as plugins | ✅ Ask AI plugin (dashboard panel + sidebar box; Copilot and Claude Code; permissions; warm agent); every optional feature is a switchable plugin ([`docs/plugins.md`](plugins.md)) |
 | Ask AI as a full chat with sessions and history; ACP plus API keys for OpenAI- and Anthropic-compatible APIs | ✅ chats kept, searched, reopened (ACP `session/load` or a primer), renamed, deleted with undo; API models with presets, encrypted keys, same tools and permissions (tested live with Copilot; Claude untested on the dev machine) |
 | Paste media into tasks and notes | ✅ pasted pictures/files are attached and embedded (`![[…]]`, Obsidian-style) in details and notes, web and sidebar; into quick add (they wait under the box and go into the new task's details; a picture alone names the task) and a task's title (goes into its details). A paste counts as a picture unless real text comes with it (an office copy); a link, file name/path, blank text or HTML that's only the image (browser/Teams "Copy image") doesn't count. Sidebar: Ctrl+V, Shift+Insert and right-click › Paste, also image files copied in Explorer |

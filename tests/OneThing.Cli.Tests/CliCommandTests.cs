@@ -147,12 +147,12 @@ public sealed class CliCommandTests : IDisposable
     [Fact]
     public async Task A_failed_version_save_doesnt_turn_a_saved_change_into_a_failure()
     {
-        using var tt = new CliHarness(history: true) { Git = Path.Combine(Path.GetTempPath(), "no-such-git", "git") };
+        using var cli = new CliHarness(history: true) { Git = Path.Combine(Path.GetTempPath(), "no-such-git", "git") };
 
-        var result = await tt.Run("add", "Still saved");
+        var result = await cli.Run("add", "Still saved");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(["Still saved"], (await tt.Json("list")).Titles());
+        Assert.Equal(["Still saved"], (await cli.Json("list")).Titles());
     }
 
     [Fact]
@@ -421,7 +421,7 @@ public sealed class CliCommandTests : IDisposable
     {
         var output = await _tt.Ok();
 
-        Assert.Contains("tt add", output, StringComparison.Ordinal);
+        Assert.Contains("ot add", output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -472,6 +472,17 @@ public sealed class CliCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task Help_shows_the_short_name_and_says_onething_works_too()
+    {
+        var help = await _tt.Ok("help");
+
+        Assert.StartsWith("ot ", help, StringComparison.Ordinal);
+        Assert.Contains("onething", help.Split('\n')[0], StringComparison.Ordinal);
+        Assert.Contains("ot help <command>", help, StringComparison.Ordinal);
+        Assert.StartsWith("ot: ", (await _tt.Run("frobnicate")).Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Domain_errors_exit_1_with_a_friendly_message()
     {
         var result = await _tt.Run("add", "x", "--group", "Nope");
@@ -512,7 +523,7 @@ public sealed class CliCommandTests : IDisposable
 
         // Changed by an agent (--as): it waits for approval, which the agent can't give but you can.
         Assert.Contains("waits for approval", await _tt.Ok("hooks", "edit", id, "--name", "log it", "--as", "claude"), StringComparison.Ordinal);
-        // Approving names the version looked at (tt hooks list shows it with everything the hook does).
+        // Approving names the version looked at (ot hooks list shows it with everything the hook does).
         var listed = await _tt.Ok("hooks");
         Assert.Contains("bash: cat >> done.jsonl", listed, StringComparison.Ordinal);
         var unnamed = await _tt.Run("hooks", "approve", id);

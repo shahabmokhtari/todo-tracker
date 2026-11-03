@@ -7,7 +7,7 @@ namespace OneThing.Core.Tests;
 /// tests/fixtures/export.json is a board as the server's <c>/api/export</c> sends it, with everything newer versions
 /// add (tags, labels, columns, archive, time, notes from Obsidian and connected apps). The Mac app reads that export
 /// (apple/: BoardCodec), and its tests read this file, so the two can't drift apart unnoticed.
-/// Regenerate: set TT_WRITE_FIXTURES=1 and run this test.
+/// Regenerate: set ONETHING_WRITE_FIXTURES=1 and run this test.
 /// </summary>
 public sealed class ExportFixtureTests
 {
@@ -18,7 +18,7 @@ public sealed class ExportFixtureTests
     [Fact]
     public void The_export_fixture_is_exactly_what_this_version_writes()
     {
-        if (Environment.GetEnvironmentVariable("TT_WRITE_FIXTURES") == "1")
+        if (Environment.GetEnvironmentVariable("ONETHING_WRITE_FIXTURES") == "1")
         {
             File.WriteAllText(Path.Combine(SourceFixtures(), "export.json"), BoardSerializer.Serialize(Build()).ReplaceLineEndings("\n") + "\n");
             return;
@@ -29,7 +29,7 @@ public sealed class ExportFixtureTests
         // Read and written again: nothing lost, nothing added (a new field shows up here, so the fixture and the Mac
         // app's reader get updated with it).
         var again = BoardSerializer.Serialize(BoardSerializer.Deserialize(fixture));
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonNode.Parse(again)), "Regenerate tests/fixtures/export.json (TT_WRITE_FIXTURES=1).");
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonNode.Parse(again)), "Regenerate tests/fixtures/export.json (ONETHING_WRITE_FIXTURES=1).");
     }
 
     [Fact]

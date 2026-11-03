@@ -54,11 +54,11 @@ public sealed class ApiToken
 /// </summary>
 internal static class Security
 {
-    public const string CookieName = "tt_session";
+    public const string CookieName = "onething_session";
     public const string ClientHeader = "X-OneThing-Client";
     public const string ActorHeader = "X-OneThing-Actor";
-    private const string ActorKey = "tt.actor";
-    private const string SessionKey = "tt.session";
+    private const string ActorKey = "onething.actor";
+    private const string SessionKey = "onething.session";
 
     private static readonly string[] LoopbackHosts = ["localhost", "127.0.0.1", "[::1]"];
 

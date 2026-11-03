@@ -27,7 +27,7 @@ public sealed class ParsedTaskFile
 
     internal Frontmatter Frontmatter { get; set; } = Frontmatter.Empty;
 
-    /// <summary>Frontmatter key holding the app's id: <c>id</c>, or <c>tt-id</c> when the user's own <c>id</c> isn't a GUID.</summary>
+    /// <summary>Frontmatter key holding the app's id: <c>id</c>, or <c>onething-id</c> when the user's own <c>id</c> isn't a GUID.</summary>
     internal string IdKey { get; set; } = "id";
 
     /// <summary>What each owned property meant when read; unchanged values are written back exactly as typed.</summary>
@@ -172,12 +172,12 @@ public static partial class TaskMarkdown
         var tz = ctx.TimeZone;
         var state = new ParseState(ctx) { NeedsWrite = !present };
 
-        // The app's id: tt-id, else a GUID id. A non-GUID id belongs to the user (e.g. a Zettelkasten id) and stays.
+        // The app's id: onething-id, else a GUID id. A non-GUID id belongs to the user (e.g. a Zettelkasten id) and stays.
         var idKey = "id";
         Guid? appId = null;
-        if (Guid.TryParse(fm.Scalar("tt-id"), out var ttId))
+        if (Guid.TryParse(fm.Scalar("onething-id"), out var ownId))
         {
-            (idKey, appId) = ("tt-id", ttId);
+            (idKey, appId) = ("onething-id", ownId);
         }
         else if (Guid.TryParse(fm.Scalar("id"), out var plainId))
         {
@@ -185,7 +185,7 @@ public static partial class TaskMarkdown
         }
         else if (fm.Has("id"))
         {
-            idKey = "tt-id";
+            idKey = "onething-id";
         }
 
         var id = state.NewId(appId, "root");

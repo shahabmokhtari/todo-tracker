@@ -17,7 +17,7 @@ public sealed class AgentChatOptions
     /// <summary>Where the chosen agent is remembered.</summary>
     public string? SettingsPath { get; init; }
 
-    /// <summary>The One Thing MCP server over stdio (<c>tt mcp</c>); null when tt isn't available.</summary>
+    /// <summary>The One Thing MCP server over stdio (<c>onething mcp</c>); null when the command line isn't available.</summary>
     public AgentLaunch? Mcp { get; init; }
 
     /// <summary>The app's own MCP endpoint, preferred when the agent supports HTTP MCP servers.</summary>

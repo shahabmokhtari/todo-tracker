@@ -8,51 +8,51 @@ namespace OneThing.Cli;
 
 internal sealed record CliCommand(string Name, string Usage, string Summary, string? Details, Func<CliSession, CliArgs, Task> Run);
 
-/// <summary>Every <c>tt</c> command, its help, and what it does.</summary>
+/// <summary>Every <c>ot</c> command, its help, and what it does.</summary>
 internal static class CliCommands
 {
     public static readonly IReadOnlyDictionary<string, CliCommand> All = new[]
     {
-        new CliCommand("now", "tt [now] [filter] [-g group]", "What to do now, and what is waiting", "filter uses the list syntax, e.g. tt now #release", Now),
-        new CliCommand("add", "tt add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3]", "Add a task",
+        new CliCommand("now", "ot [now] [filter] [-g group]", "What to do now, and what is waiting", "filter uses the list syntax, e.g. ot now #release", Now),
+        new CliCommand("add", "ot add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3]", "Add a task",
             "Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.\n" +
-            "Quote the title: shells treat # ! @ specially. Example: tt add 'Renew passport !! due:7d #admin'\n" +
-            "Or use options: tt add Renew passport --due 7d --tag admin", Add),
-        new CliCommand("list", "tt list [filter] [-g group] [--all]", "Find tasks",
+            "Quote the title: shells treat # ! @ specially. Example: ot add 'Renew passport !! due:7d #admin'\n" +
+            "Or use options: ot add Renew passport --due 7d --tag admin", Add),
+        new CliCommand("list", "ot list [filter] [-g group] [--all]", "Find tasks",
             "Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.", List),
-        new CliCommand("show", "tt show <task>", "A task with its subtasks, notes, file and link", null, Show),
-        new CliCommand("open", "tt open <task>", "Open a task in the app (its onething:// link)", "tt show prints the link, to paste in a note, chat or mail.", Open),
-        new CliCommand("done", "tt done <task> | tt done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as tt prints them); words are one task's title.", Done),
-        new CliCommand("reopen", "tt reopen <task>", "Undo done", null, Reopen),
-        new CliCommand("first", "tt first <task> | tt first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
-        new CliCommand("note", "tt note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
-        new CliCommand("snooze", "tt snooze <task> <when | after <task>>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>", Snooze),
-        new CliCommand("edit", "tt edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none]", "Change a task",
+        new CliCommand("show", "ot show <task>", "A task with its subtasks, notes, file and link", null, Show),
+        new CliCommand("open", "ot open <task>", "Open a task in the app (its onething:// link)", "ot show prints the link, to paste in a note, chat or mail.", Open),
+        new CliCommand("done", "ot done <task> | ot done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as ot prints them); words are one task's title.", Done),
+        new CliCommand("reopen", "ot reopen <task>", "Undo done", null, Reopen),
+        new CliCommand("first", "ot first <task> | ot first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
+        new CliCommand("note", "ot note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
+        new CliCommand("snooze", "ot snooze <task> <when | after <task>>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>", Snooze),
+        new CliCommand("edit", "ot edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none]", "Change a task",
             "--energy: how much energy it takes per hour, 1 (light) to 3 (draining).", Edit),
-        new CliCommand("energy", "tt energy [per-day | default]", "Energy today: what you have in a day and what today's plan takes",
-            "A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; none counts as 1). tt energy 8 sets 8 a day; tt energy default goes back to 10.", EnergyCommand),
-        new CliCommand("tag", "tt tag <task> [+]tag… -tag…", "Add or remove tags", null, (s, a) => Tags(s, a, labels: false)),
-        new CliCommand("label", "tt label <task> [+]label… -label…", "Add or remove labels (quote names with spaces)", null, (s, a) => Tags(s, a, labels: true)),
-        new CliCommand("move", "tt move <task> (--under task | --top | -g group) [--index n]", "Put a task under another, at the top level, or in another group", null, Move),
-        new CliCommand("steps", "tt steps <task> <step>… [--delay hours]", "Add ordered steps; finishing one unlocks the next after the delay", null, Steps),
-        new CliCommand("attach", "tt attach <task> <file>", "Copy a file into the tasks folder and link it", null, Attach),
-        new CliCommand("history", "tt history <task>", "Saved versions of a task, newest first", null, History),
-        new CliCommand("restore", "tt restore <task> <version>", "Put a task back the way it was in a version", null, Restore),
-        new CliCommand("groups", "tt groups", "Groups (tabs) with counts", null, Groups),
-        new CliCommand("labels", "tt labels", "The curated labels", null, Labels),
-        new CliCommand("vault", "tt vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", null, Vault),
-        new CliCommand("mcp", "tt mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
-        new CliCommand("start", "tt start <task>", "Start timing a task (any other timer stops)", "The task's card moves to Doing. tt stop stops it.", Start),
-        new CliCommand("stop", "tt stop", "Stop the timer", null, Stop),
-        new CliCommand("stage", "tt stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (tt done) to move it to Done.", Stage),
-        new CliCommand("archive", "tt archive <task> | tt archive --done-before <days>", "Put finished tasks away (tt list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
-        new CliCommand("time", "tt time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
-        new CliCommand("hooks", "tt hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
+        new CliCommand("energy", "ot energy [per-day | default]", "Energy today: what you have in a day and what today's plan takes",
+            "A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; none counts as 1). ot energy 8 sets 8 a day; ot energy default goes back to 10.", EnergyCommand),
+        new CliCommand("tag", "ot tag <task> [+]tag… -tag…", "Add or remove tags", null, (s, a) => Tags(s, a, labels: false)),
+        new CliCommand("label", "ot label <task> [+]label… -label…", "Add or remove labels (quote names with spaces)", null, (s, a) => Tags(s, a, labels: true)),
+        new CliCommand("move", "ot move <task> (--under task | --top | -g group) [--index n]", "Put a task under another, at the top level, or in another group", null, Move),
+        new CliCommand("steps", "ot steps <task> <step>… [--delay hours]", "Add ordered steps; finishing one unlocks the next after the delay", null, Steps),
+        new CliCommand("attach", "ot attach <task> <file>", "Copy a file into the tasks folder and link it", null, Attach),
+        new CliCommand("history", "ot history <task>", "Saved versions of a task, newest first", null, History),
+        new CliCommand("restore", "ot restore <task> <version>", "Put a task back the way it was in a version", null, Restore),
+        new CliCommand("groups", "ot groups", "Groups (tabs) with counts", null, Groups),
+        new CliCommand("labels", "ot labels", "The curated labels", null, Labels),
+        new CliCommand("vault", "ot vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", null, Vault),
+        new CliCommand("mcp", "onething mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
+        new CliCommand("start", "ot start <task>", "Start timing a task (any other timer stops)", "The task's card moves to Doing. ot stop stops it.", Start),
+        new CliCommand("stop", "ot stop", "Stop the timer", null, Stop),
+        new CliCommand("stage", "ot stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (ot done) to move it to Done.", Stage),
+        new CliCommand("archive", "ot archive <task> | ot archive --done-before <days>", "Put finished tasks away (ot list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
+        new CliCommand("time", "ot time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
+        new CliCommand("hooks", "ot hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
             "add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…\n" +
             "edit <id> [--event e] and any of the add options (only what you give changes).\n" +
             "<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).\n" +
-            "A command gets the event as JSON on stdin. With --as (or TT_AGENT) a hook you add or change waits for approval:\n" +
-            "tt hooks approve <id> <version> (without --as; tt hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
+            "A command gets the event as JSON on stdin. With --as (or ONETHING_AGENT) a hook you add or change waits for approval:\n" +
+            "ot hooks approve <id> <version> (without --as; ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -66,11 +66,11 @@ internal static class CliCommands
                 text.AppendLine().AppendLine(details);
             }
 
-            text.AppendLine().AppendLine("<task> is an id (or its first 6+ characters, as tt prints them) or words from the title.");
+            text.AppendLine().AppendLine("<task> is an id (or its first 6+ characters, as ot prints them) or words from the title.");
             return text.ToString();
         }
 
-        text.AppendLine("tt — One Thing in your terminal and for AI agents").AppendLine().AppendLine("Commands:");
+        text.AppendLine("ot — One Thing in your terminal and for AI agents (also: onething)").AppendLine().AppendLine("Commands:");
         var width = All.Keys.Max(k => k.Length) + 2;
         foreach (var c in All.Values)
         {
@@ -83,15 +83,15 @@ internal static class CliCommands
             text.AppendLine(CultureInfo.InvariantCulture, $"  {option,-16}{what}");
         }
 
-        text.AppendLine().AppendLine("tt help <command> shows details. <task> is an id prefix or words from the title.");
+        text.AppendLine().AppendLine("ot help <command> shows details. <task> is an id prefix or words from the title.");
         return text.ToString();
     }
 
-    /// <summary>The options every command takes (tt help and docs/cli.md list them).</summary>
+    /// <summary>The options every command takes (ot help and docs/cli.md list them).</summary>
     public static readonly IReadOnlyList<(string Option, string What)> GlobalOptions =
     [
         ("--json", "print JSON (same shapes as the REST API and MCP tools)"),
-        ("--as <name>", "attribute changes to an agent, e.g. --as claude (or set TT_AGENT)"),
+        ("--as <name>", "attribute changes to an agent, e.g. --as claude (or set ONETHING_AGENT)"),
         ("--vault <dir>", "use another tasks folder (default: the app's, or ONETHING_VAULT)"),
         ("--data <dir>", "use another app data folder (or ONETHING_DATA)"),
         ("--no-history", "don't save a version for this change"),
@@ -186,7 +186,7 @@ internal static class CliCommands
         a.Allow();
         _ = a.Word(0, "which task");
 
-        // Several tasks only when every word is an id; otherwise the words are one title ("tt done Renew passport").
+        // Several tasks only when every word is an id; otherwise the words are one title ("ot done Renew passport").
         IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
         var done = new List<ItemDto>();
         foreach (var reference in references)
@@ -246,7 +246,7 @@ internal static class CliCommands
             return Wire.Timer(b, s.Now);
         }).ConfigureAwait(false);
         await s.SaveVersion().ConfigureAwait(false);
-        await s.Print(timer, (o, t) => o.Line($"Timing \"{t.Title}\" (tt stop stops it)")).ConfigureAwait(false);
+        await s.Print(timer, (o, t) => o.Line($"Timing \"{t.Title}\" (ot stop stops it)")).ConfigureAwait(false);
     }
 
     private static async Task Stop(CliSession s, CliArgs a)
@@ -424,7 +424,7 @@ internal static class CliCommands
         {
             int? perDay = set.Equals("default", StringComparison.OrdinalIgnoreCase) ? null
                 : int.TryParse(set, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n is >= 1 and <= Energy.MaxPerDay ? n
-                : throw new CliUsageException($"tt energy takes a number from 1 to {Energy.MaxPerDay}, or default.");
+                : throw new CliUsageException($"ot energy takes a number from 1 to {Energy.MaxPerDay}, or default.");
             energy = await s.Store.UpdateAsync(b =>
             {
                 b.SetEnergyPerDay(perDay);
@@ -561,7 +561,7 @@ internal static class CliCommands
     {
         a.Allow();
         var reference = a.Word(0, "which task");
-        var version = a.Word(1, "which version (from tt history)");
+        var version = a.Word(1, "which version (from ot history)");
         var id = await s.Read(b => TaskResolver.Resolve(b, reference).Id).ConfigureAwait(false);
         await s.History.Required.RestoreTaskAsync(id, version, s.Actor).ConfigureAwait(false);
         await s.SaveVersion().ConfigureAwait(false);
@@ -610,7 +610,7 @@ internal static class CliCommands
                 await s.Print(result, (o, r) => o.Line($"Tasks folder is now {r.Path}. Restart One Thing to switch.")).ConfigureAwait(false);
                 break;
             default:
-                throw new CliUsageException("tt vault takes guide, obsidian, or use <folder>.");
+                throw new CliUsageException("ot vault takes guide, obsidian, or use <folder>.");
         }
     }
 
@@ -619,10 +619,10 @@ internal static class CliCommands
         a.Allow("powershell", "bash", "url", "name", "timeout", "group", "tag", "label", "actor", "event");
         var store = new OneThing.Server.Hooks.HookStore(s.Options.DataDirectory);
 
-        // tt run by an agent (--as / TT_AGENT): what it adds or changes waits for the person's approval, like in the app.
+        // ot run by an agent (--as / ONETHING_AGENT): what it adds or changes waits for the person's approval, like in the app.
         var author = s.Actor.Kind == ActorKind.Agent ? new OneThing.Server.Hooks.HookAuthor(s.Actor.Name ?? "agent", Trusted: false) : OneThing.Server.Hooks.HookAuthor.You;
         var verb = a.Words.Count > 0 ? a.Words[0].ToLowerInvariant() : "list";
-        string Id() => a.Word(1, "which hook (its id, as tt hooks lists it)");
+        string Id() => a.Word(1, "which hook (its id, as ot hooks lists it)");
         switch (verb)
         {
             case "list":
@@ -634,26 +634,26 @@ internal static class CliCommands
             case "add":
                 var added = store.Add(a.Word(1, "the event (taskCompleted, reminderDue… or *)"), Fill(new OneThing.Server.Hooks.HookSpec(), a), author, s.Now);
                 await s.Print(added, (o, h) => o.Line(h.Hook.NeedsApproval == true
-                    ? $"Added hook {h.Id} for {h.Event}. It waits for approval: tt hooks list shows it (or Settings › Hooks)."
+                    ? $"Added hook {h.Id} for {h.Event}. It waits for approval: ot hooks list shows it (or Settings › Hooks)."
                     : $"Added hook {h.Id} for {h.Event}.")).ConfigureAwait(false);
                 break;
             case "edit":
                 var current = store.Get(Id());
                 var changed = store.Update(current.Id, a.Value("event"), Fill(current.Hook, a), author, s.Now);
-                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval (tt hooks list)." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
+                await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval (ot hooks list)." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
                 break;
             case "enable" or "disable":
                 var toggled = store.SetEnabled(Id(), verb == "enable");
                 await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "approve":
-                // Approves the version you looked at (tt hooks list shows it): a change made since then isn't approved.
+                // Approves the version you looked at (ot hooks list shows it): a change made since then isn't approved.
                 var pending = store.Get(Id());
                 if (a.Words.Count < 3)
                 {
                     var shown = new StringWriter(CultureInfo.InvariantCulture);
                     new CliOutput(shown, s.Zone).HookDetails(pending);
-                    throw new CliUsageException($"Check what it does, then approve that version:\n{shown}tt hooks approve {pending.Id} {pending.Version[..OneThing.Server.Hooks.HookStore.MinVersionPrefix]}");
+                    throw new CliUsageException($"Check what it does, then approve that version:\n{shown}ot hooks approve {pending.Id} {pending.Version[..OneThing.Server.Hooks.HookStore.MinVersionPrefix]}");
                 }
 
                 var approved = store.Approve(pending.Id, a.Words[2], author);
@@ -669,7 +669,7 @@ internal static class CliCommands
                 await s.Print(runs, (o, r) => o.HookRuns(r)).ConfigureAwait(false);
                 break;
             default:
-                throw new CliUsageException("tt hooks takes list, add, edit, enable, disable, approve, remove, test or path.");
+                throw new CliUsageException("ot hooks takes list, add, edit, enable, disable, approve, remove, test or path.");
         }
     }
 
@@ -709,7 +709,7 @@ internal static class CliCommands
 
         var group = await s.Read(b => b.Groups[0].Name).ConfigureAwait(false);
         var task = new OneThing.Server.Hooks.EventTask(Guid.Empty, "Example task", ["Example task"], group, [], [], "normal", null, eventName == "taskCompleted", null, null);
-        var e = new OneThing.Server.Hooks.TaskEvent(OneThing.Server.Hooks.TaskEvent.CurrentVersion, $"test-{Guid.NewGuid():N}"[..17], eventName, s.Now, new OneThing.Server.Hooks.EventActor("user", null), "A test from tt hooks test", task);
+        var e = new OneThing.Server.Hooks.TaskEvent(OneThing.Server.Hooks.TaskEvent.CurrentVersion, $"test-{Guid.NewGuid():N}"[..17], eventName, s.Now, new OneThing.Server.Hooks.EventActor("user", null), "A test from ot hooks test", task);
         using var service = new OneThing.Server.Hooks.HookService(s.Store, new ServerEvents(), store, s.Options, TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<OneThing.Server.Hooks.HookService>.Instance);
         return await service.RunAsync(e).ConfigureAwait(false);
     }

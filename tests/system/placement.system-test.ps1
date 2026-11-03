@@ -1,7 +1,7 @@
 # End-to-end placement test against the real One Thing sidebar on the live Windows shell.
 # Drives the UI like a user (UI Automation): Menu > Position > Dock left / Float, Always on top,
 # then restarts the app to verify the placement is remembered.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5402)
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("onething-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5402)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"

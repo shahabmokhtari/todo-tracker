@@ -7,13 +7,13 @@ using OneThing.Server;
 namespace OneThing.Cli.Tests;
 
 /// <summary>
-/// docs/mcp.md and docs/cli.md are made from the code (the MCP tools and the tt commands), so what agents and people
+/// docs/mcp.md and docs/cli.md are made from the code (the MCP tools and the ot commands), so what agents and people
 /// read is what exists. A change to a tool or a command fails here until the docs are made again:
-/// <c>TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests</c>, then commit them.
+/// <c>ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests</c>, then commit them.
 /// </summary>
 public sealed class ReferenceDocsTests
 {
-    private const string Generated = "<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->";
+    private const string Generated = "<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->";
 
     private static readonly string Root = FindRoot();
 
@@ -21,25 +21,25 @@ public sealed class ReferenceDocsTests
     public void The_MCP_tool_reference_is_current() => Check(Path.Combine(Root, "docs", "mcp.md"), McpReference());
 
     [Fact]
-    public void The_tt_command_reference_is_current() => Check(Path.Combine(Root, "docs", "cli.md"), CliReference());
+    public void The_command_line_reference_is_current() => Check(Path.Combine(Root, "docs", "cli.md"), CliReference());
 
     [Fact]
     public void The_skill_and_the_server_instructions_tell_agents_about_every_tool()
     {
         var skill = File.ReadAllText(Path.Combine(Root, "integrations", "agent-plugin", "skills", "onething", "SKILL.md"));
         Assert.All(Tools(), t => Assert.True(skill.Contains($"`{t.Name}`", StringComparison.Ordinal), $"SKILL.md doesn't mention {t.Name}"));
-        Assert.All(CliCommands.All.Keys.Where(c => c != "mcp"), c => Assert.True(skill.Contains($"`tt {c}", StringComparison.Ordinal), $"SKILL.md doesn't mention tt {c}"));
+        Assert.All(CliCommands.All.Keys.Where(c => c != "mcp"), c => Assert.True(skill.Contains($"`ot {c}", StringComparison.Ordinal), $"SKILL.md doesn't mention ot {c}"));
     }
 
     private static void Check(string path, string expected)
     {
-        if (Environment.GetEnvironmentVariable("TT_WRITE_DOCS") == "1")
+        if (Environment.GetEnvironmentVariable("ONETHING_WRITE_DOCS") == "1")
         {
             File.WriteAllText(path, expected);
         }
 
         var actual = File.Exists(path) ? File.ReadAllText(path).ReplaceLineEndings("\n") : string.Empty;
-        Assert.True(actual == expected, $"{Path.GetFileName(path)} is out of date: run TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests, and commit it.");
+        Assert.True(actual == expected, $"{Path.GetFileName(path)} is out of date: run ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests, and commit it.");
     }
 
     private static IEnumerable<(string Name, McpServerToolAttribute Tool, MethodInfo Method)> Tools() =>
@@ -56,7 +56,7 @@ public sealed class ReferenceDocsTests
         Line();
         Line(Generated);
         Line();
-        Line("One Thing's MCP server is `tt mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while");
+        Line("One Thing's MCP server is `onething mcp` (stdio; works without the app running) or `http://127.0.0.1:5317/mcp` while");
         Line("the app runs (with the API token). Setup for each AI app: [ai-connectors.md](ai-connectors.md). Changes are");
         Line("attributed to the agent and versioned; there is deliberately no tool that deletes a task.");
         Line();
@@ -125,15 +125,16 @@ public sealed class ReferenceDocsTests
     {
         var text = new StringBuilder();
         void Line(string line = "") => text.Append(line).Append('\n');
-        Line("# The `tt` command");
+        Line("# The `ot` command");
         Line();
         Line(Generated);
         Line();
-        Line("`tt` reads and changes your tasks (the markdown files in your tasks folder) from a terminal or a script, without");
-        Line("the app running, and `tt mcp` is the MCP server for AI apps. It's next to the app on Windows, in `~/.local/bin`");
-        Line("with the Linux install, or `dotnet tool install -g OneThing.Cli` ([ai-connectors.md](ai-connectors.md#get-tt)).");
+        Line("`ot` reads and changes your tasks (the markdown files in your tasks folder) from a terminal or a script, without");
+        Line("the app running, and `onething mcp` is the MCP server for AI apps. `ot` is the short name of `onething`: both work.");
+        Line("They're in the `cli` folder next to the app on Windows, in `~/.local/bin` with the Linux install, or");
+        Line("`dotnet tool install -g OneThing.Cli` (as `onething`) ([ai-connectors.md](ai-connectors.md#get-ot)).");
         Line();
-        Line("`<task>` is an id (or its first 6+ characters, as `tt` prints them) or words from the title. Exit codes: `0` done,");
+        Line("`<task>` is an id (or its first 6+ characters, as `ot` prints them) or words from the title. Exit codes: `0` done,");
         Line("`1` couldn't (the reason is on stderr), `2` wrong usage.");
         Line();
         Line("## Options for every command");
@@ -152,13 +153,13 @@ public sealed class ReferenceDocsTests
         Line("| --- | --- |");
         foreach (var c in CliCommands.All.Values)
         {
-            Line($"| [`tt {c.Name}`](#tt-{c.Name}) | {Cell(c.Summary)} |");
+            Line($"| [`ot {c.Name}`](#ot-{c.Name}) | {Cell(c.Summary)} |");
         }
 
         foreach (var c in CliCommands.All.Values)
         {
             Line();
-            Line($"### tt {c.Name}");
+            Line($"### ot {c.Name}");
             Line();
             Line(c.Summary + ".");
             Line();

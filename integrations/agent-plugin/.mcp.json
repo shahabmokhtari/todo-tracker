@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "onething": {
-      "command": "tt",
+      "command": "onething",
       "args": [
         "mcp"
       ]

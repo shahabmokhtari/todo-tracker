@@ -4,7 +4,7 @@ namespace OneThing.Server.Tests;
 
 public sealed class VaultPathTests : IDisposable
 {
-    private readonly string _data = Directory.CreateTempSubdirectory("tt-paths-").FullName;
+    private readonly string _data = Directory.CreateTempSubdirectory("onething-paths-").FullName;
 
     public void Dispose() => Directory.Delete(_data, recursive: true);
 

@@ -364,7 +364,7 @@ public partial class App : Application
     private async Task<int> RunSmokeTestAsync(StartupArgs args)
     {
         var log = new List<string>();
-        var dataDir = args.DataDirectory ?? Path.Combine(Path.GetTempPath(), "tt-smoke-" + Guid.NewGuid().ToString("N"));
+        var dataDir = args.DataDirectory ?? Path.Combine(Path.GetTempPath(), "onething-smoke-" + Guid.NewGuid().ToString("N"));
         var port = args.Port ?? FreePort();
         var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         try

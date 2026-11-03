@@ -49,7 +49,7 @@ public sealed class ServerFixture : IAsyncDisposable
 
     public static async Task<ServerFixture> StartAsync(Action<OneThingServerOptions>? configure = null, Action<IServiceCollection>? services = null)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "tt-server-" + Guid.NewGuid().ToString("N"));
+        var dir = Path.Combine(Path.GetTempPath(), "onething-server-" + Guid.NewGuid().ToString("N"));
         var options = new OneThingServerOptions
         {
             DataDirectory = dir,

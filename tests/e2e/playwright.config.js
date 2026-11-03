@@ -7,11 +7,11 @@ const token = 'e2e-token-0123456789abcdefghijklmnop';
 // The stand-in issues relay (feedback.spec.js).
 const relayPort = Number((process.env.E2E_RELAY_PORT ??= '5397'));
 // Set once (workers inherit it): specs read the owner key from here.
-const dataDir = (process.env.TT_E2E_DATA ??= path.join(os.tmpdir(), `tt-e2e-${Date.now()}`));
+const dataDir = (process.env.ONETHING_E2E_DATA ??= path.join(os.tmpdir(), `onething-e2e-${Date.now()}`));
 const configuration = process.env.E2E_CONFIGURATION || 'Debug';
 // Ask AI talks to a scripted agent, never to a real Copilot/Claude that happens to be installed.
 const fakeAgent = path.resolve(`../FakeAcpAgent/bin/${configuration}/net10.0/FakeAcpAgent.dll`);
-const noAgents = path.join(os.tmpdir(), 'tt-e2e-no-agents');
+const noAgents = path.join(os.tmpdir(), 'onething-e2e-no-agents');
 
 export default defineConfig({
   testDir: '.',

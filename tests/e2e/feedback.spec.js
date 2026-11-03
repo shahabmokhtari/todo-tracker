@@ -37,7 +37,7 @@ test.afterAll(async () => {
 
 /** The app as the person at this computer opens it (the Windows app and the tray do the same with the owner key). */
 async function openAsOwner(page, request, where) {
-  const ownerKey = fs.readFileSync(path.join(process.env.TT_E2E_DATA, 'owner-key'), 'utf8').trim();
+  const ownerKey = fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim();
   const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-OneThing-Owner-Key': ownerKey }, data: { return: where } })).json();
   await page.goto(launch.url);
 }

@@ -162,7 +162,7 @@ public sealed class SecurityTests : IAsyncLifetime
         var ok = await client.PostAsJsonAsync("/api/login", new { token = ServerFixture.Token });
 
         Assert.Equal(HttpStatusCode.NoContent, ok.StatusCode);
-        Assert.Contains(ok.Headers.GetValues("Set-Cookie"), c => c.StartsWith("tt_session=", StringComparison.Ordinal));
+        Assert.Contains(ok.Headers.GetValues("Set-Cookie"), c => c.StartsWith("onething_session=", StringComparison.Ordinal));
     }
 
     [Fact]

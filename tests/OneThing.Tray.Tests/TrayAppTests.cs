@@ -6,7 +6,7 @@ namespace OneThing.Tray.Tests;
 
 public sealed class TrayAppTests : IDisposable
 {
-    private readonly string _data = Directory.CreateTempSubdirectory("tt-tray-").FullName;
+    private readonly string _data = Directory.CreateTempSubdirectory("onething-tray-").FullName;
 
     public void Dispose()
     {
@@ -47,7 +47,7 @@ public sealed class TrayAppTests : IDisposable
     [Fact]
     public void The_command_line_names_the_data_folder_and_port()
     {
-        Assert.Equal(new TrayArgs("/tmp/tt", 5400, SmokeTest: true), TrayArgs.Parse(["--data", "/tmp/tt", "--port", "5400", "--smoke-test"]));
+        Assert.Equal(new TrayArgs("/tmp/onething", 5400, SmokeTest: true), TrayArgs.Parse(["--data", "/tmp/onething", "--port", "5400", "--smoke-test"]));
         Assert.Equal(new TrayArgs(), TrayArgs.Parse(["--port", "not-a-port", "--unknown"]));
         var linked = TrayArgs.Parse(["onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f"]);
         Assert.Equal("/#/task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", linked.AppPath);

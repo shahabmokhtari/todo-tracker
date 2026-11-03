@@ -421,10 +421,10 @@ public sealed partial class HookService : BackgroundService
             info.ArgumentList.Add(hook.Bash!);
         }
 
-        info.Environment["TT_EVENT"] = e.Event;
-        info.Environment["TT_EVENT_ID"] = e.Id;
-        info.Environment["TT_TASK_ID"] = e.Task?.Id.ToString();
-        info.Environment["TT_TASK_TITLE"] = e.Task?.Title;
+        info.Environment["ONETHING_EVENT"] = e.Event;
+        info.Environment["ONETHING_EVENT_ID"] = e.Id;
+        info.Environment["ONETHING_TASK_ID"] = e.Task?.Id.ToString();
+        info.Environment["ONETHING_TASK_TITLE"] = e.Task?.Title;
         foreach (var (key, value) in hook.Env ?? [])
         {
             info.Environment[key] = value;

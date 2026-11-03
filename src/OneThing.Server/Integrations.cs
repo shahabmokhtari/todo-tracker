@@ -7,7 +7,7 @@ namespace OneThing.Server;
 /// <param name="Storage">Where the tasks live: null, the tasks folder; <see cref="SettingsStore.GitHubStorage"/>, GitHub
 /// (no tasks folder: the app keeps its copy in its own data folder).</param>
 /// <param name="ActiveStorage">Where they live now: <see cref="Storage"/> takes effect when the app next starts (only the
-/// app moves them; <c>tt</c> and <c>tt mcp</c> keep using this one until then).</param>
+/// app moves them; <c>ot</c> and <c>onething mcp</c> keep using this one until then).</param>
 public sealed record ServerSettings(string? TeamsWebhookUrl, string? VaultPath = null, string? Theme = null, IReadOnlyDictionary<string, PlanSettings>? Plan = null, string? Storage = null, string? ActiveStorage = null);
 
 public sealed record SettingsDto(bool TeamsConfigured, string? TeamsWebhookHost, string Theme);

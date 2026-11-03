@@ -786,7 +786,7 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await expect(pending).toContainText('Added or changed by claude');
   await expect(pending.locator('.hook-sample')).toContainText('bash: curl -d @- https://example.com/push');
   await expect(pending.locator('.hook-sample')).toContainText('Time limit: 20 s');
-  await expect(pending).toContainText('tt hooks approve');
+  await expect(pending).toContainText('ot hooks approve');
   await expect(pending.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 
   // Change it: the form keeps what it doesn't show; switch it off; remove it.
@@ -809,7 +809,7 @@ test('Hooks: the app asks you about a hook an agent added, and once allowed it j
     await request.delete(`/api/hooks/${x.id}`, { headers: auth });
   }
   const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-OneThing-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
-  const ownerKey = fs.readFileSync(path.join(process.env.TT_E2E_DATA, 'owner-key'), 'utf8').trim();
+  const ownerKey = fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim();
   const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-OneThing-Owner-Key': ownerKey }, data: { return: '/' } })).json();
   await page.goto(launch.url);
 

@@ -152,7 +152,7 @@ public sealed class SyncFixtureTests
             Deleted = [new SyncTombstone(SyncKeys.Task(Guid.Parse("7b0c2f9e-0000-4000-8000-000000000009")), SyncHash.Of(Encoding.UTF8.GetBytes("# Old\n")), new DateTimeOffset(2026, 1, 4, 18, 30, 0, TimeSpan.Zero))],
         };
 
-        var temp = Path.Combine(Path.GetTempPath(), "tt-fixture-" + Guid.NewGuid().ToString("N"));
+        var temp = Path.Combine(Path.GetTempPath(), "onething-fixture-" + Guid.NewGuid().ToString("N"));
         try
         {
             var folder = new FolderRemote(temp);

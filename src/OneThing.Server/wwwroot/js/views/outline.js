@@ -7,8 +7,8 @@ import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus } from './common.js';
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
-const EXPANDED_KEY = 'tt.outline.expanded';
-const DONE_KEY = 'tt.outline.showDone';
+const EXPANDED_KEY = 'onething.outline.expanded';
+const DONE_KEY = 'onething.outline.showDone';
 
 export function createOutlineView(ctx) {
   const { h, icon } = ctx;

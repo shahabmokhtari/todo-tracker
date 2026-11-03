@@ -191,7 +191,7 @@ export function createPlanView(ctx) {
     iconBadge(t.icon), h('span', { class: 'plan-task-title' }, t.title, repeatMark(t.repeat), energyMark(t.energy)),
     t.breadcrumb?.length ? h('span', { class: 'muted small' }, t.breadcrumb.join(' › ')) : null,
     back ? h('span', { class: 'muted small plan-back' }, back) : null);
-    li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: t.id, minutes: t.minutes })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); });
+    li.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/onething-task', JSON.stringify({ id: t.id, minutes: t.minutes })); e.dataTransfer.effectAllowed = 'move'; li.classList.add('dragging'); });
     li.addEventListener('dragend', () => li.classList.remove('dragging'));
     return withAccent(li, t.accent);
   }
@@ -247,7 +247,7 @@ export function createPlanView(ctx) {
       // Where in the block it was picked up (from its start), so it lands where it's dropped.
       const segStart = new Date(`${seg.day}T00:00:00`).getTime() + seg.from * 60000;
       const grab = (segStart - start.getTime()) / 60000 + (e.offsetY ?? 0) / PX_PER_MIN;
-      e.dataTransfer.setData('text/tt-task', JSON.stringify({ id: b.id, minutes: b.minutes, grab }));
+      e.dataTransfer.setData('text/onething-task', JSON.stringify({ id: b.id, minutes: b.minutes, grab }));
       el.classList.add('dragging');
     });
     el.addEventListener('dragend', () => el.classList.remove('dragging'));
@@ -301,12 +301,12 @@ export function createPlanView(ctx) {
       }
     }
 
-    col.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('text/tt-task')) { e.preventDefault(); col.classList.add('over'); } });
+    col.addEventListener('dragover', (e) => { if (e.dataTransfer.types.includes('text/onething-task')) { e.preventDefault(); col.classList.add('over'); } });
     col.addEventListener('dragleave', () => col.classList.remove('over'));
     col.addEventListener('drop', (e) => {
       e.preventDefault();
       col.classList.remove('over');
-      const data = JSON.parse(e.dataTransfer.getData('text/tt-task') || 'null');
+      const data = JSON.parse(e.dataTransfer.getData('text/onething-task') || 'null');
       if (!data) return;
       const y = e.clientY - col.getBoundingClientRect().top;
       const minutes = snapMinutes(from + y / PX_PER_MIN - (data.grab ?? 0));

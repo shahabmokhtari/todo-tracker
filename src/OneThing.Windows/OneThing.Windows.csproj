@@ -29,8 +29,23 @@
     <PackageReference Include="Microsoft.Web.WebView2" />
     <ProjectReference Include="..\OneThing.Server\OneThing.Server.csproj" />
     <ProjectReference Include="..\OneThing.Desktop\OneThing.Desktop.csproj" />
-    <!-- Ships tt.exe next to the app, so AI apps can launch "tt mcp" without installing anything else. -->
-    <ProjectReference Include="..\OneThing.Cli\OneThing.Cli.csproj" />
+    <!--
+      The onething command (and its short name ot) ships in a cli folder next to the app, so AI apps can launch
+      "onething mcp" without installing anything else. Not next to OneThing.exe: Windows file names ignore case, so
+      onething.exe and onething.dll would replace the app's own files.
+    -->
+    <ProjectReference Include="..\OneThing.Cli\OneThing.Cli.csproj" ReferenceOutputAssembly="false" Private="false" OutputItemType="ShippedCli" />
   </ItemGroup>
+
+  <Target Name="CopyCliToOutput" AfterTargets="CopyFilesToOutputDirectory">
+    <ItemGroup>
+      <_ShippedCliFile Include="%(ShippedCli.RootDir)%(ShippedCli.Directory)*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ShippedCliFile)" DestinationFolder="$(OutDir)cli" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishCliNextToApp" AfterTargets="Publish">
+    <MSBuild Projects="..\OneThing.Cli\OneThing.Cli.csproj" Targets="Publish" Properties="PublishDir=$([System.IO.Path]::GetFullPath('$(PublishDir)cli'))\" />
+  </Target>
 </Project>
 

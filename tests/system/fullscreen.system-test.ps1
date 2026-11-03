@@ -2,7 +2,7 @@
 # real Windows shell. A stand-in full-screen window (FakeFullScreen.cs) plays the part of the other app; the app is told
 # that only the stand-in is a Remote Desktop client, so a real session on the test machine is never resized.
 # It covers the primary screen and takes the keyboard focus for about half a minute: don't run it while you work.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-fullscreen-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("onething-fullscreen-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"
@@ -81,9 +81,9 @@ function ForeignFullScreen($exclude) {
 }
 
 # The stand-in full-screen app (Windows PowerShell compiles it; PowerShell 7's Add-Type can't make an exe).
-$fakeDir = Join-Path $env:TEMP ("tt-fake-" + [guid]::NewGuid().ToString('N'))
+$fakeDir = Join-Path $env:TEMP ("onething-fake-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $fakeDir | Out-Null
-$fakeExe = Join-Path $fakeDir 'tt-fake-rdp.exe'
+$fakeExe = Join-Path $fakeDir 'onething-fake-rdp.exe'
 $source = Join-Path $PSScriptRoot 'FakeFullScreen.cs'
 powershell.exe -NoProfile -Command "Add-Type -Path '$source' -OutputAssembly '$fakeExe' -OutputType ConsoleApplication"
 if (-not (Test-Path $fakeExe)) { throw 'Could not build the stand-in full-screen app' }
@@ -108,7 +108,7 @@ function CloseApp($proc) {
 $original = WorkArea; $screen = Bounds
 Write-Host "Primary screen $screen, work area $original"
 $env:ONETHING_CLOUD = 'off'
-$env:ONETHING_REMOTE_DESKTOP_CLIENTS = 'tt-fake-rdp'
+$env:ONETHING_REMOTE_DESKTOP_CLIENTS = 'onething-fake-rdp'
 $proc = Start-Process $Exe -ArgumentList '--data', $DataDir, '--port', $Port -PassThru
 try {
   $win = SidebarElement $proc

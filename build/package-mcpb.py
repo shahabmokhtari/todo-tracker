@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Stage a Claude Desktop extension (.mcpb) for one platform from a self-contained `tt` publish.
+"""Stage a Claude Desktop extension (.mcpb) for one platform from a self-contained `onething` publish.
 
 Usage: package-mcpb.py <rid> <publish-dir> <staging-dir>
 Then: npx @anthropic-ai/mcpb pack <staging-dir> onething-<rid>.mcpb
 
-The bundle holds manifest.json, icon.png and server/tt[.exe]. Its manifest only lists the platform the binary runs on.
+The bundle holds manifest.json, icon.png and server/onething[.exe]. Its manifest only lists the platform the binary runs on.
 """
 import json
 import os
@@ -32,16 +32,17 @@ def main() -> int:
     if platform != "win32":
         manifest["server"]["mcp_config"].pop("platform_overrides", None)
 
-    exe = "tt.exe" if platform == "win32" else "tt"
+    exe = "onething.exe" if platform == "win32" else "onething"
     if not (publish / exe).is_file():
-        print(f"{publish / exe} is missing (publish tt for {rid} first)")
+        print(f"{publish / exe} is missing (publish onething for {rid} first)")
         return 1
 
     if staging.exists():
         shutil.rmtree(staging)
     (staging / "server").mkdir(parents=True)
     for item in publish.iterdir():
-        if item.is_file() and item.suffix != ".pdb":
+        # ot (the short name) is a second copy of the same program: Claude Desktop only needs onething.
+        if item.is_file() and item.suffix != ".pdb" and item.stem != "ot":
             shutil.copy2(item, staging / "server" / item.name)
     binary = staging / "server" / exe
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

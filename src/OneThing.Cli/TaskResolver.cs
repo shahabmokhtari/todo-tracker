@@ -4,7 +4,7 @@ using OneThing.Core;
 namespace OneThing.Cli;
 
 /// <summary>
-/// Finds the task a person or agent means: a full id, an id prefix (as printed by <c>tt</c>, 6+ hex digits), or words
+/// Finds the task a person or agent means: a full id, an id prefix (as printed by <c>ot</c>, 6+ hex digits), or words
 /// from its title. An exact title beats a partial one, and <paramref name="prefer"/> (e.g. open tasks for <c>done</c>)
 /// breaks ties. Anything ambiguous is an error that lists the candidates, never a guess.
 /// </summary>
@@ -47,7 +47,7 @@ internal static class TaskResolver
         var partial = board.AllItems().Where(i => words.All(w => i.Title.Contains(w, StringComparison.OrdinalIgnoreCase))).ToList();
         if (partial.Count == 0)
         {
-            throw new ArgumentException($"No task matches \"{text}\". Try: tt list {text}");
+            throw new ArgumentException($"No task matches \"{text}\". Try: ot list {text}");
         }
 
         return Single(partial, text, prefer);
@@ -55,7 +55,7 @@ internal static class TaskResolver
 
     public static string ShortId(Guid id) => id.ToString("N")[..8];
 
-    /// <summary>A full id, or an id prefix as tt prints them.</summary>
+    /// <summary>A full id, or an id prefix as ot prints them.</summary>
     public static bool LooksLikeId(string text)
     {
         var hex = (text ?? string.Empty).Trim().Replace("-", string.Empty, StringComparison.Ordinal);

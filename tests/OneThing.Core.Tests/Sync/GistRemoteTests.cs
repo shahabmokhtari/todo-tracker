@@ -165,7 +165,7 @@ internal sealed class FakeGitHub : HttpMessageHandler
 public sealed class GistRemoteTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 6, 9, 0, 0, TimeSpan.Zero);
-    private readonly string _root = Directory.CreateTempSubdirectory("tt-gist-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("onething-gist-").FullName;
     private readonly FakeGitHub _github = new();
     private readonly HttpClient _http;
     private readonly List<(VaultBoardStore Store, SyncEngine Engine)> _devices = [];

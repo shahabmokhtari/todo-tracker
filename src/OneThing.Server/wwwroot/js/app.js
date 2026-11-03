@@ -45,7 +45,7 @@ function acceptMedia(box, itemId, onUploaded) {
 const $ = (sel) => document.querySelector(sel);
 const state = {
   dashboard: null,
-  group: localStorage.getItem('tt.group') || null,
+  group: localStorage.getItem('onething.group') || null,
   drawerId: null,
   query: '',
   vault: null,
@@ -196,8 +196,8 @@ function toast(message, tone = 'ok') {
 
 function setGroup(id) {
   state.group = id;
-  if (id) localStorage.setItem('tt.group', id);
-  else localStorage.removeItem('tt.group');
+  if (id) localStorage.setItem('onething.group', id);
+  else localStorage.removeItem('onething.group');
 }
 
 // ---------- rendering ----------
@@ -555,7 +555,7 @@ function renderSection(selector, rows, count, emptyText) {
   const section = $(selector);
   section.querySelector('.count').textContent = count ? String(count) : '';
   section.querySelector('.list').replaceChildren(...(rows.length ? rows : [h('li', { class: 'empty' }, emptyText)]));
-  const key = `tt.open.${section.id}`;
+  const key = `onething.open.${section.id}`;
   if (!section.dataset.bound) {
     section.dataset.bound = '1';
     const saved = localStorage.getItem(key);
@@ -1601,7 +1601,7 @@ function moveDialog(item) {
 /** The size button: this task changes size now, and tasks open at that size from now on. */
 function setDrawerFull(full, id) {
   state.drawerFull = full;
-  localStorage.setItem('tt.drawer.full', full ? '1' : '0');
+  localStorage.setItem('onething.drawer.full', full ? '1' : '0');
   openDrawer(id, { full });
 }
 
@@ -1921,7 +1921,7 @@ const shell = createShell(ctx);
 const later = createLater(ctx);
 ctx.pluginHost = pluginHost;
 ctx.views = { board: createBoardView(ctx), tasks: createOutlineView(ctx), done: createDoneView(ctx), reports: createReportsView(ctx), plan: createPlanView(ctx), settings: createSettingsView(ctx) };
-state.drawerFull = localStorage.getItem('tt.drawer.full') === '1';
+state.drawerFull = localStorage.getItem('onething.drawer.full') === '1';
 
 /** A view's own background refresh waits while something in it is being typed in or dragged. */
 function refreshViewQuietly() {

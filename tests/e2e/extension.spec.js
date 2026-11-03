@@ -11,7 +11,7 @@ const extensionDir = fileURLToPath(new URL('../../extension', import.meta.url));
 // builds ignore --load-extension, so this always uses Playwright's Chromium).
 test('Browser extension: loads unpacked, pairs with a code, and shows what to do now', async ({ request, baseURL }) => {
   test.skip(!fs.existsSync(chromium.executablePath()), 'Needs Playwright’s Chromium: npx playwright install chromium');
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'tt-ext-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ext-'));
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
     args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`],

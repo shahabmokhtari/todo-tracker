@@ -38,8 +38,8 @@ struct AddPlace: Equatable {
 struct TasksOutlineView: View {
     @ObservedObject var model: BoardModel
     @Environment(\.shellState) private var shell
-    @AppStorage("tt.outline.expanded") private var expandedText = ""
-    @AppStorage("tt.outline.showDone") private var showDone = false
+    @AppStorage("onething.outline.expanded") private var expandedText = ""
+    @AppStorage("onething.outline.showDone") private var showDone = false
     @State private var editing: UUID?
     @State private var titleDraft = ""
     @State private var adding: AddPlace?

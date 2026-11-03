@@ -50,7 +50,7 @@ Plan the offsite @next-week            →  back next Monday 9:00   (also @fri, 
 next Monday, in a week or a month (each says when, e.g. *Fri 9:00*). Or **Pick a time…** and type it the way you'd say
 it (`next week`, `fri 14:30`, `3d`, `weekend`, `2026-03-01 14:00`; it shows when that is before you snooze), or pick a
 date. Or **After another task…**: it waits until that task is done, then comes back with a reminder. Every app offers
-the same choices (`tt snooze <task> next week`, `tt snooze <task> after <other task>`, and the AI tools too).
+the same choices (`ot snooze <task> next week`, `ot snooze <task> after <other task>`, and the AI tools too).
 
 **Again and again?** Type a rule in a task's **Repeat** box: `every weekday`, `every 2 weeks on Monday, Thursday`,
 `every month on the last Friday`, `every 3 days when done`. Done moves it to its next time (deadline and all) instead
@@ -58,7 +58,7 @@ of finishing it; it still counts as done today. Done by mistake? **Reopen** it (
 with the subtasks you'd already done still done.
 
 **Your own automations.** Hooks run a script or call a webhook when a task is done, a reminder goes off, a break
-starts… Add them in Settings › Hooks, with `tt hooks add`, or ask your AI agent (the app asks you to allow its hooks: Allow once and they just run).
+starts… Add them in Settings › Hooks, with `ot hooks add`, or ask your AI agent (the app asks you to allow its hooks: Allow once and they just run).
 Extensions can listen to `GET /api/events`. See [docs/hooks.md](hooks.md).
 
 ## The full app (web and app window)
@@ -85,7 +85,7 @@ The web app (and the app window on Windows) has six views; switch with the side 
 hour, in its details (or ⋯ › Energy on a card in the sidebar, on a Mac or an iPhone; not said counts as ⚡). Say how much you have in a day in Settings ›
 Energy (10 unless you change it; every app uses the same number). Today then says "⚡ 4.5 of 10 planned today", and
 each day in the Plan view has a meter: its blocks' hours times their ⚡. Past what you have, it turns red, so you can
-move something to another day before you run out. `tt energy 8` and `tt edit <task> --energy 3` do it from a terminal,
+move something to another day before you run out. `ot energy 8` and `ot edit <task> --energy 3` do it from a terminal,
 and AI apps can too.
 
 Open a task to edit everything in one place; the expand button makes it full size (with its own address, so Back
@@ -104,7 +104,7 @@ waits 24 hours and then comes back with a reminder.
 `onething://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
 named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
 starts if it wasn't running), on macOS, iPhone and Android the task's details open,
-and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
+and on Linux the full window opens on it. `ot show` prints a task's link, `ot open <task>` opens it, and AI apps get
 it with every task (`link`). The app registers the link for you when it starts (Windows: per user, no admin rights;
 Linux: `install.sh`).
 
@@ -228,15 +228,15 @@ either side. See [connectors.md](connectors.md).
 ## Hooks: your own automations
 
 Run a script or call a webhook when a task is done, a reminder goes off, a break starts… Add them in Settings › Hooks
-or with `tt hooks add`; an AI agent can add them too (you're asked to allow each one). Extensions can follow every
+or with `ot hooks add`; an AI agent can add them too (you're asked to allow each one). Extensions can follow every
 event at `GET /api/events`. See [hooks.md](hooks.md).
 
 ## Linux
 
 CI builds `onething-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
-(add `--autostart` to start it with your session): it puts One Thing in your app menu and `onething` and `tt` in
-`~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the AppIndicator extension. A second start opens
-the running one's window.
+(add `--autostart` to start it with your session): it puts One Thing in your app menu, and `onething-tray` (the app) and
+the `onething` and `ot` commands in `~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the
+AppIndicator extension. A second start opens the running one's window.
 
 ## The iPhone, iPad and Mac app
 

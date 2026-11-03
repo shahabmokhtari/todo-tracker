@@ -3,15 +3,15 @@ namespace OneThing.Core.Vault;
 /// <summary>The <c>AGENTS.md</c> written at the vault root so any AI tool reading the folder knows the format.</summary>
 internal static class VaultGuide
 {
-    public const string Marker = "<!-- onething-guide v4 -->";
+    public const string Marker = "<!-- onething-guide v5 -->";
 
     public const string Text = Marker + """
 
         # One Thing vault
 
         This folder is a One Thing task list stored as plain markdown. It works as (part of) an Obsidian vault.
-        People, the One Thing apps, and AI agents all edit the same files. Prefer the `tt` CLI or the One Thing MCP
-        tools when they are available; editing files directly is fine too.
+        People, the One Thing apps, and AI agents all edit the same files. Prefer the `ot` command (also `onething`) or the
+        One Thing MCP tools when they are available; editing files directly is fine too.
 
         ## Layout
 

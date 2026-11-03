@@ -8,7 +8,7 @@ public sealed class FolderRemoteTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 10, 6, 9, 0, 0, TimeSpan.Zero);
     private static readonly byte[] Content = "Plan the trip"u8.ToArray();
-    private readonly string _root = Directory.CreateTempSubdirectory("tt-folder-remote-").FullName;
+    private readonly string _root = Directory.CreateTempSubdirectory("onething-folder-remote-").FullName;
 
     public void Dispose() => Directory.Delete(_root, recursive: true);
 

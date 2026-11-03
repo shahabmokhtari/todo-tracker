@@ -104,7 +104,7 @@ class TaskBoardTest {
 
     @Test
     fun theBoardRoundTripsThroughItsFileWithABackup() {
-        val dir = Files.createTempDirectory("tt-android").toFile()
+        val dir = Files.createTempDirectory("onething-android").toFile()
         try {
             val store = BoardFileStore(File(dir, "board.json"))
             val board = TaskBoard()
@@ -156,7 +156,7 @@ class TaskBoardTest {
 
     @Test
     fun aDamagedBoardWithoutAGoodCopyIsKeptAsideAndAFreshOneStarts() {
-        val dir = Files.createTempDirectory("tt-android").toFile()
+        val dir = Files.createTempDirectory("onething-android").toFile()
         try {
             File(dir, "board.json").writeText("{ not json")
             val store = BoardFileStore(File(dir, "board.json"))

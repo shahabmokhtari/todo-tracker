@@ -24,7 +24,7 @@ import org.junit.Test
 
 /** Nothing is ever lost: the trash keeps 30 days from when a task was trashed, and changes are all or nothing. */
 class VaultSafetyTest {
-    private val dir: File = Files.createTempDirectory("tt-safety").toFile()
+    private val dir: File = Files.createTempDirectory("onething-safety").toFile()
     private val root = File(dir, "vault")
     private var now = Instant.parse("2026-03-05T14:00:00Z")
     private fun open() = VaultStore.open(root, ZoneOffset.UTC, { now })

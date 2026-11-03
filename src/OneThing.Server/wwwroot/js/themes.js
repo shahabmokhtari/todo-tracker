@@ -34,8 +34,8 @@ export function applyTheme(theme) {
   if (value === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = value;
   try {
-    if (value === 'system') localStorage.removeItem('tt.theme');
-    else localStorage.setItem('tt.theme', value);
+    if (value === 'system') localStorage.removeItem('onething.theme');
+    else localStorage.setItem('onething.theme', value);
   } catch {
     // Storage off: the choice still applies to this page.
   }

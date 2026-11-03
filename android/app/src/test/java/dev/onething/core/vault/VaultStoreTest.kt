@@ -16,7 +16,7 @@ import org.junit.Test
 
 /** The phone's tasks folder: the files are the truth, a change writes only what it touched, nothing is lost. */
 class VaultStoreTest {
-    private val dir: File = Files.createTempDirectory("tt-store").toFile()
+    private val dir: File = Files.createTempDirectory("onething-store").toFile()
     private val root = File(dir, "vault")
     private var now = Instant.parse("2026-01-05T14:00:00Z")
     private fun open() = VaultStore.open(root, ZoneOffset.UTC, { now })

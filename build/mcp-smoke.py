@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke test an MCP server binary over stdio: initialize, create a task, check the markdown file, exit cleanly.
 
-Usage: mcp-smoke.py <path-to-tt>
+Usage: mcp-smoke.py <path-to-onething>
 """
 import json
 import os
@@ -16,7 +16,7 @@ def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 2
-    data = tempfile.mkdtemp(prefix="tt-smoke-")
+    data = tempfile.mkdtemp(prefix="onething-smoke-")
     vault = os.path.join(data, "vault")
     os.makedirs(vault)
     proc = subprocess.Popen(

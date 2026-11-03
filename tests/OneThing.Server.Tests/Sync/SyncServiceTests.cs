@@ -65,7 +65,7 @@ public sealed class CloudDetectionTests
     [Fact]
     public async Task The_gist_needs_a_github_sign_in_which_is_looked_up_in_the_background()
     {
-        var dir = Directory.CreateTempSubdirectory("tt-gist-").FullName;
+        var dir = Directory.CreateTempSubdirectory("onething-gist-").FullName;
         try
         {
             var options = new OneThingServerOptions { DataDirectory = dir };
@@ -100,7 +100,7 @@ public sealed class CloudDetectionTests
 /// <summary>Two app instances (two "computers") sharing one fake OneDrive folder.</summary>
 public sealed class SyncApiTests : IAsyncLifetime
 {
-    private readonly string _cloud = Directory.CreateTempSubdirectory("tt-onedrive-").FullName;
+    private readonly string _cloud = Directory.CreateTempSubdirectory("onething-onedrive-").FullName;
     private ServerFixture _laptop = null!;
     private ServerFixture _desktop = null!;
 
@@ -322,7 +322,7 @@ public sealed class SyncRobustnessTests
     [Fact]
     public async Task The_background_loop_syncs_without_being_asked()
     {
-        var cloud = Directory.CreateTempSubdirectory("tt-onedrive-").FullName;
+        var cloud = Directory.CreateTempSubdirectory("onething-onedrive-").FullName;
         try
         {
             await using var app = await ServerFixture.StartAsync(

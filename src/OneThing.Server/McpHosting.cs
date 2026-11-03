@@ -32,7 +32,7 @@ public static class McpInfo
 }
 
 /// <summary>
-/// The MCP server over stdio (<c>tt mcp</c>), for AI apps that launch local servers: Claude Desktop, Claude Code,
+/// The MCP server over stdio (<c>onething mcp</c>), for AI apps that launch local servers: Claude Desktop, Claude Code,
 /// Copilot CLI, VS Code. It works on the same vault as the app, whether or not the app is running.
 /// </summary>
 public static class StdioMcpHost

@@ -7,7 +7,7 @@ namespace OneThing.Server.Tests.AgentChat;
 public sealed class AgentChatServiceTests : IAsyncLifetime
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
-    private readonly string _dir = Directory.CreateTempSubdirectory("tt-chat-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("onething-chat-").FullName;
     private AgentChatService _chat = null!;
 
     private string Log => Path.Combine(_dir, "agent.log");
@@ -41,7 +41,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         {
             WorkDirectory = Path.Combine(_dir, "work"),
             SettingsPath = Path.Combine(_dir, "agent-chat.json"),
-            Mcp = new AgentLaunch("onething", "C:\\Tools\\tt.exe", ["mcp"], _dir, new Dictionary<string, string?> { ["ONETHING_VAULT"] = "C:\\Tasks" }),
+            Mcp = new AgentLaunch("onething", "C:\\Tools\\onething.exe", ["mcp"], _dir, new Dictionary<string, string?> { ["ONETHING_VAULT"] = "C:\\Tasks" }),
             McpHttp = new McpHttpServer("http://127.0.0.1:5317/mcp", "secret-token"),
             PermissionTimeout = permissionTimeout ?? TimeSpan.FromMinutes(5),
             StopTimeout = stopTimeout ?? TimeSpan.FromSeconds(10),
@@ -90,7 +90,7 @@ public sealed class AgentChatServiceTests : IAsyncLifetime
         var session = messages.Single(m => m["method"]?.GetValue<string>() == "session/new")["params"]!;
         Assert.Equal(Path.Combine(_dir, "work"), session["cwd"]!.GetValue<string>());
         Assert.Equal("onething", session["mcpServers"]![0]!["name"]!.GetValue<string>());
-        Assert.Equal("C:\\Tools\\tt.exe", session["mcpServers"]![0]!["command"]!.GetValue<string>());
+        Assert.Equal("C:\\Tools\\onething.exe", session["mcpServers"]![0]!["command"]!.GetValue<string>());
         Assert.Equal("ONETHING_VAULT", session["mcpServers"]![0]!["env"]![0]!["name"]!.GetValue<string>());
         var prompts = messages.Where(m => m["method"]?.GetValue<string>() == "session/prompt").Select(m => m["params"]!["prompt"]!.ToJsonString()).ToList();
         Assert.Contains("One Thing", prompts[0], StringComparison.Ordinal);

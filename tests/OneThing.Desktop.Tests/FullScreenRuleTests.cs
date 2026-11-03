@@ -51,9 +51,9 @@ public sealed class FullScreenRuleTests
     public void Which_programs_count_as_remote_desktop_clients_can_be_changed()
     {
         // System tests use a stand-in client, so a real session on the test machine is never resized.
-        var clients = FullScreenRule.RemoteDesktopClients(" tt-fake-rdp , other ");
+        var clients = FullScreenRule.RemoteDesktopClients(" onething-fake-rdp , other ");
 
-        Assert.Equal(Coverage.RemoteDesktop, FullScreenRule.Evaluate([Rdp(3, Left, "TT-FAKE-RDP")], Left, clients).Kind);
+        Assert.Equal(Coverage.RemoteDesktop, FullScreenRule.Evaluate([Rdp(3, Left, "ONETHING-FAKE-RDP")], Left, clients).Kind);
         Assert.Equal(Coverage.Covered, FullScreenRule.Evaluate([Rdp(3, Left, "msrdc")], Left, clients).Kind);
         Assert.Equal(Coverage.RemoteDesktop, FullScreenRule.Evaluate([Rdp(3, Left, "msrdc")], Left, FullScreenRule.RemoteDesktopClients(null)).Kind);
         Assert.Equal(Coverage.RemoteDesktop, FullScreenRule.Evaluate([Rdp(3, Left, "mstsc")], Left, FullScreenRule.RemoteDesktopClients("  ")).Kind);

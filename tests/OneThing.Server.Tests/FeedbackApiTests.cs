@@ -28,7 +28,7 @@ public sealed class FeedbackApiTests : IAsyncLifetime
         var link = new Uri(OneThingHost.CreateLaunchUrl(_server.App.Services));
         using var signIn = _server.Client(authenticated: false);
         using var response = await signIn.GetAsync(link.PathAndQuery);
-        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0];
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("onething_session=", StringComparison.Ordinal)).Split(';')[0];
         var client = _server.Client(authenticated: false);
         client.DefaultRequestHeaders.Add("Cookie", cookie);
         client.DefaultRequestHeaders.Add("X-OneThing-Client", "web");
@@ -182,7 +182,7 @@ public sealed class FeedbackApiTests : IAsyncLifetime
         using var signIn = server.Client(authenticated: false);
         using var launched = await signIn.GetAsync(link.PathAndQuery);
         using var app = server.Client(authenticated: false);
-        app.DefaultRequestHeaders.Add("Cookie", launched.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("tt_session=", StringComparison.Ordinal)).Split(';')[0]);
+        app.DefaultRequestHeaders.Add("Cookie", launched.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("onething_session=", StringComparison.Ordinal)).Split(';')[0]);
         app.DefaultRequestHeaders.Add("X-OneThing-Client", "web");
 
         using var response = await app.PostAsJsonAsync("/api/plugins/feedback", Note(Guid.NewGuid().ToString()));

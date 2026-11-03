@@ -8,7 +8,7 @@ namespace OneThing.Server.Hooks;
 public sealed record HookRemoved(string Removed);
 
 /// <summary>
-/// A hook with its event and handle, as Settings, the API, the AI tools and <c>tt hooks</c> show it. <see cref="Version"/>
+/// A hook with its event and handle, as Settings, the API, the AI tools and <c>ot hooks</c> show it. <see cref="Version"/>
 /// changes with anything about what it does: approving names the version that was looked at.
 /// </summary>
 public sealed record HookEntry(string Id, string Event, HookSpec Hook, string State, string? Problem, string Version)
@@ -47,7 +47,7 @@ public sealed record HookEntry(string Id, string Event, HookSpec Hook, string St
 }
 
 /// <summary>
-/// Who's changing hooks. <see cref="Trusted"/>: the person at this computer (the app, or <c>tt</c>): their hooks run
+/// Who's changing hooks. <see cref="Trusted"/>: the person at this computer (the app, or <c>ot</c>): their hooks run
 /// at once. Otherwise an AI agent or another app with the API token: what it adds or changes waits for approval.
 /// </summary>
 public sealed record HookAuthor(string Name, bool Trusted)
@@ -57,7 +57,7 @@ public sealed record HookAuthor(string Name, bool Trusted)
 
 /// <summary>
 /// <c>hooks.json</c>: reads it (again when it changes on disk) and changes it for the app, the API, the AI tools and
-/// <c>tt hooks</c>. Writes replace the file in one step and never overwrite a file that can't be read (fix it first).
+/// <c>ot hooks</c>. Writes replace the file in one step and never overwrite a file that can't be read (fix it first).
 /// Comments in a hand-edited file don't survive a change made here.
 /// </summary>
 public sealed class HookStore
@@ -201,7 +201,7 @@ public sealed class HookStore
         ArgumentNullException.ThrowIfNull(author);
         if (!author.Trusted)
         {
-            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks of the One Thing app, or with tt hooks approve.");
+            throw new UnauthorizedAccessException("Only you can approve a hook: in Settings › Hooks of the One Thing app, or with ot hooks approve.");
         }
 
         return Change(file =>
@@ -261,7 +261,7 @@ public sealed class HookStore
 
     /// <summary>
     /// Reads the file afresh (never the copy readers share), changes it and writes it back, holding a lock that the
-    /// server and <c>tt</c> share, so neither loses the other's change.
+    /// server and <c>ot</c> share, so neither loses the other's change.
     /// </summary>
     private HookEntry Change(Func<HookFile, string?> change)
     {
@@ -417,7 +417,7 @@ public sealed class HookStore
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{eventName}\n{JsonSerializer.Serialize(content, HookFile.Json)}")));
     }
 
-    /// <summary>The shortest start of a version <c>tt hooks approve</c> accepts (still far too many to guess).</summary>
+    /// <summary>The shortest start of a version <c>ot hooks approve</c> accepts (still far too many to guess).</summary>
     public const int MinVersionPrefix = 12;
 
     private static (string Event, HookSpec Hook) Find(HookFile file, string id) =>
@@ -478,7 +478,7 @@ public sealed class HookStore
 
     // What a command sees besides its own text (variables like BASH_ENV or PATH, its folder) could run other code than
     // what's shown for approval: only you set those.
-    private const string NoEnvForAgents = "An agent can't set or change a hook's environment variables or folder. Ask the user to do it in Settings › Hooks or with tt hooks.";
+    private const string NoEnvForAgents = "An agent can't set or change a hook's environment variables or folder. Ask the user to do it in Settings › Hooks or with ot hooks.";
 
     private static Dictionary<string, string>? Restore(Dictionary<string, string>? given, Dictionary<string, string>? old) =>
         given?.ToDictionary(p => p.Key, p => p.Value == HookEntry.Hidden && old?.TryGetValue(p.Key, out var kept) == true ? kept! : p.Value, StringComparer.Ordinal);

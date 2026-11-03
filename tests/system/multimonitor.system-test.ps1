@@ -2,7 +2,7 @@
 # For every display: Menu > Position > Display N, then Dock right / Dock left / Float. Checks the window lands on that
 # monitor, only that monitor's work area changes, and every work area is restored on exit.
 # Skips (exit 0) on machines with a single monitor, such as CI runners.
-param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("tt-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
+param([string]$Exe, [string]$DataDir = (Join-Path $env:TEMP ("onething-system-" + [guid]::NewGuid().ToString('N'))), [int]$Port = 5403)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms, System.Drawing
 Add-Type @"

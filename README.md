@@ -89,7 +89,7 @@ a meeting, tell you what to do next, break a project into steps, log what it did
 Connect it in one line:
 
 ```bash
-claude mcp add onething --scope user -- tt mcp          # Claude Code
+claude mcp add onething --scope user -- onething mcp    # Claude Code
 copilot plugin install onething@onething            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
 ```
 
@@ -97,7 +97,7 @@ copilot plugin install onething@onething            # GitHub Copilot CLI (after:
 change an agent makes is **attributed to it and versioned**, there's deliberately **no delete tool**, and hooks an
 agent adds wait until you allow them.
 
-📚 [Connect an AI app](docs/ai-connectors.md) · [MCP tools](docs/mcp.md) · [`tt` commands](docs/cli.md) ·
+📚 [Connect an AI app](docs/ai-connectors.md) · [MCP tools](docs/mcp.md) · [`ot` commands](docs/cli.md) ·
 [The skill](integrations/agent-plugin/skills/onething/SKILL.md) · [`llms.txt`](llms.txt)
 
 ## Your tasks are just files
@@ -128,7 +128,7 @@ Documents/OneThing/
 | **Linux** | A tray app that runs everything; click it for the full window |
 | **Web** | The whole app at `http://127.0.0.1:5317` (local only), on any screen |
 | **Browser** | An Edge, Chrome and Safari side panel: glance, capture, and notes that keep the page you were on |
-| **Terminal** | `tt now`, `tt add 'Call the bank @tomorrow'`, `tt done`, with `--json` for scripts |
+| **Terminal** | `ot now`, `ot add 'Call the bank @tomorrow'`, `ot done`, with `--json` for scripts (`ot` is short for `onething`; both work) |
 | **Teams** | Reminder cards in a channel |
 
 Type tasks the way you think: `Deploy ring 2 !! @2h due:tomorrow #release` is a critical task, back in two hours with a
@@ -146,7 +146,7 @@ dotnet run --project src/OneThing.Windows
 The sidebar docks on the right (move it with **⋯ › Position**). Ready-built apps for every platform are attached to each
 [CI run](https://github.com/shahabmokhtari/todo-tracker/actions/workflows/ci.yml) (sign in to GitHub to download):
 `windows-sidebar` (the Windows app), `linux-tray`, `macos-app`, `android-app`, `browser-extension`,
-`safari-extension`, and `ai-connectors` (`tt` and the Claude Desktop extension).
+`safari-extension`, and `ai-connectors` (`ot` and the Claude Desktop extension).
 
 **Linux.** Unpack `linux-tray` and run `./install.sh` (add `--autostart` to start with your session).
 
@@ -167,7 +167,7 @@ to tasks, and more.
 |---|---|
 | [Guide](docs/guide.md) | Using every part of the app |
 | [Connect AI apps](docs/ai-connectors.md) | Claude, Copilot, VS Code, ChatGPT, Copilot Studio |
-| [MCP tools](docs/mcp.md) · [`tt` commands](docs/cli.md) | The full references (made from the code) |
+| [MCP tools](docs/mcp.md) · [`ot` commands](docs/cli.md) | The full references (made from the code) |
 | [Task files](docs/vault-format.md) | The markdown format, for Obsidian and agents |
 | [Sync](docs/sync.md) · [Connectors](docs/connectors.md) | Your computers, Notion, Microsoft To Do, GitHub Issues |
 | [Hooks](docs/hooks.md) · [Plugins](docs/plugins.md) | Automations and the event stream; every extra and its switch |

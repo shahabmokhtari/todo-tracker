@@ -2,7 +2,7 @@ namespace OneThing.Desktop.Tests;
 
 public sealed class SingleInstanceTests
 {
-    private static string Unique() => "tt-test-" + Guid.NewGuid().ToString("N");
+    private static string Unique() => "onething-test-" + Guid.NewGuid().ToString("N");
 
     [Fact]
     public async Task Only_the_first_launch_runs_and_later_ones_ask_it_to_show_itself()

@@ -2,11 +2,11 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <AssemblyName>tt</AssemblyName>
+    <AssemblyName>onething</AssemblyName>
     <RootNamespace>OneThing.Cli</RootNamespace>
-    <Description>One Thing from the terminal and for AI agents: tt now, tt add, tt done, and tt mcp (MCP server over stdio).</Description>
+    <Description>One Thing from the terminal and for AI agents: ot now, ot add, ot done, and onething mcp (MCP server over stdio). ot is the short name for onething.</Description>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>tt</ToolCommandName>
+    <ToolCommandName>onething</ToolCommandName>
     <PackageId>OneThing.Cli</PackageId>
     <Authors>One Thing</Authors>
     <PackageTags>todo;tasks;adhd;mcp;obsidian;cli</PackageTags>
@@ -19,4 +19,24 @@
     <ProjectReference Include="..\OneThing.Server\OneThing.Server.csproj" />
     <InternalsVisibleTo Include="OneThing.Cli.Tests" />
   </ItemGroup>
+
+  <!--
+    ot, the short name: a second copy of the launcher. It starts onething.dll (the name is inside the launcher), so it
+    works wherever onething does. Added like the SDK adds the launcher itself, so projects that ship the command next
+    to them (the tray, the web server, the tests) get ot too. Not in the .NET tool package: a tool has one name.
+  -->
+  <Target Name="AddShortNameLauncher" AfterTargets="_ComputeNETCoreBuildOutputFiles" BeforeTargets="AssignTargetPaths"
+          Condition="'$(AppHostIntermediatePath)' != '' and '$(_IsPacking)' != 'true'">
+    <ItemGroup>
+      <None Include="$(AppHostIntermediatePath)" Link="ot$(_NativeExecutableExtension)">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </None>
+    </ItemGroup>
+  </Target>
+
+  <!-- A single-file publish has no separate launcher: ot is a copy of the whole onething file. -->
+  <Target Name="PublishShortNameSingleFile" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <Copy SourceFiles="$(PublishDir)$(AssemblyName)$(_NativeExecutableExtension)" DestinationFiles="$(PublishDir)ot$(_NativeExecutableExtension)" />
+  </Target>
 </Project>

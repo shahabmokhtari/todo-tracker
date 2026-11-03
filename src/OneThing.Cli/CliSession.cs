@@ -5,7 +5,7 @@ using OneThing.Server;
 
 namespace OneThing.Cli;
 
-/// <summary>One <c>tt</c> invocation: the open vault, who is acting, and how to print.</summary>
+/// <summary>One <c>ot</c> invocation: the open vault, who is acting, and how to print.</summary>
 internal sealed class CliSession : IDisposable
 {
     private readonly CliContext _context;
@@ -84,7 +84,7 @@ internal sealed class CliSession : IDisposable
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
         {
-            await _context.Error.WriteLineAsync($"tt: saved, but couldn't save a version yet ({ex.Message}).").ConfigureAwait(false);
+            await _context.Error.WriteLineAsync($"ot: saved, but couldn't save a version yet ({ex.Message}).").ConfigureAwait(false);
         }
     }
 

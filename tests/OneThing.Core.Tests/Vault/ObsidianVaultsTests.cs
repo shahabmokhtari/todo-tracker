@@ -4,7 +4,7 @@ using OneThing.Core.Vault;
 
 public sealed class ObsidianVaultsTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tt-obsidian-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "onething-obsidian-" + Guid.NewGuid().ToString("N"));
 
     public ObsidianVaultsTests() => Directory.CreateDirectory(_dir);
 

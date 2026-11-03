@@ -32,7 +32,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **Send feedback** | Tell us about a bug or an idea from Settings, the menus or the command palette; it becomes an issue on One Thing's GitHub ([below](#send-feedback)) | Yes |
 
 The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in
-`plugins.json` in the app's data folder and respected by every process (the app, `tt`, and `tt mcp`).
+`plugins.json` in the app's data folder and respected by every process (the app, `ot`, and `onething mcp`).
 
 ## Ask AI
 
@@ -63,7 +63,7 @@ isn't shown twice). Otherwise a new session starts and is given the earlier mess
 ### What it can do
 
 * **It gets One Thing's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
-  endpoint; agents that only support stdio get `tt mcp`. API models use the app's MCP endpoint too, and their changes
+  endpoint; agents that only support stdio get `onething mcp`. API models use the app's MCP endpoint too, and their changes
   are recorded as the model (by its name).
 * **Reading your tasks needs no permission. Changing them asks first,** showing what would change (for example
   *Change your tasks: create task {"title":"Milk"}*): *Allow*, *Allow for this chat*, or *Don't allow*. Allowing for

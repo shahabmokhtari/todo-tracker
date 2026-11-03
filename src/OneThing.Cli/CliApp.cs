@@ -8,7 +8,7 @@ using OneThing.Server;
 namespace OneThing.Cli;
 
 /// <summary>
-/// <c>tt</c>: One Thing from a terminal, scripts and AI agents. It works directly on the tasks folder (the same one
+/// <c>ot</c>: One Thing from a terminal, scripts and AI agents. It works directly on the tasks folder (the same one
 /// the app uses, safely alongside it), so it needs no running app. <c>--json</c> prints the same shapes as the REST API
 /// and MCP tools. Exit codes: 0 ok, 1 the change couldn't be made (message on stderr), 2 wrong usage.
 /// </summary>
@@ -30,7 +30,7 @@ public static class CliApp
         }
         catch (CliUsageException ex)
         {
-            await context.Error.WriteLineAsync($"tt: {ex.Message}").ConfigureAwait(false);
+            await context.Error.WriteLineAsync($"ot: {ex.Message}").ConfigureAwait(false);
             return 2;
         }
 
@@ -45,7 +45,7 @@ public static class CliApp
             var topic = parsed.Command == "help" ? (parsed.Words.Count > 0 ? parsed.Words[0].ToLowerInvariant() : null) : parsed.Command;
             if (topic is not null && !CliCommands.All.ContainsKey(topic))
             {
-                await context.Error.WriteLineAsync($"tt: there is no command \"{topic}\".").ConfigureAwait(false);
+                await context.Error.WriteLineAsync($"ot: there is no command \"{topic}\".").ConfigureAwait(false);
                 return 2;
             }
 
@@ -55,7 +55,7 @@ public static class CliApp
 
         if (!CliCommands.All.TryGetValue(parsed.Command, out var command))
         {
-            await context.Error.WriteLineAsync($"tt: there is no command \"{parsed.Command}\". See tt help.").ConfigureAwait(false);
+            await context.Error.WriteLineAsync($"ot: there is no command \"{parsed.Command}\". See ot help.").ConfigureAwait(false);
             return 2;
         }
 
@@ -74,12 +74,12 @@ public static class CliApp
         }
         catch (CliUsageException ex)
         {
-            await context.Error.WriteLineAsync($"tt: {ex.Message}").ConfigureAwait(false);
+            await context.Error.WriteLineAsync($"ot: {ex.Message}").ConfigureAwait(false);
             return 2;
         }
         catch (Exception ex) when (ex is ArgumentException or KeyNotFoundException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException or IOException or TimeoutException)
         {
-            await context.Error.WriteLineAsync($"tt: {ErrorText.Friendly(ex)}").ConfigureAwait(false);
+            await context.Error.WriteLineAsync($"ot: {ErrorText.Friendly(ex)}").ConfigureAwait(false);
             return 1;
         }
     }

@@ -4,7 +4,7 @@ namespace OneThing.Server.Tests.AgentChat;
 
 public sealed class AgentCatalogTests : IDisposable
 {
-    private readonly string _bin = Directory.CreateTempSubdirectory("tt-agents-").FullName;
+    private readonly string _bin = Directory.CreateTempSubdirectory("onething-agents-").FullName;
 
     public void Dispose() => Directory.Delete(_bin, recursive: true);
 

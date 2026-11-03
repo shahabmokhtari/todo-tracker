@@ -126,7 +126,7 @@ public sealed class PluginHost
         new FeedbackPlugin(),
     ];
 
-    /// <summary>Whether a plugin is switched on in this data folder (for processes without a host, e.g. tt).</summary>
+    /// <summary>Whether a plugin is switched on in this data folder (for processes without a host, e.g. ot).</summary>
     public static bool IsEnabled(string dataDirectory, string id) =>
         BuiltIn.FirstOrDefault(p => p.Info.Id == id) is { } plugin && new PluginSettings(dataDirectory).IsEnabled(plugin.Info);
 
@@ -216,7 +216,7 @@ public sealed class ConnectAiPlugin : ITodoPlugin
     public void MapEndpoints(RouteGroupBuilder group)
     {
         ArgumentNullException.ThrowIfNull(group);
-        group.MapGet("/", (ApiToken token, OneThingServerOptions options) => AiSetups.For(ApiEndpoints.Connection(token, options), options.TtPath ?? AiSetups.FindTt()));
+        group.MapGet("/", (ApiToken token, OneThingServerOptions options) => AiSetups.For(ApiEndpoints.Connection(token, options), options.CliPath ?? AiSetups.FindCli()));
     }
 }
 

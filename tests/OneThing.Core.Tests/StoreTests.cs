@@ -5,7 +5,7 @@ namespace OneThing.Core.Tests;
 public sealed class StoreTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tt-tests-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "onething-tests-" + Guid.NewGuid().ToString("N"));
 
     private string BoardPath => Path.Combine(_dir, "board.json");
 

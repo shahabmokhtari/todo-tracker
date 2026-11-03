@@ -31,7 +31,7 @@ export function createShell(ctx) {
   const { h, icon } = ctx;
   const $ = (s) => document.querySelector(s);
   let current = null;
-  let dismissedBreak = Number(sessionStorage.getItem('tt.break.dismissed')) || null;
+  let dismissedBreak = Number(sessionStorage.getItem('onething.break.dismissed')) || null;
 
   // ---- navigation ------------------------------------------------------------------------------------------------
 
@@ -78,12 +78,12 @@ export function createShell(ctx) {
   async function route() {
     const { view, task, panel } = parseRoute(location.hash);
     if (panel) {
-      if (!current) show(localStorage.getItem('tt.view') || 'today');
+      if (!current) show(localStorage.getItem('onething.view') || 'today');
       return;
     }
 
     if (task) {
-      if (!current) show(localStorage.getItem('tt.view') || 'today');
+      if (!current) show(localStorage.getItem('onething.view') || 'today');
       await ctx.openDrawer(task, { full: true });
       return;
     }
@@ -97,7 +97,7 @@ export function createShell(ctx) {
     const changed = current !== id;
     if (changed && current) ctx.views[current]?.hide?.();
     current = id;
-    localStorage.setItem('tt.view', id);
+    localStorage.setItem('onething.view', id);
     const def = VIEWS.find((v) => v.id === id);
     document.querySelectorAll('[data-view]').forEach((a) => a.setAttribute('aria-current', a.dataset.view === id ? 'page' : 'false'));
     $('#view-title').textContent = def.name;
@@ -142,8 +142,8 @@ export function createShell(ctx) {
   let shown = null;
   let shownAt = 0;
   // The break this window saw (shown, or hidden with "I'm taking it"): when it runs out, it asks about the next focus.
-  let seenBreak = Number(sessionStorage.getItem('tt.break.seen')) || null;
-  let dismissedOver = Number(sessionStorage.getItem('tt.break.over')) || null;
+  let seenBreak = Number(sessionStorage.getItem('onething.break.seen')) || null;
+  let dismissedOver = Number(sessionStorage.getItem('onething.break.over')) || null;
   // The screen can appear mid-sentence: keys and clicks in the first moment are typing, not an answer.
   const settled = () => Date.now() - shownAt > 800;
   const remember = (key, value) => (value ? sessionStorage.setItem(key, String(value)) : sessionStorage.removeItem(key));
@@ -151,10 +151,10 @@ export function createShell(ctx) {
   function hideBreak(key) {
     if (String(key).startsWith('over:')) {
       dismissedOver = Number(String(key).slice(5));
-      remember('tt.break.over', dismissedOver);
+      remember('onething.break.over', dismissedOver);
     } else {
       dismissedBreak = key;
-      remember('tt.break.dismissed', key);
+      remember('onething.break.dismissed', key);
     }
 
     screen.hidden = true;
@@ -167,7 +167,7 @@ export function createShell(ctx) {
     if (!settled()) return;
     hideBreak(key);
     seenBreak = null;
-    remember('tt.break.seen', null);
+    remember('onething.break.seen', null);
     await ctx.act(ctx.post('/api/pomodoro/next', { itemId: ctx.dashboard()?.focus?.id }), 'Focus started');
   }
 
@@ -180,7 +180,7 @@ export function createShell(ctx) {
     const during = on ? breakState(p, now, null) : { show: false };
     if (during.show && seenBreak !== during.until) {
       seenBreak = during.until;
-      remember('tt.break.seen', seenBreak);
+      remember('onething.break.seen', seenBreak);
     }
 
 
@@ -221,7 +221,7 @@ export function createShell(ctx) {
             startButton(true),
             h('button', { class: 'btn ghost light', type: 'button', onclick: () => { if (settled()) hideBreak(key); } }, 'Not now'))));
     } else {
-      const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { if (!settled()) return; hideBreak(key); seenBreak = null; remember('tt.break.seen', null); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
+      const skip = h('button', { class: 'btn ghost light', type: 'button', onclick: async () => { if (!settled()) return; hideBreak(key); seenBreak = null; remember('onething.break.seen', null); await ctx.act(ctx.post('/api/pomodoro/skip')); } }, icon('skip', { size: 16 }), 'Skip the break');
       screen.replaceChildren(
         h('div', { class: 'break-card', tabindex: -1 },
           h('span', { class: 'break-icon' }, icon('coffee', { size: 40 })),

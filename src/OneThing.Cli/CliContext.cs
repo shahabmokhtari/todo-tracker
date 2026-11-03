@@ -1,6 +1,6 @@
 namespace OneThing.Cli;
 
-/// <summary>Where <c>tt</c> reads and writes, and the clock it uses (tests swap these).</summary>
+/// <summary>Where <c>ot</c> reads and writes, and the clock it uses (tests swap these).</summary>
 public sealed class CliContext
 {
     public required TextWriter Out { get; init; }
@@ -30,8 +30,8 @@ public sealed class CliContext
     /// <summary>The git used for version history.</summary>
     public string Git { get; init; } = "git";
 
-    /// <summary>Who changes are attributed to when <c>--as</c> isn't given (<c>TT_AGENT</c>).</summary>
-    public string? Agent { get; init; } = Environment.GetEnvironmentVariable("TT_AGENT");
+    /// <summary>Who changes are attributed to when <c>--as</c> isn't given (<c>ONETHING_AGENT</c>).</summary>
+    public string? Agent { get; init; } = Environment.GetEnvironmentVariable("ONETHING_AGENT");
 
     /// <summary>Opens a onething:// link with the app that handles it (tests record it instead).</summary>
     public Action<string> OpenLink { get; init; } = link => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(link) { UseShellExecute = true })?.Dispose();

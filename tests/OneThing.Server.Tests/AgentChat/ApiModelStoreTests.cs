@@ -5,7 +5,7 @@ namespace OneThing.Server.Tests.AgentChat;
 /// <summary>API models are kept with their keys apart: keys are protected on disk and never handed back out.</summary>
 public sealed class ApiModelStoreTests : IDisposable
 {
-    private readonly string _dir = Directory.CreateTempSubdirectory("tt-models-").FullName;
+    private readonly string _dir = Directory.CreateTempSubdirectory("onething-models-").FullName;
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 

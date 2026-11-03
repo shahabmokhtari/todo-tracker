@@ -363,13 +363,14 @@
         <ul class="ai-grid">
           <li>
             <h3>MCP server</h3>
-            <p><code>tt mcp</code> works with Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor and
+            <p><code>onething mcp</code> works with Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor and
               other MCP apps. It works on your tasks folder directly, even when the app isn't running.</p>
           </li>
           <li>
-            <h3>The <code>tt</code> command</h3>
-            <p>For terminals, scripts and agents that run commands: <code>tt</code>, <code>tt add</code>,
-              <code>tt snooze</code>, <code>tt done</code>. Add <code>--json</code> for scripts.</p>
+            <h3>The <code>ot</code> command</h3>
+            <p>For terminals, scripts and agents that run commands: <code>ot</code>, <code>ot add</code>,
+              <code>ot snooze</code>, <code>ot done</code>. Add <code>--json</code> for scripts. (<code>ot</code> is
+              short for <code>onething</code>: both work.)</p>
           </li>
           <li>
             <h3>Claude Desktop extension</h3>
@@ -383,7 +384,7 @@
         </ul>
 
         <pre class="code" tabindex="0" aria-label="Commands to connect an AI app"><code><span class="c"># Claude Code</span>
-claude mcp add onething --scope user -- tt mcp
+claude mcp add onething --scope user -- onething mcp
 
 <span class="c"># The plugin, with the skill (Claude Code)</span>
 /plugin marketplace add shahabmokhtari/todo-tracker

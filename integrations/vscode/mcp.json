@@ -2,7 +2,7 @@
   "servers": {
     "onething": {
       "type": "stdio",
-      "command": "tt",
+      "command": "onething",
       "args": [
         "mcp"
       ]

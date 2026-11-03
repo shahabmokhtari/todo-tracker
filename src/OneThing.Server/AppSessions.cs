@@ -6,7 +6,7 @@ namespace OneThing.Server;
 
 /// <summary>
 /// Browser sign-ins: each gets its own random secret (the cookie), never the API token. A session opened from a link the
-/// app made itself (the sidebar, the tray, <c>tt</c>, the server's console) is the <b>owner's</b>: the person at this
+/// app made itself (the sidebar, the tray, <c>ot</c>, the server's console) is the <b>owner's</b>: the person at this
 /// computer. One opened by signing in with the API token, or from a link asked for over HTTP with it, isn't: anything
 /// holding the token (an AI agent, a script) could do the same. Kept (hashed) in the data folder so sign-ins survive a
 /// restart.

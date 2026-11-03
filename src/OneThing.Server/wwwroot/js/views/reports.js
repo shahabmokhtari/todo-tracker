@@ -12,7 +12,7 @@ const FALLBACK_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#0ea5e9', 
 export function createReportsView(ctx) {
   const { h, icon } = ctx;
   const root = document.getElementById('view-reports');
-  let days = Number(localStorage.getItem('tt.reports.days')) || 28;
+  let days = Number(localStorage.getItem('onething.reports.days')) || 28;
   let report = null;
   let shown = null;
   // A slow year report that arrives after a later click on "7 days" is dropped.
@@ -71,7 +71,7 @@ export function createReportsView(ctx) {
       h('div', { class: 'view-toolbar' },
         h('div', { class: 'seg', role: 'group', 'aria-label': 'Range' }, ...RANGES.map(([d, text]) => h('button', {
           type: 'button', 'aria-pressed': String(days === d),
-          onclick: () => { days = d; localStorage.setItem('tt.reports.days', String(d)); load(); },
+          onclick: () => { days = d; localStorage.setItem('onething.reports.days', String(d)); load(); },
         }, text))),
         h('span', { class: 'muted small push-right' }, `${new Date(`${r.from}T12:00:00`).toLocaleDateString()} – ${new Date(`${r.to}T12:00:00`).toLocaleDateString()}`)),
       h('div', { class: 'kpis' },

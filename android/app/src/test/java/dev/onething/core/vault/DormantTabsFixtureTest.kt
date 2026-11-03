@@ -22,7 +22,7 @@ class DormantTabsFixtureTest {
         for (c in cases) {
             val o = c.jsonObject
             val name = o.s("name")
-            val dir = Files.createTempDirectory("tt-dormant").toFile()
+            val dir = Files.createTempDirectory("onething-dormant").toFile()
             try {
                 val root = File(dir, "vault")
                 for (folder in o.arr("folders")) File(root, folder.jsonPrimitive.content).mkdirs()

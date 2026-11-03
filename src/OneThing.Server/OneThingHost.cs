@@ -83,7 +83,7 @@ public static class OneThingHost
     }
 
     /// <summary>
-    /// The task store and what the tools need, shared by the web host, <c>tt mcp</c> and the <c>tt</c> CLI. Several of
+    /// The task store and what the tools need, shared by the web host, <c>onething mcp</c> and the <c>ot</c> CLI. Several of
     /// them can use the same vault at once (changes run under a per-vault lock).
     /// </summary>
     public static void AddVaultServices(IServiceCollection services, OneThingServerOptions options)
@@ -120,7 +120,7 @@ public static class OneThingHost
 
     /// <summary>
     /// Moves the tasks where Settings asks them to live (Settings › Connected apps › GitHub), at the app's start: only the
-    /// app's own host does it (never <c>tt</c> or <c>tt mcp</c>, which keep using where they live now), so nothing changed
+    /// app's own host does it (never <c>ot</c> or <c>onething mcp</c>, which keep using where they live now), so nothing changed
     /// before the restart is left behind. Each step can be redone: copies go to a new folder that's then moved into place,
     /// and the location in use changes only once it's all there. Something in the way (a file open in another app) never
     /// stops the app: it keeps using where the tasks are and tries again at the next start. Returns what went wrong.

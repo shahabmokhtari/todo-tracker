@@ -1,10 +1,10 @@
 namespace OneThing.Cli;
 
-/// <summary>A mistake in how <c>tt</c> was called (exit code 2).</summary>
+/// <summary>A mistake in how <c>ot</c> was called (exit code 2).</summary>
 public sealed class CliUsageException(string message) : Exception(message);
 
 /// <summary>
-/// Parsed command line: <c>tt [command] [words…] [--option value]… [--flag]…</c>. Only <c>--long</c> options and a few
+/// Parsed command line: <c>ot [command] [words…] [--option value]… [--flag]…</c>. Only <c>--long</c> options and a few
 /// known short ones are options, so words such as <c>-tech</c> (remove a tag) and <c>-</c> (read stdin) stay words.
 /// </summary>
 internal sealed class CliArgs
@@ -98,7 +98,7 @@ internal sealed class CliArgs
             }
             else
             {
-                throw new CliUsageException($"Unknown option {arg}. See tt help.");
+                throw new CliUsageException($"Unknown option {arg}. See ot help.");
             }
         }
 
@@ -131,7 +131,7 @@ internal sealed class CliArgs
         {
             if (!GlobalNames.Contains(name) && !names.Contains(name, StringComparer.Ordinal) && name != "version")
             {
-                throw new CliUsageException($"tt {Command} doesn't take --{name}. See tt help {Command}.");
+                throw new CliUsageException($"ot {Command} doesn't take --{name}. See ot help {Command}.");
             }
         }
     }
@@ -139,9 +139,9 @@ internal sealed class CliArgs
     public string WordsFrom(int index, string what)
     {
         var text = string.Join(' ', Words.Skip(index)).Trim();
-        return text.Length > 0 ? text : throw new CliUsageException($"Say {what}. See tt help {Command}.");
+        return text.Length > 0 ? text : throw new CliUsageException($"Say {what}. See ot help {Command}.");
     }
 
     public string Word(int index, string what) =>
-        index < Words.Count && Words[index].Trim().Length > 0 ? Words[index] : throw new CliUsageException($"Say {what}. See tt help {Command}.");
+        index < Words.Count && Words[index].Trim().Length > 0 ? Words[index] : throw new CliUsageException($"Say {what}. See ot help {Command}.");
 }

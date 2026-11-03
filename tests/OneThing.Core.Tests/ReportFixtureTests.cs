@@ -8,7 +8,7 @@ namespace OneThing.Core.Tests;
 /// tests/fixtures/reports.json: a board with tracked time (across midnight, the change to winter time, a running timer,
 /// a focus session, an archived task) and the reports for some ranges: totals, per day, per group, top tasks, the
 /// weekday × hour grid and the timeline. The Swift port (ReportFixtureTests) computes the same numbers from the same file.
-/// Regenerate: set TT_WRITE_FIXTURES=1 and run this test.
+/// Regenerate: set ONETHING_WRITE_FIXTURES=1 and run this test.
 /// </summary>
 public sealed class ReportFixtureTests
 {
@@ -20,7 +20,7 @@ public sealed class ReportFixtureTests
     [Fact]
     public void The_reports_fixture_is_what_the_core_reports()
     {
-        if (Environment.GetEnvironmentVariable("TT_WRITE_FIXTURES") == "1")
+        if (Environment.GetEnvironmentVariable("ONETHING_WRITE_FIXTURES") == "1")
         {
             var built = BoardSerializer.Serialize(Build());
             File.WriteAllText(Path.Combine(FixtureFiles.Source(), "reports.json"), Fixture(BoardSerializer.Deserialize(built), JsonNode.Parse(built)!).ToJsonString(FixtureFiles.Pretty).ReplaceLineEndings("\n") + "\n");
@@ -30,7 +30,7 @@ public sealed class ReportFixtureTests
         var fixture = JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "reports.json")))!;
         var board = BoardSerializer.Deserialize(fixture["board"]!.ToJsonString());
         var again = Fixture(board, fixture["board"]!.DeepClone());
-        Assert.True(JsonNode.DeepEquals(fixture, again), "The report rules changed: regenerate tests/fixtures/reports.json (TT_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
+        Assert.True(JsonNode.DeepEquals(fixture, again), "The report rules changed: regenerate tests/fixtures/reports.json (ONETHING_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
     }
 
     private static JsonObject Fixture(TaskBoard board, JsonNode boardJson)

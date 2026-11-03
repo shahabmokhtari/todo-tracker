@@ -360,7 +360,7 @@ Every one of these changes bytes, which changes hashes, which other devices see 
 
 ## Fixtures
 
-Regenerate with `TT_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter
+Regenerate with `ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter
 "FullyQualifiedName~Fixtures"`, then build again (tests read the copies in `bin/`). Each test regenerates its
 fixture and fails if the committed file differs.
 

@@ -8,6 +8,6 @@ Follow [AGENTS.md](../AGENTS.md) at the repository root. In short:
 - Never run anything against the user's own tasks: use `--data <temp folder>` and `ONETHING_CLOUD=off`.
 - Nothing is ever deleted for the user, every change is attributed to an `Actor`, and the same rules exist in C#, Swift
   and Kotlin (shared fixtures in `tests/fixtures`).
-- After changing MCP tools or `tt` commands, regenerate `docs/mcp.md` and `docs/cli.md`:
-  `TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`.
+- After changing MCP tools or `ot` commands, regenerate `docs/mcp.md` and `docs/cli.md`:
+  `ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`.
 - Text users read is plain, short and friendly; tests are written first and named as sentences.

@@ -33,8 +33,8 @@ public sealed class OneThingServerOptions
     /// </summary>
     public string? VaultPath { get; set; }
 
-    /// <summary>The <c>tt</c> command shown in "Connect an AI app" (default: the one next to the app, else <c>tt</c>).</summary>
-    public string? TtPath { get; set; }
+    /// <summary>The <c>onething</c> command shown in "Connect an AI app" (default: the one shipped with the app, else <c>onething</c>).</summary>
+    public string? CliPath { get; set; }
 
     /// <summary>Watch the vault for edits made outside the app (Obsidian, editors, agents).</summary>
     public bool WatchVault { get; set; } = true;

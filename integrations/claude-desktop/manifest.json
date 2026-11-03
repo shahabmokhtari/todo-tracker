@@ -14,16 +14,16 @@
   "icon": "icon.png",
   "server": {
     "type": "binary",
-    "entry_point": "server/tt",
+    "entry_point": "server/onething",
     "mcp_config": {
-      "command": "${__dirname}/server/tt",
+      "command": "${__dirname}/server/onething",
       "args": ["mcp"],
       "env": {
         "ONETHING_VAULT": "${user_config.tasks_folder}"
       },
       "platform_overrides": {
         "win32": {
-          "command": "${__dirname}/server/tt.exe"
+          "command": "${__dirname}/server/onething.exe"
         }
       }
     }

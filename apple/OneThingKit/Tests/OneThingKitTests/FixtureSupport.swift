@@ -65,7 +65,7 @@ final class TempDir {
     let url: URL
 
     init() {
-        url = FileManager.default.temporaryDirectory.appendingPathComponent("tt-swift-" + UUID().uuidString)
+        url = FileManager.default.temporaryDirectory.appendingPathComponent("onething-swift-" + UUID().uuidString)
         try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
 

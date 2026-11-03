@@ -11,22 +11,25 @@ There are four ways in, from most to least local:
 
 | Way | For | Needs the app running? |
 | --- | --- | --- |
-| **`tt mcp`** – MCP over stdio | Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor, any local MCP client | No |
-| **`tt` CLI** | Terminals, scripts, and agents that run shell commands | No |
+| **`onething mcp`** – MCP over stdio | Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, Cursor, any local MCP client | No |
+| **`ot` CLI** (or `onething`) | Terminals, scripts, and agents that run shell commands | No |
 | **`/mcp`** – MCP over HTTP | MCP clients that prefer a URL | Yes |
 | **REST + OpenAPI** | ChatGPT (GPT Actions), Copilot Studio, Power Automate, scripts | Yes |
 
-`tt` works directly on your tasks folder, the same one the app uses, and is safe to run alongside it (changes take
+`ot` is the short name of `onething`: both are installed and do the same thing. It works directly on your tasks folder, the same one the app uses, and is safe to run alongside it (changes take
 a per-folder lock and re-read the files first). Several AI apps can be connected at once.
 
-## Get `tt`
+## Get `ot`
 
-* **Windows app:** `tt.exe` is installed next to `OneThing.exe`. "Connect an AI app" fills in its full path.
+* **Windows app:** `onething.exe` and `ot.exe` are installed in the `cli` folder next to `OneThing.exe`. "Connect an AI app"
+  fills in the full path. To type `ot` in any terminal, add that folder to your PATH.
+* **Linux app:** the install script puts `onething` and `ot` in `~/.local/bin`.
 * **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
-  artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it).
-* **Standalone:** CI publishes self-contained `tt` for Windows, macOS and Linux (`tt-<platform>.zip`, no .NET needed).
+  artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it). A .NET tool has one name: `onething`.
+* **Standalone:** CI publishes self-contained `onething` and `ot` for Windows, macOS and Linux
+  (`onething-cli-<platform>.zip`, no .NET needed).
 
-`tt` uses the tasks folder the app uses (`Documents/OneThing`, or the folder chosen in the app). Override it with
+`ot` uses the tasks folder the app uses (`Documents/OneThing`, or the folder chosen in the app). Override it with
 `--vault <folder>` or the `ONETHING_VAULT` environment variable.
 
 ## Claude Desktop
@@ -37,7 +40,7 @@ install dialog. Leave *Tasks folder* empty to use the app's folder.
 **Or by hand:** Settings → Developer → Edit config, then add (with the path from "Connect an AI app"):
 
 ```json
-{ "mcpServers": { "onething": { "command": "C:\\Program Files\\One Thing\\tt.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "onething": { "command": "C:\\Program Files\\One Thing\\cli\\onething.exe", "args": ["mcp"] } } }
 ```
 
 Restart Claude Desktop completely after editing.
@@ -45,7 +48,7 @@ Restart Claude Desktop completely after editing.
 ## Claude Code
 
 ```bash
-claude mcp add onething --scope user -- tt mcp
+claude mcp add onething --scope user -- onething mcp
 ```
 
 For the tools *and* a skill that teaches Claude how to help with your tasks (capture, break down, log, defer, never
@@ -56,14 +59,14 @@ delete), install the plugin from this repository:
 /plugin install onething@onething
 ```
 
-The plugin launches `tt` from your PATH.
+The plugin launches `onething` from your PATH.
 
 ## GitHub Copilot CLI
 
 Add to `~/.copilot/mcp-config.json` (or run `/mcp add` inside Copilot):
 
 ```json
-{ "mcpServers": { "onething": { "type": "local", "command": "tt", "args": ["mcp"], "tools": ["*"] } } }
+{ "mcpServers": { "onething": { "type": "local", "command": "onething", "args": ["mcp"], "tools": ["*"] } } }
 ```
 
 The same plugin works in Copilot CLI (it reads Claude-format marketplaces too):
@@ -78,7 +81,7 @@ copilot plugin install onething@onething
 Command palette → **MCP: Open User Configuration** (or a workspace `.vscode/mcp.json`), then add:
 
 ```json
-{ "servers": { "onething": { "type": "stdio", "command": "tt", "args": ["mcp"] } } }
+{ "servers": { "onething": { "type": "stdio", "command": "onething", "args": ["mcp"] } } }
 ```
 
 A copy is in [`integrations/vscode/mcp.json`](../integrations/vscode/mcp.json).
@@ -94,7 +97,7 @@ These connect **from the cloud**, so they can't reach `127.0.0.1`. They need a p
 local server, and most require OAuth rather than a fixed token:
 
 * **ChatGPT** (custom MCP server / developer mode): enter a public HTTPS URL to `/mcp`, or use OpenAI's Secure MCP
-  Tunnel, which forwards to a local command such as `tt mcp`. Auth options are OAuth or none, so only expose it through
+  Tunnel, which forwards to a local command such as `onething mcp`. Auth options are OAuth or none, so only expose it through
   the tunnel or an authenticating proxy.
 * **Claude.ai / Claude custom connectors**: same requirement (public HTTPS, usually OAuth). On the desktop, prefer the
   Claude Desktop extension above.
@@ -119,20 +122,20 @@ Deleting, settings and sign-in are left out.
 Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. One Thing isn't packaged as
 MSIX yet; until then, use the Claude Desktop or VS Code setup.
 
-## The `tt` command
+## The `ot` command (or `onething`)
 
 ```
-tt                                  what to do now (and what is waiting)
-tt add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
-tt list #release                    find tasks: words, #tag, label:x, group:work, is:done
-tt note passport 'Booked appointment for Tuesday'
-tt snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
-tt done passport                    finish
-tt mcp                              the MCP server over stdio
+ot                                  what to do now (and what is waiting)
+ot add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
+ot list #release                    find tasks: words, #tag, label:x, group:work, is:done
+ot note passport 'Booked appointment for Tuesday'
+ot snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
+ot done passport                    finish
+onething mcp                        the MCP server over stdio (ot mcp works too)
 ```
 
 Every command takes `--json` (the same shapes as the REST API and MCP tools) and `--as <name>` to attribute changes to
-an agent (or set `TT_AGENT`). All the commands and options: [cli.md](cli.md).
+an agent (or set `ONETHING_AGENT`). All the commands and options: [cli.md](cli.md).
 
 ## What the AI sees
 

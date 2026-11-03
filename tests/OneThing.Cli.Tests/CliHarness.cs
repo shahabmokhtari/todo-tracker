@@ -8,14 +8,14 @@ public sealed record CliResult(int ExitCode, string Out, string Error)
     public JsonNode Json => JsonNode.Parse(Out) ?? throw new InvalidOperationException("no JSON output");
 }
 
-/// <summary>Runs <c>tt</c> in-process against a temp data folder (vault in <c>&lt;data&gt;/vault</c>).</summary>
+/// <summary>Runs <c>ot</c> in-process against a temp data folder (vault in <c>&lt;data&gt;/vault</c>).</summary>
 public sealed class CliHarness : IDisposable
 {
     public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
 
     public CliHarness(bool history = false)
     {
-        DataDirectory = Path.Combine(Path.GetTempPath(), "tt-cli-" + Guid.NewGuid().ToString("N"));
+        DataDirectory = Path.Combine(Path.GetTempPath(), "onething-cli-" + Guid.NewGuid().ToString("N"));
         History = history;
     }
 
@@ -34,7 +34,7 @@ public sealed class CliHarness : IDisposable
 
     public string Git { get; init; } = "git";
 
-    /// <summary>Links <c>tt open</c> asked the system to open.</summary>
+    /// <summary>Links <c>ot open</c> asked the system to open.</summary>
     public List<string> OpenedLinks { get; } = [];
 
     public Task<CliResult> Run(params string[] args) => RunWithInput(string.Empty, args);
@@ -68,14 +68,14 @@ public sealed class CliHarness : IDisposable
     public async Task<JsonNode> Json(params string[] args)
     {
         var result = await Run([.. args, "--json"]);
-        Assert.True(result.ExitCode == 0, $"tt {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
+        Assert.True(result.ExitCode == 0, $"ot {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
         return result.Json;
     }
 
     public async Task<string> Ok(params string[] args)
     {
         var result = await Run(args);
-        Assert.True(result.ExitCode == 0, $"tt {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
+        Assert.True(result.ExitCode == 0, $"ot {string.Join(' ', args)} failed ({result.ExitCode}): {result.Error}");
         return result.Out;
     }
 

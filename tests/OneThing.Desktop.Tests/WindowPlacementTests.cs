@@ -4,7 +4,7 @@ namespace OneThing.Desktop.Tests;
 
 public sealed class WindowPlacementTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tt-placement-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "onething-placement-" + Guid.NewGuid().ToString("N"));
 
     private string FilePath => Path.Combine(_dir, "desktop.json");
 

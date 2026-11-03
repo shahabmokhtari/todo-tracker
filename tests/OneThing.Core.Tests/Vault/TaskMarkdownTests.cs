@@ -537,7 +537,7 @@ public class TaskMarkdownTests
             "id: 202401011200", "status: waiting", "priority: medium", "# keep this comment");
 
         var parsed = TaskMarkdown.Parse(text, "T", Utc);
-        Assert.Contains($"tt-id: {parsed.Root.Id}", text, StringComparison.Ordinal);
+        Assert.Contains($"onething-id: {parsed.Root.Id}", text, StringComparison.Ordinal);
         Assert.False(parsed.Root.IsDone);
         Assert.Equal(Priority.Normal, parsed.Root.Priority);
     }

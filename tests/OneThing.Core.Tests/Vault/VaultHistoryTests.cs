@@ -7,8 +7,8 @@ namespace OneThing.Core.Tests.Vault;
 public sealed class VaultHistoryTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "tt-history-" + Guid.NewGuid().ToString("N"));
-    private readonly string _locks = Path.Combine(Path.GetTempPath(), "tt-hlocks-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "onething-history-" + Guid.NewGuid().ToString("N"));
+    private readonly string _locks = Path.Combine(Path.GetTempPath(), "onething-hlocks-" + Guid.NewGuid().ToString("N"));
     private readonly VaultBoardStore _store;
     private readonly VaultHistory _history;
 
@@ -102,7 +102,7 @@ public sealed class VaultHistoryTests : IDisposable
     [Fact]
     public async Task Version_messages_describe_only_new_changes_even_across_processes()
     {
-        // The app, tt and tt mcp each keep their own VaultHistory: what was already described must be remembered on disk.
+        // The app, ot and onething mcp each keep their own VaultHistory: what was already described must be remembered on disk.
         var task = await _store.UpdateAsync(b => b.AddTask(new NewTask("Draft"), Actor.User, T0));
         Assert.True(await _history.CommitAsync());
 

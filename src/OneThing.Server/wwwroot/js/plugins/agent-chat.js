@@ -387,7 +387,7 @@ export function activate(host) {
   // #/ask (the desktop's "open the whole chat") opens the chat over the view on screen, without reloading the app.
   const askRoute = () => {
     if (location.hash !== '#/ask' || host.on?.() === false) return;
-    history.replaceState(null, '', `#/${localStorage.getItem('tt.view') || 'today'}`);
+    history.replaceState(null, '', `#/${localStorage.getItem('onething.view') || 'today'}`);
     open();
   };
   window.addEventListener('hashchange', askRoute);

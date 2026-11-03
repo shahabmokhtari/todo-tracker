@@ -24,7 +24,7 @@ public enum DemoBoard {
     }
 
     /// The whole app on a made-up board, kept in memory only (nothing is read or saved): for screenshots, started
-    /// with TT_DEMO=1 in a debug build. Cards in every column, subtasks, labels and tags, done and archived tasks.
+    /// with ONETHING_DEMO=1 in a debug build. Cards in every column, subtasks, labels and tags, done and archived tasks.
     @MainActor
     public static func model(now: Date = Date()) -> BoardModel {
         let board = TaskBoard()

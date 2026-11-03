@@ -12,9 +12,9 @@ namespace OneThing.Server.Tests.Sync;
 /// </summary>
 public sealed class MultiPlaceSyncTests : IAsyncLifetime
 {
-    private readonly string _onedrive = Directory.CreateTempSubdirectory("tt-onedrive-").FullName;
-    private readonly string _home = Directory.CreateTempSubdirectory("tt-home-").FullName;
-    private readonly string _elsewhere = Directory.CreateTempSubdirectory("tt-elsewhere-").FullName;
+    private readonly string _onedrive = Directory.CreateTempSubdirectory("onething-onedrive-").FullName;
+    private readonly string _home = Directory.CreateTempSubdirectory("onething-home-").FullName;
+    private readonly string _elsewhere = Directory.CreateTempSubdirectory("onething-elsewhere-").FullName;
     private ServerFixture _laptop = null!;
     private ServerFixture _mac = null!;
     private ServerFixture _desktop = null!;

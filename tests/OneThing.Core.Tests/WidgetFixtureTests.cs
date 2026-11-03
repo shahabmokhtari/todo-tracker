@@ -9,7 +9,7 @@ namespace OneThing.Core.Tests;
 /// tests/fixtures/widget.json: what the home-screen widgets show over the next day, from a board as the apps export it
 /// (the snapshot the app writes, in the format the widgets read) and what they show at some moments (with a task just
 /// marked done from the widget left out). The Swift and Kotlin ports (WidgetFixtureTests) read the same file.
-/// Regenerate: set TT_WRITE_FIXTURES=1 and run this test.
+/// Regenerate: set ONETHING_WRITE_FIXTURES=1 and run this test.
 /// </summary>
 public sealed class WidgetFixtureTests
 {
@@ -31,7 +31,7 @@ public sealed class WidgetFixtureTests
         var fixture = FixtureFile.Read("widget.json");
         var board = BoardSerializer.Deserialize(fixture["board"]!.ToJsonString());
         var again = Fixture(board, fixture["board"]!.DeepClone());
-        Assert.True(JsonNode.DeepEquals(fixture, again), "The widget rules changed: regenerate tests/fixtures/widget.json (TT_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
+        Assert.True(JsonNode.DeepEquals(fixture, again), "The widget rules changed: regenerate tests/fixtures/widget.json (ONETHING_WRITE_FIXTURES=1) and make Swift and Kotlin agree.");
     }
 
     [Fact]

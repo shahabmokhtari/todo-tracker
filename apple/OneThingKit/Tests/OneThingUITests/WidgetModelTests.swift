@@ -8,7 +8,7 @@ final class WidgetModelTests: XCTestCase {
     private var folder: URL!
 
     override func setUp() async throws {
-        folder = FileManager.default.temporaryDirectory.appendingPathComponent("tt-widgets-" + UUID().uuidString)
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent("onething-widgets-" + UUID().uuidString)
     }
 
     override func tearDown() async throws {

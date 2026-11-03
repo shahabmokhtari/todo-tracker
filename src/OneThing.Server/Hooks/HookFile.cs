@@ -55,7 +55,7 @@ public sealed class HookSpec
 
     /// <summary>
     /// Added or changed by an AI agent (or another app with the API token): it doesn't run until you approve it in
-    /// Settings › Hooks or with <c>tt hooks approve</c>.
+    /// Settings › Hooks or with <c>ot hooks approve</c>.
     /// </summary>
     public bool? NeedsApproval { get; set; }
 

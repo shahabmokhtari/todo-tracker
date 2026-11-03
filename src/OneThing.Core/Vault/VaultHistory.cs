@@ -168,7 +168,7 @@ public sealed partial class VaultHistory : IDisposable
     }
 
     // The last activity entry already described by a version, kept next to the repository so every process
-    // (app, tt, tt mcp) describes only what is new.
+    // (app, ot, onething mcp) describes only what is new.
     private string SeenPath => Path.Combine(_gitDir, "onething-seen");
 
     private int FirstUnseen(List<ActivityEntry> activity)

@@ -2,7 +2,7 @@
 // The app keeps it in step with the setting (Settings › Appearance), which every window shares.
 (function applySavedTheme() {
   try {
-    const theme = localStorage.getItem('tt.theme');
+    const theme = localStorage.getItem('onething.theme');
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
   } catch {
     // Storage off: the system's theme.

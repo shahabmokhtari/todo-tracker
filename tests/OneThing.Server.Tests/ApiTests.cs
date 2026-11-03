@@ -585,20 +585,20 @@ public sealed class ApiTests : IAsyncLifetime
     [Fact]
     public async Task Connect_lists_ready_made_setups_for_ai_apps()
     {
-        await using var server = await ServerFixture.StartAsync(o => o.TtPath = @"C:\Program Files\One Thing\tt.exe");
+        await using var server = await ServerFixture.StartAsync(o => o.CliPath = @"C:\Program Files\One Thing\cli\onething.exe");
         using var client = server.Client();
 
         var connect = await client.GetJson("/api/plugins/connect-ai");
 
         var setups = connect["setups"]!.AsArray().ToDictionary(s => s!["id"]!.GetValue<string>(), s => s!);
         Assert.Contains("claude-code", setups.Keys);
-        Assert.Equal("claude mcp add onething --scope user -- \"C:\\Program Files\\One Thing\\tt.exe\" mcp", setups["claude-code"]["snippet"]!.GetValue<string>());
+        Assert.Equal("claude mcp add onething --scope user -- \"C:\\Program Files\\One Thing\\cli\\onething.exe\" mcp", setups["claude-code"]["snippet"]!.GetValue<string>());
 
         // JSON snippets are valid JSON with the path escaped.
         foreach (var id in new[] { "copilot-cli", "claude-desktop", "vscode" })
         {
             var snippet = System.Text.Json.Nodes.JsonNode.Parse(setups[id]["snippet"]!.GetValue<string>())!;
-            Assert.Contains("tt.exe", snippet.ToJsonString(), StringComparison.Ordinal);
+            Assert.Contains("onething.exe", snippet.ToJsonString(), StringComparison.Ordinal);
         }
 
         Assert.Contains(ServerFixture.Token, setups["http"]["snippet"]!.GetValue<string>(), StringComparison.Ordinal);
@@ -612,15 +612,22 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Tt_next_to_the_app_is_preferred_over_the_path()
+    public void The_command_next_to_the_app_is_preferred_over_the_path()
     {
-        var dir = Directory.CreateTempSubdirectory("tt-find-").FullName;
+        var dir = Directory.CreateTempSubdirectory("onething-find-").FullName;
+        string Exe(string folder, string name) => Path.Combine(folder, OperatingSystem.IsWindows() ? name + ".exe" : name);
         try
         {
-            Assert.Equal("tt", AiSetups.FindTt(dir));
-            var exe = Path.Combine(dir, OperatingSystem.IsWindows() ? "tt.exe" : "tt");
-            File.WriteAllText(exe, string.Empty);
-            Assert.Equal(exe, AiSetups.FindTt(dir));
+            Assert.Equal("onething", AiSetups.FindCli(dir));
+
+            // The short name alone works, the full name wins, and the cli folder (where the Windows app keeps it) comes first.
+            File.WriteAllText(Exe(dir, "ot"), string.Empty);
+            Assert.Equal(Exe(dir, "ot"), AiSetups.FindCli(dir));
+            File.WriteAllText(Exe(dir, "onething"), string.Empty);
+            Assert.Equal(Exe(dir, "onething"), AiSetups.FindCli(dir));
+            var cli = Directory.CreateDirectory(Path.Combine(dir, "cli")).FullName;
+            File.WriteAllText(Exe(cli, "onething"), string.Empty);
+            Assert.Equal(Exe(cli, "onething"), AiSetups.FindCli(dir));
         }
         finally
         {

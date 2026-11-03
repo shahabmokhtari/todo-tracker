@@ -15,16 +15,16 @@ struct OneThingApp: App {
     @State private var breakWindows: BreakWindows?
     #endif
 
-    /// The tasks on this device (or the server's on a Mac). A debug build started with TT_DEMO=1 shows
-    /// a made-up board kept in memory instead (screenshots), and TT_VIEW=board (tasks, done…) opens on that view.
+    /// The tasks on this device (or the server's on a Mac). A debug build started with ONETHING_DEMO=1 shows
+    /// a made-up board kept in memory instead (screenshots), and ONETHING_VIEW=board (tasks, done…) opens on that view.
     private static func makeModel() -> BoardModel {
         #if DEBUG
         if isDemo {
             let demo = DemoBoard.model()
-            // TT_OPEN=1: today's focus task opens (its details beside the view).
-            if ProcessInfo.processInfo.environment["TT_OPEN"] == "1" { demo.openTaskId = demo.dashboard.focus?.item.id }
-            // TT_WIDGETS=1: the widgets show the made-up board too (screenshots of them).
-            if ProcessInfo.processInfo.environment["TT_WIDGETS"] == "1" { demo.widgetShelf = WidgetShelf.shared }
+            // ONETHING_OPEN=1: today's focus task opens (its details beside the view).
+            if ProcessInfo.processInfo.environment["ONETHING_OPEN"] == "1" { demo.openTaskId = demo.dashboard.focus?.item.id }
+            // ONETHING_WIDGETS=1: the widgets show the made-up board too (screenshots of them).
+            if ProcessInfo.processInfo.environment["ONETHING_WIDGETS"] == "1" { demo.widgetShelf = WidgetShelf.shared }
             return demo
         }
         #endif
@@ -33,7 +33,7 @@ struct OneThingApp: App {
 
     private static var isDemo: Bool {
         #if DEBUG
-        return ProcessInfo.processInfo.environment["TT_DEMO"] == "1"
+        return ProcessInfo.processInfo.environment["ONETHING_DEMO"] == "1"
         #else
         return false
         #endif
@@ -41,7 +41,7 @@ struct OneThingApp: App {
 
     private static var startView: SidebarItem? {
         #if DEBUG
-        return ProcessInfo.processInfo.environment["TT_VIEW"].flatMap(SidebarItem.init(rawValue:))
+        return ProcessInfo.processInfo.environment["ONETHING_VIEW"].flatMap(SidebarItem.init(rawValue:))
         #else
         return nil
         #endif

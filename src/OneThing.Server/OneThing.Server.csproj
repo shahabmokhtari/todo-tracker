@@ -14,7 +14,7 @@
     <PackageReference Include="Microsoft.Identity.Client" />
     <ProjectReference Include="..\OneThing.Core\OneThing.Core.csproj" />
     <InternalsVisibleTo Include="OneThing.Server.Tests" />
-    <InternalsVisibleTo Include="tt" />
+    <InternalsVisibleTo Include="onething" />
     <InternalsVisibleTo Include="OneThing.Cli.Tests" />
   </ItemGroup>
   <ItemGroup>

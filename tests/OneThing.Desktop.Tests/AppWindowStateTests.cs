@@ -2,7 +2,7 @@ namespace OneThing.Desktop.Tests;
 
 public sealed class AppWindowStateTests : IDisposable
 {
-    private readonly string _dir = Path.Combine(Path.GetTempPath(), "tt-appwin-" + Guid.NewGuid().ToString("N"));
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "onething-appwin-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
     {

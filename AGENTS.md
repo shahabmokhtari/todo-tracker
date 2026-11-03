@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Guidance for AI coding agents (Copilot, Claude Code, Codex, Cursor…) and people working on this repository. For using
-One Thing *from* an agent (MCP tools, `tt`, the skill), see [docs/ai-connectors.md](docs/ai-connectors.md).
+One Thing *from* an agent (MCP tools, `ot`, the skill), see [docs/ai-connectors.md](docs/ai-connectors.md).
 
 ## What this is
 
@@ -17,7 +17,7 @@ Mac app have native ports of the core rules.
 | `src/OneThing.Core` | Domain model (`TaskBoard`, `WorkItem`), agenda rules, search, quick capture, snooze, repeat, focus timer, the markdown vault store and its format (`Vault/TaskMarkdown.cs`), connectors' sync engine | any OS |
 | `src/OneThing.Server` | REST API (`ApiEndpoints.cs`), MCP tools (`TodoTools.cs`), security, hooks, plugins (sync, connectors, Ask AI, GitHub), the embedded web app (`wwwroot/`) | any OS |
 | `src/OneThing.Web` | The server on its own (no desktop shell) | any OS |
-| `src/OneThing.Cli` | `tt`, and `tt mcp` (MCP over stdio) | any OS |
+| `src/OneThing.Cli` | `onething` (`ot` for short; both are built and shipped), and `onething mcp` (MCP over stdio) | any OS |
 | `src/OneThing.Desktop` | Platform-neutral view models for the sidebar and tray | any OS |
 | `src/OneThing.Windows` | The WPF sidebar (AppBar docking, toasts, hotkey, app window with WebView2) | Windows |
 | `src/OneThing.Tray` | The Avalonia tray app for Linux (and macOS) | any OS |
@@ -54,7 +54,7 @@ The solution includes the Windows app, so on Linux and macOS build and test the 
   `adb shell date @<seconds>` (as root) moves its clock to reach a break quickly.
 
 CI (`.github/workflows/ci.yml`) runs seven jobs on every PR: Linux (core, server, CLI, view models, coverage), Linux
-tray, Android, web + e2e, AI connectors (packages `tt` and the Claude Desktop extension), Windows (build, tests,
+tray, Android, web + e2e, AI connectors (packages `onething`/`ot` and the Claude Desktop extension), Windows (build, tests,
 publish, smoke and system tests), and macOS/iOS. Keep all of them green.
 
 ## Run it without touching anyone's tasks
@@ -105,7 +105,7 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
 | When you change… | Also update |
 | --- | --- |
 | an MCP tool (`TodoTools.cs`) | `[Description]`s on the tool and every parameter; the skill (`integrations/agent-plugin/skills/onething/SKILL.md`); `integrations/claude-desktop/manifest.json`; then regenerate `docs/mcp.md` |
-| a `tt` command (`CliCommands.cs`) | its usage/details text; the skill; then regenerate `docs/cli.md` |
+| an `ot` command (`CliCommands.cs`) | its usage/details text; the skill; then regenerate `docs/cli.md` |
 | a REST endpoint (`ApiEndpoints.cs`) | the published list in `OpenApiSetup.cs` if agents should see it |
 | the task model (`WorkItem`, `TaskBoard`) | `BoardSerializer`, `Vault/TaskMarkdown.cs` (+ `docs/vault-format.md`), the Swift and Kotlin codecs, `tests/fixtures/export.json` |
 | the vault format or sync (`Core/Vault`, `Core/Sync`) | regenerate `tests/fixtures/vault/` and `tests/fixtures/sync/` and review the diff; the Swift and Kotlin vault and sync code ([docs/design/phone-sync.md](docs/design/phone-sync.md)) |
@@ -115,9 +115,9 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
 Generated files (commit them after regenerating):
 
 ```bash
-TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
-TT_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
-TT_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync (then build again: tests read the copies in bin/)
+ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
+ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
+ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, from a made-up demo board (quit the app first on Windows)
 python3 build/icons.py                      # the app icon on every platform (pip install cairosvg pillow); the tray icons draw the same shapes in code
 ```

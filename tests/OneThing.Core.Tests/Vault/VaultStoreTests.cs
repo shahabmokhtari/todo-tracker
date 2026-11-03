@@ -7,8 +7,8 @@ namespace OneThing.Core.Tests.Vault;
 public sealed class VaultStoreTests : IDisposable
 {
     private static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "tt-vault-" + Guid.NewGuid().ToString("N"));
-    private readonly string _locks = Path.Combine(Path.GetTempPath(), "tt-locks-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "onething-vault-" + Guid.NewGuid().ToString("N"));
+    private readonly string _locks = Path.Combine(Path.GetTempPath(), "onething-locks-" + Guid.NewGuid().ToString("N"));
     private readonly FakeTimeProvider _time = new(T0);
     private readonly List<VaultBoardStore> _stores = [];
 
@@ -82,6 +82,19 @@ public sealed class VaultStoreTests : IDisposable
         Assert.True(File.Exists(P(".onething", "config.json")));
         Assert.Contains("One Thing vault", await File.ReadAllTextAsync(P("AGENTS.md")), StringComparison.Ordinal);
         Assert.Equal(["Work", "Personal"], await store.ReadAsync(b => b.Groups.Select(g => g.Name).ToList()));
+    }
+
+    [Fact]
+    public async Task An_older_guide_is_replaced_by_one_that_names_the_ot_command()
+    {
+        Directory.CreateDirectory(_root);
+        await File.WriteAllTextAsync(P("AGENTS.md"), "<!-- onething-guide v4 -->\n# One Thing vault\n\nPrefer the old CLI.\n", TestContext.Current.CancellationToken);
+
+        Open();
+
+        var guide = await File.ReadAllTextAsync(P("AGENTS.md"), TestContext.Current.CancellationToken);
+        Assert.StartsWith("<!-- onething-guide v5 -->", guide, StringComparison.Ordinal);
+        Assert.Contains("Prefer the `ot` command (also `onething`)", guide, StringComparison.Ordinal);
     }
 
     [Fact]

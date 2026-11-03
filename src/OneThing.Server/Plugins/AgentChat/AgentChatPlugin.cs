@@ -54,7 +54,12 @@ public sealed class AgentChatPlugin : ITodoPlugin
         services.AddSingleton(sp =>
         {
             var vault = sp.GetRequiredService<VaultBoardStore>();
-            var tt = options.TtPath ?? AiSetups.FindTt();
+            var cli = options.CliPath ?? AiSetups.FindCli();
+            if (cli == "onething" && !OnPath("onething") && OnPath("ot"))
+            {
+                cli = "ot";
+            }
+
             var dir = Path.Combine(options.DataDirectory, "agent-chat");
             var token = sp.GetRequiredService<ApiToken>().Value;
             return new AgentChatService(sp.GetRequiredService<AgentCatalog>(), new AgentChatOptions
@@ -71,7 +76,7 @@ public sealed class AgentChatPlugin : ITodoPlugin
                     model.Name),
 
                 // The agent gets the same tasks the app shows: this vault, this data folder.
-                Mcp = tt == "tt" && !OnPath("tt") ? null : new AgentLaunch("onething", tt, ["mcp"], dir, new Dictionary<string, string?>
+                Mcp = cli == "onething" && !OnPath("onething") ? null : new AgentLaunch("onething", cli, ["mcp"], dir, new Dictionary<string, string?>
                 {
                     ["ONETHING_VAULT"] = vault.RootPath,
                     ["ONETHING_DATA"] = options.DataDirectory,

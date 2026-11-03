@@ -20,7 +20,7 @@ import org.junit.Test
 class VaultRenderFixtureTest {
     private val cases = Fixtures.read("vault/render.json").arr("cases")
 
-    private fun temp(): File = Files.createTempDirectory("tt-vault").toFile()
+    private fun temp(): File = Files.createTempDirectory("onething-vault").toFile()
 
     private fun filesUnder(root: File): Map<String, String> =
         root.walkTopDown().filter { it.isFile }.map { it.relativeTo(root).invariantSeparatorsPath }

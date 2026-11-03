@@ -23,7 +23,7 @@ import org.junit.Test
 
 /** The app's side of phase 2: the phone's tasks folder (moved from board.json) syncs on its own with the other devices. */
 class PhoneSyncTest {
-    private val dir: File = Files.createTempDirectory("tt-phone-sync").toFile()
+    private val dir: File = Files.createTempDirectory("onething-phone-sync").toFile()
     private var now = Instant.parse("2026-01-05T14:00:00Z")
     private val shared = File(dir, "shared")
 
