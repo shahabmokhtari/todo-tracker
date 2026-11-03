@@ -54,11 +54,10 @@ object FocusAlarm {
         return PendingIntent.getBroadcast(context, code, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    /** Posts "Focus session done" or "Break is over" for the phase that ended [at] (once per end). */
+    /** Posts "Focus session done" or "Break is over" for the phase that ended [at] (once per end, marked once it's posted). */
     fun notify(context: Context, end: PhaseEnd) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getLong(LAST, 0L) == end.at.toEpochMilli()) return
-        prefs.edit().putLong(LAST, end.at.toEpochMilli()).apply()
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Focus timer", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -80,6 +79,7 @@ object FocusAlarm {
             .build()
         if (!end.focus) manager.cancel(FOCUS_DONE_ID)
         manager.notify(if (end.focus) FOCUS_DONE_ID else BREAK_OVER_ID, notification)
+        prefs.edit().putLong(LAST, end.at.toEpochMilli()).apply()
     }
 
     /** Whether alarms can ring on time (Android 12+ asks the person; from Android 14 it's off until they allow it). */

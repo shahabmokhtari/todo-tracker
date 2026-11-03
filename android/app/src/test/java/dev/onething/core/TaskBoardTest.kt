@@ -185,4 +185,39 @@ class TaskBoardTest {
         assertThrows(BoardException::class.java) { QuickCaptureParser.parse("  !! ", t0, zone) }
         assertNotNull(QuickCaptureParser.parse("x due:3d", t0, zone).deadline)
     }
+
+    @Test
+    fun `a new task starts in the inbox unless a column is chosen`() {
+        val board = TaskBoard()
+        assertEquals(Stage.INBOX, board.addTask(NewTask("A"), now = t0).stage)
+        assertEquals(Stage.DOING, board.addTask(NewTask("B", stage = Stage.DOING), now = t0).stage)
+    }
+
+    @Test
+    fun `the same change made twice with ids chosen up front makes the same task note reminder and group`() {
+        val task = java.util.UUID.randomUUID()
+        val note = java.util.UUID.randomUUID()
+        val reminder = java.util.UUID.randomUUID()
+        val group = java.util.UUID.randomUUID()
+        val steps = listOf(java.util.UUID.randomUUID(), java.util.UUID.randomUUID())
+        fun make(board: TaskBoard) {
+            board.addTask(NewTask("Plan", id = task, tags = listOf("#deep  work", "Deep work")), now = t0)
+            board.addNote(task, "First thoughts", now = t0, noteId = note)
+            board.addReminder(task, t0.plusSeconds(3600), null, now = t0, reminderId = reminder)
+            board.addGroup("Side project", now = t0, id = group)
+            board.addSteps(task, listOf("One", " ", "Two"), null, now = t0, ids = steps)
+        }
+        val screen = TaskBoard().also(::make)
+        val saved = TaskBoard().also(::make)
+        for (b in listOf(screen, saved)) {
+            val item = b.get(task)
+            assertEquals(listOf("deep work"), item.tags)
+            assertEquals(note, item.notes.single().id)
+            assertEquals(reminder, item.reminders.single().id)
+            assertEquals(steps, item.children.map { it.id })
+            assertEquals(group, b.groups.last().id)
+        }
+        assertThrows(BoardException::class.java) { screen.addTask(NewTask("Again", id = task), now = t0) }
+        assertThrows(BoardException::class.java) { screen.addTask(NewTask("Bad tag", tags = listOf("123")), now = t0) }
+    }
 }

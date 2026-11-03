@@ -90,11 +90,13 @@ class FixtureTest {
         val tasks = mutableMapOf<String, WorkItem>()
         for (t in f["tasks"]!!.jsonArray.map { it.jsonObject }) {
             val group = t.text("group")?.let { g -> board.groups.single { it.name == g }.id }
-            val item = board.addTask(NewTask(t.text("title")!!, parentId = t.text("parent")?.let { tasks[it]!!.id }, groupId = group, details = t.text("details")), now = t0)
+            val item = board.addTask(
+                NewTask(t.text("title")!!, parentId = t.text("parent")?.let { tasks[it]!!.id }, groupId = group, details = t.text("details"), stage = t.text("stage")?.let { Stage.of(it) } ?: Stage.NEXT),
+                now = t0,
+            )
             tasks[t.text("key")!!] = item
             item.tags.addAll(t.strings("tags"))
             item.labels.addAll(t.strings("labels"))
-            t.text("stage")?.let { item.stage = Stage.of(it) }
             if (t.flag("done")) board.complete(item.id, now = t0)
             if (t.flag("archived")) board.archive(item.id, now = t0)
         }

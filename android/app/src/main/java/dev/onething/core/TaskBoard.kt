@@ -87,7 +87,14 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         validateStepDelay(spec.stepDelay)
         val parent = spec.parentId?.let { get(it) }
         val groupId = parent?.groupId ?: spec.groupId?.let { group(it).id } ?: defaultGroupId
-        val item = WorkItem(title = title, priority = spec.priority, createdAt = now, ownGroupId = groupId)
+        val tags = normalizeTags(spec.tags)
+        spec.id?.let { chosen ->
+            if (chosen == UUID(0L, 0L)) throw BoardException("A task id can't be empty.")
+            if (index.containsKey(chosen)) throw BoardException("There is already a task with this id.")
+        }
+        val item = WorkItem(id = spec.id ?: UUID.randomUUID(), title = title, priority = spec.priority, createdAt = now, ownGroupId = groupId)
+        item.stage = spec.stage ?: Stage.INBOX
+        item.tags.addAll(tags)
         item.details = optionalText(spec.details)
         item.deadline = spec.deadline
         item.sequential = spec.sequential
@@ -97,14 +104,15 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         return item
     }
 
-    fun addSteps(parentId: UUID, titles: List<String>, stepDelay: Duration?, actor: Actor = Actor.USER, now: Instant): List<WorkItem> {
+    /** Steps done one after another: [ids] (one per title that isn't blank, chosen up front), else new ones. */
+    fun addSteps(parentId: UUID, titles: List<String>, stepDelay: Duration?, actor: Actor = Actor.USER, now: Instant, ids: List<UUID>? = null): List<WorkItem> {
         val parent = get(parentId)
         validateStepDelay(stepDelay)
         val clean = titles.map { it.trim() }.filter { it.isNotEmpty() }
         if (clean.isEmpty()) throw BoardException("At least one step title is required.")
         parent.sequential = true
         parent.stepDelay = stepDelay ?: parent.stepDelay
-        return clean.map { addTask(NewTask(it, parentId = parent.id), actor, now) }
+        return clean.mapIndexed { i, title -> addTask(NewTask(title, parentId = parent.id, id = ids?.getOrNull(i)), actor, now) }
     }
 
     fun delete(id: UUID, actor: Actor = Actor.USER, now: Instant) {
@@ -127,10 +135,10 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         log(now, id, "deleted", "Deleted \"${item.title}\"", actor)
     }
 
-    fun addNote(id: UUID, text: String, actor: Actor = Actor.USER, now: Instant): Note {
+    fun addNote(id: UUID, text: String, actor: Actor = Actor.USER, now: Instant, noteId: UUID = UUID.randomUUID()): Note {
         val item = get(id)
         val clean = requireText(text, "A note cannot be empty.", maxLength = 10_000)
-        val note = Note(UUID.randomUUID(), now, clean, actor)
+        val note = Note(noteId, now, clean, actor)
         item.notes.add(note)
         log(now, id, "noteAdded", clean, actor)
         return note
@@ -331,11 +339,11 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
     }
 
     /** A reminder at [dueAt] (the task stays where it is; when it's due, the task comes to the top of Do now). */
-    fun addReminder(id: UUID, dueAt: Instant, message: String?, actor: Actor = Actor.USER, now: Instant): Reminder {
+    fun addReminder(id: UUID, dueAt: Instant, message: String?, actor: Actor = Actor.USER, now: Instant, reminderId: UUID = UUID.randomUUID()): Reminder {
         val item = get(id)
         val clean = optionalText(message)
         if (clean != null && clean.length > MAX_TITLE_LENGTH) throw BoardException("Must be at most $MAX_TITLE_LENGTH characters.")
-        val reminder = Reminder(dueAt = dueAt, message = clean ?: defaultReminderMessage(item), kind = ReminderKind.MANUAL)
+        val reminder = Reminder(id = reminderId, dueAt = dueAt, message = clean ?: defaultReminderMessage(item), kind = ReminderKind.MANUAL)
         item.reminders.add(reminder)
         log(now, id, "reminderAdded", "Reminder at $dueAt: ${reminder.message}", actor)
         return reminder
@@ -362,9 +370,10 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
 
     // ---- Groups ---------------------------------------------------------------------------------------------------
 
-    fun addGroup(name: String, color: String? = null, actor: Actor = Actor.USER, now: Instant): TaskGroup {
+    fun addGroup(name: String, color: String? = null, actor: Actor = Actor.USER, now: Instant, id: UUID = UUID.randomUUID()): TaskGroup {
         val clean = validateGroup(name, color, except = null)
-        val group = TaskGroup(name = clean, color = color)
+        if (groups.any { it.id == id }) throw BoardException("There is already a group with this id.")
+        val group = TaskGroup(id = id, name = clean, color = color)
         groups.add(group)
         log(now, BOARD_SCOPE_ID, "groupChanged", "Added group \"$clean\"", actor)
         return group
@@ -590,7 +599,7 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         }
     }
 
-    private fun log(at: Instant, itemId: UUID, kind: String, summary: String, actor: Actor) {
+    internal fun log(at: Instant, itemId: UUID, kind: String, summary: String, actor: Actor) {
         activity.add(ActivityEntry(at, itemId, kind, summary, actor))
     }
 
@@ -797,6 +806,22 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         }
 
         internal fun optionalText(value: String?): String? = value?.trim()?.ifEmpty { null }
+
+        const val MAX_TAGS = 20
+
+        /** Tags as typed, cleaned (no #, one space between words) and each once; one that isn't a valid tag is refused. */
+        internal fun normalizeTags(tags: List<String>): List<String> {
+            val result = mutableListOf<String>()
+            for (raw in tags) {
+                val tag = dev.onething.core.vault.Values.cleanTag(raw)
+                if (!dev.onething.core.vault.Values.isValidTag(tag)) {
+                    throw BoardException("\"$raw\" isn't a valid tag. Use words of letters, numbers, - _ and / (not only digits), up to ${dev.onething.core.vault.Values.MAX_TAG_LENGTH} characters.")
+                }
+                if (result.none { it.equals(tag, ignoreCase = true) }) result.add(tag)
+            }
+            if (result.size > MAX_TAGS) throw BoardException("At most $MAX_TAGS tags per task.")
+            return result
+        }
 
         private fun defaultReminderMessage(item: WorkItem) = "Time to act on: ${item.title}"
 

@@ -15,6 +15,11 @@ class SyncPlanOptions(
     val deleted: (SyncEntry) -> Boolean = { false },
     /** Whether merged text is still a valid task file at a path (else both versions are kept whole). */
     val isValidTask: (String, String) -> Boolean = { _, _ -> true },
+    /**
+     * Entries one side can't sync right now (too big, a link, a name the other side can't use): left as they are on
+     * both sides (never written, moved or deleted), and their paths here are never written over.
+     */
+    val held: Collection<SyncHeld> = emptyList(),
 )
 
 /**
@@ -26,8 +31,11 @@ object SyncPlanner {
     fun plan(local: SyncSide, peer: SyncSide, base: Map<String, SyncEntry>, readBase: (String) -> ByteArray?, options: SyncPlanOptions = SyncPlanOptions()): SyncPlan {
         val ctx = Context(local, peer, readBase, options)
         val files = mutableListOf<Files>()
+        val held = options.held.map { it.key }.toHashSet()
         val keys = (local.entries.keys + peer.entries.keys + base.keys).toSortedSet(Net.ordinal)
         for (key in keys) {
+            // Held back on one side: never taken as deleted, never written over.
+            if (key in held) continue
             val l = local.entries[key]
             val p = peer.entries[key]
             val b = base[key]
@@ -88,7 +96,7 @@ object SyncPlanner {
         val conflicts = mutableListOf<SyncConflict>()
 
         /** Paths in use here (and planned), compared case-insensitively, to never write over another entry's file. */
-        val taken: MutableSet<String> = local.entries.values.map { Net.ci(it.path) }.toMutableSet()
+        val taken: MutableSet<String> = (local.entries.values.map { Net.ci(it.path) } + options.held.filter { it.path.isNotEmpty() }.map { Net.ci(it.path) }).toMutableSet()
         val localWins = local.device < peer.device
         val loserName: String get() = if (localWins) peer.name else local.name
 
@@ -352,8 +360,9 @@ object SyncPlanner {
     private fun mergeKeyed(b: JsonArray?, winner: JsonArray, loser: JsonArray, keyName: String): JsonArray {
         fun key(node: JsonElement) = NetJson.write((node as JsonObject)[keyName])
         fun index(list: List<JsonElement>): LinkedHashMap<String, JsonElement> {
+            // Two with the same id or name (written by hand, say): the first one counts, nothing throws.
             val map = LinkedHashMap<String, JsonElement>()
-            for (x in list) require(map.put(key(x), x) == null) { "An item with the same key has already been added." }
+            for (x in list) map.putIfAbsent(key(x), x)
             return map
         }
         val old = index((b ?: JsonArray(emptyList())).filter { x -> x is JsonObject && x[keyName].let { it is JsonPrimitive && it !is JsonNull } })

@@ -38,6 +38,20 @@ class VaultStoreTest {
     }
 
     @Test
+    fun aNewTimeZoneIsWhereTheTasksAreReadFromThenOn() {
+        val store = open()
+        store.update { it.addTask(NewTask("Trip", groupId = it.groups[0].id), Actor.USER, now) }
+        val before = snapshot()
+        val amsterdam = java.time.ZoneId.of("Europe/Amsterdam")
+        store.changeZone(amsterdam)
+        assertEquals(amsterdam, store.read { it.zone })
+        assertEquals(amsterdam, store.snapshot().zone)
+        assertEquals(listOf("Trip"), store.read { b -> b.items.map { it.title } })
+        // Nothing is written for it.
+        assertEquals(before, snapshot())
+    }
+
+    @Test
     fun readingNeverWritesAndAChangeWritesOnlyTheTaskItTouched() {
         val store = open()
         val personal = store.read { it.groups[1].id }

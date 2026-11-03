@@ -162,10 +162,14 @@ class SyncEngine(
         var changes = 0
         val conflicts = mutableListOf<SyncConflictRecord>()
         val problems = mutableListOf<String>()
+        // What can't sync here is said (and left alone everywhere), never taken as deleted.
+        for (h in local.held) problems.add("“${h.path}” can't sync (${h.reason}); it's left as it is on every device.")
         var complete = snapshot?.partial != true
         for (peer in peers) {
             try {
-                val entries = valid(peer) ?: continue
+                val checked = check(peer) ?: continue
+                val entries = checked.entries
+                for (h in checked.rejected) problems.add("${peer.name}: “${h.path}” can't sync to this phone (${h.reason}); it's left as it is.")
                 val missing = fetch(peer, entries, local)
                 if (missing != null) {
                     complete = false
@@ -174,12 +178,13 @@ class SyncEngine(
                 }
                 val base = state.loadBase(peer.device)
                 val current = local
+                val peerHeld = (peer.held ?: emptyList()).map { SyncHeld(it, "", "held back on ${peer.name}") }
                 val plan = SyncPlanner.plan(
                     SyncSide(state.deviceId, state.deviceName, current.entries, current.read),
                     SyncSide(peer.device, peer.name, entries) { e -> state.readBlob(e.hash) ?: throw SyncStaleException("${e.path} is missing.") },
                     base,
                     state::readBlob,
-                    options,
+                    SyncPlanOptions(options.deleted, options.isValidTask, current.held + checked.rejected + peerHeld),
                 )
                 // Both versions of a clash stay available (to keep one of them).
                 for (conflict in plan.conflicts) state.writeBlob(conflict.mine, current.read(current.entries[conflict.key]!!))
@@ -213,13 +218,15 @@ class SyncEngine(
         val fingerprint = fingerprint(local)
         if (mode.writes && (fingerprint != state.published || heartbeatDue || snapshot?.selfMissing == true)) {
             // What disappeared since the last publish was deleted here: say so (for months) so it stays gone everywhere.
+            // What's only held back (too big, a link) isn't deleted: the others are told to leave theirs alone.
             val fileKinds = setOf(SyncKind.TASK, SyncKind.RICH, SyncKind.FILE)
+            val heldKeys = local.held.map { it.key }.toSet()
             val tombstones = (
-                state.tombstones.filter { Duration.between(it.at, now) < SyncLimits.MEMORY && !local.entries.containsKey(it.key) } +
-                    state.publishedEntries.filter { !local.entries.containsKey(it.key) && SyncKeys.kindOf(it.key) in fileKinds }.map { SyncTombstone(it.key, it.hash, now) }
+                state.tombstones.filter { Duration.between(it.at, now) < SyncLimits.MEMORY && !local.entries.containsKey(it.key) && it.key !in heldKeys } +
+                    state.publishedEntries.filter { !local.entries.containsKey(it.key) && it.key !in heldKeys && SyncKeys.kindOf(it.key) in fileKinds }.map { SyncTombstone(it.key, it.hash, now) }
                 ).distinctBy { it.key to it.hash }
             val entriesNow = local.entries.values.map { it.copy(since = publishedSince[it.key to it.hash] ?: now) }.sortedWith(compareBy(Net.ordinal) { it.key })
-            val mine = DeviceSnapshot(state.deviceId, state.deviceName, now, entriesNow, deleted = tombstones)
+            val mine = DeviceSnapshot(state.deviceId, state.deviceName, now, entriesNow, deleted = tombstones, held = heldKeys.sortedWith(Net.ordinal).takeIf { it.isNotEmpty() })
             val version = remote.publish(mine, local.read, if (reading) state.remoteVersion else state.seenVersion)
             state.tombstones = tombstones
             state.publishedEntries = entriesNow
@@ -268,12 +275,26 @@ class SyncEngine(
 
         private fun isDeviceId(id: String) = id.length in 2..64 && id.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
 
+        /** A peer's entries this device accepts, and the ones it can't take (left alone, never taken as deleted). */
+        class Checked(val entries: Map<String, SyncEntry>, val rejected: List<SyncHeld>)
+
         /** The peer's entries this device accepts: well-formed ids, hashes and paths only (it's data from elsewhere). */
-        fun valid(peer: DeviceSnapshot): Map<String, SyncEntry>? {
+        fun valid(peer: DeviceSnapshot): Map<String, SyncEntry>? = check(peer)?.entries
+
+        /**
+         * The peer's entries this device accepts (well-formed ids, hashes and paths only: it's data from elsewhere), and
+         * those it can't: a name this device can't use, say. Those are held back, never taken as deleted. Null: not a
+         * device snapshot at all.
+         */
+        fun check(peer: DeviceSnapshot): Checked? {
             if (!isDeviceId(peer.device) || !SyncJson.hasEntries(peer)) return null
             val entries = LinkedHashMap<String, SyncEntry>()
+            val rejected = mutableListOf<SyncHeld>()
             for (e in peer.entries) {
-                if (e.hash.length != 64 || !e.hash.all { it in '0'..'9' || it in 'a'..'f' }) continue
+                if (e.hash.length != 64 || !e.hash.all { it in '0'..'9' || it in 'a'..'f' }) {
+                    rejected.add(SyncHeld(e.key, e.path, "its contents' hash isn't valid"))
+                    continue
+                }
                 val ok = when (SyncKeys.kindOf(e.key)) {
                     SyncKind.CONFIG -> e.path == SyncKeys.CONFIG_PATH
                     SyncKind.ORDER -> e.path == SyncKeys.ORDER_PATH
@@ -283,9 +304,13 @@ class SyncEngine(
                     SyncKind.FILE -> e.key == SyncKeys.file(e.path) && VaultFiles.isSyncablePath(e.path)
                 }
                 // Older devices don't say since when they have a version: oldest possible (a later delete wins).
-                if (ok) entries[e.key] = if (e.since == null) e.copy(since = NetTime.MIN) else e
+                if (ok) {
+                    entries[e.key] = if (e.since == null) e.copy(since = NetTime.MIN) else e
+                } else {
+                    rejected.add(SyncHeld(e.key, e.path, "its name can't be used here"))
+                }
             }
-            return entries
+            return Checked(entries, rejected)
         }
     }
 }

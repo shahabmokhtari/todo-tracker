@@ -1,26 +1,45 @@
 package dev.onething.core
 
+import dev.onething.core.vault.Values
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-data class QuickCapture(val title: String, val priority: Priority, val nextActionAt: Instant?, val deadline: Instant?)
+data class QuickCapture(val title: String, val priority: Priority, val nextActionAt: Instant?, val deadline: Instant?, val tags: List<String> = emptyList())
 
 /**
- * One-line capture, the same as everywhere else: `!`/`!!`/`!low` priority, `@15m`/`@2h`/`@1d`/`@tomorrow` defer,
- * `due:today`/`due:tomorrow`/`due:3d`/`due:2026-02-01` deadline.
+ * One-line capture, the same as everywhere else: `!`/`!!`/`!low` priority, `@15m`/`@2h`/`@1d`/`@tomorrow` defer (and
+ * anything "Pick a time…" understands: `@fri`, `@2w`, `@weekend`, `@14:00`, `@next-week`), `due:today`/`due:tomorrow`/
+ * `due:3d`/`due:2026-02-01` deadline, `#tag` and `#"deep work"` tags (words like `#123` that can't be tags stay in the
+ * title, as in Obsidian). QuickCaptureParser in C# (tests/fixtures/quick-capture.json).
  */
 object QuickCaptureParser {
     private const val MORNING_HOUR = 9
     private const val END_OF_DAY_HOUR = 17
+
+    // #"deep work": a tag of several words, in straight or curly quotes (phones curl them as you type).
+    private val quotedTag = Regex("(?<=^|\\s)#[\"\u201C\u201D]([^\"\u201C\u201D]+)[\"\u201C\u201D]")
 
     fun parse(input: String, now: Instant, zone: ZoneId = ZoneId.systemDefault()): QuickCapture {
         var priority = Priority.NORMAL
         var nextAction: Instant? = null
         var deadline: Instant? = null
         val words = mutableListOf<String>()
-        for (token in input.split(' ').filter { it.isNotEmpty() }) {
+        val tags = mutableListOf<String>()
+        fun addTag(tag: String) {
+            if (tags.none { it.equals(tag, ignoreCase = true) }) tags.add(tag)
+        }
+        val text = quotedTag.replace(input) { m ->
+            val tag = Values.cleanTag(m.groupValues[1])
+            if (!Values.isValidTag(tag)) {
+                m.value
+            } else {
+                addTag(tag)
+                " "
+            }
+        }
+        for (token in text.split(' ').map { it.trim() }.filter { it.isNotEmpty() }) {
             val p = parsePriority(token)
             val at = if (p == null) parseDefer(token, now, zone) else null
             val due = if (p == null && at == null) parseDue(token, now, zone) else null
@@ -28,11 +47,12 @@ object QuickCaptureParser {
                 p != null -> priority = p
                 at != null -> nextAction = at
                 due != null -> deadline = due
+                token.length > 1 && token[0] == '#' && token[1] != '#' && Values.isValidTag(token.substring(1)) -> addTag(token.substring(1))
                 else -> words.add(token)
             }
         }
         if (words.isEmpty()) throw BoardException("Type a task title.")
-        return QuickCapture(words.joinToString(" "), priority, nextAction, deadline)
+        return QuickCapture(words.joinToString(" "), priority, nextAction, deadline, tags)
     }
 
     fun parsePriority(token: String): Priority? = when (token.lowercase()) {
@@ -47,7 +67,9 @@ object QuickCaptureParser {
         if (!token.startsWith("@")) return null
         val value = token.drop(1).lowercase()
         if (value == "tomorrow") return tomorrowMorning(now, zone)
-        return parseSpanSeconds(value)?.let { now.plusSeconds(it) }
+        // @15m, @2h, @3d count from now (as always); anything else as in "Pick a time…": @fri, @2w, @weekend, @14:00,
+        // and words with spaces written with hyphens (@next-week, @tomorrow-14:00).
+        return parseSpanSeconds(value)?.let { now.plusSeconds(it) } ?: Snooze.parse(value, now, zone) ?: Snooze.parse(value.replace('-', ' '), now, zone)
     }
 
     /** The next 9:00. Before 4:00 people still mean "when I wake up", i.e. this morning (same as C# and Swift). */
