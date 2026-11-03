@@ -130,7 +130,8 @@ export function energyLine(energy) {
     : `⚡ ${n(energy.plannedToday)} of ${energy.perDay} planned today.`;
 }
 
-export function metaChips(card, { waiting = false, now = new Date(), energy = false, notes = true } = {}) {
+/** A card's facts as chips. `plan: false` (the Plan extra is off) leaves out when it's planned. */
+export function metaChips(card, { waiting = false, now = new Date(), energy = false, notes = true, plan = true } = {}) {
   const chips = [];
   if (card.breadcrumb?.length) chips.push({ text: card.breadcrumb.join(' › '), tone: 'path' });
   const step = stepLabel(card);
@@ -142,7 +143,7 @@ export function metaChips(card, { waiting = false, now = new Date(), energy = fa
       ? { text: `overdue ${relativeTime(card.deadline, now)}`, tone: 'danger' }
       : { text: `due ${relativeTime(card.deadline, now)}`, tone: 'warn' });
   }
-  if (card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
+  if (plan && card.plannedAt) chips.push({ text: `🗓 ${plannedText(card.plannedAt, card.plannedMinutes, now)}`, tone: 'info' });
   if (card.repeat) chips.push({ text: `🔁 ${card.repeat}`, tone: 'muted' });
   if (energy && card.energy) chips.push({ text: energyMarks(card.energy), tone: 'energy' });
   if (notes && card.noteCount) chips.push({ text: `${card.noteCount} note${card.noteCount > 1 ? 's' : ''}`, tone: 'muted' });

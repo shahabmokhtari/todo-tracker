@@ -50,6 +50,9 @@ export async function pair({ serverUrl, code, name = browserName(), fetch = glob
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
+  if (response.status === 404) {
+    throw new ApiError(404, 'The Browser extension extra is switched off in One Thing. Switch it on in Settings › Extras, then get a pairing code.');
+  }
   if (!response.ok || !data?.token) {
     throw new ApiError(response.status, data?.detail || data?.title || `Pairing failed (${response.status})`);
   }
@@ -61,11 +64,54 @@ export async function pair({ serverUrl, code, name = browserName(), fetch = glob
  * windows. When the list can't be read (an older One Thing), it stays out.
  */
 export async function feedbackOn(client) {
+  return (await extrasOn(client))?.has('feedback') ?? false;
+}
+
+/** The ids of the extras switched on in One Thing; null when the list can't be read (an older One Thing). */
+export async function extrasOn(client) {
   try {
-    return (await client.plugins()).some((p) => p.id === 'feedback' && p.enabled);
+    return new Set((await client.plugins()).filter((p) => p.enabled).map((p) => p.id));
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * What to say when One Thing stops accepting this browser: its pairing was removed, or the Browser extension extra
+ * was switched off (One Thing answers both the same way, so both are named).
+ */
+export function connectionLost() {
+  return 'One Thing didn’t accept this connection any more. If the Browser extension extra is switched off, switch it on in One Thing (Settings › Extras); otherwise get a new pairing code there.';
+}
+
+/**
+ * A client for a token, checked with One Thing first, so a mistyped or old token is never kept. Resolves to the
+ * client; rejects with what to do when One Thing says no.
+ */
+export async function connect({ serverUrl, token, fetch = globalThis.fetch }) {
+  const client = createClient({ serverUrl, token, fetch });
+  try {
+    await client.dashboard();
+  } catch (error) {
+    if (error instanceof ApiError && error.unauthorized) throw new ApiError(401, 'One Thing didn’t accept that token. Check it, or use a pairing code instead.');
+    throw error;
+  }
+  return client;
+}
+
+/** Wraps a loader so only the newest call's answer (or error) is used: an older one that comes back late is dropped. */
+export function newest(load) {
+  let seq = 0;
+  return async (...args) => {
+    const mine = ++seq;
+    try {
+      const value = await load(...args);
+      return mine === seq ? { current: true, value } : { current: false };
+    } catch (error) {
+      if (mine === seq) throw error;
+      return { current: false };
+    }
+  };
 }
 
 export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {

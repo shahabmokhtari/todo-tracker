@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { browserName, createClient, feedbackOn, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
+import { browserName, connect, connectionLost, createClient, feedbackOn, newest, normalizeServerUrl, pageSource, pair } from '../lib/client.js';
 
 function fakeFetch(responses = {}) {
   const calls = [];
@@ -147,4 +147,36 @@ test('a wrong or old pairing code says what to do', async () => {
 
   await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '000000', fetch }), /didn.t work/);
   await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '12', fetch }), /6 digits/);
+});
+test('pairing while the Browser extension extra is off says to switch it on', async () => {
+  const fetch = fakeFetch({ 'POST /api/plugins/browser-extension/claim': { status: 404, body: { detail: 'The Browser extension extra is off.' } } });
+
+  await assert.rejects(pair({ serverUrl: 'http://127.0.0.1:5317', code: '123456', fetch }), /switched off in One Thing.*Settings › Extras/);
+});
+
+test('a pasted token is checked with One Thing before it is kept', async () => {
+  const rejected = fakeFetch({ 'GET /api/dashboard': { status: 401 } });
+  await assert.rejects(connect({ serverUrl: 'http://127.0.0.1:5317', token: 'wrong', fetch: rejected }), /didn’t accept that token/);
+  assert.equal(rejected.calls.length, 1);
+
+  const fine = fakeFetch({ 'GET /api/dashboard': { status: 200, body: { now: [] } } });
+  const client = await connect({ serverUrl: 'http://127.0.0.1:5317', token: 'right', fetch: fine });
+  assert.equal(typeof client.dashboard, 'function');
+  assert.equal(fine.calls[0].init.headers.Authorization, 'Bearer right');
+});
+
+test('a late answer to an older refresh is dropped, and so is its error', async () => {
+  const later = (ms, value, fail = false) => new Promise((resolve, reject) => { setTimeout(() => (fail ? reject(new Error(value)) : resolve(value)), ms); });
+  const load = newest(later);
+  const old = load(30, 'All');
+  const failing = load(20, 'gone', true);
+  const fresh = load(1, 'Work');
+  assert.deepEqual(await fresh, { current: true, value: 'Work' });
+  assert.deepEqual(await old, { current: false });
+  assert.deepEqual(await failing, { current: false });
+});
+
+test('a connection that stopped working says what to check', () => {
+  assert.match(connectionLost(), /Browser extension extra/);
+  assert.match(connectionLost(), /new pairing code/);
 });
