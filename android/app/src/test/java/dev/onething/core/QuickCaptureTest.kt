@@ -13,7 +13,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.fail
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 /** Quick capture's tags and snooze words, as QuickCaptureParser in C# reads them. */
@@ -97,16 +96,14 @@ class QuickCaptureTest {
         assertEquals(listOf("deep work", "writing"), item.tags)
     }
 
-    /**
-     * tests/fixtures/quick-capture.json, shared by C#, Swift and Kotlin (written from the C# core). Skipped until it's
-     * there.
-     */
+    /** tests/fixtures/quick-capture.json, shared by C#, Swift and Kotlin (written from the C# core). */
+
     @Test
     fun quickCaptureReadsLikeTheSharedFixture() {
         var dir: File? = File("").absoluteFile
         while (dir != null && !File(dir, "tests/fixtures").isDirectory) dir = dir.parentFile
         val file = File(dir ?: error("tests/fixtures not found"), "tests/fixtures/quick-capture.json")
-        assumeTrue("tests/fixtures/quick-capture.json isn't there yet", file.isFile)
+
         val f = Json.parseToJsonElement(file.readText()).jsonObject
         fun JsonObject.text(key: String) = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
         val at = Instant.parse(f.text("now"))
@@ -127,6 +124,14 @@ class QuickCaptureTest {
             if (c.containsKey("snoozeUntil")) assertEquals(text, c.text("snoozeUntil")?.let(Instant::parse), capture.nextActionAt)
             if (c.containsKey("deadline")) assertEquals(text, c.text("deadline")?.let(Instant::parse), capture.deadline)
             c.text("priority")?.let { assertEquals(text, Priority.of(it), capture.priority) }
+        }
+        // A line with nothing left to call the task adds nothing.
+        for (line in f["rejected"]!!.jsonArray.map { it.jsonPrimitive.content }) {
+            try {
+                QuickCaptureParser.parse(line, at, zone)
+                fail("\"$line\" should have been refused")
+            } catch (expected: BoardException) {
+            }
         }
     }
 }

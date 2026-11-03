@@ -64,11 +64,23 @@ internal object VaultText {
     fun atLocal(local: LocalDateTime, zone: ZoneId): Instant {
         val rules = zone.rules
         val offsets = rules.getValidOffsets(local)
-        if (offsets.size == 1) return local.toInstant(offsets[0])
-        val transition = rules.getTransition(local)
-        val standard = if (transition != null) rules.getStandardOffset(transition.instant) else rules.getStandardOffset(local.toInstant(ZoneOffset.UTC))
-        return local.toInstant(standard)
+        val at = if (offsets.size == 1) {
+            local.toInstant(offsets[0])
+        } else {
+            val transition = rules.getTransition(local)
+            val standard = if (transition != null) rules.getStandardOffset(transition.instant) else rules.getStandardOffset(local.toInstant(ZoneOffset.UTC))
+            local.toInstant(standard)
+        }
+        // 9999-12-31 late in the evening west of Greenwich is past the last moment there is.
+        if (!inRange(at)) throw NetFormatException("${shownMinute.format(local)} is too far away to use.")
+        return at
     }
+
+    /** The first and last moments .NET's DateTimeOffset can hold: every app reads the same files the same way. */
+    private val firstMoment: Instant = Instant.parse("0001-01-01T00:00:00Z")
+    private val lastMoment: Instant = Instant.parse("9999-12-31T23:59:59.9999999Z")
+
+    private fun inRange(at: Instant) = !at.isBefore(firstMoment) && !at.isAfter(lastMoment)
 
     fun atLocal(date: LocalDate, time: String, zone: ZoneId): Instant =
         atLocal(LocalDateTime.of(date, LocalTime.of(time.substring(0, 2).toInt(), time.substring(3, 5).toInt())), zone)
@@ -138,7 +150,7 @@ internal object VaultText {
                     ZoneOffset.ofTotalSeconds(if (zone[0] == '-') -total else total)
                 }
             }
-            local.toInstant(offset)
+            local.toInstant(offset).takeIf(::inRange)
         } catch (e: java.time.DateTimeException) {
             null
         }
@@ -155,13 +167,19 @@ internal object VaultText {
         return if (minutes % 1440 == 0L) "${minutes / 1440}d" else if (minutes % 60 == 0L) "${minutes / 60}h" else "${minutes}m"
     }
 
+    /** The longest duration a file can hold (ten years, in minutes); longer ones are read as this. */
+    const val MAX_DURATION_MINUTES = 3650.0 * 1440
+
+    /** Minutes as a duration, no longer than ten years either way. */
+    fun minutes(minutes: Double): Duration = Duration.ofMinutes(minutes.coerceIn(-MAX_DURATION_MINUTES, MAX_DURATION_MINUTES).toLong())
+
     private val durationPart = Net.rx("(\\p{Nd}+)[${Net.WS}]*([dhm])", ignoreCase = true)
     private val plainNumber = Regex("[${Net.WS}]*[+-]?[0-9]+[${Net.WS}]*")
 
     fun parseDuration(text: String?): Duration? {
         val value = Net.trim(text ?: return null)
         if (value.isEmpty()) return null
-        if (plainNumber.matches(value)) value.trim().toLongOrNull()?.let { return Duration.ofMinutes(it) }
+        if (plainNumber.matches(value)) value.trim().toLongOrNull()?.let { return minutes(it.toDouble()) }
         val m = durationPart.matcher(value)
         val parts = mutableListOf<Pair<Long, String>>()
         val matched = StringBuilder()
@@ -170,17 +188,15 @@ internal object VaultText {
             parts.add(m.group(1)!!.toLongOrNull()?.let { it to m.group(2)!! } ?: throw NetFormatException("\"$text\" isn't a duration (use 90m, 24h, or 1d)."))
         }
         if (parts.isEmpty() || matched.length != value.replace(" ", "").length) throw NetFormatException("\"$text\" isn't a duration (use 90m, 24h, or 1d).")
-        var total = Duration.ZERO
+        var total = 0.0
         for ((n, unit) in parts) {
-            total = total.plus(
-                when (Net.lower(unit)) {
-                    "d" -> Duration.ofDays(n)
-                    "h" -> Duration.ofHours(n)
-                    else -> Duration.ofMinutes(n)
-                },
-            )
+            total += n * when (Net.lower(unit)) {
+                "d" -> 1440.0
+                "h" -> 60.0
+                else -> 1.0
+            }
         }
-        return total
+        return minutes(total)
     }
 
     /** "25 min", or "2 h 05 min". */

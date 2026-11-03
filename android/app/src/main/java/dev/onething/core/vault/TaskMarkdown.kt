@@ -92,6 +92,11 @@ object TaskMarkdown {
         parseCore(text, fileStem, context)
     } catch (e: NetFormatException) {
         throw VaultFormatException(e.message ?: "Not a valid task file.", e)
+    } catch (e: ArithmeticException) {
+        // A value too big for its kind (a date past year 9999, a number past what fits) is a file to fix, not a crash.
+        throw VaultFormatException("A value in this file is too big to use (${e.message}).", e)
+    } catch (e: java.time.DateTimeException) {
+        throw VaultFormatException("A value in this file is too big to use (${e.message}).", e)
     }
 
     fun render(root: WorkItem, context: TaskMarkdownContext, previous: ParsedTaskFile? = null): String {
@@ -486,7 +491,7 @@ object TaskMarkdown {
         item.nextActionAt = resolve(scheduled, str(md, "next"), VaultText.DEFAULT_SCHEDULED_TIME)
         item.afterId = Net.parseGuid(str(md, "after"))
         item.sequential = NetJson.bool(md?.get("seq")) == true
-        item.stepDelay = NetJson.long(md?.get("delay"))?.let { Duration.ofMinutes(it) }
+        item.stepDelay = NetJson.long(md?.get("delay"))?.let { VaultText.minutes(it.toDouble()) }
         item.icon = Values.icon(str(md, "icon"))
         item.color = Values.color(str(md, "color"))
         item.repeat = Values.repeat(str(md, "repeat"))
