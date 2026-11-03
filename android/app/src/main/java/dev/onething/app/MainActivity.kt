@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // When a focus session or break ends with the app closed, the phone says so.
         vm.onPhaseEnds = { ends -> FocusAlarm.schedule(applicationContext, ends) }
-        vm.onPhaseEnded = { end -> FocusAlarm.notify(applicationContext, end) }
         setContent {
             // The status bar's icons follow the chosen theme (dark icons on the light one).
             val dark = vm.theme == "dark" || (vm.theme == "system" && isSystemInDarkTheme())

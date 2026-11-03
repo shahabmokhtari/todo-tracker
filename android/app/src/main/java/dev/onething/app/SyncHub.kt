@@ -36,7 +36,7 @@ object SyncHub {
     private const val SOON = "sync-soon"
 
     /** GitHub's page for a new classic token with only the gist scope (there's no OAuth app for sign-in yet). */
-    const val NEW_TOKEN_URL = "https://github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker"
+    const val NEW_TOKEN_URL = "https://github.com/settings/tokens/new?scopes=gist&description=One%20Thing"
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "sync").apply { isDaemon = true } }
     private var sync: PhoneSync? = null

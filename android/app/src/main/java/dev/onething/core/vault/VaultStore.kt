@@ -80,9 +80,14 @@ internal class CiMap<V> {
 class VaultStore(
     /** The tasks folder (e.g. `filesDir/vault`), never a shared one: sync meets elsewhere. */
     val root: File,
-    val zone: ZoneId = ZoneId.systemDefault(),
+    zone: ZoneId = ZoneId.systemDefault(),
     private val clock: () -> Instant = Instant::now,
 ) {
+    /** Where the person is: local times in the files ("tomorrow 9:00", dates) are read and written there. */
+    @Volatile
+    var zone: ZoneId = zone
+        private set
+
     private val lock = Any()
     private var caches = Caches()
     private var board: TaskBoard = TaskBoard(seedDefaultGroups = false)
@@ -188,6 +193,14 @@ class VaultStore(
 
     /** A copy of the board as the files are now, for a screen to show (it never changes underneath, and changing it saves nothing). */
     fun snapshot(): TaskBoard = read { decode(BoardCodec.encode(it)) }
+
+    /** The phone moved to another time zone: every file is read again there (nothing is written for it). */
+    fun changeZone(zone: ZoneId) = synchronized(lock) {
+        if (zone == this.zone) return@synchronized
+        this.zone = zone
+        board.zone = zone
+        forceContent = true
+    }
 
     /**
      * Applies a change and saves the files it touched (all or nothing). The change must say who made it (the board's

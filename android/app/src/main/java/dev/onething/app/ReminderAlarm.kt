@@ -82,10 +82,14 @@ object BoardHub {
                     // A board this app can't read (a newer version) is never written over from here.
                     val store = store(context) ?: throw BoardException("Open the app to check your board.")
                     val now = Instant.now()
+                    val canNotify = ReminderAlarm.canNotify(context)
+                    // The change may be made again (a file changed underneath): what's told is what the saved one marked.
+                    var told = emptyList<ReminderAlarm.Notice>()
                     store.update { board ->
                         action(board, now)
-                        ReminderAlarm.deliver(context, board, now)
+                        told = ReminderAlarm.mark(board, now, canNotify)
                     }
+                    ReminderAlarm.post(context, told)
                     ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
                 }
                 if (result.isSuccess) {
@@ -110,12 +114,35 @@ object BoardHub {
                 runCatching {
                     val store = store(context) ?: return@runCatching
                     val now = Instant.now()
-                    if (store.read { Reminders.due(it, now).isNotEmpty() }) store.update { ReminderAlarm.deliver(context, it, now) }
+                    if (store.read { Reminders.due(it, now).isNotEmpty() }) {
+                        val canNotify = ReminderAlarm.canNotify(context)
+                        var told = emptyList<ReminderAlarm.Notice>()
+                        store.update { told = ReminderAlarm.mark(it, now, canNotify) }
+                        ReminderAlarm.post(context, told)
+                    }
                     ReminderAlarm.schedule(context, store.read { Reminders.nextAt(it, now) })
                 }
                 Widgets.update(context)
             }
         }
+    }
+
+    /**
+     * The phone's time zone changed (a trip): the tasks folder reads its local times in the new one, and the app and the
+     * reminders follow.
+     */
+    fun zoneChanged(context: Context) {
+        disk.launch {
+            runCatching { store(context)?.changeZone(java.time.ZoneId.systemDefault()) }
+            reloaded(context)
+        }
+    }
+}
+
+/** The phone's time zone changed: the tasks' local times follow (see [BoardHub.zoneChanged]). */
+class TimeZoneReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_TIMEZONE_CHANGED) BoardHub.zoneChanged(context.applicationContext)
     }
 }
 
@@ -148,41 +175,61 @@ object ReminderAlarm {
         }
     }
 
-    /**
-     * Tells what's due on [board] now. Only what was shown is marked delivered: with notifications off, a reminder
-     * stays pending (Today shows it) and is told once they're on. True when something was delivered.
-     */
-    fun deliver(context: Context, board: TaskBoard, now: Instant): Boolean = Reminders.deliver(board, now) { notify(context, it) } > 0
+    /** A reminder to tell, as the notification says it (read from the board when it was marked). */
+    data class Notice(val itemId: UUID, val title: String, val message: String, val where: String, val hasOpenChildren: Boolean)
 
-    /** Shows the reminder; false when the phone won't (notifications off for the app or its reminders). */
-    private fun notify(context: Context, due: DueReminder): Boolean {
+    /** Whether the phone shows reminders now (notifications on for the app and its reminders). */
+    fun canNotify(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         manager.createNotificationChannel(NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_HIGH).apply {
             description = "When a task's reminder is due, or a snooze ends"
         })
-        if (!manager.areNotificationsEnabled() || manager.getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
-        val id = notificationId(due.item.id)
-        val open = PendingIntent.getActivity(
-            context, id,
-            Intent(Intent.ACTION_VIEW, Uri.parse(TaskLinks.forTask(due.item.id)), context, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val where = due.item.ancestors.reversed().joinToString(" › ") { it.title }
-        val builder = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(due.item.title)
-            .setContentText(due.reminder.message)
-            .setSubText(where.ifEmpty { null })
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .setAutoCancel(true)
-            .setContentIntent(open)
-        // Mark done would also close its open subtasks without asking: then it's Open (the app asks there).
-        if (due.item.hasOpenChildren) builder.addAction(0, "Open", open) else builder.addAction(0, "Mark done", action(context, ACTION_DONE, due.item.id, id))
-        builder.addAction(0, "In an hour", action(context, ACTION_LATER, due.item.id, id))
-        manager.notify(id, builder.build())
-        return true
+        return manager.areNotificationsEnabled() && manager.getNotificationChannel(CHANNEL)?.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    /**
+     * Marks what's due on [board] now as delivered, when the phone can show it ([canNotify]): with notifications off, a
+     * reminder stays pending (Today shows it) and is told once they're on. Only marks (a change that may be made again):
+     * what it returns is posted with [post] once the change is saved.
+     */
+    fun mark(board: TaskBoard, now: Instant, canNotify: Boolean): List<Notice> {
+        val told = mutableListOf<Notice>()
+        Reminders.deliver(board, now) { due ->
+            if (canNotify) {
+                told.add(Notice(due.item.id, due.item.title, due.reminder.message, due.item.ancestors.reversed().joinToString(" › ") { it.title }, due.item.hasOpenChildren))
+            }
+            canNotify
+        }
+        return told
+    }
+
+    /** Shows the reminders [mark] marked (one notification per task). */
+    fun post(context: Context, notices: List<Notice>) {
+        if (notices.isEmpty()) return
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        for (due in notices) {
+            val id = notificationId(due.itemId)
+            val open = PendingIntent.getActivity(
+                context, id,
+                Intent(Intent.ACTION_VIEW, Uri.parse(TaskLinks.forTask(due.itemId)), context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val builder = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(due.title)
+                .setContentText(due.message)
+                .setSubText(due.where.ifEmpty { null })
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setContentIntent(open)
+            // Mark done would also close its open subtasks without asking: then it's Open (the app asks there).
+            if (due.hasOpenChildren) builder.addAction(0, "Open", open) else builder.addAction(0, "Mark done", action(context, ACTION_DONE, due.itemId, id))
+            builder.addAction(0, "In an hour", action(context, ACTION_LATER, due.itemId, id))
+            // Permission can be taken back in between: nothing to do then (it was marked; Today still shows the task).
+            runCatching { manager.notify(id, builder.build()) }
+        }
     }
 
     /** One notification per task: a newer reminder replaces an older one about the same task. */

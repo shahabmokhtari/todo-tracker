@@ -63,6 +63,12 @@ private val REPEAT_CHOICES = listOf(
 )
 
 /**
+ * Text as the board keeps it: trimmed, with \n line ends (a file written on Windows has \r\n). Typed text that only
+ * differs from the task's in these ways is no change, so opening and closing a task never writes it.
+ */
+internal fun sameText(text: String): String = text.replace("\r\n", "\n").replace('\r', '\n').trim()
+
+/**
  * A task's details, full screen: what it is (title, details, priority, deadline, energy, repeat, group), what to do
  * with it (done, Later, archive, delete), its subtasks and steps, reminders and notes. What's typed is saved when you
  * leave a box's screen (Close, Back, or opening another task) or with Save.
@@ -72,20 +78,44 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
     @Suppress("UNUSED_VARIABLE") val redraw = vm.version // Redraws when the board changes.
     val item = vm.itemOf(id)
     if (item == null) {
+        // Still opening (back after the phone stopped the app): the task shows once the tasks are read.
+        if (!vm.loaded) return
         // Deleted meanwhile (or never on this phone).
         androidx.compose.runtime.LaunchedEffect(id) { onClose() }
         return
     }
-    var title by rememberSaveable(id) { mutableStateOf(item.title) }
-    var details by rememberSaveable(id) { mutableStateOf(item.details.orEmpty()) }
+    // What's typed, per box: null until you type in it, so a box you didn't touch shows (and keeps) the task as it is
+    // now, a change synced from another device included, and is never written back.
+    var typedTitle by rememberSaveable(id) { mutableStateOf<String?>(null) }
+    var typedDetails by rememberSaveable(id) { mutableStateOf<String?>(null) }
+    val title = typedTitle ?: item.title
+    val details = typedDetails ?: item.details.orEmpty()
+    val titleChanged = typedTitle != null && sameText(title) != item.title
+    val detailsChanged = typedDetails != null && sameText(details) != sameText(item.details.orEmpty())
     var note by rememberSaveable(id) { mutableStateOf("") }
-    // Typing isn't lost: closing (or going to another task) saves what changed.
+    // Typing isn't lost: closing (or going to another task) saves what changed, and only that.
     val saveTyped: () -> Boolean = {
         val changes = TaskChanges(
-            title = title.takeIf { it.trim() != item.title },
-            details = details.takeIf { it.trim() != item.details.orEmpty() },
+            title = title.takeIf { titleChanged },
+            details = details.takeIf { detailsChanged },
         )
-        if (changes.title == null && changes.details == null) true else vm.edit(id, changes)
+        val saved = changes.title == null && changes.details == null || vm.edit(id, changes)
+        // Saved: the boxes follow the task again (a later edit from another device shows, and isn't written over).
+        if (saved) {
+            typedTitle = null
+            typedDetails = null
+        }
+        saved
+    }
+    // The phone may stop the app while it's away: what's typed is saved then too.
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    val latestSave = androidx.compose.runtime.rememberUpdatedState(saveTyped)
+    androidx.compose.runtime.DisposableEffect(lifecycle, id) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) latestSave.value()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
     // Leaving (Close, Back, another task, Archive) saves what's typed first. When it can't be saved (no title, say), it
     // says why and offers to keep the old title instead, so there's always a way out and nothing is dropped silently.
@@ -109,7 +139,6 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
         if (other != id) open(other)
     }
     afterLeaving?.let { then ->
-        val titleChanged = title.trim() != item.title
         AlertDialog(
             onDismissRequest = { afterLeaving = null },
             title = { Text(if (title.isBlank()) "A task needs a title" else "Couldn't save your changes") },
@@ -123,7 +152,7 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     afterLeaving = null
-                    if (titleChanged) title = item.title else details = item.details.orEmpty()
+                    if (titleChanged) typedTitle = null else typedDetails = null
                     leave(then)
                 }) { Text(if (titleChanged) "Keep the old title" else "Leave without them") }
             },
@@ -137,7 +166,7 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = close) { Text("Close") }
                     Spacer(Modifier.weight(1f))
-                    val dirty = title.trim() != item.title || details.trim() != item.details.orEmpty()
+                    val dirty = titleChanged || detailsChanged
                     TextButton(onClick = { saveTyped() }, enabled = dirty) { Text(if (dirty) "Save" else "Saved") }
                 }
                 vm.status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp)) }
@@ -155,13 +184,13 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                         }
                     }
                     OutlinedTextField(
-                        value = title, onValueChange = { title = it }, label = { Text("Title") },
+                        value = title, onValueChange = { typedTitle = it }, label = { Text("Title") },
                         textStyle = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth(),
                     )
                     StateLine(item, vm)
                     TaskButtons(item, vm, onArchive = { leave { vm.archive(id); onClose() } })
                     OutlinedTextField(
-                        value = details, onValueChange = { details = it }, label = { Text("Details") },
+                        value = details, onValueChange = { typedDetails = it }, label = { Text("Details") },
                         placeholder = { Text("Links, context, what done looks like…") }, minLines = 3, modifier = Modifier.fillMaxWidth(),
                     )
                     Field("Priority") {

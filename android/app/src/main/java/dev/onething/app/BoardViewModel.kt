@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dev.onething.core.Agenda
 import dev.onething.core.BoardException
@@ -65,7 +66,7 @@ data class FocusState(
  * (waiting tasks come back) and, syncing, the phone syncs on launch and resume, 5 s after a change and every minute;
  * with the app closed, WorkManager syncs (SyncHub).
  */
-class BoardViewModel(application: Application) : AndroidViewModel(application), BoardHub.LiveBoard {
+class BoardViewModel(application: Application, private val savedState: SavedStateHandle) : AndroidViewModel(application), BoardHub.LiveBoard {
     // The tasks folder, opened off the screen's thread (the first time, board.json moves in): null until then.
     private var opened: LocalBoard.Opened? = null
     private val store: VaultStore? get() = opened?.store
@@ -157,11 +158,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     var breakPrompt: BreakPrompt? by mutableStateOf(null)
         private set
 
-    /** Whether the app is on screen (it tells the person itself; off screen, a notification does). */
+    /** Whether the app is on screen (off screen, a change from a notification or a widget syncs through WorkManager). */
     var appVisible: Boolean = true
-
-    /** A focus session or a break ran out while the app was off screen: say so now (once per end; the alarm may too). */
-    var onPhaseEnded: (PhaseEnd) -> Unit = {}
 
     /** Called when the focus timer's coming ends change (the app sets alarms for them); told at once when set. */
     var onPhaseEnds: (List<PhaseEnd>) -> Unit = {}
@@ -234,10 +232,14 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             showDeviceBoard(loaded)
             // From now on alarms and notification buttons change the tasks through this screen (the same store).
             BoardHub.live = this@BoardViewModel
-            readSyncStatus()
-            if (syncOn) SyncHub.startBackground(application)
+            readSyncStatus { if (syncOn) SyncHub.startBackground(application) }
             reminderSet = false
             refresh()
+            // A link that opened the app (a notification, a widget) waited for the tasks: it opens now.
+            pendingLink?.let {
+                pendingLink = null
+                openLink(it)
+            }
         }
         refresh()
     }
@@ -293,9 +295,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         if (deliver && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
             delivering = true
             val app = getApplication<Application>()
-            save(changed = false, at = now, mutate = { b, at -> ReminderAlarm.deliver(app, b, at) }) { result ->
+            val canNotify = ReminderAlarm.canNotify(app)
+            // Marked in the tasks folder first (the change may be made again if a file changed underneath); told once saved.
+            save(changed = false, at = now, mutate = { b, at -> ReminderAlarm.mark(b, at, canNotify) }) { result ->
                 delivering = false
-                if (result.getOrNull() == true) syncSchedule.changed(Instant.now())
+                result.getOrNull()?.takeIf { it.isNotEmpty() }?.let { told ->
+                    ReminderAlarm.post(app, told)
+                    syncSchedule.changed(Instant.now())
+                    if (!appVisible) SyncHub.soonInBackground(app)
+                }
                 refresh(deliver = false)
             }
         }
@@ -355,6 +363,8 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         }
         refresh()
         save(at = at, mutate = action) { result ->
+            // Off screen (a notification's button, a widget) the screen's sync schedule doesn't run: WorkManager syncs.
+            if (result.isSuccess && !appVisible) SyncHub.soonInBackground(getApplication())
             refresh()
             done(result)
         }
@@ -385,8 +395,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
                 result.onFailure { e -> status = "Couldn't save (${e.message}). It's tried again." }
                 refresh()
             }
-            // Running in the background (a locked phone): this moved the timer on before the alarm could ring.
-            events.lastOrNull()?.takeIf { !appVisible }?.let { onPhaseEnded(PhaseEnd(it.at, it.kind == PomodoroEventKind.FOCUS_COMPLETED)) }
+            // Off screen this doesn't run (whileOnScreen stops): the alarms FocusAlarm set say when a phase ends.
             refresh()
         } else if (lists) {
             refresh()
@@ -479,8 +488,17 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
 
-    /** The task whose details are open (shown over Today until closed). */
-    var openTaskId: UUID? by mutableStateOf(null)
+    /** The task whose details are open (shown over Today until closed); kept when the phone stops the app meanwhile. */
+    var openTaskId: UUID?
+        get() = openTask
+        set(value) {
+            openTask = value
+            savedState[OPEN_TASK] = value?.toString()
+        }
+    private var openTask: UUID? by mutableStateOf(savedState.get<String>(OPEN_TASK)?.let { runCatching { UUID.fromString(it) }.getOrNull() })
+
+    /** Whether the tasks folder is open (until then the board shown is a placeholder: a task can't be found yet). */
+    val loaded: Boolean get() = opened != null
 
     /**
      * Another task a link or a notification asks to open while one is open: the open one saves what's typed first (or
@@ -488,11 +506,15 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
      */
     var requestedTaskId: UUID? by mutableStateOf(null)
 
+    // A link that came before the tasks folder was open: it's followed once it is.
+    private var pendingLink: String? = null
+
     /** A clicked onething://task/<id> link: that task opens (anything else is ignored). */
     fun openLink(link: String?) {
         val target = TaskLinks.target(link)
         if (target is TaskLinks.Target.Task) {
             when {
+                opened == null -> pendingLink = link
                 board.find(target.id) == null -> status = "That task isn't on this phone"
                 openTaskId == null || openTaskId == target.id -> openTaskId = target.id
                 else -> requestedTaskId = target.id
@@ -505,12 +527,19 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     /** When it was done (a repeating task that moved on: when its last time was). */
     fun doneAt(item: WorkItem): Instant? = Agenda.doneAt(board, item)
 
-    /** Quick capture: "Call mum @tomorrow !high due:3d". True when it was added. */
+    /** Quick capture: "Call mum @tomorrow !high due:3d #family". True when it was added. */
     fun capture(text: String): Boolean {
         val group = selectedGroup
+        // Read once, with one id: the change is made on the screen's board and again on the tasks folder, the same.
+        val capture = try {
+            QuickCaptureParser.parse(text, Instant.now(), ZoneId.systemDefault())
+        } catch (e: BoardException) {
+            status = e.message
+            return false
+        }
+        val id = UUID.randomUUID()
         return change("Added") { b, now ->
-            val capture = QuickCaptureParser.parse(text, now, ZoneId.systemDefault())
-            val item = b.addTask(NewTask(capture.title, groupId = group, priority = capture.priority, deadline = capture.deadline), now = now)
+            val item = b.addTask(NewTask(capture.title, groupId = group, priority = capture.priority, deadline = capture.deadline, id = id, tags = capture.tags), now = now)
             capture.nextActionAt?.let { b.scheduleNextAction(item.id, it, notify = true, now = now) }
         }
     }
@@ -584,19 +613,26 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     fun setStepDelay(id: UUID, hours: Double?) =
         edit(id, if (hours == null || hours <= 0) TaskChanges(clearStepDelay = true) else TaskChanges(stepDelay = Duration.ofMinutes(Math.round(hours * 60))), "Saved")
 
-    fun addSubtask(parentId: UUID, title: String) = change("Added") { b, now -> b.addTask(NewTask(title, parentId = parentId), now = now) }
+    fun addSubtask(parentId: UUID, title: String): Boolean {
+        val id = UUID.randomUUID()
+        return change("Added") { b, now -> b.addTask(NewTask(title, parentId = parentId, id = id), now = now) }
+    }
 
     /** Steps done one after another, [hours] apart (one per line). */
     fun addSteps(parentId: UUID, lines: String, hours: Double?): Boolean {
         val titles = lines.lines().map { it.trim() }.filter { it.isNotEmpty() }
         val delay = hours?.takeIf { it > 0 }?.let { Duration.ofMinutes(Math.round(it * 60)) }
-        return change("Added ${titles.size} step${if (titles.size == 1) "" else "s"}") { b, now -> b.addSteps(parentId, titles, delay, now = now) }
+        val ids = titles.map { UUID.randomUUID() }
+        return change("Added ${titles.size} step${if (titles.size == 1) "" else "s"}") { b, now -> b.addSteps(parentId, titles, delay, now = now, ids = ids) }
     }
 
     /** A reminder at a time (the task stays where it is). */
-    fun addReminder(id: UUID, at: Instant, message: String?) = change("Reminder set for ${describe(at)}") { b, now ->
-        if (!at.isAfter(now)) throw BoardException("That time has passed. Pick a later one.")
-        b.addReminder(id, at, message, now = now)
+    fun addReminder(id: UUID, at: Instant, message: String?): Boolean {
+        val reminderId = UUID.randomUUID()
+        return change("Reminder set for ${describe(at)}") { b, now ->
+            if (!at.isAfter(now)) throw BoardException("That time has passed. Pick a later one.")
+            b.addReminder(id, at, message, now = now, reminderId = reminderId)
+        }
     }
 
     fun archive(id: UUID) {
@@ -659,16 +695,23 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
         change(null) { b, now -> b.arrangeNow(order, now = now) }
     }
 
-    fun addNote(id: UUID, text: String) = change("Note saved") { b, now -> b.addNote(id, text, now = now) }
+    fun addNote(id: UUID, text: String): Boolean {
+        val noteId = UUID.randomUUID()
+        return change("Note saved") { b, now -> b.addNote(id, text, now = now, noteId = noteId) }
+    }
 
     /** A new group, shown once it's saved. */
-    fun addGroup(name: String) = change(null, saved = { id: UUID -> selectedGroup = id }) { b, now -> b.addGroup(name, now = now).id }
+    fun addGroup(name: String): Boolean {
+        val id = UUID.randomUUID()
+        return change(null, saved = { group: UUID -> selectedGroup = group }) { b, now -> b.addGroup(name, now = now, id = id).id }
+    }
 
     /**
      * Applies a change: it's checked and shown at once on the board on screen, then made again on the tasks folder (the
      * one store) off the screen's thread, where only the files it touched are written (all or nothing; a file changed
      * underneath is read again and the change made again). False (with the reason shown) when the board refused it.
-     * [action] gets the board to change and the time; what it returns on the saved board goes to [saved].
+     * [action] gets the board to change and the time, and must make the same change both times (ids it makes are
+     * chosen before, not inside it); what it returns on the saved board goes to [saved].
      */
     private fun <T> change(message: String?, saved: (T) -> Unit = {}, action: (TaskBoard, Instant) -> T): Boolean {
         if (opened == null) {
@@ -737,16 +780,34 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
 
     val canSync: Boolean get() = phoneSync != null
 
-    private fun readSyncStatus() {
+    /** What Settings › Sync shows, read together on the sync thread (it reads files and the Keystore). */
+    private class SyncView(
+        val on: Boolean,
+        val backends: List<SyncBackend>,
+        val backend: SyncBackend?,
+        val library: String,
+        val joined: Boolean,
+        val notice: String?,
+        val needsSignIn: Boolean,
+        val status: SyncStatus,
+    )
+
+    /** Reads the sync status off the screen's thread, then shows it (and then [then] runs). */
+    private fun readSyncStatus(then: () -> Unit = {}) {
         val p = phoneSync ?: return
-        syncOn = p.on
-        syncBackends = p.backends.all
-        syncBackend = p.backend
-        syncLibrary = p.settings.library
-        syncJoined = p.settings.joined
-        syncNotice = p.settings.notice
-        syncNeedsSignIn = p.needsSignIn
-        syncStatus = p.status()
+        SyncHub.run({ SyncView(p.on, p.backends.all, p.backend, p.settings.library, p.settings.joined, p.settings.notice, p.needsSignIn, p.status()) }) { result ->
+            result.getOrNull()?.let { v ->
+                syncOn = v.on
+                syncBackends = v.backends
+                syncBackend = v.backend
+                syncLibrary = v.library
+                syncJoined = v.joined
+                syncNotice = v.notice
+                syncNeedsSignIn = v.needsSignIn
+                syncStatus = v.status
+            }
+            then()
+        }
     }
 
     /** Syncs now (off the screen's thread); what came in shows at once, reminders included. */
@@ -787,8 +848,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
             result.onFailure { e -> syncMessage = e.message }
             result.onSuccess {
                 SyncHub.startBackground(getApplication())
-                readSyncStatus()
-                syncNow()
+                readSyncStatus { syncNow() }
             }
         }
     }
@@ -796,8 +856,7 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     fun changeSyncLibrary(library: String) {
         val p = phoneSync ?: return
         SyncHub.run({ p.changeLibrary(library) }) {
-            readSyncStatus()
-            syncNow()
+            readSyncStatus { syncNow() }
         }
     }
 
@@ -822,5 +881,9 @@ class BoardViewModel(application: Application) : AndroidViewModel(application), 
     fun dismissConflict(key: String) {
         val p = phoneSync ?: return
         SyncHub.run({ p.dismiss(key) }) { readSyncStatus() }
+    }
+
+    private companion object {
+        const val OPEN_TASK = "open-task"
     }
 }
