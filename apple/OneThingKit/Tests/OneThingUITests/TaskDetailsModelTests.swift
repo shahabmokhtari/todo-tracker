@@ -1,6 +1,11 @@
 import XCTest
 @testable import OneThingKit
 @testable import OneThingUI
+#if os(macOS)
+import AppKit
+#elseif os(iOS)
+import UIKit
+#endif
 
 /// What a task's details, the group tabs, search and Settings do, on this device and through the server (the Mac).
 @MainActor
@@ -126,6 +131,25 @@ final class TaskDetailsModelTests: XCTestCase {
         XCTAssertEqual(task.details, "Call first")
         XCTAssertNil(model.draft(task.id, .title))
         XCTAssertFalse(model.hasDrafts(task.id))
+    }
+
+    func testWhatYouTypeIsSavedWhenTheAppGoesToTheBackgroundOrQuits() throws {
+        let model = BoardModel(store: nil)
+        let task = try model.board.addTask(NewTask("Old title"), now: Date())
+
+        // iOS may end an app in the background without asking: what was typed is saved first.
+        model.setDraft(task.id, .title, "Typed before switching apps", current: task.title)
+        model.wentToBackground()
+        XCTAssertEqual(task.title, "Typed before switching apps")
+        XCTAssertFalse(model.hasDrafts(task.id))
+
+        model.setDraft(task.id, .details, "Typed before quitting", current: "")
+        #if os(iOS)
+        NotificationCenter.default.post(name: UIApplication.willTerminateNotification, object: nil)
+        #elseif os(macOS)
+        NotificationCenter.default.post(name: NSApplication.willTerminateNotification, object: nil)
+        #endif
+        XCTAssertEqual(task.details, "Typed before quitting")
     }
 
     func testADraftThatChangedNothingNeverOverwritesANewerChange() throws {

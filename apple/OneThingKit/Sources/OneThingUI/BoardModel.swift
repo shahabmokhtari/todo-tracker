@@ -7,6 +7,8 @@ import UserNotifications
 #endif
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// View model for the iOS and macOS apps. On its own it owns a board on this device: persists after every change,
@@ -90,6 +92,8 @@ public final class BoardModel: ObservableObject {
     var widgetSnapshot: WidgetSnapshot?
     private var widgetCheckedAt = Date.distantPast
     private var etag: String?
+    /// Saves what's typed in task details when the app quits.
+    private var quitObserver: NSObjectProtocol?
     /// The server's board came in since `use(server:)` (until then the board shown is this Mac's, maybe the empty one
     /// left after the tasks moved into the tasks folder).
     private var serverBoardRead = false
@@ -128,6 +132,17 @@ public final class BoardModel: ObservableObject {
             Task { @MainActor in self?.tick() }
         }
         sync?.onSynced = { [weak self] in self?.reloadFromStore() }
+        // Quitting (or iOS ending the app): what's typed in a task's details is saved first.
+        #if os(iOS)
+        let quitting = UIApplication.willTerminateNotification
+        #elseif os(macOS)
+        let quitting = NSApplication.willTerminateNotification
+        #endif
+        #if os(iOS) || os(macOS)
+        quitObserver = NotificationCenter.default.addObserver(forName: quitting, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveAllDrafts() }
+        }
+        #endif
     }
 
     public static func live() -> BoardModel {
@@ -815,8 +830,12 @@ public final class BoardModel: ObservableObject {
     /// The app is in front again: a sync runs (then every minute while it's open).
     public func becameActive() { sync?.start() }
 
-    /// The app went to the background: syncing waits for iOS to wake the app.
-    public func wentToBackground() { sync?.stop() }
+    /// The app went to the background: what's typed in task details is saved (iOS may end the app without asking), and
+    /// syncing waits for iOS to wake the app.
+    public func wentToBackground() {
+        saveAllDrafts()
+        sync?.stop()
+    }
 
     /// The tasks folder changed (a sync brought something): the board is read again, reminders set up again.
     public func reloadFromStore() {
