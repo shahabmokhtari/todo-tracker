@@ -1,10 +1,10 @@
 # The `tt` command
 
-<!-- Made from the code by tests/TodoTracker.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/TodoTracker.Cli.Tests --filter ReferenceDocsTests`. -->
+<!-- Made from the code by tests/OneThing.Cli.Tests/ReferenceDocsTests.cs. Don't edit by hand: run `TT_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests`. -->
 
 `tt` reads and changes your tasks (the markdown files in your tasks folder) from a terminal or a script, without
 the app running, and `tt mcp` is the MCP server for AI apps. It's next to the app on Windows, in `~/.local/bin`
-with the Linux install, or `dotnet tool install -g TodoTracker.Cli` ([ai-connectors.md](ai-connectors.md#get-tt)).
+with the Linux install, or `dotnet tool install -g OneThing.Cli` ([ai-connectors.md](ai-connectors.md#get-tt)).
 
 `<task>` is an id (or its first 6+ characters, as `tt` prints them) or words from the title. Exit codes: `0` done,
 `1` couldn't (the reason is on stderr), `2` wrong usage.
@@ -15,8 +15,8 @@ with the Linux install, or `dotnet tool install -g TodoTracker.Cli` ([ai-connect
 | --- | --- |
 | `--json` | print JSON (same shapes as the REST API and MCP tools) |
 | `--as <name>` | attribute changes to an agent, e.g. --as claude (or set TT_AGENT) |
-| `--vault <dir>` | use another tasks folder (default: the app's, or TODOTRACKER_VAULT) |
-| `--data <dir>` | use another app data folder (or TODOTRACKER_DATA) |
+| `--vault <dir>` | use another tasks folder (default: the app's, or ONETHING_VAULT) |
+| `--data <dir>` | use another app data folder (or ONETHING_DATA) |
 | `--no-history` | don't save a version for this change |
 
 ## Commands
@@ -27,7 +27,7 @@ with the Linux install, or `dotnet tool install -g TodoTracker.Cli` ([ai-connect
 | [`tt add`](#tt-add) | Add a task |
 | [`tt list`](#tt-list) | Find tasks |
 | [`tt show`](#tt-show) | A task with its subtasks, notes, file and link |
-| [`tt open`](#tt-open) | Open a task in the app (its todotracker:// link) |
+| [`tt open`](#tt-open) | Open a task in the app (its onething:// link) |
 | [`tt done`](#tt-done) | Mark tasks done |
 | [`tt reopen`](#tt-reopen) | Undo done |
 | [`tt first`](#tt-first) | Put tasks at the top of Do now (the first becomes the focus) |
@@ -95,7 +95,7 @@ tt show <task>
 
 ### tt open
 
-Open a task in the app (its todotracker:// link).
+Open a task in the app (its onething:// link).
 
 ```
 tt open <task>

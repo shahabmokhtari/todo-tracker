@@ -1,0 +1,443 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using OneThing.Core;
+
+namespace OneThing.Desktop;
+
+/// <summary>Platform services the view model needs from the shell (WPF implements this; tests fake it).</summary>
+public interface IDesktopShell
+{
+    void OpenUrl(string url);
+
+    void CopyToClipboard(string text);
+
+    /// <summary>Copies a link named <paramref name="title"/>; shells without rich clipboard copy the address.</summary>
+    void CopyLink(string url, string title) => CopyToClipboard(url);
+
+    void RunOnUi(Action action);
+
+    string? Prompt(string title, string message, string? initialValue = null);
+
+    bool Confirm(string message);
+}
+
+/// <param name="LaunchUrl">Creates a single-use sign-in link to a local path (keeps the API token out of URLs).</param>
+public sealed record SidebarOptions(string BaseUrl, Func<string, string> LaunchUrl, string McpConfigJson, TimeZoneInfo TimeZone, string ApiToken = "")
+{
+    /// <summary>Stores a file as one of a task's attachments and returns its file name (for pasted images).</summary>
+    public Func<Guid, string, byte[], Task<string>>? Attach { get; init; }
+
+    /// <summary>Shows a path of the app ("/", "/#/task/&lt;id&gt;") in the app window; null: the browser is used.</summary>
+    public Action<string>? OpenApp { get; init; }
+}
+
+public enum ToastAction
+{
+    Open,
+    Done,
+    Snooze,
+
+    /// <summary>The focus timer's notification: start the next focus session.</summary>
+    NextFocus,
+}
+
+/// <summary>Snooze a card: one of the shared quick choices (<see cref="Snooze.Choices"/> id), a typed rule, or until another task is done.</summary>
+public sealed record SnoozeRequest(CardViewModel Card, string? Choice = null, string? Rule = null, Guid? AfterId = null);
+
+/// <summary>Set how much energy a card's task takes per hour (1 to 3; null: not said).</summary>
+public sealed record CardEnergyRequest(CardViewModel Card, int? Level);
+
+/// <summary>A label shown on a card: its name and <c>#rrggbb</c> color.</summary>
+public sealed record LabelChip(string Name, string Color);
+
+public sealed partial class CardViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial string NoteDraft { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsNoteOpen { get; set; }
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    /// <summary>The task's icon (an emoji) shown before its title; null: none.</summary>
+    [ObservableProperty]
+    public partial string? Icon { get; set; }
+
+    /// <summary>The task's color (its own, else its first label's) as #rrggbb; null: none.</summary>
+    [ObservableProperty]
+    public partial string? Accent { get; set; }
+
+    [ObservableProperty]
+    public partial string Breadcrumb { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Meta { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string PriorityColor { get; set; } = PriorityPalette.Normal;
+
+    [ObservableProperty]
+    public partial string PriorityLabel { get; set; } = "Normal";
+
+    [ObservableProperty]
+    public partial bool NeedsAttention { get; set; }
+
+    [ObservableProperty]
+    public partial Guid? ReminderId { get; set; }
+
+    [ObservableProperty]
+    public partial string? ReminderMessage { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReorder))]
+    public partial bool IsWaiting { get; set; }
+
+    /// <summary>Do now cards can be put in any order (drag, arrows, Alt+↑/↓); waiting ones come back by time.</summary>
+    public bool CanReorder => !IsWaiting;
+
+    [ObservableProperty]
+    public partial bool CanComplete { get; set; }
+
+    /// <summary>The timer is running on this task.</summary>
+    [ObservableProperty]
+    public partial bool IsTiming { get; set; }
+
+    /// <summary>Every note on the task, newest first (shown when the card's notes are open, and always on the focus card).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesToggleText), nameof(HasNotes))]
+    public partial IReadOnlyList<CardNote> Notes { get; set; } = [];
+
+    /// <summary>The card's notes are shown (the "2 notes" toggle); kept across refreshes.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesToggleText))]
+    public partial bool IsNotesOpen { get; set; }
+
+    public bool HasNotes => Notes.Count > 0;
+
+    /// <summary>"2 notes ▾" to open them, "Hide notes ▴" when they're open.</summary>
+    public string NotesToggleText => IsNotesOpen ? "Hide notes ▴" : Notes.Count == 1 ? "1 note ▾" : $"{Notes.Count} notes ▾";
+
+    [RelayCommand]
+    private void ToggleNotes() => IsNotesOpen = !IsNotesOpen;
+
+    /// <summary>Energy the task takes per hour (1 to 3); null: not said.</summary>
+    [ObservableProperty]
+    public partial int? Energy { get; set; }
+
+    /// <summary>Short toned facts (step, back in, due/overdue, notes) rendered as chips, same as the web dashboard.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<ChipViewModel> Chips { get; set; } = [];
+
+    /// <summary>Tags as shown (<c>#release</c>).</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> Tags { get; set; } = [];
+
+    [ObservableProperty]
+    public partial IReadOnlyList<LabelChip> Labels { get; set; } = [];
+
+    public bool HasTagsOrLabels => Tags.Count > 0 || Labels.Count > 0;
+
+    public Guid Id { get; init; }
+
+    /// <summary>The note this draft is autosaving into (null until the first save).</summary>
+    internal Guid? DraftNoteId { get; set; }
+
+    internal string? SavedDraft { get; set; }
+
+    internal ITimer? DraftTimer { get; set; }
+
+    /// <summary>The draft save in flight; saves run one after another so two can't both create a note.</summary>
+    internal Task DraftSaving { get; set; } = Task.CompletedTask;
+
+    internal Action<CardViewModel>? DraftEdited { get; set; }
+
+    partial void OnNoteDraftChanged(string value) => DraftEdited?.Invoke(this);
+
+    partial void OnTagsChanged(IReadOnlyList<string> value) => OnPropertyChanged(nameof(HasTagsOrLabels));
+
+    partial void OnLabelsChanged(IReadOnlyList<LabelChip> value) => OnPropertyChanged(nameof(HasTagsOrLabels));
+
+    public bool HasBreadcrumb => Breadcrumb.Length > 0;
+
+    internal void CopyFrom(CardViewModel other)
+    {
+        Title = other.Title;
+        Icon = other.Icon;
+        Accent = other.Accent;
+        Breadcrumb = other.Breadcrumb;
+        Meta = other.Meta;
+        PriorityColor = other.PriorityColor;
+        PriorityLabel = other.PriorityLabel;
+        NeedsAttention = other.NeedsAttention;
+        ReminderId = other.ReminderId;
+        ReminderMessage = other.ReminderMessage;
+        IsWaiting = other.IsWaiting;
+        CanComplete = other.CanComplete;
+        IsTiming = other.IsTiming;
+        Notes = other.Notes;
+        Energy = other.Energy;
+        Chips = other.Chips;
+        Tags = other.Tags;
+        Labels = other.Labels;
+        OnPropertyChanged(nameof(HasBreadcrumb));
+    }
+}
+
+public sealed partial class GroupTabViewModel : ObservableObject
+{
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CountText))]
+    public partial int Count { get; set; }
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string Color { get; set; } = "#6366f1";
+
+    [ObservableProperty]
+    public partial bool HasAttention { get; set; }
+
+    public Guid? Id { get; init; }
+
+    public string CountText => Count > 0 ? Count.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+}
+
+/// <param name="Tone">step | info | warn | danger | muted (mapped to colors by the view).</param>
+public sealed record ChipViewModel(string Text, string Tone);
+
+public sealed record WorkstreamViewModel(Guid Id, string Title, string PriorityColor, int ProgressPercent, string Summary);
+
+public sealed record NoteViewModel(Guid NoteId, Guid ItemId, string Text, string ItemTitle, string Meta, string? SourceUrl);
+
+/// <summary>One of a card's notes: its text, who wrote it and when ("You · 2h ago"), and the page it came from.</summary>
+public sealed record CardNote(Guid Id, string Text, string Meta, string? SourceUrl);
+
+/// <summary>Something finished today: <see cref="Context"/> is where it belongs (its parents), <see cref="Time"/> when.</summary>
+public sealed record DoneViewModel(Guid Id, string Title, string? Context, string Time);
+
+/// <summary>A line to feel good about what got done today (the web app says the same).</summary>
+public static class Cheer
+{
+    public static string? Line(int count) => count switch
+    {
+        <= 0 => null,
+        1 => "First one done. Nice start!",
+        < 5 => $"{count} done today. Keep it going!",
+        < 10 => $"{count} done today. You are on a roll!",
+        _ => $"{count} done today. What a day!",
+    };
+}
+
+public static class PriorityPalette
+{
+    public const string Low = "#94a3b8";
+    public const string Normal = "#3b82f6";
+    public const string High = "#f97316";
+    public const string Critical = "#e11d48";
+
+    public static string ColorOf(Priority priority) => priority switch
+    {
+        Priority.Low => Low,
+        Priority.High => High,
+        Priority.Critical => Critical,
+        _ => Normal,
+    };
+}
+
+public sealed partial class PomodoroViewModel : ObservableObject
+{
+    private PomodoroPhase _phase;
+    private DateTimeOffset? _endsAt;
+    private TimeSpan _remaining;
+
+    [ObservableProperty]
+    public partial string TimeText { get; set; } = "25:00";
+
+    [ObservableProperty]
+    public partial string Label { get; set; } = "Focus";
+
+    [ObservableProperty]
+    public partial bool IsRunning { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsIdle { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsBreak { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsPaused { get; set; }
+
+    /// <summary>Elapsed share (0..1) of the current phase, for the progress ring.</summary>
+    [ObservableProperty]
+    public partial double Fraction { get; set; }
+
+    private TimeSpan _duration = TimeSpan.FromMinutes(25);
+
+    internal void Update(PomodoroState timer, string? itemTitle, DateTimeOffset now)
+    {
+        _phase = timer.Phase;
+        _endsAt = timer.EndsAt;
+        _remaining = timer.Remaining;
+        _duration = timer.Duration;
+        IsRunning = timer.IsRunning;
+        IsIdle = timer.Phase == PomodoroPhase.Idle;
+        IsBreak = timer.Phase is PomodoroPhase.ShortBreak or PomodoroPhase.LongBreak;
+        IsPaused = timer.Phase != PomodoroPhase.Idle && !timer.IsRunning;
+        var phase = timer.Phase switch
+        {
+            PomodoroPhase.ShortBreak => "Break",
+            PomodoroPhase.LongBreak => "Long break",
+            _ => "Focus",
+        };
+        Label = itemTitle is not null && timer.Phase != PomodoroPhase.Idle ? $"{phase} · {itemTitle}" : phase;
+        Tick(now);
+    }
+
+    internal void Tick(DateTimeOffset now)
+    {
+        var left = _endsAt is { } end && _phase != PomodoroPhase.Idle ? end - now : _remaining;
+        if (left < TimeSpan.Zero)
+        {
+            left = TimeSpan.Zero;
+        }
+
+        var seconds = (int)Math.Ceiling(left.TotalSeconds);
+        TimeText = $"{seconds / 60:00}:{seconds % 60:00}";
+        Fraction = _phase == PomodoroPhase.Idle || _duration <= TimeSpan.Zero ? 0 : Math.Clamp(1 - (left / _duration), 0, 1);
+    }
+}
+
+/// <summary>The task timer (one at a time, shared with the web app and the CLI).</summary>
+public sealed partial class TaskTimerViewModel : ObservableObject
+{
+    private DateTimeOffset _start;
+
+    [ObservableProperty]
+    public partial bool IsRunning { get; set; }
+
+    [ObservableProperty]
+    public partial string Title { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TimeText { get; set; } = "0:00";
+
+    public Guid? ItemId { get; private set; }
+
+    internal void Update(RunningTimerState? timer, DateTimeOffset now)
+    {
+        IsRunning = timer is not null;
+        ItemId = timer?.ItemId;
+        Title = timer?.Title ?? string.Empty;
+        _start = timer?.Start ?? now;
+        Tick(now);
+    }
+
+    internal void Tick(DateTimeOffset now)
+    {
+        if (!IsRunning)
+        {
+            return;
+        }
+
+        var seconds = (long)Math.Max(0, (now - _start).TotalSeconds);
+        TimeText = seconds >= 3600 ? $"{seconds / 3600}:{seconds / 60 % 60:00}:{seconds % 60:00}" : $"{seconds / 60}:{seconds % 60:00}";
+    }
+}
+
+public sealed record RunningTimerState(Guid ItemId, string Title, DateTimeOffset Start);
+
+/// <summary>Immutable copy of the timer taken inside the store lock (the live timer must not leave the lock).</summary>
+public sealed record PomodoroState(PomodoroPhase Phase, DateTimeOffset? EndsAt, TimeSpan Remaining, bool IsRunning, TimeSpan Duration, int CompletedFocusCount = 0, PomodoroSettings? Settings = null, DateTimeOffset? BreakEndedAt = null)
+{
+    public static PomodoroState Of(PomodoroTimer timer, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(timer);
+        return new(timer.Phase, timer.EndsAt, timer.Remaining(now), timer.IsRunning, timer.Settings.DurationOf(timer.Phase), timer.CompletedFocusCount, timer.Settings, timer.BreakEndedAt);
+    }
+}
+
+internal static class CollectionSync
+{
+    /// <summary>Updates <paramref name="target"/> in place so bound UI keeps focus and drafts across refreshes.</summary>
+    public static void Sync<T>(ObservableCollection<T> target, IReadOnlyList<T> source)
+    {
+        // Duplicates would make Move() fail; keep the first occurrence.
+        var ordered = source.Distinct().ToList();
+        for (var i = target.Count - 1; i >= 0; i--)
+        {
+            if (!ordered.Contains(target[i]))
+            {
+                target.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var item = ordered[i];
+            var index = target.IndexOf(item);
+            if (index < 0)
+            {
+                target.Insert(i, item);
+            }
+            else if (index != i)
+            {
+                target.Move(index, i);
+            }
+        }
+    }
+}
+
+/// <summary>A picture pasted into quick add, waiting for the task to be added.</summary>
+public sealed record PendingPicture(string Name, byte[] Png);
+
+/// <summary>
+/// Whether a paste is a picture: there is one, and no real text came with it. Copying from an office app puts the text
+/// and a picture of it on the clipboard (the text wins); a browser's or Teams' "Copy image" and screenshot tools bring
+/// only a link, a file name or path, blank text, or HTML that's just the image (the picture wins). The web app has the
+/// same rule (media.js).
+/// </summary>
+public static partial class PasteRules
+{
+    public static bool IsPicture(bool hasImage, string? text, string? html) => hasImage && !MeaningfulText(text, html);
+
+    public static bool MeaningfulText(string? text, string? html)
+    {
+        var plain = (text ?? string.Empty).Trim();
+        if (plain.Length > 0)
+        {
+            var oneLine = plain.IndexOfAny(['\r', '\n']) < 0;
+            return !(oneLine && (Link().IsMatch(plain) || FilePath().IsMatch(plain) || FileName().IsMatch(plain)));
+        }
+
+        if (string.IsNullOrEmpty(html))
+        {
+            return false;
+        }
+
+        var words = Tags().Replace(Blocks().Replace(html, string.Empty), string.Empty).Replace("&nbsp;", " ", StringComparison.Ordinal).Trim();
+        return words.Length > 0 && !html.Contains("<img", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(https?|file)://\S+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex Link();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^([a-z]:\\|\\\\|/)[^\r\n]*\.[a-z0-9]{2,5}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex FilePath();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^[^\\/\r\n]{1,200}\.(png|jpe?g|gif|webp|bmp|avif|heic|tiff?)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex FileName();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<(style|script)[\s\S]*?</\1>", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex Blocks();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"<[^>]*>")]
+    private static partial System.Text.RegularExpressions.Regex Tags();
+}

@@ -1,12 +1,12 @@
 # Hooks and events
 
-Run your own script, or call a web address, when something happens in Onething: a task done, a reminder going off,
+Run your own script, or call a web address, when something happens in One Thing: a task done, a reminder going off,
 a break starting. Extensions and scripts can also listen to everything as it happens.
 
 ## Where hooks live
 
 Hooks are in `hooks.json` in the app's data folder. Settings › Hooks shows the exact path. On Windows it's
-`%LOCALAPPDATA%\TodoTracker\hooks.json`; the `TODOTRACKER_DATA` environment variable moves the folder.
+`%LOCALAPPDATA%\OneThing\hooks.json`; the `ONETHING_DATA` environment variable moves the folder.
 
 The file is on this computer only (it isn't in the synced tasks folder). Changes apply at once (no restart). There are
 four ways to change it:
@@ -81,7 +81,7 @@ Each key is an event name, or `*` for every event. A hook is one of these:
 | `cwd` | Working folder (default: the data folder); `%VARS%` are expanded |
 | `env` | Extra environment variables |
 | `timeoutSec` | Stop it after this long (default 30, at most 600); the whole process tree is stopped |
-| `url`, `headers` | Where an `http` hook posts, and extra headers (it also sends `X-Todo-Tracker-Event`) |
+| `url`, `headers` | Where an `http` hook posts, and extra headers (it also sends `X-OneThing-Event`) |
 | `match` | Only for some events: `groups`, `tags`, `labels` (any one of each list given), `actors` (`user`, `agent`, `vault`, `system`, `connector`, or an agent's name). An event without a task (a break) runs a hook only when its `match` doesn't ask about the task |
 | `name` | What Settings shows for it (default: what it runs) |
 | `id`, `enabled`, `needsApproval`, `addedBy`, `addedAt` | Kept by the app: its handle, `false` when switched off, `true` while an agent's hook waits for approval, and who added or changed it when |

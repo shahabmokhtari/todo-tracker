@@ -2,7 +2,7 @@
 
 <img src="docs/images/logo.png" alt="" width="96" height="96">
 
-# Onething
+# One Thing
 
 **The to-do list that tells you what to do *now*.**
 Built for ADHD brains, busy weeks, and the AI agents that help you get through them.
@@ -24,9 +24,9 @@ Built for ADHD brains, busy weeks, and the AI agents that help you get through t
 
 </div>
 
-## Why Onething
+## Why One Thing
 
-Most task apps show you everything, all the time. Onething shows you **one thing to do now**, and keeps the rest
+Most task apps show you everything, all the time. One Thing shows you **one thing to do now**, and keeps the rest
 calm until it matters.
 
 - 🎯 **One focus, not fifty.** A big card says what to do now. The rest waits below, in the order *you* chose.
@@ -76,7 +76,7 @@ calm until it matters.
 
 ## Your AI can use it too
 
-Onething speaks **MCP**, so your AI agent can work with your list like a good assistant: capture what you said in
+One Thing speaks **MCP**, so your AI agent can work with your list like a good assistant: capture what you said in
 a meeting, tell you what to do next, break a project into steps, log what it did, and snooze what can wait.
 
 > **You:** what should I work on now?
@@ -89,8 +89,8 @@ a meeting, tell you what to do next, break a project into steps, log what it did
 Connect it in one line:
 
 ```bash
-claude mcp add todo-tracker --scope user -- tt mcp          # Claude Code
-copilot plugin install todo-tracker@todo-tracker            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
+claude mcp add onething --scope user -- tt mcp          # Claude Code
+copilot plugin install onething@onething            # GitHub Copilot CLI (after: copilot plugin marketplace add shahabmokhtari/todo-tracker)
 ```
 
 …or **⋯ › Connect an AI app** in the app, which writes the setup for Claude Desktop, VS Code, Cursor and others. Every
@@ -98,20 +98,18 @@ change an agent makes is **attributed to it and versioned**, there's deliberatel
 agent adds wait until you allow them.
 
 📚 [Connect an AI app](docs/ai-connectors.md) · [MCP tools](docs/mcp.md) · [`tt` commands](docs/cli.md) ·
-[The skill](integrations/agent-plugin/skills/todo-tracker/SKILL.md) · [`llms.txt`](llms.txt)
+[The skill](integrations/agent-plugin/skills/onething/SKILL.md) · [`llms.txt`](llms.txt)
 
 ## Your tasks are just files
 
 ```
-Documents/Todo Tracker/
+Documents/OneThing/
 ├── Work/
 │   ├── Ship v2.4 release.md        ← one file per task: frontmatter, steps as checkboxes, notes as callouts
 │   └── Reply to the security review.md
 └── Personal/
     └── Renew passport.md
 ```
-
-Onething used to be called Todo Tracker. The folder keeps that name, so nothing moves when you update.
 
 - **Obsidian-friendly:** point the app at your vault and every task opens in Obsidian.
 - **Version history:** every change is a version you can look at and restore.
@@ -142,7 +140,7 @@ reminder, due tomorrow, tagged *release*. Repeat with plain words: `every weekda
 
 ```powershell
 git clone https://github.com/shahabmokhtari/todo-tracker && cd todo-tracker
-dotnet run --project src/TodoTracker.Windows
+dotnet run --project src/OneThing.Windows
 ```
 
 The sidebar docks on the right (move it with **⋯ › Position**). Ready-built apps for every platform are attached to each
@@ -152,12 +150,12 @@ The sidebar docks on the right (move it with **⋯ › Position**). Ready-built 
 
 **Linux.** Unpack `linux-tray` and run `./install.sh` (add `--autostart` to start with your session).
 
-**macOS / iOS.** `cd apple && brew install xcodegen && xcodegen generate && open TodoTracker.xcodeproj`.
+**macOS / iOS.** `cd apple && brew install xcodegen && xcodegen generate && open OneThing.xcodeproj`.
 
 **Anywhere (the web app, API and MCP server):**
 
 ```bash
-dotnet run --project src/TodoTracker.Web -- --port 5317
+dotnet run --project src/OneThing.Web -- --port 5317
 ```
 
 Then read the [guide](docs/guide.md): the sidebar, the views and their keyboard shortcuts, snoozing, rollouts, links
@@ -192,7 +190,7 @@ Issues and pull requests are welcome. [AGENTS.md](AGENTS.md) is the place to sta
 alike: the map of the code, how to build and test, and the rules that keep users' tasks safe. In short:
 
 ```bash
-dotnet build TodoTracker.slnx -c Release -warnaserror
-dotnet test --solution TodoTracker.slnx -c Release --no-build
+dotnet build OneThing.slnx -c Release -warnaserror
+dotnet test --solution OneThing.slnx -c Release --no-build
 node --test tests/web/*.test.mjs extension/tests/*.test.mjs
 ```

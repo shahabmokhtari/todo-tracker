@@ -1,114 +1,114 @@
-name: TodoTracker
+name: OneThing
 options:
-  bundleIdPrefix: com.todotracker
+  bundleIdPrefix: com.onething
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
 packages:
-  TodoTrackerKit:
-    path: TodoTrackerKit
+  OneThingKit:
+    path: OneThingKit
 settings:
   base:
-    MARKETING_VERSION: "1.0.0"
+    MARKETING_VERSION: "2.0.0"
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.9"
     GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_CFBundleDisplayName: Onething
+    INFOPLIST_KEY_CFBundleDisplayName: One Thing
     CODE_SIGN_STYLE: Automatic
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 targets:
-  TodoTracker-iOS:
+  OneThing-iOS:
     type: application
     platform: iOS
     sources: [App, Shared]
     dependencies:
-      - package: TodoTrackerKit
-        product: TodoTrackerKit
-      - package: TodoTrackerKit
-        product: TodoTrackerUI
+      - package: OneThingKit
+        product: OneThingKit
+      - package: OneThingKit
+        product: OneThingUI
       # The home-screen and Lock Screen widgets (Now, Today).
-      - target: TodoTrackerWidgets-iOS
+      - target: OneThingWidgets-iOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.ios
-        PRODUCT_NAME: TodoTracker
+        PRODUCT_BUNDLE_IDENTIFIER: com.onething.ios
+        PRODUCT_NAME: OneThing
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-    # todotracker://task/<id> links open the task (TaskLinks). The app only goes online over HTTPS (gist sync, the
+    # onething://task/<id> links open the task (TaskLinks). The app only goes online over HTTPS (gist sync, the
     # feedback relay): no local networking.
     info:
       path: Support/Info-iOS.plist
       properties:
         CFBundleURLTypes:
-          - CFBundleURLName: com.todotracker.task-link
-            CFBundleURLSchemes: [todotracker]
+          - CFBundleURLName: com.onething.task-link
+            CFBundleURLSchemes: [onething]
         # Syncing on its own (Settings › Sync): iOS wakes the app now and then to sync in the background.
-        BGTaskSchedulerPermittedIdentifiers: [com.todotracker.ios.sync]
+        BGTaskSchedulerPermittedIdentifiers: [com.onething.ios.sync]
         UIBackgroundModes: [fetch]
-        WidgetAppGroup: group.com.todotracker
+        WidgetAppGroup: group.com.onething
     # The App Group it shares with its widgets (what they show, and Done tapped on them: WidgetShelf).
     entitlements:
-      path: Support/TodoTracker-iOS.entitlements
+      path: Support/OneThing-iOS.entitlements
       properties:
-        com.apple.security.application-groups: [group.com.todotracker]
-  TodoTracker-macOS:
+        com.apple.security.application-groups: [group.com.onething]
+  OneThing-macOS:
     type: application
     platform: macOS
     sources: [App, Shared]
     dependencies:
-      - package: TodoTrackerKit
-        product: TodoTrackerKit
-      - package: TodoTrackerKit
-        product: TodoTrackerUI
+      - package: OneThingKit
+        product: OneThingKit
+      - package: OneThingKit
+        product: OneThingUI
       # The desktop and Notification Center widgets (Now, Today).
-      - target: TodoTrackerWidgets-macOS
+      - target: OneThingWidgets-macOS
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos
-        PRODUCT_NAME: TodoTracker
+        PRODUCT_BUNDLE_IDENTIFIER: com.onething.macos
+        PRODUCT_NAME: OneThing
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
-        INFOPLIST_KEY_NSAppleEventsUsageDescription: Onething puts your tasks in a note when you choose Copy to Apple Notes.
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: One Thing puts your tasks in a note when you choose Copy to Apple Notes.
         ENABLE_HARDENED_RUNTIME: YES
-    # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only); todotracker://task/<id>
-    # links open the task (TaskLinks). The bundle stays TodoTracker.app (PRODUCT_NAME: updates replace it in place,
+    # The app talks to its own server on this Mac over http://127.0.0.1 (loopback only); onething://task/<id>
+    # links open the task (TaskLinks). The bundle stays OneThing.app (PRODUCT_NAME: updates replace it in place,
     # and CI packages it by that name); App/en.lproj/InfoPlist.strings gives the menu bar the name people see
-    # (About Onething, Quit Onething).
+    # (About One Thing, Quit One Thing).
     info:
       path: Support/Info-macOS.plist
       properties:
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         CFBundleURLTypes:
-          - CFBundleURLName: com.todotracker.task-link
-            CFBundleURLSchemes: [todotracker]
-        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.todotracker
+          - CFBundleURLName: com.onething.task-link
+            CFBundleURLSchemes: [onething]
+        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.onething
     # On a Mac an App Group starts with the team's id (none when built without one).
     entitlements:
-      path: Support/TodoTracker-macOS.entitlements
+      path: Support/OneThing-macOS.entitlements
       properties:
         com.apple.security.automation.apple-events: true
-        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.todotracker]
+        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.onething]
   # The widgets: they read what the app writes to the App Group and never touch the tasks themselves.
-  TodoTrackerWidgets-iOS:
+  OneThingWidgets-iOS:
     type: app-extension
     platform: iOS
     sources: [Widgets, Shared]
     dependencies:
-      - package: TodoTrackerKit
-        product: TodoTrackerKit
-      - package: TodoTrackerKit
-        product: TodoTrackerWidgetUI
+      - package: OneThingKit
+        product: OneThingKit
+      - package: OneThingKit
+        product: OneThingWidgetUI
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.ios.widgets
-        PRODUCT_NAME: OnethingWidgets
-        INFOPLIST_KEY_CFBundleDisplayName: Onething
+        PRODUCT_BUNDLE_IDENTIFIER: com.onething.ios.widgets
+        PRODUCT_NAME: OneThingWidgets
+        INFOPLIST_KEY_CFBundleDisplayName: One Thing
         TARGETED_DEVICE_FAMILY: "1,2"
         SKIP_INSTALL: YES
     info:
@@ -116,27 +116,27 @@ targets:
       properties:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
-        WidgetAppGroup: group.com.todotracker
+        WidgetAppGroup: group.com.onething
     entitlements:
       path: Support/Widgets-iOS.entitlements
       properties:
-        com.apple.security.application-groups: [group.com.todotracker]
-  TodoTrackerWidgets-macOS:
+        com.apple.security.application-groups: [group.com.onething]
+  OneThingWidgets-macOS:
     type: app-extension
     platform: macOS
     sources: [Widgets, Shared]
     dependencies:
-      - package: TodoTrackerKit
-        product: TodoTrackerKit
-      - package: TodoTrackerKit
-        product: TodoTrackerWidgetUI
+      - package: OneThingKit
+        product: OneThingKit
+      - package: OneThingKit
+        product: OneThingWidgetUI
       - sdk: WidgetKit.framework
       - sdk: SwiftUI.framework
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.todotracker.macos.widgets
-        PRODUCT_NAME: OnethingWidgets
-        INFOPLIST_KEY_CFBundleDisplayName: Onething
+        PRODUCT_BUNDLE_IDENTIFIER: com.onething.macos.widgets
+        PRODUCT_NAME: OneThingWidgets
+        INFOPLIST_KEY_CFBundleDisplayName: One Thing
         SKIP_INSTALL: YES
         ENABLE_HARDENED_RUNTIME: YES
     info:
@@ -144,19 +144,19 @@ targets:
       properties:
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
-        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.todotracker
+        WidgetAppGroup: $(TeamIdentifierPrefix)group.com.onething
     # Widgets on a Mac run in the app sandbox: only the App Group is reachable.
     entitlements:
       path: Support/Widgets-macOS.entitlements
       properties:
         com.apple.security.app-sandbox: true
-        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.todotracker]
+        com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.onething]
 schemes:
-  TodoTracker-iOS:
+  OneThing-iOS:
     build:
       targets:
-        TodoTracker-iOS: all
-  TodoTracker-macOS:
+        OneThing-iOS: all
+  OneThing-macOS:
     build:
       targets:
-        TodoTracker-macOS: all
+        OneThing-macOS: all

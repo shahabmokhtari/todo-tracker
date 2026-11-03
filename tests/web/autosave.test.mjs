@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAutosave, changedFields } from '../../src/TodoTracker.Server/wwwroot/js/autosave.js';
+import { createAutosave, changedFields } from '../../src/OneThing.Server/wwwroot/js/autosave.js';
 
 /** Manual clock: timers only fire when the test says so. */
 function fakeTimers() {

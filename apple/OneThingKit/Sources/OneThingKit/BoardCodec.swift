@@ -1,0 +1,363 @@
+import Foundation
+
+/// JSON schema v1, identical to OneThing.Core.BoardSerializer (camelCase, UTC ISO-8601 with milliseconds).
+public enum BoardCodec {
+    public static func decode(_ data: Data) throws -> TaskBoard {
+        let doc: BoardDocument
+        do {
+            doc = try decoder.decode(BoardDocument.self, from: data)
+        } catch {
+            throw BoardError.invalid("Board file is not valid: \(error.localizedDescription)")
+        }
+        if doc.schemaVersion > TaskBoard.currentSchemaVersion {
+            throw BoardError.unsupportedSchema("Board schema v\(doc.schemaVersion) is newer than this app supports (v\(TaskBoard.currentSchemaVersion)). Please update the app.")
+        }
+        return try doc.toBoard()
+    }
+
+    public static func encode(_ board: TaskBoard) throws -> Data {
+        try encoder.encode(BoardDocument(board))
+    }
+
+    static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            if let date = parseDate(text) { return date }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid timestamp \(text)"))
+        }
+        return d
+    }()
+
+    static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        e.dateEncodingStrategy = .custom { date, encoder in
+            var c = encoder.singleValueContainer()
+            try c.encode(formatDate(date))
+        }
+        return e
+    }()
+
+    static func formatDate(_ date: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: date)
+    }
+
+    static func parseDate(_ text: String) -> Date? {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = withFraction.date(from: text) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let d = plain.date(from: text) { return d }
+        // .NET can emit 7 fractional digits; trim to milliseconds and retry.
+        if let dot = text.firstIndex(of: "."), let end = text[dot...].firstIndex(where: { !$0.isNumber && $0 != "." }) {
+            let digits = text[text.index(after: dot)..<end]
+            let trimmed = String(text[..<dot]) + "." + String(digits.prefix(3)).padding(toLength: 3, withPad: "0", startingAt: 0) + String(text[end...])
+            return withFraction.date(from: trimmed)
+        }
+        return nil
+    }
+}
+
+struct BoardDocument: Codable {
+    var schemaVersion: Int = 1
+    var groups: [GroupDocument]?
+    var labels: [LabelDocument]?
+    var items: [ItemDocument]?
+    var activity: [ActivityDocument]?
+    var pomodoro: PomodoroDocument?
+    var nowOrder: [UUID]?
+    var nowArrangedAt: Date?
+    var energyPerDay: Int?
+
+    init(_ board: TaskBoard) {
+        schemaVersion = TaskBoard.currentSchemaVersion
+        groups = board.groups.map { GroupDocument(id: $0.id, name: $0.name, color: $0.color) }
+        labels = board.labels.isEmpty ? nil : board.labels.map { LabelDocument(name: $0.name, color: $0.color) }
+        items = board.items.map(ItemDocument.init)
+        activity = board.activity.map { ActivityDocument(at: $0.at, itemId: $0.itemId, kind: $0.kind, summary: $0.summary, actor: $0.actor) }
+        nowOrder = board.nowOrder.isEmpty ? nil : board.nowOrder
+        nowArrangedAt = board.nowArrangedAt
+        energyPerDay = board.energyPerDay
+        let p = board.pomodoro
+        pomodoro = PomodoroDocument(
+            settings: p.settings,
+            phase: p.phase,
+            endsAt: p.endsAt,
+            pausedRemainingSeconds: p.pausedRemaining.map { Int($0.rounded()) },
+            itemId: p.itemId,
+            completedFocusCount: p.completedFocusCount,
+            breakEndedAt: p.breakEndedAt)
+    }
+
+    func toBoard() throws -> TaskBoard {
+        let board = TaskBoard(seedDefaultGroups: false)
+        for g in groups ?? [] where !g.name.trimmingCharacters(in: .whitespaces).isEmpty && !board.groups.contains(where: { $0.id == g.id }) {
+            board.appendLoaded(group: TaskGroup(id: g.id, name: g.name.trimmingCharacters(in: .whitespaces), color: g.color))
+        }
+        if board.groups.isEmpty { board.seedGroups() }
+        for l in labels ?? [] where !l.name.trimmingCharacters(in: .whitespaces).isEmpty && !board.labels.contains(where: { Ordinal.equalIgnoreCase($0.name, l.name) }) {
+            board.labels.append(LabelDefinition(name: l.name.trimmingCharacters(in: .whitespaces), color: l.color ?? "#64748b"))
+        }
+        for item in items ?? [] { try load(item, into: board, parent: nil) }
+        for a in activity ?? [] {
+            board.appendLoaded(activity: ActivityEntry(at: a.at, itemId: a.itemId, kind: a.kind, summary: a.summary ?? "", actor: a.actor ?? .user))
+        }
+        var seen = Set<UUID>()
+        board.nowOrder = (nowOrder ?? []).filter { board.find($0) != nil && seen.insert($0).inserted }
+        board.nowArrangedAt = nowArrangedAt
+        board.energyPerDay = energyPerDay.flatMap { (1...Energy.maxPerDay).contains($0) ? $0 : nil }
+        if let p = pomodoro {
+            var timer = PomodoroTimer(settings: p.settings ?? PomodoroSettings())
+            timer.restore(phase: p.phase ?? .idle, endsAt: p.endsAt, pausedRemaining: p.pausedRemainingSeconds.map(TimeInterval.init), itemId: p.itemId, completedFocusCount: p.completedFocusCount ?? 0, breakEndedAt: p.breakEndedAt)
+            board.pomodoro = timer
+        }
+        return board
+    }
+
+    private func load(_ doc: ItemDocument, into board: TaskBoard, parent: WorkItem?) throws {
+        let title = try TaskBoard.requireText(doc.title, "Task \(doc.id) has no title.")
+        let group = doc.groupId.flatMap { id in board.groups.first(where: { $0.id == id })?.id } ?? board.defaultGroupId
+        let item = WorkItem(id: doc.id, title: title, priority: doc.priority ?? .normal, createdAt: doc.createdAt, groupId: group)
+        item.details = doc.details
+        item.completedAt = doc.completedAt
+        item.archivedAt = parent == nil ? doc.archivedAt : nil
+        item.icon = doc.icon
+        item.color = doc.color
+        item.repeatRule = Recurrence.parseOrNil(doc.`repeat`)
+        item.repeatUndo = doc.repeatUndo
+        item.plannedAt = doc.plannedAt
+        item.plannedMinutes = doc.plannedMinutes
+        item.energy = doc.energy.flatMap { Energy.levels.contains($0) ? $0 : nil }
+        item.deadline = doc.deadline
+        item.nextActionAt = doc.nextActionAt
+        item.afterId = doc.after
+        item.sequential = doc.sequential ?? false
+        item.stepDelay = doc.stepDelayMinutes.flatMap { $0 > 0 ? TimeInterval($0 * 60) : nil }
+        item.reminders = (doc.reminders ?? []).map {
+            Reminder(id: $0.id, dueAt: $0.dueAt, message: $0.message ?? "", kind: $0.kind ?? .manual, notifiedAt: $0.notifiedAt, dismissedAt: $0.dismissedAt)
+        }
+        item.notes = (doc.notes ?? []).map {
+            Note(id: $0.id, at: $0.at, text: $0.text ?? "", author: $0.author ?? .user, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
+        }
+        item.timeEntries = (doc.time ?? []).map { TimeEntry(id: $0.id, start: $0.start, end: $0.end, source: $0.source ?? .manual, device: $0.device) }
+        item.tags = doc.tags ?? []
+        item.labels = doc.labels ?? []
+        item.attachments = (doc.attachments ?? []).map {
+            Attachment(id: $0.id, fileName: $0.fileName, path: $0.path, size: $0.size ?? 0, addedAt: $0.addedAt, addedBy: $0.addedBy ?? .user)
+        }
+        item.stage = parent == nil ? (doc.stage ?? .next) : .next
+        try board.attach(item, to: parent)
+        for child in doc.children ?? [] { try load(child, into: board, parent: item) }
+    }
+}
+
+struct GroupDocument: Codable {
+    var id: UUID
+    var name: String
+    var color: String?
+}
+
+struct ItemDocument: Codable {
+    var id: UUID
+    var title: String
+    var details: String?
+    var priority: Priority?
+    var createdAt: Date
+    var completedAt: Date?
+    var archivedAt: Date?
+    var icon: String?
+    var color: String?
+    var `repeat`: String?
+    var repeatUndo: RepeatUndo?
+    var plannedAt: Date?
+    var plannedMinutes: Int?
+    var energy: Int?
+    var deadline: Date?
+    var nextActionAt: Date?
+    var after: UUID?
+    var sequential: Bool?
+    var stepDelayMinutes: Int?
+    var groupId: UUID?
+    var reminders: [ReminderDocument]?
+    var notes: [NoteDocument]?
+    var time: [TimeEntryDocument]?
+    var tags: [String]?
+    var labels: [String]?
+    var attachments: [AttachmentDocument]?
+    var stage: Stage?
+    var children: [ItemDocument]?
+
+    init(_ item: WorkItem) {
+        id = item.id
+        title = item.title
+        details = item.details
+        priority = item.priority
+        createdAt = item.createdAt
+        completedAt = item.completedAt
+        archivedAt = item.archivedAt
+        icon = item.icon
+        color = item.color
+        `repeat` = item.repeatRule?.description
+        repeatUndo = item.repeatUndo
+        plannedAt = item.plannedAt
+        plannedMinutes = item.plannedMinutes
+        energy = item.energy
+        deadline = item.deadline
+        nextActionAt = item.nextActionAt
+        after = item.afterId
+        sequential = item.sequential ? true : nil
+        stepDelayMinutes = item.stepDelay.map { Int(($0 / 60).rounded()) }
+        groupId = item.parent == nil ? item.ownGroupId : nil
+        reminders = item.reminders.isEmpty ? nil : item.reminders.map {
+            ReminderDocument(id: $0.id, dueAt: $0.dueAt, message: $0.message, kind: $0.kind, notifiedAt: $0.notifiedAt, dismissedAt: $0.dismissedAt)
+        }
+        notes = item.notes.isEmpty ? nil : item.notes.map {
+            NoteDocument(id: $0.id, at: $0.at, text: $0.text, author: $0.author, sourceUrl: $0.sourceUrl, sourceTitle: $0.sourceTitle)
+        }
+        time = item.timeEntries.isEmpty ? nil : item.timeEntries.map { TimeEntryDocument(id: $0.id, start: $0.start, end: $0.end, source: $0.source, device: $0.device) }
+        tags = item.tags.isEmpty ? nil : item.tags
+        labels = item.labels.isEmpty ? nil : item.labels
+        attachments = item.attachments.isEmpty ? nil : item.attachments.map {
+            AttachmentDocument(id: $0.id, fileName: $0.fileName, path: $0.path, size: $0.size, addedAt: $0.addedAt, addedBy: $0.addedBy)
+        }
+        stage = item.parent == nil && item.stage != .next ? item.stage : nil
+        children = item.children.isEmpty ? nil : item.children.map(ItemDocument.init)
+    }
+}
+
+struct LabelDocument: Codable {
+    var name: String
+    var color: String?
+}
+
+struct AttachmentDocument: Codable {
+    var id: UUID
+    var fileName: String
+    var path: String
+    var size: Int64?
+    var addedAt: Date
+    var addedBy: Actor?
+}
+
+struct TimeEntryDocument: Codable {
+    var id: UUID
+    var start: Date
+    var end: Date?
+    var source: TimeSource?
+    var device: String?
+}
+
+struct ReminderDocument: Codable {
+    var id: UUID
+    var dueAt: Date
+    var message: String?
+    var kind: ReminderKind?
+    var notifiedAt: Date?
+    var dismissedAt: Date?
+}
+
+struct NoteDocument: Codable {
+    var id: UUID
+    var at: Date
+    var text: String?
+    var author: Actor?
+    var sourceUrl: String?
+    var sourceTitle: String?
+}
+
+struct ActivityDocument: Codable {
+    var at: Date
+    var itemId: UUID
+    var kind: String
+    var summary: String?
+    var actor: Actor?
+}
+
+struct PomodoroDocument: Codable {
+    var settings: PomodoroSettings?
+    var phase: PomodoroPhase?
+    var endsAt: Date?
+    var pausedRemainingSeconds: Int?
+    var itemId: UUID?
+    var completedFocusCount: Int?
+    var breakEndedAt: Date?
+}
+
+/// Local-first JSON persistence with atomic writes and a `.bak` of the previous version.
+public final class BoardFileStore {
+    public let url: URL
+
+    public init(url: URL) {
+        self.url = url
+    }
+
+    public static func defaultURL() throws -> URL {
+        let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        return base.appendingPathComponent("OneThing", isDirectory: true).appendingPathComponent("board.json")
+    }
+
+    /// The board moved into the tasks folder (One Thing's server imported it and set it aside as `.migrated`).
+    public var wasMigrated: Bool {
+        FileManager.default.fileExists(atPath: url.appendingPathExtension("migrated").path)
+    }
+
+    /// Loads the board. A newer-schema file is never replaced by a backup; a corrupt file is set aside
+    /// (`board.json.corrupt-<timestamp>`) and the backup restored, mirroring the C# store.
+    public func load() throws -> TaskBoard {
+        let fm = FileManager.default
+        let backup = url.appendingPathExtension("bak")
+        guard fm.fileExists(atPath: url.path) else {
+            // A missing board next to a backup means an interrupted recovery, not a fresh start (unless the board
+            // moved into the tasks folder: then the backup is an old copy, never to come back).
+            if fm.fileExists(atPath: backup.path) && !wasMigrated { return try restoreBackup() }
+            return TaskBoard()
+        }
+        do {
+            return try BoardCodec.decode(Data(contentsOf: url))
+        } catch let error as BoardError {
+            if case .unsupportedSchema(_) = error { throw error }
+            return try recoverFromBackup(original: error)
+        } catch {
+            return try recoverFromBackup(original: error)
+        }
+    }
+
+    private func recoverFromBackup(original: Error) throws -> TaskBoard {
+        guard FileManager.default.fileExists(atPath: url.appendingPathExtension("bak").path) else { throw original }
+        return try restoreBackup()
+    }
+
+    /// Decodes the backup first, stages it next to the board, and only then swaps files, so a failure midway
+    /// never leaves the user without both the corrupt original and the backup.
+    private func restoreBackup() throws -> TaskBoard {
+        let fm = FileManager.default
+        let backup = url.appendingPathExtension("bak")
+        let board = try BoardCodec.decode(Data(contentsOf: backup))
+        let staged = url.appendingPathExtension("restoring")
+        try? fm.removeItem(at: staged)
+        try fm.copyItem(at: backup, to: staged)
+        if fm.fileExists(atPath: url.path) {
+            try fm.moveItem(at: url, to: url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))"))
+        }
+        try fm.moveItem(at: staged, to: url)
+        return board
+    }
+
+    public func save(_ board: TaskBoard) throws {
+        let data = try BoardCodec.encode(board)
+        let fm = FileManager.default
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let backup = url.appendingPathExtension("bak")
+        // Only a readable board may become the backup, so a bad file can never overwrite the last good copy.
+        if let current = try? Data(contentsOf: url), (try? BoardCodec.decode(current)) != nil {
+            try? fm.removeItem(at: backup)
+            try? fm.copyItem(at: url, to: backup)
+        }
+        try data.write(to: url, options: [.atomic])
+    }
+}

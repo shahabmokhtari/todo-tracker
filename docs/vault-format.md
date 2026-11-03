@@ -1,6 +1,6 @@
 # Vault format (v2)
 
-Onething stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
+One Thing stores tasks as plain markdown in a folder (the **vault**). The folder works on its own, inside an
 Obsidian vault, in a git repository, or in any sync service. People, the apps, the `tt` CLI, and AI agents all edit
 the same files. A vault the app creates gets a copy of this guide for agents in `AGENTS.md` at the vault root (a folder
 of existing notes is left as it is).
@@ -8,7 +8,7 @@ of existing notes is left as it is).
 ## Layout
 
 ```
-Todo Tracker/                       ← the vault (default: Documents/Todo Tracker)
+OneThing/                        ← the vault (default: Documents/OneThing)
   AGENTS.md                         ← format guide for AI tools (not a task)
   Work/                             ← a group (tab). Create a folder to add a group.
     Ship release 2.3.md             ← a top-level task. Create a file to add a task.
@@ -16,7 +16,7 @@ Todo Tracker/                       ← the vault (default: Documents/Todo Track
     Clients/Acme onboarding.md      ← subfolders are fine; the task belongs to the top folder's group
   Personal/
   _attachments/7b0c2f9e/plan.pdf    ← files attached in the app
-  .todo-tracker/                    ← app data (hidden in Obsidian)
+  .onething/                    ← app data (hidden in Obsidian)
     config.json                     ← group ids/colors/order, label colors, task order, energy in a day (synced)
     state.json                      ← focus timer, Do now order
     activity.jsonl                  ← audit log (append-only)
@@ -126,7 +126,7 @@ example a Zettelkasten id), it stays and the app keeps its id in `tt-id`.
 
 * Notes are callouts with the local time, the author (`You`, `Agent: <name>`, `Browser`, `Teams`, `Edited in files`),
   and an optional link to a subtask. The last line `🔗 [title](url)` is the source. Notes are editable;
-  `.todo-tracker/activity.jsonl` is the audit trail.
+  `.onething/activity.jsonl` is the audit trail.
 * Attachments are links in `## Attachments` (or `- 📎` items under a subtask). Markdown links, embeds, and Obsidian
   wiki links (`![[file.png|300]]`) all work and keep their form. When the tasks folder is inside an Obsidian vault, wiki
   links also find files elsewhere in that vault (where Obsidian puts pasted images). Links that point outside the vault

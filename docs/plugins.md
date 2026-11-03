@@ -1,6 +1,6 @@
 # Plugins
 
-Every optional part of Onething is a plugin, so you can turn off what you don't use and keep the app calm.
+Every optional part of One Thing is a plugin, so you can turn off what you don't use and keep the app calm.
 Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
 
 * **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
@@ -29,7 +29,7 @@ Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯
 | **GitHub Issues** | Groups in private GitHub repositories, their own or one they share (each group's issues carry its `group:` label): tasks are issues, both ways; repositories are made with the GitHub CLI ([`connectors.md`](connectors.md#github-issues)) | No |
 | **Copy for Loop** | Copy a group's tasks as a checklist, or one task with its notes and pictures, to paste into Microsoft Loop | Yes |
 | **Teams reminders** | Reminder cards in a Teams channel | Yes |
-| **Send feedback** | Tell us about a bug or an idea from Settings, the menus or the command palette; it becomes an issue on Onething's GitHub ([below](#send-feedback)) | Yes |
+| **Send feedback** | Tell us about a bug or an idea from Settings, the menus or the command palette; it becomes an issue on One Thing's GitHub ([below](#send-feedback)) | Yes |
 
 The core (tasks, groups, ordering, notes, the markdown vault, the API, and MCP) is always on. The choice is stored in
 `plugins.json` in the app's data folder and respected by every process (the app, `tt`, and `tt mcp`).
@@ -62,24 +62,24 @@ isn't shown twice). Otherwise a new session starts and is given the earlier mess
 
 ### What it can do
 
-* **It gets Onething's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
+* **It gets One Thing's tools** (the same MCP tools as other AI apps). Copilot connects to the app's own MCP
   endpoint; agents that only support stdio get `tt mcp`. API models use the app's MCP endpoint too, and their changes
   are recorded as the model (by its name).
 * **Reading your tasks needs no permission. Changing them asks first,** showing what would change (for example
   *Change your tasks: create task {"title":"Milk"}*): *Allow*, *Allow for this chat*, or *Don't allow*. Allowing for
   a chat is forgotten when you switch chats. Anything else (commands, files) always asks, and an unanswered question
   is refused after 5 minutes.
-  A request counts as Onething's only when the tool is named the way agents name this server's tools
-  (`todo-tracker-<tool>` for Copilot, `mcp__todo-tracker__<tool>` for Claude) and it isn't a command, delete or move;
+  A request counts as One Thing's only when the tool is named the way agents name this server's tools
+  (`onething-<tool>` for Copilot, `mcp__onething__<tool>` for Claude) and it isn't a command, delete or move;
   a tool name mentioned anywhere else (say, inside a command) never counts. Only "once" choices are sent to the agent,
-  so nothing is remembered beyond the chat. API models only get Onething's tools, and a tool they weren't offered
+  so nothing is remembered beyond the chat. API models only get One Thing's tools, and a tool they weren't offered
   is refused.
 * An API model's answer has limits: up to 12 rounds and 24 tool calls, and long tool results are cut (the model is
   told). A tool call is never retried. If an answer is stopped, the chat can still go on.
 * It runs in its own working folder (`<data>/agent-chat/work`), not in your tasks folder. Copilot gets its own Copilot
   home there (without your personal MCP servers and plugins); it still signs in with `gh`. If Copilot answers that it
   isn't signed in that way, the chat switches to your normal Copilot settings and says so.
-* If the agent crashes while starting, Onething tries again and then says what happened (with the exit code).
+* If the agent crashes while starting, One Thing tries again and then says what happened (with the exit code).
 
 ## Send feedback
 
@@ -99,7 +99,7 @@ filed twice).
   Never anything from your tasks, and no ids. It goes to the issues relay at `issues.awesomehq.app` (with the app's
   public key, which can only open issues; there's no GitHub token in any app), which files it as an issue on the
   public GitHub repository, email included if you gave one. See [privacy](privacy.md).
-* **How:** the web app never calls the relay itself: it posts to `POST /api/plugins/feedback` and Onething on this
+* **How:** the web app never calls the relay itself: it posts to `POST /api/plugins/feedback` and One Thing on this
   computer adds the facts and sends it. Only the person at this computer can (the app's own session; an agent or a
   script with the API token gets 403). The title names the system the server runs on (Windows, macOS or Linux),
   whether the sheet is in the app window or in a browser.
@@ -114,7 +114,7 @@ each answer means are in `tests/fixtures/feedback.json`, checked in C#, Swift, K
 
 ## Adding a plugin (developers)
 
-A plugin is a class that implements `ITodoPlugin` (`src/TodoTracker.Server/Plugins/Plugins.cs`) and is listed in
+A plugin is a class that implements `ITodoPlugin` (`src/OneThing.Server/Plugins/Plugins.cs`) and is listed in
 `PluginHost.BuiltIn`:
 
 ```csharp
@@ -122,7 +122,7 @@ public sealed class MyPlugin : ITodoPlugin
 {
     public PluginInfo Info { get; } = new("my-plugin", "My plugin", "What it does, in one line.");
     public string? WebModule => "/js/plugins/my-plugin.js";              // optional UI in the dashboard
-    public void ConfigureServices(IServiceCollection services, TodoTrackerServerOptions options) { /* services */ }
+    public void ConfigureServices(IServiceCollection services, OneThingServerOptions options) { /* services */ }
     public void MapEndpoints(RouteGroupBuilder group) { /* routes under /api/plugins/my-plugin */ }
 }
 ```

@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "todo-tracker": {
+    "onething": {
       "command": "tt",
       "args": [
         "mcp"

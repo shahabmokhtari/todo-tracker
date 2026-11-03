@@ -6,7 +6,7 @@ globalThis.document = { documentElement: { dataset: {} } };
 const stored = new Map();
 globalThis.localStorage = { setItem: (k, v) => stored.set(k, v), removeItem: (k) => stored.delete(k), getItem: (k) => stored.get(k) ?? null };
 
-const { applyTheme, chooseTheme, followTheme } = await import('../../src/TodoTracker.Server/wwwroot/js/themes.js');
+const { applyTheme, chooseTheme, followTheme } = await import('../../src/OneThing.Server/wwwroot/js/themes.js');
 const shown = () => document.documentElement.dataset.theme ?? 'system';
 
 test('a theme picked here wins over a read of the shared one that was already on its way', async () => {

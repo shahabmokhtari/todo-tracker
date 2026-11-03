@@ -1,15 +1,10 @@
-# Onething: product plan, design, and specification
+# One Thing: product plan, design, and specification
 
 Traces to the original request in [`request.md`](request.md). Section 12 maps each requirement to its status.
 
-The product was called Todo Tracker. Everything people see says Onething; identifiers keep the old name so updates
-install in place and nothing moves: bundle and package ids, exe and assembly names, `TODOTRACKER_*` variables, data
-folders, the tasks folder (`Documents/Todo Tracker`), sync libraries and gist names, connector markers, `tt`, the
-`todo-tracker` MCP server and skill, the `todotracker://` scheme, headers, and the website's domain.
-
 ## 1. Vision
 
-Onething is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
+One Thing is an **ADHD-friendly command center** for people juggling many workstreams, AI agents, chat, and
 browser tabs. It answers one question at a glance: *what should I do right now?* Everything that isn't actionable
 yet stays out of the way until it is due, and then it comes back by itself.
 
@@ -44,19 +39,19 @@ Product principles:
 
 ```
 ┌──────────────────────────── Windows ─────────────────────────────┐
-│ TodoTracker.Windows (WPF, AppBar)                                 │
-│   ├─ TodoTracker.Desktop (MVVM view models, platform-neutral)     │
-│   └─ embeds TodoTracker.Server ── 127.0.0.1:5317 ─┬─ Web UI (SPA) │
+│ OneThing.Windows (WPF, AppBar)                                 │
+│   ├─ OneThing.Desktop (MVVM view models, platform-neutral)     │
+│   └─ embeds OneThing.Server ── 127.0.0.1:5317 ─┬─ Web UI (SPA) │
 │                                                   ├─ REST /api    │
 │                                                   └─ MCP  /mcp    │
-│ TodoTracker.Core (domain, agenda, store) ◄── all of the above     │
+│ OneThing.Core (domain, agenda, store) ◄── all of the above     │
 └───────────────────────────────────────────────────────────────────┘
    ▲ REST (loopback + token)            ▲ MCP (streamable HTTP + token)
    │                                    │
  Edge/Chrome side panel extension    Copilot CLI / VS Code / agents
 
-TodoTracker.Web  – the same server as a standalone process (no WPF); used by CI e2e tests.
-apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS and macOS.
+OneThing.Web  – the same server as a standalone process (no WPF); used by CI e2e tests.
+apple/           – OneThingKit (Swift port of Core) + SwiftUI apps for iOS and macOS.
 ```
 
 * **Markdown vault.** The board lives in a folder of markdown files: one folder per group, one file per top-level
@@ -64,15 +59,15 @@ apple/           – TodoTrackerKit (Swift port of Core) + SwiftUI apps for iOS 
   [`vault-format.md`](vault-format.md). In short: reading never writes, a change rewrites only the files it touched,
   saves are verified against the files' content and are all-or-nothing, edits made outside the app (Obsidian,
   editors, agents) are picked up and acted on, and broken files are reported and never overwritten.
-* **Vault location.** `Documents/Todo Tracker` by default, or a folder chosen in the app (for example
-  `<Obsidian vault>/Onething`), `TODOTRACKER_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
+* **Vault location.** `Documents/OneThing` by default, or a folder chosen in the app (for example
+  `<Obsidian vault>/One Thing`), `ONETHING_VAULT`, or `<data>/vault` with a custom data folder. A `board.json`
   from earlier versions is imported once (and renamed to `board.json.migrated`).
 * **Several processes.** The app, the `tt` CLI, and MCP servers can share a vault; a per-vault lock in local app data
   (never in the synced folder) serializes writes. One server runs per data folder (`instance.lock`).
 * **History.** Every change is kept as a version in a private git repository on this device (local app data, never in the synced vault), saved a
   few seconds after changes settle and checked every two minutes for edits made outside the app. Any task can be
   viewed or restored from its history. Off when git isn't installed.
-* **Data folder.** `%LOCALAPPDATA%\TodoTracker` (override with `TODOTRACKER_DATA` or `--data`) holds
+* **Data folder.** `%LOCALAPPDATA%\OneThing` (override with `ONETHING_DATA` or `--data`) holds
   `settings.json` (Teams webhook, vault folder), `api-token`, and `desktop.json` (window placement).
 
 ## 4. Domain model
@@ -111,7 +106,7 @@ placed, or whose reminder went off after Do now was last arranged (`NowArrangedA
 stays where they put it. Tasks they never placed come after
 the ones they did, in the automatic order: effective priority (the maximum of the item and its ancestors), then
 overdue, then deadline, then age, so capturing something new never takes over the chosen focus. The first one is the
-**focus**. The order is shared by every app and process (`.todo-tracker/state.json`); arranging one group's tab keeps
+**focus**. The order is shared by every app and process (`.onething/state.json`); arranging one group's tab keeps
 the other groups' places. In the web task panel, subtasks are reordered the same way among their siblings (never
 changing parent); the API also reorders top-level tasks.
 
@@ -175,7 +170,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
     blocks the sidebar. Fitted sessions follow the room whenever the sidebar re-docks (collapsed, opened, other edge, DPI
     or taskbar change), and go back to full screen (on the monitor they're on now) when the sidebar is hidden, floats,
     moves to another monitor, the option is turned off, or the app quits. The app's own window counts like any other:
-    maximized over a full-screen session, the sidebar stays on top next to it. `TODOTRACKER_REMOTE_DESKTOP_CLIENTS` (comma-separated process names)
+    maximized over a full-screen session, the sidebar stays on top next to it. `ONETHING_REMOTE_DESKTOP_CLIENTS` (comma-separated process names)
     replaces the list of clients; system tests use it so a real session is never resized.
   * **Hide the sidebar** (menu, or the tray icon's menu): gives the screen edge back and keeps running in the
     notification area; hidden from its own menu, the tray icon says how to bring it back. It stays hidden after a
@@ -298,11 +293,11 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Card notes save themselves after a short pause and keep updating the same note; Enter finishes it.
 * Cards show labels (colored) and tags. The card menu opens the task in Obsidian or shows its markdown file.
 * Menu › *Tasks folder* shows where tasks live, opens the folder or Obsidian, keeps tasks in an Obsidian vault found on
-  this machine (`<vault>/Onething`), or chooses another folder (the app restarts to switch).
+  this machine (`<vault>/One Thing`), or chooses another folder (the app restarts to switch).
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
-* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`TodoTrackerCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`).
+* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`OneThingCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`).
 * **Board** (`boardmodel.js` ported as `BoardColumns`): Inbox, Next, Doing, Done (cards finished in the last 14 days, newest first); as many columns side by side as fit at about 250 pt, the rest scroll. Cards show title and icon, group color, priority, repeat, labels, three tags, due/overdue, waiting, subtask progress and time; timer, Mark done (Archive in Done) and a Move menu. Drops and Option-arrows make the web's requests (`/stage`, `/complete`, `/reorder`); Doing shows n/3 and the web's message past three. New tasks start in Inbox (as in C#).
 * **Tasks** (`outlinemodel.js` ported as `OutlineMoves`): the tree as rows with disclosure, check box, inline rename, chips and facts, a ⋯ menu (timer, add a subtask, details, up, down, into the task above, out one level); keys as on the web (Return rename/next, Tab/⇧Tab, ⌥↑/↓, Space, ←/→). *Show finished*, expand and collapse all; expanded rows are remembered.
 * **Done**: finished top-level tasks by day (Today, Yesterday, the date) with time spent, Reopen and Archive; the Archive tab with Unarchive; a find box.
@@ -310,10 +305,10 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Task details edit every field the web drawer has except tags, labels, icon, color, attachments and history (title, details, priority, deadline, repeat, energy, group, steps in order, hours between steps), and offer Later, Remind me, Mark done/Reopen, Time this task, Archive/Unarchive and Delete (asks first). Subtasks open in place at any depth; a waiting task says why. Groups can be renamed, recolored and deleted (tasks move). Search follows `TaskQuery` (shared fixture `tests/fixtures/search.json`). A Settings screen holds appearance, energy in a day, focus lengths and breaks.
 * **Plan** (`PlanView`): the web Plan view's grid (`PlanGrid`: week or day, work hours stretched to show blocks outside them, work days, Monday or Sunday weeks, 15-minute snapping, 15 minutes to 12 hours when resizing; iPhone (compact width) shows a day). Blocks, deadlines, *Not planned* and *Later* come from `PlanDays` (port of `PlanDays.cs`, which `GET /api/plan` uses; shared fixture `tests/fixtures/plan.json`), planning from `TaskBoard.plan/unplan` (5 minutes to 12 hours, 30 kept as none, done tasks refused; same fixture). Drag and drop (touch, pointer), long-press-then-drag to move a block on touch, a resize handle, a context menu, VoiceOver actions and arrow keys; *Plan…* opens a sheet (task, start, length). On the Mac (server), planning is `POST /api/items/{id}/plan` (`ServerAction.plan/.unplan`). Plan settings (view, hours, work hours/days, week start) are kept per group on the device (UserDefaults), not in the server's settings.
 * **Reports** (`ReportsView`, Swift Charts): range 7 days / 4 weeks / 3 months / year / custom dates; KPIs, time per day (stacked focus/other, weekly for ranges over 120 days), by group (donut), top tasks, weekday × hour heat map, active-days calendar (90 days or more), and the Timeline (work bars, created→done/due line, ◆ due, ● done; tap a row to open the task). The numbers are `TimeReport` (port of `TimeReport.cs`) computed on the device from the board (its time entries and focus activity are in `/api/export`), so it works the same in every mode and offline; shared fixture `tests/fixtures/reports.json` (across midnight and the change to winter time, a running timer, focus, archived tasks).
-* The macOS app runs the bundled server (`TodoTracker.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/TodoTracker/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below). Settings says which it is (syncing on its own, or only on this device); switching never deletes tasks. Phones don't connect to a computer: they sync through the same places computers do.
-* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › TodoTrackerSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<TodoTrackerSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "Onething" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.todotracker.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
+* The macOS app runs the bundled server (`OneThing.Web --parent-pid`) and works on its tasks folder through the REST API (reads `/api/export`, sends changes), so it syncs like Windows (docs/sync.md, "On a Mac"). iOS keeps its tasks in a tasks folder on the device (`VaultStore`, `Application Support/OneThing/vault`; `board.json` is imported once and set aside as `board.json.migrated`), synced on its own (below). Settings says which it is (syncing on its own, or only on this device); switching never deletes tasks. Phones don't connect to a computer: they sync through the same places computers do.
+* **iPhone and iPad: Sync with your other devices** (Settings › Sync; docs/design/phone-sync.md). The phone is a sync device of its own (`SyncEngine` over the one `VaultStore`). Places: a folder picked with `UIDocumentPickerViewController` (iCloud Drive › Apps › OneThingSync, or a folder holding it, or *Create it here*), kept as a bookmark and used through `FolderRemote` + `CoordinatedFolderAccess(securityScoped:)` at `<OneThingSync>/<library>`; or a gist (`GistRemote`) with a pasted token (`gist` scope; a button opens GitHub's token page), kept in the Keychain. Library: "One Thing" by default, editable (cleaned as on computers). The first sync is `SyncEngine.join` (a leftover `board.json` comes in beside what came; nothing is published before a complete pull). Schedule: launch and foreground, 5 s after a change (debounced), every minute while open, `BGAppRefreshTask` `com.onething.ios.sync` in the background; syncs run off the main actor, and after one the board is read again from the store and notifications are rescheduled. The screen shows last synced, *Sync now*, other devices (*Forget*), problems (including iCloud files not downloaded yet, which are requested), conflicts (read only: "Open it on a computer to choose"), and *Turn sync off* (keeps the tasks).
 
-* **Widgets** (WidgetKit; extensions `TodoTrackerWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `TodoTrackerWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.todotracker`; on a Mac `$(TeamIdentifierPrefix)group.com.todotracker`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the Mac's server isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
+* **Widgets** (WidgetKit; extensions `OneThingWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `OneThingWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.onething`; on a Mac `$(TeamIdentifierPrefix)group.com.onething`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the Mac's server isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
 
 ### Android (Jetpack Compose)
 * Today: the focus card, Do now, Waiting, Done today (with the time each was done), Workstreams (tasks with subtasks:
@@ -355,7 +350,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   computers), merging three-way like `SyncPlanner`. Sign-in: a pasted classic token with the `gist` scope (a button opens
   `github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker`; no OAuth device flow, as there's no OAuth
   app), kept sealed with an Android Keystore AES-GCM key; the gist id in the app's settings; `SyncState` in
-  `filesDir/sync`. The library defaults to *Todo Tracker* (the computers' default) and can be changed (a new library is
+  `filesDir/sync`. The library defaults to *One Thing* (the computers' default) and can be changed (a new library is
   joined afresh). The first sync with a place is `SyncEngine.join`: pull only, then import `board.json` if still there,
   then publish; an incomplete pull publishes nothing (*Waiting for everything from your other devices…*). Syncs: on
   launch and resume, 5 s after the last change (debounced), every minute while open (`SyncSchedule`), and a WorkManager
@@ -364,8 +359,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   reminder alarm set again. The Sync screen: last synced, *Sync now*, problems (incl. contents not arrived yet, a token
   GitHub refused, with a field for a new one), other devices with *Forget*, conflicts listed read-only (*open it on a
   computer to choose*; *Got it* hides one), the library, *Turn sync off* (tasks stay; the token is forgotten). Debug
-  builds can also sync through a folder in the app's external files (`TodoTrackerSync/<library>`), to try it against a
-  computer's `Apps/TodoTrackerSync` folder without GitHub.
+  builds can also sync through a folder in the app's external files (`OneThingSync/<library>`), to try it against a
+  computer's `Apps/OneThingSync` folder without GitHub.
 * **Sync identity:** `SyncState` is kept per place and library (`filesDir/sync/<place>-<hash of library>`; the device id
   in `filesDir/sync/device.json` is shared), so another library starts with nothing agreed, published or deleted. Backups
   and device transfers (`dataExtractionRules`, `fullBackupContent`) leave out `sync.xml` and `files/sync/`, and keep
@@ -463,14 +458,14 @@ until that group syncs, the task stays where it was). So several groups can shar
 can put all of them in one shared repository instead of a `todo-<group>` each. `group:` labels are never tags and
 never pruned; time labels are pruned only when no issue in the repository uses them. A group connected before labels,
 or the first group in a repository without any `group:` labels, labels the issues that have none. With the tasks on
-GitHub, other computers find groups by their `group:` labels in repositories with the `todo-tracker` topic.
+GitHub, other computers find groups by their `group:` labels in repositories with the `onething` topic.
 
 ### Plugins and Ask AI
 Every optional feature is a built-in plugin (Ask AI, Connect AI apps, focus timer, Plan, version history, Obsidian,
 browser extension, sync, connectors, Copy for Loop, Teams, Send feedback) that can be switched off; the choice lives in `plugins.json`.
 Off applies at once everywhere (UI, API, background work); extras without background work also come on at once, the
 others at the next start. Ask AI drives GitHub Copilot
-CLI or Claude Code over the Agent Client Protocol with Onething's MCP tools attached, or a model reached with an API
+CLI or Claude Code over the Agent Client Protocol with One Thing's MCP tools attached, or a model reached with an API
 key (OpenAI- or Anthropic-compatible; keys encrypted on this computer) with the same tools. Reading needs no permission;
 changing tasks asks, showing what would change (once or for the chat); anything else always asks. Chats are kept and
 can be searched, reopened (agents resume their session with `session/load` when they can), renamed and deleted with
@@ -516,22 +511,22 @@ with **single-use launch codes**: `POST /api/launch` returns `/auth?code=…&ret
 2 minutes and accepts local paths only. The long-lived API token therefore never appears in URLs, browser history,
 or history sync.
 
-### Task links (`todotracker://task/<id>`)
+### Task links (`onething://task/<id>`)
 Every task has a link that opens the installed app on it (`TaskLinks` in the core, with the same rules in Swift and
-Kotlin; shared test cases). Only two shapes are followed: `todotracker://task/<guid>` (any case, with or without
+Kotlin; shared test cases). Only two shapes are followed: `onething://task/<guid>` (any case, with or without
 dashes, a trailing `/`, `?…` or `#…` ignored) and the bare scheme (just the app); anything else is ignored, so a
 crafted link can't reach another page or action. Copied from the task header (web) or a sidebar card (Windows) as
 plain text plus HTML named after the task; returned as `link` on every task (REST, MCP), printed by `tt show`, opened
 by `tt open`.
 
 * A link is the only argument that counts when the app is started with one: its text can never add options.
-* **Windows**: the app writes `HKCU\Software\Classes\todotracker` at each start (only the user's own instance: the
+* **Windows**: the app writes `HKCU\Software\Classes\onething` at each start (only the user's own instance: the
   default data folder and port). A second launch with a link hands it to the running one over a per-session named
   pipe (`PipeOptions.CurrentUserOnly`, ≤2 KB, validated again on arrival) and exits; the app window opens on the
   task. A link clicked inside the app window opens there.
 * **macOS / iOS**: `CFBundleURLTypes` + `onOpenURL` open the task's details. **Android**: a `VIEW`/`BROWSABLE`
   intent filter (`singleTask`, so a link never starts a second copy of the board) opens the task's details. **Linux**: the `.desktop` file handles
-  `x-scheme-handler/todotracker`; a running tray opens its window on the task through `/api/launch`.
+  `x-scheme-handler/onething`; a running tray opens its window on the task through `/api/launch`.
 
 ## 8. Security (local server)
 
@@ -540,7 +535,7 @@ by `tt open`.
   (`HttpOnly`, `SameSite=Strict`). Tokens are compared in constant time.
 * The API token is never put in a URL. Browsers get the cookie through single-use launch codes, and `return` paths
   must be local and free of control characters.
-* Mutations authenticated by cookie also need the `X-TodoTracker-Client` header. This forces a CORS preflight, so
+* Mutations authenticated by cookie also need the `X-OneThing-Client` header. This forces a CORS preflight, so
   other localhost origins cannot forge writes. No CORS policy is enabled.
 * Strict CSP (`default-src 'self'`, no inline script, `frame-ancestors 'none'`), `nosniff`, `no-referrer`, and
   `Cache-Control: no-store` on the API. The DOM is built with `textContent` only. Links are http(s) only.

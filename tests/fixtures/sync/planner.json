@@ -1862,7 +1862,7 @@
         "entries": [
           {
             "key": "activity",
-            "path": ".todo-tracker/activity.jsonl",
+            "path": ".onething/activity.jsonl",
             "text": "{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"created\",\"summary\":\"Created\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T10:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"completed\",\"summary\":\"Completed\",\"actorKind\":\"user\"}\n",
             "hash": "a7533b8e314db27dde06f20a9bf96287a3663ddb4fc5a46f5e56bf4e8bd41f3d"
           }
@@ -1874,7 +1874,7 @@
         "entries": [
           {
             "key": "activity",
-            "path": ".todo-tracker/activity.jsonl",
+            "path": ".onething/activity.jsonl",
             "text": "{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"created\",\"summary\":\"Created\",\"actorKind\":\"user\"}\n{\"at\":\"2026-01-05T11:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"reopened\",\"summary\":\"Reopened\",\"actorKind\":\"agent\",\"actor\":\"copilot\"}\n",
             "hash": "fdda49137b8c8283862ab4b99a6315d9c3d10309d237df15af2c95412cfd75e9"
           }
@@ -1883,7 +1883,7 @@
       "base": [
         {
           "key": "activity",
-          "path": ".todo-tracker/activity.jsonl",
+          "path": ".onething/activity.jsonl",
           "text": "{\"at\":\"2026-01-05T09:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"created\",\"summary\":\"Created\",\"actorKind\":\"user\"}\n",
           "hash": "8985ab3db017441020f5bc0887e136d93b6406af10798cbf71f3ac7ee0760b93"
         }
@@ -1894,7 +1894,7 @@
         "ops": [
           {
             "kind": "appendActivity",
-            "path": ".todo-tracker/activity.jsonl",
+            "path": ".onething/activity.jsonl",
             "expected": null,
             "to": null,
             "text": "{\"at\":\"2026-01-05T11:00:00+00:00\",\"itemId\":\"7b0c2f9e-0000-4000-8000-000000000001\",\"kind\":\"reopened\",\"summary\":\"Reopened\",\"actorKind\":\"agent\",\"actor\":\"copilot\"}\n"
@@ -1911,7 +1911,7 @@
         "entries": [
           {
             "key": "config",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#ef4444\"\n    }\n  ],\n  \"labels\": [\n    {\n      \"name\": \"Urgent\",\n      \"color\": \"#e11d48\"\n    }\n  ],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
             "hash": "f4c75aa6d20b28311feb0147cb658fe4dc60de2eb242dc6ecfa22fa8e021497d"
           }
@@ -1923,7 +1923,7 @@
         "entries": [
           {
             "key": "config",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000003\",\n      \"folder\": \"work\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n",
             "hash": "18698776622779989da8cf9c3e56d539d28a723dd8e5780196627424501985f0"
           }
@@ -1932,7 +1932,7 @@
       "base": [
         {
           "key": "config",
-          "path": ".todo-tracker/config.json",
+          "path": ".onething/config.json",
           "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
           "hash": "307de4e780344dcc7cce3b3b5988c5720a1ebed7040f1d75744c976851fe3bed"
         }
@@ -1943,7 +1943,7 @@
         "ops": [
           {
             "kind": "setConfig",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "expected": "f4c75aa6d20b28311feb0147cb658fe4dc60de2eb242dc6ecfa22fa8e021497d",
             "to": null,
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#ef4444\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    }\n  ],\n  \"labels\": [\n    {\n      \"name\": \"Urgent\",\n      \"color\": \"#e11d48\"\n    }\n  ],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n"
@@ -1960,7 +1960,7 @@
         "entries": [
           {
             "key": "config",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000003\",\n      \"folder\": \"work\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n",
             "hash": "18698776622779989da8cf9c3e56d539d28a723dd8e5780196627424501985f0"
           }
@@ -1972,7 +1972,7 @@
         "entries": [
           {
             "key": "config",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#ef4444\"\n    }\n  ],\n  \"labels\": [\n    {\n      \"name\": \"Urgent\",\n      \"color\": \"#e11d48\"\n    }\n  ],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
             "hash": "f4c75aa6d20b28311feb0147cb658fe4dc60de2eb242dc6ecfa22fa8e021497d"
           }
@@ -1981,7 +1981,7 @@
       "base": [
         {
           "key": "config",
-          "path": ".todo-tracker/config.json",
+          "path": ".onething/config.json",
           "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
           "hash": "307de4e780344dcc7cce3b3b5988c5720a1ebed7040f1d75744c976851fe3bed"
         }
@@ -1992,7 +1992,7 @@
         "ops": [
           {
             "kind": "setConfig",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "expected": "18698776622779989da8cf9c3e56d539d28a723dd8e5780196627424501985f0",
             "to": null,
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#ef4444\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    }\n  ],\n  \"labels\": [\n    {\n      \"name\": \"Urgent\",\n      \"color\": \"#e11d48\"\n    }\n  ],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n"
@@ -2014,7 +2014,7 @@
         "entries": [
           {
             "key": "config",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000003\",\n      \"folder\": \"work\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n",
             "hash": "18698776622779989da8cf9c3e56d539d28a723dd8e5780196627424501985f0"
           }
@@ -2027,7 +2027,7 @@
         "ops": [
           {
             "kind": "setConfig",
-            "path": ".todo-tracker/config.json",
+            "path": ".onething/config.json",
             "expected": null,
             "to": null,
             "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000003\",\n      \"folder\": \"work\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8\n}\n"
@@ -2044,7 +2044,7 @@
         "entries": [
           {
             "key": "order",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000001\"]",
             "hash": "1340fadc07a2a029b6e21e2765c943aeee68180076993656b075403f86ac4964"
           }
@@ -2056,7 +2056,7 @@
         "entries": [
           {
             "key": "order",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000003\"]",
             "hash": "3ac530b4766bb7a7c8b794b2ebaa4aface1862e1a808a4cd435cc04dfc91aaf4"
           }
@@ -2065,7 +2065,7 @@
       "base": [
         {
           "key": "order",
-          "path": ".todo-tracker/order.json",
+          "path": ".onething/order.json",
           "text": "[\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000002\"]",
           "hash": "7057adcbcb258e3ced0038143c95075a4ddc2001c29202cbca53e392e279d923"
         }
@@ -2076,7 +2076,7 @@
         "ops": [
           {
             "kind": "setOrder",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "expected": "1340fadc07a2a029b6e21e2765c943aeee68180076993656b075403f86ac4964",
             "to": null,
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000003\"]"
@@ -2093,7 +2093,7 @@
         "entries": [
           {
             "key": "order",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000003\"]",
             "hash": "3ac530b4766bb7a7c8b794b2ebaa4aface1862e1a808a4cd435cc04dfc91aaf4"
           }
@@ -2105,7 +2105,7 @@
         "entries": [
           {
             "key": "order",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000001\"]",
             "hash": "1340fadc07a2a029b6e21e2765c943aeee68180076993656b075403f86ac4964"
           }
@@ -2114,7 +2114,7 @@
       "base": [
         {
           "key": "order",
-          "path": ".todo-tracker/order.json",
+          "path": ".onething/order.json",
           "text": "[\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000002\"]",
           "hash": "7057adcbcb258e3ced0038143c95075a4ddc2001c29202cbca53e392e279d923"
         }
@@ -2125,7 +2125,7 @@
         "ops": [
           {
             "kind": "setOrder",
-            "path": ".todo-tracker/order.json",
+            "path": ".onething/order.json",
             "expected": "3ac530b4766bb7a7c8b794b2ebaa4aface1862e1a808a4cd435cc04dfc91aaf4",
             "to": null,
             "text": "[\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000003\"]"

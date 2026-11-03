@@ -1,6 +1,6 @@
 # Connect AI apps
 
-Onething is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
+One Thing is meant to be used *with* AI: tell Claude or Copilot what you need to do and it lands in your list,
 ask what to work on next, let an agent log progress or break a project into steps. Every change an AI makes is
 attributed to it (you'll see "Agent: claude" in the timeline) and versioned, so it can be undone.
 
@@ -21,23 +21,23 @@ a per-folder lock and re-read the files first). Several AI apps can be connected
 
 ## Get `tt`
 
-* **Windows app:** `tt.exe` is installed next to `TodoTracker.exe`. "Connect an AI app" fills in its full path.
-* **.NET tool:** `dotnet tool install -g TodoTracker.Cli --add-source <folder with the .nupkg>` (the package is a CI
-  artifact; `dotnet pack src/TodoTracker.Cli -o <folder>` builds it).
+* **Windows app:** `tt.exe` is installed next to `OneThing.exe`. "Connect an AI app" fills in its full path.
+* **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
+  artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it).
 * **Standalone:** CI publishes self-contained `tt` for Windows, macOS and Linux (`tt-<platform>.zip`, no .NET needed).
 
-`tt` uses the tasks folder the app uses (`Documents/Todo Tracker`, or the folder chosen in the app). Override it with
-`--vault <folder>` or the `TODOTRACKER_VAULT` environment variable.
+`tt` uses the tasks folder the app uses (`Documents/OneThing`, or the folder chosen in the app). Override it with
+`--vault <folder>` or the `ONETHING_VAULT` environment variable.
 
 ## Claude Desktop
 
-**Extension (easiest):** download `todo-tracker-<platform>.mcpb` from the CI artifacts and open it; Claude shows an
+**Extension (easiest):** download `onething-<platform>.mcpb` from the CI artifacts and open it; Claude shows an
 install dialog. Leave *Tasks folder* empty to use the app's folder.
 
 **Or by hand:** Settings → Developer → Edit config, then add (with the path from "Connect an AI app"):
 
 ```json
-{ "mcpServers": { "todo-tracker": { "command": "C:\\Program Files\\Todo Tracker\\tt.exe", "args": ["mcp"] } } }
+{ "mcpServers": { "onething": { "command": "C:\\Program Files\\One Thing\\tt.exe", "args": ["mcp"] } } }
 ```
 
 Restart Claude Desktop completely after editing.
@@ -45,7 +45,7 @@ Restart Claude Desktop completely after editing.
 ## Claude Code
 
 ```bash
-claude mcp add todo-tracker --scope user -- tt mcp
+claude mcp add onething --scope user -- tt mcp
 ```
 
 For the tools *and* a skill that teaches Claude how to help with your tasks (capture, break down, log, defer, never
@@ -53,7 +53,7 @@ delete), install the plugin from this repository:
 
 ```
 /plugin marketplace add shahabmokhtari/todo-tracker
-/plugin install todo-tracker@todo-tracker
+/plugin install onething@onething
 ```
 
 The plugin launches `tt` from your PATH.
@@ -63,14 +63,14 @@ The plugin launches `tt` from your PATH.
 Add to `~/.copilot/mcp-config.json` (or run `/mcp add` inside Copilot):
 
 ```json
-{ "mcpServers": { "todo-tracker": { "type": "local", "command": "tt", "args": ["mcp"], "tools": ["*"] } } }
+{ "mcpServers": { "onething": { "type": "local", "command": "tt", "args": ["mcp"], "tools": ["*"] } } }
 ```
 
 The same plugin works in Copilot CLI (it reads Claude-format marketplaces too):
 
 ```bash
 copilot plugin marketplace add shahabmokhtari/todo-tracker
-copilot plugin install todo-tracker@todo-tracker
+copilot plugin install onething@onething
 ```
 
 ## VS Code (GitHub Copilot Chat)
@@ -78,7 +78,7 @@ copilot plugin install todo-tracker@todo-tracker
 Command palette → **MCP: Open User Configuration** (or a workspace `.vscode/mcp.json`), then add:
 
 ```json
-{ "servers": { "todo-tracker": { "type": "stdio", "command": "tt", "args": ["mcp"] } } }
+{ "servers": { "onething": { "type": "stdio", "command": "tt", "args": ["mcp"] } } }
 ```
 
 A copy is in [`integrations/vscode/mcp.json`](../integrations/vscode/mcp.json).
@@ -116,7 +116,7 @@ Deleting, settings and sign-in are left out.
 
 ## Windows Copilot (on-device agent registry)
 
-Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. Onething isn't packaged as
+Windows' agent connector registry is in preview and lists MSIX-packaged MCP servers. One Thing isn't packaged as
 MSIX yet; until then, use the Claude Desktop or VS Code setup.
 
 ## The `tt` command
@@ -141,5 +141,5 @@ make big things small, log progress, defer instead of piling up, never delete), 
 described for the model. The full list, made from the code: [mcp.md](mcp.md). There is deliberately no delete tool.
 
 For Claude Code and Copilot CLI, the plugin adds a skill
-([`SKILL.md`](../integrations/agent-plugin/skills/todo-tracker/SKILL.md)) with recipes: what to do now, follow-ups
+([`SKILL.md`](../integrations/agent-plugin/skills/onething/SKILL.md)) with recipes: what to do now, follow-ups
 after a meeting, planning a day, rollouts, end of day, automations.

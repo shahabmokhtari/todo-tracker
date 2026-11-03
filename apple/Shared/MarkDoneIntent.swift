@@ -1,6 +1,6 @@
 import AppIntents
 import Foundation
-import TodoTrackerKit
+import OneThingKit
 #if canImport(WidgetKit)
 import WidgetKit
 #endif

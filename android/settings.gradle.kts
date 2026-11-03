@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "TodoTracker"
+rootProject.name = "OneThing"
 include(":app")

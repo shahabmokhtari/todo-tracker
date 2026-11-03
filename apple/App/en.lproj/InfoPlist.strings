@@ -1,3 +1,3 @@
-/* The name people see (menu bar, About, Quit). The bundle itself stays TodoTracker.app. */
-"CFBundleName" = "Onething";
-"CFBundleDisplayName" = "Onething";
+/* The name people see (menu bar, About, Quit). The bundle itself stays OneThing.app. */
+"CFBundleName" = "One Thing";
+"CFBundleDisplayName" = "One Thing";

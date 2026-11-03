@@ -1,0 +1,1138 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using OneThing.Core;
+
+namespace OneThing.Desktop;
+
+/// <summary>
+/// The always-visible sidebar: one focus card, then collapsible Do now / Waiting / Workstreams / Recent notes,
+/// group tabs, quick capture, and the focus timer. All reads/writes go through <see cref="IBoardStore"/>, which is
+/// shared with the embedded server so agents, the browser, and the sidebar always see the same board.
+/// </summary>
+public sealed partial class SidebarViewModel : ObservableObject, IDisposable
+{
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan NoteSaveDelay = TimeSpan.FromSeconds(1.2);
+    private Task _noteSaves = Task.CompletedTask;
+    private readonly IBoardStore _store;
+    private readonly TimeProvider _time;
+    private readonly IDesktopShell _shell;
+    private readonly SidebarOptions _options;
+    private readonly ITimer _clockTimer;
+    private readonly ITimer _refreshTimer;
+    private Guid? _selectedGroupId;
+    private Task _pending = Task.CompletedTask;
+
+    public SidebarViewModel(IBoardStore store, TimeProvider time, IDesktopShell shell, SidebarOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(time);
+        _store = store;
+        _time = time;
+        _shell = shell;
+        _options = options;
+        _store.Changed += OnStoreChanged;
+        Break = new BreakScreenViewModel(SkipPomodoro, StartNextFocus);
+        _clockTimer = time.CreateTimer(_ => _shell.RunOnUi(() =>
+        {
+            var now = _time.GetUtcNow();
+            Pomodoro.Tick(now);
+            Break.Tick(now);
+            Timer.Tick(now);
+        }), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        _refreshTimer = time.CreateTimer(_ => _shell.RunOnUi(QueueRefresh), null, RefreshInterval, RefreshInterval);
+    }
+
+    public ObservableCollection<GroupTabViewModel> Groups { get; } = [];
+
+    public ObservableCollection<CardViewModel> Now { get; } = [];
+
+    public ObservableCollection<CardViewModel> Waiting { get; } = [];
+
+    public ObservableCollection<WorkstreamViewModel> Workstreams { get; } = [];
+
+    public ObservableCollection<NoteViewModel> RecentNotes { get; } = [];
+
+    /// <summary>What got done today (newest first): something to look back on.</summary>
+    public ObservableCollection<DoneViewModel> DoneToday { get; } = [];
+
+    /// <summary>A cheer for what got done today; null until something is done.</summary>
+    [ObservableProperty]
+    public partial string? DoneTodayCheer { get; set; }
+
+    public PomodoroViewModel Pomodoro { get; } = new();
+
+    /// <summary>The full-screen break when a focus session ends.</summary>
+    public BreakScreenViewModel Break { get; }
+
+    public TaskTimerViewModel Timer { get; } = new();
+
+    /// <summary>The quick snooze choices right now (the same in every app).</summary>
+    public IReadOnlyList<SnoozeChoice> SnoozeChoices() => Core.Snooze.Choices(_time.GetUtcNow(), _options.TimeZone);
+
+    /// <summary>"today 17:00", "Fri 14:30", "Mon 12 Jan, 9:00".</summary>
+    public string DescribeWhen(DateTimeOffset at) => Core.Snooze.Describe(at, _time.GetUtcNow(), _options.TimeZone);
+
+    /// <summary>Tasks a card can wait for ("After another task"): the open ones shown, except itself, its own subtasks or
+    /// parents, and what already waits for it.</summary>
+    public async Task<IReadOnlyList<CardViewModel>> WaitCandidatesAsync(CardViewModel card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        var shown = new[] { Focus }.Concat(Now).Concat(Waiting).OfType<CardViewModel>().DistinctBy(c => c.Id).ToList();
+        var allowed = await _store.ReadAsync(b => shown.Where(c => b.CanWaitFor(card.Id, c.Id)).Select(c => c.Id).ToHashSet()).ConfigureAwait(true);
+        return shown.Where(c => allowed.Contains(c.Id)).ToList();
+    }
+
+    [ObservableProperty]
+    public partial CardViewModel? Focus { get; set; }
+
+    [ObservableProperty]
+    public partial string QuickText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string? StatusMessage { get; set; }
+
+    [ObservableProperty]
+    public partial int NowCount { get; set; }
+
+    [ObservableProperty]
+    public partial int WaitingCount { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasAttention { get; set; }
+
+    [ObservableProperty]
+    public partial string? NextUpText { get; set; }
+
+    [ObservableProperty]
+    public partial string Summary { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsCompact { get; set; }
+
+    public string CompactSummary => NowCount.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Collapsed, the pointer is over the strip: the whole sidebar shows (over other windows) until it leaves.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsStrip))]
+    public partial bool IsPeeking { get; set; }
+
+    /// <summary>The thin strip shows: collapsed and not peeking.</summary>
+    public bool ShowsStrip => IsCompact && !IsPeeking;
+
+    /// <summary>The task at hand, written down the strip: the one being timed, else the one to focus on.</summary>
+    [ObservableProperty]
+    public partial string? ActiveTitle { get; set; }
+
+    partial void OnIsCompactChanged(bool value)
+    {
+        if (!value)
+        {
+            IsPeeking = false;
+        }
+
+        OnPropertyChanged(nameof(ShowsStrip));
+    }
+
+    public bool HasFocus => Focus is not null;
+
+    partial void OnFocusChanged(CardViewModel? value) => OnPropertyChanged(nameof(HasFocus));
+
+    partial void OnNowCountChanged(int value) => OnPropertyChanged(nameof(CompactSummary));
+
+    /// <summary>Completes when any refresh triggered by timers or store events has finished (used by tests and smoke checks).</summary>
+    public Task WhenIdleAsync() => _pending;
+
+    public async Task RefreshAsync()
+    {
+        var now = _time.GetUtcNow();
+        var snapshot = await _store.ReadAsync(b => Project(b, now, _selectedGroupId)).ConfigureAwait(true);
+        if (snapshot.GroupMissing)
+        {
+            _selectedGroupId = null;
+            snapshot = await _store.ReadAsync(b => Project(b, now, null)).ConfigureAwait(true);
+        }
+
+        CollectionSync.Sync(Groups, snapshot.Groups.Select(ReuseTab).ToList());
+
+        // One pool of card instances across Focus/Now/Waiting, so a card that changes list keeps its note draft.
+        var existing = new Dictionary<Guid, CardViewModel>();
+        foreach (var card in Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>())
+        {
+            existing.TryAdd(card.Id, card);
+        }
+
+        CardViewModel Reuse(CardViewModel fresh)
+        {
+            if (!existing.Remove(fresh.Id, out var keep))
+            {
+                return fresh;
+            }
+
+            keep.CopyFrom(fresh);
+            return keep;
+        }
+
+        Focus = snapshot.Focus is null ? null : Reuse(snapshot.Focus);
+        foreach (var card in snapshot.Now.Concat(snapshot.Waiting).Append(Focus).OfType<CardViewModel>())
+        {
+            card.DraftEdited ??= OnNoteDraftEdited;
+        }
+        CollectionSync.Sync(Now, snapshot.Now.Select(Reuse).ToList());
+        CollectionSync.Sync(Waiting, snapshot.Waiting.Select(Reuse).ToList());
+        CollectionSync.Sync(Workstreams, snapshot.Workstreams);
+        CollectionSync.Sync(RecentNotes, snapshot.Notes);
+        CollectionSync.Sync(DoneToday, snapshot.Done ?? []);
+        DoneTodayCheer = Cheer.Line(DoneToday.Count) is { } cheer ? $"🎉 {cheer}" : null;
+        NowCount = snapshot.NowCount;
+        WaitingCount = snapshot.Waiting.Count;
+        HasAttention = snapshot.HasAttention;
+        NextUpText = snapshot.NextUp;
+        Summary = SummaryLine(snapshot.NowCount, snapshot.Reminders, snapshot.Waiting.Count);
+        EnergyText = snapshot.Energy;
+        EnergyOver = snapshot.EnergyOver;
+        Pomodoro.Update(snapshot.Pomodoro, snapshot.PomodoroItem, now);
+        Break.Update(snapshot.Pomodoro, now, snapshot.NextFocus);
+        Timer.Update(snapshot.Timer, now);
+        ActiveTitle = snapshot.Timer?.Title ?? Focus?.Title;
+    }
+
+    [RelayCommand]
+    private Task SelectGroup(GroupTabViewModel? tab)
+    {
+        _selectedGroupId = tab?.Id;
+        QueueRefresh();
+        return _pending;
+    }
+
+    [RelayCommand]
+    private Task Capture() => Run(async () =>
+    {
+        var pictures = CapturePictures.ToList();
+        // A picture alone is enough: the task is named after it (rename it any time).
+        var text = string.IsNullOrWhiteSpace(QuickText) && pictures.Count > 0 ? Path.GetFileNameWithoutExtension(pictures[0].Name) : QuickText;
+        var id = await _store.UpdateAsync(b =>
+        {
+            var now = _time.GetUtcNow();
+            var capture = QuickCaptureParser.Parse(text, now, _options.TimeZone);
+            var item = b.AddTask(new NewTask(capture.Title) { GroupId = _selectedGroupId, Priority = capture.Priority, Deadline = capture.Deadline, Tags = capture.Tags }, Actor.User, now);
+            if (capture.NextActionAt is { } at)
+            {
+                b.ScheduleNextAction(item.Id, at, Actor.User, now, notify: true);
+            }
+
+            return item.Id;
+        }).ConfigureAwait(true);
+        QuickText = string.Empty;
+        // Only the pictures this task took: one pasted while it was being added waits for the next.
+        foreach (var picture in pictures)
+        {
+            CapturePictures.Remove(picture);
+        }
+        if (pictures.Count == 0 || _options.Attach is not { } attach)
+        {
+            return "Added";
+        }
+
+        // The pictures go into the new task's details, the way a paste into its details would put them.
+        var embeds = new List<string>();
+        string? problem = null;
+        foreach (var picture in pictures)
+        {
+            try
+            {
+                embeds.Add($"![[{await attach(id, picture.Name, picture.Png).ConfigureAwait(true)}]]");
+            }
+            catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException)
+            {
+                problem = ex.Message;
+            }
+        }
+
+        if (embeds.Count > 0)
+        {
+            var details = string.Join('\n', embeds);
+            await _store.UpdateAsync(b => b.Update(id, new TaskChanges { Details = details }, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        }
+
+        return problem is not null ? $"Added, but couldn't attach a picture: {problem}"
+            : pictures.Count == 1 ? "Added with a picture" : $"Added with {pictures.Count} pictures";
+    });
+
+    /// <summary>Pictures pasted into quick add, waiting for the task to be added (they go into its details).</summary>
+    public ObservableCollection<PendingPicture> CapturePictures { get; } = [];
+
+    /// <summary>
+    /// A picture pasted into quick add: a copied file keeps its name; a copied image is named like Obsidian names
+    /// pasted images. Unique among the waiting ones.
+    /// </summary>
+    public void AddCapturePicture(byte[] png, string? fileName = null)
+    {
+        ArgumentNullException.ThrowIfNull(png);
+        var stamp = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone).ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var stem = fileName is null ? $"Pasted image {stamp}" : Path.GetFileNameWithoutExtension(fileName);
+        var extension = fileName is null ? ".png" : Path.GetExtension(fileName);
+        var name = stem + extension;
+        for (var n = 2; CapturePictures.Any(p => p.Name == name); n++)
+        {
+            name = $"{stem} {n}{extension}";
+        }
+
+        CapturePictures.Add(new PendingPicture(name, png));
+    }
+
+    [RelayCommand]
+    private void RemoveCapturePicture(PendingPicture? picture)
+    {
+        if (picture is not null)
+        {
+            CapturePictures.Remove(picture);
+        }
+    }
+
+    [RelayCommand]
+    private Task Complete(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.Complete(card.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return $"Done: {card.Title} 🎉";
+    });
+
+    /// <summary>Not done after all (from Done today): back in Do now.</summary>
+    [RelayCommand]
+    private Task Reopen(DoneViewModel? done) => done is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.Reopen(done.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return $"Reopened: {done.Title}";
+    });
+
+    [RelayCommand]
+    private Task Snooze(SnoozeRequest? request) => request is null ? Task.CompletedTask : Run(async () =>
+    {
+        return await _store.UpdateAsync(b =>
+        {
+            var now = _time.GetUtcNow();
+            if (request.AfterId is { } afterId)
+            {
+                b.WaitFor(request.Card.Id, afterId, Actor.User, now);
+                return $"Waiting for “{b.Get(afterId).Title}”";
+            }
+
+            var at = request.Choice is { } choice
+                ? Core.Snooze.Resolve(choice, now, _options.TimeZone) ?? throw new ArgumentException($"There's no snooze choice \"{choice}\" now.", nameof(request))
+                : Core.Snooze.Parse(request.Rule, now, _options.TimeZone) ?? throw new ArgumentException(Core.Snooze.Hint(request.Rule, now, _options.TimeZone), nameof(request));
+            b.ScheduleNextAction(request.Card.Id, at, Actor.User, now, notify: true);
+            return $"Snoozed until {Core.Snooze.Describe(at, now, _options.TimeZone)}";
+        }).ConfigureAwait(true);
+    });
+
+    /// <summary>"Pick a time…": asks when, in words ("next week", "fri 14:00"), until it's understood or cancelled.</summary>
+    [RelayCommand]
+    private async Task PickSnoozeTime(CardViewModel? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        var message = "Snooze until when? e.g. next week, fri 14:00, 3d, weekend, tonight, 2026-03-01";
+        string? typed = null;
+        while (_shell.Prompt("Snooze until…", $"{message}\n\n“{card.Title}”", typed) is { } rule && !string.IsNullOrWhiteSpace(rule))
+        {
+            if (Core.Snooze.Parse(rule, _time.GetUtcNow(), _options.TimeZone) is not null)
+            {
+                await SnoozeCommand.ExecuteAsync(new SnoozeRequest(card, Rule: rule)).ConfigureAwait(true);
+                return;
+            }
+
+            typed = rule;
+            message = Core.Snooze.Hint(rule, _time.GetUtcNow(), _options.TimeZone);
+        }
+    }
+
+
+    /// <summary>Whether energy shows (the Energy plugin): ⚡ on cards, today's energy in the summary, setting it in ⋯.</summary>
+    [ObservableProperty]
+    public partial bool ShowEnergy { get; set; } = true;
+
+    partial void OnShowEnergyChanged(bool value) => QueueRefresh();
+
+    /// <summary>Today's energy ("⚡ 4.5 of 10 planned today."), once something is planned today; null: nothing to say.</summary>
+    [ObservableProperty]
+    public partial string? EnergyText { get; set; }
+
+    /// <summary>Today's plan takes more energy than there is in a day.</summary>
+    [ObservableProperty]
+    public partial bool EnergyOver { get; set; }
+
+    /// <summary>How much energy a task takes per hour (1 to 3; null: not said).</summary>
+    [RelayCommand]
+    private Task SetEnergy(CardEnergyRequest? request) => request is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.Update(request.Card.Id, request.Level is { } level ? new TaskChanges { Energy = level } : new TaskChanges { ClearEnergy = true }, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return request.Level is { } l ? $"Energy: {new string('⚡', l)} an hour" : "Energy: not said";
+    });
+
+    /// <summary>How much energy there is in a day (null: back to the default).</summary>
+    [RelayCommand]
+    private Task SetDailyEnergy(int? perDay) => Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.SetEnergyPerDay(perDay is > 0 ? perDay : null)).ConfigureAwait(true);
+        return $"Energy in a day: {perDay ?? Core.Energy.DefaultPerDay}";
+    });
+
+    /// <summary>How much energy there is in a day now (for the menu).</summary>
+    public Task<int> DailyEnergyAsync() => _store.ReadAsync(b => b.DailyEnergy);
+
+    /// <summary>Whether the focus timer is shown (the Focus timer plugin).</summary>
+    [ObservableProperty]
+    public partial bool ShowFocusTimer { get; set; } = true;
+
+    /// <summary>Whether "Send feedback…" is offered (the Send feedback plugin).</summary>
+    [ObservableProperty]
+    public partial bool ShowFeedback { get; set; } = true;
+
+    /// <summary>Ask AI in the sidebar (set by the host when the Ask AI plugin is on).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAsk))]
+    public partial AskViewModel? Ask { get; set; }
+
+    public bool HasAsk => Ask is not null;
+
+    /// <summary>The Do now order as shown: the focus card, then the rest.</summary>
+    private List<CardViewModel> VisibleNow() => (Focus is null ? Now : Now.Prepend(Focus)).DistinctBy(c => c.Id).ToList();
+
+    /// <summary>
+    /// The cards a card moves among: all of Do now. A card whose reminder is due can be put anywhere too (it comes back
+    /// to the top only when a reminder goes off after that).
+    /// </summary>
+    private List<Guid> BlockOf(CardViewModel card) => VisibleNow().Select(c => c.Id).ToList();
+
+    /// <summary>Whether <paramref name="card"/> can move up (-1) or down (+1).</summary>
+    public bool CanMove(CardViewModel card, int delta)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        var block = BlockOf(card);
+        var to = block.IndexOf(card.Id) + delta;
+        return card.CanReorder && block.Contains(card.Id) && to >= 0 && to < block.Count;
+    }
+
+    [RelayCommand]
+    private Task MoveUp(CardViewModel? card) => Step(card, -1);
+
+    [RelayCommand]
+    private Task MoveDown(CardViewModel? card) => Step(card, 1);
+
+    /// <summary>Drag and drop: puts <paramref name="card"/> before (or after) <paramref name="target"/>.</summary>
+    public Task MoveCardAsync(CardViewModel card, CardViewModel target, bool after)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(target);
+        var block = BlockOf(card);
+        if (!card.CanReorder || !target.CanReorder || card.Id == target.Id || !block.Contains(target.Id))
+        {
+            return Task.CompletedTask;
+        }
+
+        block.Remove(card.Id);
+        block.Insert(block.IndexOf(target.Id) + (after ? 1 : 0), card.Id);
+        return Arrange(block);
+    }
+
+    private Task Step(CardViewModel? card, int delta)
+    {
+        if (card is null || !CanMove(card, delta))
+        {
+            return Task.CompletedTask;
+        }
+
+        var block = BlockOf(card);
+        var from = block.IndexOf(card.Id);
+        block.RemoveAt(from);
+        block.Insert(from + delta, card.Id);
+        return Arrange(block);
+    }
+
+    private Task Arrange(List<Guid> ids) => Run(async () =>
+    {
+        await _store.UpdateAsync(b =>
+        {
+            b.ArrangeNow(ids, _time.GetUtcNow());
+            return true;
+        }).ConfigureAwait(true);
+        return null;
+    });
+
+    [RelayCommand]
+    private Task BringBack(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.ClearNextAction(card.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return "Back in Do now";
+    });
+
+    /// <summary>Enter: saves what was typed right away and finishes the note (the next keystrokes start a new one).</summary>
+    [RelayCommand]
+    private Task AddNote(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
+    {
+        card.DraftTimer?.Dispose();
+        card.DraftTimer = null;
+        var saved = await SaveDraftAsync(card).ConfigureAwait(true);
+        card.DraftNoteId = null;
+        card.NoteDraft = string.Empty;
+        card.IsNoteOpen = false;
+        return saved || card.DraftNoteId is not null ? "Note saved" : null;
+    });
+
+    /// <summary>Completes when note drafts that are due to be saved have been saved (used by tests).</summary>
+    public Task WhenNotesSavedAsync() => _noteSaves;
+
+    /// <summary>
+    /// A picture pasted into a note: attached to the task (named like Obsidian names pasted images) and returned as the
+    /// embed to put at the caret (<c>![[Pasted image 20261006132517.png]]</c>), or null if it couldn't be stored.
+    /// </summary>
+    public async Task<string?> AttachPastedImageAsync(CardViewModel card, byte[] png, string? fileName = null)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        ArgumentNullException.ThrowIfNull(png);
+        if (_options.Attach is not { } attach)
+        {
+            return null;
+        }
+
+        var name = fileName ?? $"Pasted image {TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _options.TimeZone):yyyyMMddHHmmss}.png";
+        try
+        {
+            var stored = await attach(card.Id, name, png).ConfigureAwait(true);
+            return $"![[{stored}]]";
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException or UnauthorizedAccessException or KeyNotFoundException)
+        {
+            StatusMessage = $"Couldn't attach the picture: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>Notes save themselves: once typing pauses, the draft is saved (first as a new note, then in place).</summary>
+    private void OnNoteDraftEdited(CardViewModel card)
+    {
+        card.DraftTimer?.Dispose();
+        card.DraftTimer = string.IsNullOrWhiteSpace(card.NoteDraft)
+            ? null
+            : _time.CreateTimer(_ => _shell.RunOnUi(() => _noteSaves = SaveDraftInBackgroundAsync(card)), null, NoteSaveDelay, Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task SaveDraftInBackgroundAsync(CardViewModel card)
+    {
+        try
+        {
+            if (await SaveDraftAsync(card).ConfigureAwait(true))
+            {
+                StatusMessage = "Note saved";
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = "Couldn't save the note yet (" + ErrorText.Friendly(ex) + "). It's still here; it will be saved when you keep typing or press Enter.";
+        }
+    }
+
+    /// <summary>Whether a note was typed that isn't saved yet.</summary>
+    public bool HasUnsavedNotes => Cards().Any(c => c.DraftTimer is not null || !c.DraftSaving.IsCompleted
+        || (!string.IsNullOrWhiteSpace(c.NoteDraft) && c.NoteDraft != c.SavedDraft));
+
+    private IEnumerable<CardViewModel> Cards() => Now.Concat(Waiting).Append(Focus).OfType<CardViewModel>().Distinct();
+
+    /// <summary>Saves everything typed but not saved yet (before the app closes or restarts).</summary>
+    public async Task FlushNotesAsync()
+    {
+        foreach (var card in Cards().ToList())
+        {
+            card.DraftTimer?.Dispose();
+            card.DraftTimer = null;
+            await SaveDraftInBackgroundAsync(card).ConfigureAwait(true);
+        }
+    }
+
+    private Task<bool> SaveDraftAsync(CardViewModel card)
+    {
+        var saving = SaveDraftAfterAsync(card.DraftSaving, card);
+        card.DraftSaving = saving;
+        return saving;
+    }
+
+    private async Task<bool> SaveDraftAfterAsync(Task previous, CardViewModel card)
+    {
+        try
+        {
+            await previous.ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or IOException or UnauthorizedAccessException)
+        {
+            // Reported by whoever started that save; this one retries with the latest text.
+        }
+
+        var text = card.NoteDraft;
+        if (string.IsNullOrWhiteSpace(text) || text == card.SavedDraft)
+        {
+            return false;
+        }
+
+        var noteId = card.DraftNoteId;
+        card.DraftNoteId = await _store.UpdateAsync(b => noteId is { } id && b.Get(card.Id).Notes.Any(n => n.Id == id)
+            ? b.UpdateNote(card.Id, id, text, Actor.User, _time.GetUtcNow()).Id
+            : b.AddNote(card.Id, text, Actor.User, _time.GetUtcNow()).Id).ConfigureAwait(true);
+        card.SavedDraft = text;
+        return true;
+    }
+
+    [RelayCommand]
+    private Task DismissReminder(CardViewModel? card) => card?.ReminderId is not { } reminderId ? Task.CompletedTask : Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.DismissReminder(card.Id, reminderId, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return null;
+    });
+
+    [RelayCommand]
+    private Task AddSubtask(CardViewModel? card)
+    {
+        if (card is null || _shell.Prompt("Add subtask", $"New subtask under \"{card.Title}\":") is not { } title || string.IsNullOrWhiteSpace(title))
+        {
+            return Task.CompletedTask;
+        }
+
+        return Run(async () =>
+        {
+            await _store.UpdateAsync(b => b.AddTask(new NewTask(title) { ParentId = card.Id }, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+            return "Subtask added";
+        });
+    }
+
+    [RelayCommand]
+    private Task AddGroup()
+    {
+        if (_shell.Prompt("New group", "Group name (e.g. Personal, Side project):") is not { } name || string.IsNullOrWhiteSpace(name))
+        {
+            return Task.CompletedTask;
+        }
+
+        return Run(async () =>
+        {
+            _selectedGroupId = await _store.UpdateAsync(b => b.AddGroup(name, null, Actor.User, _time.GetUtcNow()).Id).ConfigureAwait(true);
+            return $"Added group {name.Trim()}";
+        });
+    }
+
+    [RelayCommand]
+    private Task StartFocus(CardViewModel? card) => Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.StartFocus(card?.Id ?? Focus?.Id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+        return null;
+    });
+
+    /// <summary>Starts timing the card (moving the timer off any other task), or stops it when it's already timing.</summary>
+    [RelayCommand]
+    private Task ToggleTimer(CardViewModel? card) => card is null ? Task.CompletedTask : Run(async () =>
+    {
+        var started = await _store.UpdateAsync(b =>
+        {
+            var now = _time.GetUtcNow();
+            if (b.RunningTimer(now) is { } running && running.Item.Id == card.Id)
+            {
+                b.StopTimer(now);
+                return false;
+            }
+
+            b.StartTimer(card.Id, Actor.User, now);
+            return true;
+        }).ConfigureAwait(true);
+        return started ? $"Timing {card.Title}" : "Timer stopped";
+    });
+
+    [RelayCommand]
+    private Task StopTimer() => Run(async () =>
+    {
+        await _store.UpdateAsync(b => b.StopTimer(_time.GetUtcNow())).ConfigureAwait(true);
+        return "Timer stopped";
+    });
+
+    [RelayCommand]
+    private Task PausePomodoro() => Pomo(b => b.PauseFocus(_time.GetUtcNow()));
+
+    [RelayCommand]
+    private Task ResumePomodoro() => Pomo(b => b.ResumeFocus(_time.GetUtcNow()));
+
+    [RelayCommand]
+    private Task SkipPomodoro() => Pomo(b => b.SkipFocus(_time.GetUtcNow()));
+
+    /// <summary>The next focus session (from the break screen or a notification): on the last task, else the top one.</summary>
+    private Task StartNextFocus() => Run(async () =>
+    {
+        var task = await _store.UpdateAsync(b => b.StartNextFocus(Focus?.Id, Actor.User, _time.GetUtcNow())?.Title).ConfigureAwait(true);
+        return task is null ? "Focus started" : $"Focus started: {task}";
+    });
+
+    [RelayCommand]
+    private Task ResetPomodoro() => Pomo(b => b.ResetFocus(_time.GetUtcNow()));
+
+    /// <summary>The whole app: in the app window when there is one, else in the browser.</summary>
+    [RelayCommand]
+    private void OpenDashboard() => OpenApp("/");
+
+    /// <summary>Settings: appearance, connected apps (Notion, To Do), sync and extras.</summary>
+    [RelayCommand]
+    private void OpenSettings() => OpenApp("/#/settings");
+
+    private void OpenApp(string path)
+    {
+        if (_options.OpenApp is { } open)
+        {
+            open(path);
+        }
+        else
+        {
+            _shell.OpenUrl(Launch(path));
+        }
+    }
+
+    [RelayCommand]
+    private void OpenReport(CardViewModel? card) => _shell.OpenUrl(Launch(card is null ? "/report.html" : $"/report.html?id={card.Id}"));
+
+    [RelayCommand]
+    private void OpenWorkstreamReport(WorkstreamViewModel? workstream) =>
+        _shell.OpenUrl(Launch(workstream is null ? "/report.html" : $"/report.html?id={workstream.Id}"));
+
+    /// <summary>The task full size in the app window (the browser when there's no app window).</summary>
+    [RelayCommand]
+    private void OpenInApp(CardViewModel? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        if (_options.OpenApp is { } open)
+        {
+            open($"/#/task/{card.Id}");
+        }
+        else
+        {
+            OpenInBrowser(card);
+        }
+    }
+
+    /// <summary>The task in the browser (signed in for you), full size: everything about it, notes included.</summary>
+    [RelayCommand]
+    private void OpenInBrowser(CardViewModel? card)
+    {
+        if (card is not null)
+        {
+            _shell.OpenUrl(Launch($"/#/task/{card.Id}"));
+        }
+    }
+
+    /// <summary>Copies a onething:// link that opens the task in the app (for a note, a chat, a calendar invite).</summary>
+    [RelayCommand]
+    private void CopyLink(CardViewModel? card)
+    {
+        if (card is null)
+        {
+            return;
+        }
+
+        _shell.CopyLink(TaskLinks.ForTask(card.Id), card.Title);
+        StatusMessage = "Link copied. Clicking it opens this task in the app.";
+    }
+
+    /// <summary>Opens "Connect an AI app" (Claude, Copilot, VS Code, ChatGPT…) in the browser.</summary>
+    [RelayCommand]
+    private void ConnectAi() => _shell.OpenUrl(Launch("/?connect=1"));
+
+    /// <summary>Opens the Sync panel (where it syncs, and anything changed on two computers) in the browser.</summary>
+    [RelayCommand]
+    private void OpenSync() => _shell.OpenUrl(Launch("/?sync=1"));
+
+    /// <summary>Opens the step-by-step browser extension setup (Edge, Chrome, Safari) with a pairing code.</summary>
+    [RelayCommand]
+    private void SetUpBrowserExtension() => _shell.OpenUrl(Launch("/?extension=1"));
+
+    /// <summary>The feedback sheet of the app (one sheet for every desktop app): a bug, an idea, anything.</summary>
+    [RelayCommand]
+    private void SendFeedback() => OpenApp("/?feedback=button");
+
+    [RelayCommand]
+    private void CopyMcpConfig()
+    {
+        _shell.CopyToClipboard(_options.McpConfigJson);
+        StatusMessage = "MCP config copied. Paste it into your Copilot MCP settings.";
+    }
+
+    [RelayCommand]
+    private void CopyApiToken()
+    {
+        _shell.CopyToClipboard(_options.ApiToken);
+        StatusMessage = "API token copied. Paste it into the browser extension.";
+    }
+
+    [RelayCommand]
+    private void ToggleCompact() => IsCompact = !IsCompact;
+
+    [RelayCommand]
+    private static void ToggleNote(CardViewModel? card)
+    {
+        if (card is not null)
+        {
+            card.IsNoteOpen = !card.IsNoteOpen;
+        }
+    }
+
+    private GroupTabViewModel ReuseTab(GroupTabViewModel fresh)
+    {
+        var keep = Groups.FirstOrDefault(g => g.Id == fresh.Id);
+        if (keep is null)
+        {
+            return fresh;
+        }
+
+        keep.Name = fresh.Name;
+        keep.Color = fresh.Color;
+        keep.Count = fresh.Count;
+        keep.HasAttention = fresh.HasAttention;
+        keep.IsSelected = fresh.IsSelected;
+        return keep;
+    }
+
+    /// <summary>A button on a notification: a reminder's (for <paramref name="itemId"/>), or the focus timer's.</summary>
+    public Task HandleToastActionAsync(ToastAction action, Guid? itemId, Guid? reminderId) => (action, itemId) switch
+    {
+        (ToastAction.NextFocus, _) => StartNextFocus(),
+        (ToastAction.Done, { } id) => Run(async () =>
+        {
+            await _store.UpdateAsync(b => b.Complete(id, Actor.User, _time.GetUtcNow())).ConfigureAwait(true);
+            return "Done 🎉";
+        }),
+        (ToastAction.Snooze, { } id) => Run(async () =>
+        {
+            await _store.UpdateAsync(b =>
+            {
+                var now = _time.GetUtcNow();
+                if (reminderId is { } rid)
+                {
+                    b.DismissReminder(id, rid, Actor.User, now);
+                }
+
+                b.ScheduleNextAction(id, now.AddHours(1), Actor.User, now, notify: true);
+            }).ConfigureAwait(true);
+            return "Snoozed 1 hour";
+        }),
+        (_, { } id) => OpenItem(id),
+        _ => Task.CompletedTask,
+    };
+
+    private Task OpenItem(Guid itemId)
+    {
+        _shell.OpenUrl(Launch($"/?item={itemId}"));
+        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _store.Changed -= OnStoreChanged;
+        _clockTimer.Dispose();
+        _refreshTimer.Dispose();
+    }
+
+    /// <summary>Opens a page through the launch link so the browser gets a session cookie first.</summary>
+    private string Launch(string path) => _options.LaunchUrl(path);
+
+    private void OnStoreChanged(object? sender, EventArgs e) => _shell.RunOnUi(QueueRefresh);
+
+    /// <summary>All refreshes run one after another on the UI context, so an older snapshot never overwrites a newer one.</summary>
+    private void QueueRefresh() => _pending = _pending.IsCompleted ? SafeRefreshAsync() : _pending.ContinueWith(_ => SafeRefreshAsync(), TaskSchedulerExtensions.FromCurrentSynchronizationContextOrDefault()).Unwrap();
+
+    private async Task SafeRefreshAsync()
+    {
+        try
+        {
+            await RefreshAsync().ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // A failed refresh must never take down the always-on sidebar; the next tick retries.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            StatusMessage = "Couldn't refresh: " + ErrorText.Friendly(ex);
+        }
+    }
+
+    private Task Pomo(Action<TaskBoard> action) => Run(async () =>
+    {
+        await _store.UpdateAsync(action).ConfigureAwait(true);
+        return null;
+    });
+
+    private async Task Run(Func<Task<string?>> action)
+    {
+        try
+        {
+            StatusMessage = await action().ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
+        {
+            StatusMessage = ErrorText.Friendly(ex);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The store already rolled back; typically antivirus, indexing, or a sync client briefly holds the file.
+            StatusMessage = "Couldn't save (the board file is busy). Nothing was lost; please try again.";
+        }
+
+        QueueRefresh();
+        await _pending.ConfigureAwait(true);
+    }
+
+    private sealed record Snapshot(
+        IReadOnlyList<GroupTabViewModel> Groups,
+        CardViewModel? Focus,
+        IReadOnlyList<CardViewModel> Now,
+        IReadOnlyList<CardViewModel> Waiting,
+        IReadOnlyList<WorkstreamViewModel> Workstreams,
+        IReadOnlyList<NoteViewModel> Notes,
+        int NowCount,
+        bool HasAttention,
+        string? NextUp,
+        int Reminders,
+        PomodoroState Pomodoro,
+        string? PomodoroItem,
+        bool GroupMissing,
+        RunningTimerState? Timer = null,
+        string? NextFocus = null,
+        IReadOnlyList<DoneViewModel>? Done = null,
+        string? Energy = null,
+        bool EnergyOver = false);
+
+    private Snapshot Project(TaskBoard board, DateTimeOffset now, Guid? groupId)
+    {
+        // The timer isn't tied to a group: it shows whatever group is picked.
+        var timer = board.RunningTimer(now) is { } t ? new RunningTimerState(t.Item.Id, t.Item.Title, t.Entry.Start) : null;
+        if (groupId is { } g && !board.Groups.Any(x => x.Id == g))
+        {
+            return new Snapshot([], null, [], [], [], [], 0, false, null, 0, PomodoroState.Of(board.Pomodoro, now), null, GroupMissing: true, timer);
+        }
+
+        var d = Agenda.Build(board, now, recentNoteCount: 6, groupId: groupId);
+        var total = d.GroupCounts.Values.Sum(c => c.Now);
+        var tabs = new List<GroupTabViewModel>
+        {
+            new() { Id = null, Name = "All", Count = total, HasAttention = d.GroupCounts.Values.Any(c => c.Attention > 0), IsSelected = groupId is null },
+        };
+        tabs.AddRange(board.Groups.Select(gr => new GroupTabViewModel
+        {
+            Id = gr.Id,
+            Name = gr.Name,
+            Color = gr.Color ?? "#6366f1",
+            Count = d.GroupCounts[gr.Id].Now,
+            HasAttention = d.GroupCounts[gr.Id].Attention > 0,
+            IsSelected = gr.Id == groupId,
+        }));
+
+        // Reuse tab instances when nothing changed so the tab strip does not flicker.
+        var reusedTabs = tabs.Select(t => Groups.FirstOrDefault(e => e.Id == t.Id && e.Name == t.Name && e.Count == t.Count && e.HasAttention == t.HasAttention && e.Color == t.Color) is { } keep
+            ? Selected(keep, t.IsSelected)
+            : t).ToList();
+
+        var energyOn = ShowEnergy;
+        var cards = d.Now.Select(e => ToCard(e, now, board, timer?.ItemId, energyOn)).ToList();
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, _options.TimeZone).DateTime);
+        var planned = energyOn ? Core.Energy.PlannedOn(board, today, _options.TimeZone) : 0;
+        var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
+        return new Snapshot(
+            reusedTabs,
+            cards.FirstOrDefault(),
+            cards.Skip(1).ToList(),
+            d.Waiting.Select(e => ToCard(e, now, board, timer?.ItemId, energyOn)).ToList(),
+            // Workstreams are tasks with subtasks; single tasks already live in Do now / Waiting.
+            d.Overview.Where(o => o.Item.Children.Count > 0).Select(o => new WorkstreamViewModel(
+                o.Item.Id,
+                o.Item.Title,
+                PriorityPalette.ColorOf(o.TopPriority),
+                o.TotalLeaves == 0 ? 0 : (int)Math.Round(100.0 * o.DoneLeaves / o.TotalLeaves),
+                WorkstreamSummary(o, now))).ToList(),
+            d.RecentNotes.Select(n => new NoteViewModel(n.Note.Id, n.Item.Id, n.Note.Text, n.Item.Title, $"{n.Note.Author.DisplayName} · {RelativeTime.Format(n.Note.At, now)}", n.Note.SourceUrl)).ToList(),
+            d.Now.Count,
+            d.Now.Any(e => e.NeedsAttention),
+            nextUp,
+            d.Now.Count(e => e.NeedsAttention),
+            PomodoroState.Of(board.Pomodoro, now),
+            board.Pomodoro.ItemId is { } pid ? board.Find(pid)?.Title : null,
+            GroupMissing: false,
+            timer,
+            (board.NextFocusItem() ?? d.Focus?.Item)?.Title,
+            Agenda.DoneToday(board, now, _options.TimeZone, groupId).Select(i => new DoneViewModel(
+                i.Id,
+                i.Title,
+                i.Parent is null ? null : string.Join(" › ", i.Path.SkipLast(1)),
+                TimeZoneInfo.ConvertTime(Agenda.DoneAt(board, i)!.Value, _options.TimeZone).ToString("t", CultureInfo.CurrentCulture))).ToList(),
+            // Once something is planned today (the same rule in every app).
+            energyOn && planned > 0 ? EnergyLine(planned, board.DailyEnergy) : null,
+            energyOn && planned > board.DailyEnergy);
+    }
+
+    /// <summary>Same wording as the web's energyLine(): "⚡ 4.5 of 10 planned today."</summary>
+    internal static string EnergyLine(double planned, int perDay)
+    {
+        static string N(double x) => Math.Round(x, 1, MidpointRounding.AwayFromZero).ToString("0.#", CultureInfo.InvariantCulture);
+        var over = planned - perDay;
+        return over > 0 ? $"⚡ {N(planned)} of {perDay} planned today: {N(over)} too much." : $"⚡ {N(planned)} of {perDay} planned today.";
+    }
+
+    private static GroupTabViewModel Selected(GroupTabViewModel tab, bool selected)
+    {
+        tab.IsSelected = selected;
+        return tab;
+    }
+
+    private static CardViewModel ToCard(AgendaEntry e, DateTimeOffset now, TaskBoard board, Guid? timing, bool energy = false)
+    {
+        var item = e.Item;
+        var meta = new List<string>();
+        if (item.Parent is { Sequential: true } parent)
+        {
+            meta.Add($"Step {parent.Children.ToList().IndexOf(item) + 1} of {parent.Children.Count}");
+        }
+
+        if (e.State == ItemState.Waiting && e.WakeAt is { } wake)
+        {
+            meta.Add($"back {RelativeTime.Format(wake, now)}");
+        }
+
+        if (item.Deadline is { } deadline)
+        {
+            meta.Add(e.IsOverdue ? $"overdue {RelativeTime.Format(deadline, now)}" : $"due {RelativeTime.Format(deadline, now)}");
+        }
+
+        if (item.Notes.Count > 0)
+        {
+            meta.Add(item.Notes.Count == 1 ? "1 note" : $"{item.Notes.Count} notes");
+        }
+
+        return new CardViewModel
+        {
+            Id = item.Id,
+            Title = item.Title,
+            Icon = item.Icon,
+            Accent = board.AccentOf(item),
+            Breadcrumb = string.Join(" › ", e.Breadcrumb),
+            Meta = string.Join(" · ", meta),
+            PriorityColor = PriorityPalette.ColorOf(e.EffectivePriority),
+            PriorityLabel = e.EffectivePriority.ToString(),
+            NeedsAttention = e.NeedsAttention,
+            ReminderId = e.DueReminder?.Id,
+            ReminderMessage = e.DueReminder?.Message,
+            IsWaiting = e.State == ItemState.Waiting && !e.NeedsAttention,
+            CanComplete = e.State == ItemState.Actionable,
+            IsTiming = item.Id == timing,
+            Notes = item.Notes.OrderByDescending(n => n.At).Select(n => new CardNote(n.Id, n.Text, $"{n.Author.DisplayName} · {RelativeTime.Format(n.At, now)}", n.SourceUrl)).ToList(),
+            Chips = ChipsFor(e, now, energy),
+            Energy = item.Energy,
+            Tags = item.Tags.Select(t => "#" + t).ToList(),
+            Labels = item.Labels.Select(n => new LabelChip(n, board.FindLabel(n)?.Color ?? "#64748b")).ToList(),
+        };
+    }
+
+    /// <summary>Same wording as the web dashboard's summaryLine().</summary>
+    internal static string SummaryLine(int now, int reminders, int waiting)
+    {
+        if (now == 0 && waiting == 0)
+        {
+            return "All clear. Nothing needs you right now.";
+        }
+
+        var parts = new List<string> { now > 0 ? $"{now} thing{(now > 1 ? "s" : string.Empty)} to do now" : "Nothing to do right now" };
+        if (reminders > 0)
+        {
+            parts.Add($"{reminders} reminder{(reminders > 1 ? "s" : string.Empty)}");
+        }
+
+        if (waiting > 0)
+        {
+            parts.Add($"{waiting} waiting");
+        }
+
+        return string.Join(" · ", parts) + ".";
+    }
+
+    /// <summary>Mirrors metaChips() in format.js (the breadcrumb is shown separately in the sidebar).</summary>
+    private static List<ChipViewModel> ChipsFor(AgendaEntry e, DateTimeOffset now, bool energy = false)
+    {
+        var item = e.Item;
+        var chips = new List<ChipViewModel>();
+        if (item.Parent is { Sequential: true } parent)
+        {
+            chips.Add(new($"Step {parent.Children.ToList().IndexOf(item) + 1} of {parent.Children.Count}", "step"));
+        }
+
+        if (e.State == ItemState.Waiting && e.WakeAt is { } wake)
+        {
+            chips.Add(new($"back {RelativeTime.Format(wake, now)}", "info"));
+        }
+
+        if (item.Deadline is { } deadline)
+        {
+            chips.Add(e.IsOverdue ? new($"overdue {RelativeTime.Format(deadline, now)}", "danger") : new($"due {RelativeTime.Format(deadline, now)}", "warn"));
+        }
+
+        if (item.Repeat is { } repeat)
+        {
+            chips.Add(new($"🔁 {repeat}", "muted"));
+        }
+
+        if (item.PlannedAt is { } planned)
+        {
+            // Same words as the web's plannedText: "10:00–10:30" today, "Tue 10:00–11:30" another day.
+            var from = TimeZoneInfo.ConvertTime(planned, TimeZoneInfo.Local);
+            var to = from + item.PlannedLength;
+            var day = from.Date == TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local).Date ? string.Empty : from.ToString("ddd ", CultureInfo.InvariantCulture);
+            chips.Add(new($"🗓 {day}{from.ToString("HH:mm", CultureInfo.InvariantCulture)}–{to.ToString("HH:mm", CultureInfo.InvariantCulture)}", "info"));
+        }
+
+        if (energy && item.Energy is { } level)
+        {
+            chips.Add(new(new string('⚡', level), "energy"));
+        }
+
+        // Notes aren't a chip here: the card's "2 notes" toggle opens them (CardViewModel.Notes).
+        return chips;
+    }
+
+    private static string WorkstreamSummary(OverviewEntry o, DateTimeOffset now)
+    {
+        var bits = new List<string> { $"{o.DoneLeaves}/{o.TotalLeaves} done" };
+        if (o.ActionableCount > 0)
+        {
+            bits.Add($"{o.ActionableCount} now");
+        }
+
+        if (o.WaitingCount > 0)
+        {
+            bits.Add($"{o.WaitingCount} waiting");
+        }
+
+        if (o.NextWakeAt is { } w)
+        {
+            bits.Add($"next {RelativeTime.Format(w, now)}");
+        }
+
+        return string.Join(" · ", bits);
+    }
+}
+
+internal static class TaskSchedulerExtensions
+{
+    public static TaskScheduler FromCurrentSynchronizationContextOrDefault() =>
+        SynchronizationContext.Current is null ? TaskScheduler.Default : TaskScheduler.FromCurrentSynchronizationContext();
+}
+
+
+
+
+

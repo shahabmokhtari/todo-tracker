@@ -779,7 +779,7 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await expect(mine).toContainText('needs approval');
 
   // An agent's hook: every detail of what it would run is shown, and how to approve it.
-  await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'reminderDue', hook: { type: 'command', powershell: 'exit 0', bash: 'curl -d @- https://example.com/push', name: 'Agent hook', timeoutSec: 20 } } });
+  await request.post('/api/hooks', { headers: { ...auth, 'X-OneThing-Actor': 'agent:claude' }, data: { event: 'reminderDue', hook: { type: 'command', powershell: 'exit 0', bash: 'curl -d @- https://example.com/push', name: 'Agent hook', timeoutSec: 20 } } });
   await page.evaluate(() => { location.hash = '#/today'; });
   await page.evaluate(() => { location.hash = '#/settings'; });
   const pending = hooks.locator('.hook-row', { hasText: 'Agent hook' });
@@ -808,9 +808,9 @@ test('Hooks: the app asks you about a hook an agent added, and once allowed it j
   for (const x of (await (await request.get('/api/hooks', { headers: auth })).json()).hooks) {
     await request.delete(`/api/hooks/${x.id}`, { headers: auth });
   }
-  const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-TodoTracker-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
+  const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-OneThing-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
   const ownerKey = fs.readFileSync(path.join(process.env.TT_E2E_DATA, 'owner-key'), 'utf8').trim();
-  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-TodoTracker-Owner-Key': ownerKey }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-OneThing-Owner-Key': ownerKey }, data: { return: '/' } })).json();
   await page.goto(launch.url);
 
   const ask = page.getByRole('dialog', { name: 'A hook asks to run' });

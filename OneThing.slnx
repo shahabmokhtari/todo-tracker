@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OneThing.Cli/OneThing.Cli.csproj" />
+    <Project Path="src/OneThing.Core/OneThing.Core.csproj" />
+    <Project Path="src/OneThing.Desktop/OneThing.Desktop.csproj" />
+    <Project Path="src/OneThing.Server/OneThing.Server.csproj" />
+    <Project Path="src/OneThing.Tray/OneThing.Tray.csproj" />
+    <Project Path="src/OneThing.Web/OneThing.Web.csproj" />
+    <Project Path="src/OneThing.Windows/OneThing.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FakeAcpAgent/FakeAcpAgent.csproj" />
+    <Project Path="tests/OneThing.Cli.Tests/OneThing.Cli.Tests.csproj" />
+    <Project Path="tests/OneThing.Core.Tests/OneThing.Core.Tests.csproj" />
+    <Project Path="tests/OneThing.Desktop.Tests/OneThing.Desktop.Tests.csproj" />
+    <Project Path="tests/OneThing.Server.Tests/OneThing.Server.Tests.csproj" />
+    <Project Path="tests/OneThing.Tray.Tests/OneThing.Tray.Tests.csproj" />
+  </Folder>
+</Solution>

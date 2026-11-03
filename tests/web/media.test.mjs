@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { embedNames, splitEmbeds, pastedName, imageFiles, acceptPastedMedia, pastesDone } from '../../src/TodoTracker.Server/wwwroot/js/media.js';
+import { embedNames, splitEmbeds, pastedName, imageFiles, acceptPastedMedia, pastesDone } from '../../src/OneThing.Server/wwwroot/js/media.js';
 
 test('embeds are found in Obsidian and markdown form', () => {
   const text = 'Before ![[Pasted image 20261006132517.png]] mid ![[shot.png|300]] and ![diagram](../_attachments/ab12cd34/flow%20chart.png) end';

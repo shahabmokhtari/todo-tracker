@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=One Thing
+GenericName=Tasks
+Comment=What to do now: an ADHD-friendly task list in your tray
+Exec=onething %u
+Icon=onething
+Terminal=false
+Categories=Office;ProjectManagement;Utility;
+Keywords=todo;tasks;focus;pomodoro;
+StartupNotify=false
+# onething://task/<id> links open the task.
+MimeType=x-scheme-handler/onething;

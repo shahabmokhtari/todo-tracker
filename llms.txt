@@ -1,4 +1,4 @@
-# Onething
+# One Thing
 
 > An ADHD-friendly task app that always shows the one thing to do now. Tasks are markdown files in a folder you own
 > (Obsidian-compatible). Native apps for Windows, macOS, iOS, Android and Linux, a web app, a browser extension, and
@@ -12,7 +12,7 @@ time with a reminder.
 - [Connect an AI app](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/ai-connectors.md): Claude Desktop, Claude Code, GitHub Copilot CLI, VS Code, ChatGPT, Copilot Studio
 - [MCP tools reference](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/mcp.md): every tool and parameter (made from the code)
 - [`tt` command reference](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/cli.md): every command and option (made from the code)
-- [Agent skill](https://github.com/shahabmokhtari/todo-tracker/blob/master/integrations/agent-plugin/skills/todo-tracker/SKILL.md): how to help a user with their tasks, with recipes
+- [Agent skill](https://github.com/shahabmokhtari/todo-tracker/blob/master/integrations/agent-plugin/skills/onething/SKILL.md): how to help a user with their tasks, with recipes
 - [Task file format](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/vault-format.md): for agents that edit the markdown files directly
 - [Hooks and events](https://github.com/shahabmokhtari/todo-tracker/blob/master/docs/hooks.md): run scripts or webhooks when something happens; `GET /api/events` stream
 

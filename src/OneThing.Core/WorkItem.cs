@@ -1,0 +1,221 @@
+namespace OneThing.Core;
+
+/// <summary>A task or subtask. Mutations go through <see cref="TaskBoard"/> so they are validated and logged.</summary>
+public sealed class WorkItem
+{
+    internal readonly List<WorkItem> ChildList = [];
+    internal readonly List<Reminder> ReminderList = [];
+    internal readonly List<Note> NoteList = [];
+    internal readonly List<string> TagList = [];
+    internal readonly List<string> LabelList = [];
+    internal readonly List<Attachment> AttachmentList = [];
+    internal readonly List<TimeEntry> TimeEntryList = [];
+
+    internal WorkItem(Guid id, string title, Priority priority, DateTimeOffset createdAt)
+    {
+        Id = id;
+        Title = title;
+        Priority = priority;
+        CreatedAt = createdAt;
+    }
+
+    public Guid Id { get; internal set; }
+
+    public string Title { get; internal set; }
+
+    public string? Details { get; internal set; }
+
+    public Priority Priority { get; internal set; }
+
+    public DateTimeOffset CreatedAt { get; }
+
+    public DateTimeOffset? CompletedAt { get; internal set; }
+
+    public DateTimeOffset? Deadline { get; internal set; }
+
+    /// <summary>The item is deferred (waiting) until this time.</summary>
+    public DateTimeOffset? NextActionAt { get; internal set; }
+
+    /// <summary>The item waits until this other task is done ("after task X"); it comes back with a reminder then.</summary>
+    public Guid? AfterId { get; internal set; }
+
+    /// <summary>The open task this one waits for (null: none, it's done, or it's gone).</summary>
+    public WorkItem? WaitingFor => AfterId is { } id && Board?.Find(id) is { IsDone: false } other ? other : null;
+
+    /// <summary>The board it's on (set when it's added), to look up what it waits for.</summary>
+    internal TaskBoard? Board { get; set; }
+
+    /// <summary>Children are steps that must be completed in order.</summary>
+    public bool Sequential { get; internal set; }
+
+    /// <summary>For sequential items: minimum wait between finishing one step and starting the next.</summary>
+    public TimeSpan? StepDelay { get; internal set; }
+
+    /// <summary>Group (tab) of the root task. Children always report their root's group.</summary>
+    public Guid GroupId => Parent?.GroupId ?? OwnGroupId;
+
+    internal Guid OwnGroupId { get; set; }
+
+    public WorkItem? Parent { get; internal set; }
+
+    public IReadOnlyList<WorkItem> Children => ChildList;
+
+    public IReadOnlyList<Reminder> Reminders => ReminderList;
+
+    public IReadOnlyList<Note> Notes => NoteList;
+
+    /// <summary>Free-form tags without the leading <c>#</c> (nested tags use <c>/</c>, e.g. <c>infra/k8s</c>).</summary>
+    public IReadOnlyList<string> Tags => TagList;
+
+    /// <summary>Names of <see cref="LabelDefinition"/>s on the board.</summary>
+    public IReadOnlyList<string> Labels => LabelList;
+
+    public IReadOnlyList<Attachment> Attachments => AttachmentList;
+
+    /// <summary>Time spent on this item itself (not its subtasks), oldest first.</summary>
+    public IReadOnlyList<TimeEntry> TimeEntries => TimeEntryList;
+
+    /// <summary>Where a top-level task is on the board (subtasks follow their task). Tasks without one are in Next.</summary>
+    public Stage Stage { get; internal set; } = Stage.Next;
+
+    /// <summary>A small picture for the task: an emoji (or a few characters). Null: none.</summary>
+    public string? Icon { get; internal set; }
+
+    /// <summary>The task's own color (<c>#rrggbb</c>); null: its first label's color (or none).</summary>
+    public string? Color { get; internal set; }
+
+    /// <summary>How it repeats: completing it moves it on to its next time instead of finishing it. Null: it doesn't.</summary>
+    public Recurrence? Repeat { get; internal set; }
+
+    /// <summary>How much energy it takes per hour, 1 to 3 (⚡ to ⚡⚡⚡); null: not said (counts as 1, see <see cref="Core.Energy"/>).</summary>
+    public int? Energy { get; internal set; }
+
+    /// <summary>When it's planned to be worked on (a block in the Plan view); null: not planned.</summary>
+    public DateTimeOffset? PlannedAt { get; internal set; }
+
+    /// <summary>How long the planned block is, in minutes (null: <see cref="TaskBoard.DefaultPlanMinutes"/>).</summary>
+    public int? PlannedMinutes { get; internal set; }
+
+    /// <summary>The planned block's length.</summary>
+    public TimeSpan PlannedLength => TimeSpan.FromMinutes(PlannedMinutes ?? TaskBoard.DefaultPlanMinutes);
+
+    /// <summary>Whether its planned block is on at <paramref name="now"/>.</summary>
+    public bool IsPlannedAt(DateTimeOffset now) => PlannedAt is { } at && at <= now && now < at + PlannedLength;
+
+    /// <summary>Its deadline and wait before it last moved on to its next time, so "not done after all" puts them back.</summary>
+    public RepeatUndo? RepeatUndo { get; internal set; }
+
+    /// <summary>Put away (a finished top-level task): kept, searchable with <c>is:archived</c>, out of every list.</summary>
+    public DateTimeOffset? ArchivedAt { get; internal set; }
+
+    public bool IsArchived => Root.ArchivedAt is not null;
+
+    /// <summary>Time spent on this item (with its subtasks unless told otherwise), counting a running timer.</summary>
+    public TimeSpan TimeSpent(DateTimeOffset now, bool includeSubtasks = true) =>
+        (includeSubtasks ? SelfAndDescendants() : [this]).SelectMany(i => i.TimeEntryList).Aggregate(TimeSpan.Zero, (sum, e) => sum + e.Duration(now));
+
+    public bool IsDone => CompletedAt is not null;
+
+    public bool HasOpenChildren => ChildList.Exists(c => !c.IsDone);
+
+    /// <summary>Titles from the root down to and including this item.</summary>
+    public IReadOnlyList<string> Path => Ancestors().Reverse().Select(a => a.Title).Append(Title).ToList();
+
+    public IEnumerable<WorkItem> Ancestors()
+    {
+        for (var current = Parent; current is not null; current = current.Parent)
+        {
+            yield return current;
+        }
+    }
+
+    public IEnumerable<WorkItem> SelfAndDescendants()
+    {
+        yield return this;
+        foreach (var child in ChildList)
+        {
+            foreach (var descendant in child.SelfAndDescendants())
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    public WorkItem Root => Ancestors().LastOrDefault() ?? this;
+}
+
+/// <summary>A repeating task's deadline and wait before it moved on (see <see cref="WorkItem.RepeatUndo"/>).</summary>
+public sealed record RepeatUndo(DateTimeOffset? Deadline, DateTimeOffset? NextActionAt, DateTimeOffset? PlannedAt = null);
+
+public sealed record NewTask(string Title)
+{
+    /// <summary>A chosen id (connectors importing an outside item); null: a new one.</summary>
+    public Guid? Id { get; init; }
+
+    public Guid? ParentId { get; init; }
+
+    public Guid? GroupId { get; init; }
+
+    public Priority Priority { get; init; } = Priority.Normal;
+
+    public string? Details { get; init; }
+
+    public DateTimeOffset? Deadline { get; init; }
+
+    public bool Sequential { get; init; }
+
+    public TimeSpan? StepDelay { get; init; }
+
+    public IReadOnlyList<string>? Tags { get; init; }
+
+    public IReadOnlyList<string>? Labels { get; init; }
+
+    /// <summary>Where it starts on the board (top-level tasks); null: the inbox.</summary>
+    public Stage? Stage { get; init; }
+
+    public string? Icon { get; init; }
+
+    public string? Color { get; init; }
+
+    /// <summary>A repeat rule (<see cref="Recurrence"/>), e.g. "every weekday".</summary>
+    public string? Repeat { get; init; }
+
+    /// <summary>Energy per hour, 1 to 3 (null: not said).</summary>
+    public int? Energy { get; init; }
+}
+
+public sealed record TaskChanges
+{
+    public string? Title { get; init; }
+
+    public string? Details { get; init; }
+
+    public Priority? Priority { get; init; }
+
+    public DateTimeOffset? Deadline { get; init; }
+
+    public bool ClearDeadline { get; init; }
+
+    public bool? Sequential { get; init; }
+
+    public TimeSpan? StepDelay { get; init; }
+
+    public bool ClearStepDelay { get; init; }
+
+    public string? Icon { get; init; }
+
+    public bool ClearIcon { get; init; }
+
+    public string? Color { get; init; }
+
+    public bool ClearColor { get; init; }
+
+    public string? Repeat { get; init; }
+
+    public bool ClearRepeat { get; init; }
+
+    /// <summary>Energy per hour, 1 to 3.</summary>
+    public int? Energy { get; init; }
+
+    public bool ClearEnergy { get; init; }
+}

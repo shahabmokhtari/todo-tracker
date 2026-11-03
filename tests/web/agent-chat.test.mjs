@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { presets, groupAgents, ago, privacyNote } from '../../src/TodoTracker.Server/wwwroot/js/plugins/agent-chat.js';
+import { presets, groupAgents, ago, privacyNote } from '../../src/OneThing.Server/wwwroot/js/plugins/agent-chat.js';
 
 test('the picker shows installed agents, then API models', () => {
   const groups = groupAgents([

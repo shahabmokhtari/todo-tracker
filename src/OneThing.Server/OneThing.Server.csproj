@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <!-- Source-generated Win32 interop (starting AI agents with only their own pipes). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Microsoft.Identity.Client" />
+    <ProjectReference Include="..\OneThing.Core\OneThing.Core.csproj" />
+    <InternalsVisibleTo Include="OneThing.Server.Tests" />
+    <InternalsVisibleTo Include="tt" />
+    <InternalsVisibleTo Include="OneThing.Cli.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\**\*" />
+    <!-- The browser extension, served ready to load (Browser extension plugin). -->
+    <EmbeddedResource Include="..\..\extension\**\*" Exclude="..\..\extension\tests\**;..\..\extension\node_modules\**" LogicalName="extension/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

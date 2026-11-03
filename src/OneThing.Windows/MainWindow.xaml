@@ -1,0 +1,656 @@
+<Window x:Class="OneThing.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="clr-namespace:OneThing.Desktop;assembly=OneThing.Desktop"
+        xmlns:local="clr-namespace:OneThing.Windows"
+        Title="One Thing"
+        Width="360" Height="800"
+        MinWidth="56"
+        WindowStyle="None" ResizeMode="NoResize" Topmost="True" ShowInTaskbar="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        AutomationProperties.Name="One Thing sidebar"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
+        PreviewMouseLeftButtonUp="OnWindowPreviewMouseUp">
+    <Window.Resources>
+        <!-- Toned chips (step, back in, due, notes). -->
+        <DataTemplate x:Key="ChipTemplate" DataType="{x:Type d:ChipViewModel}">
+            <Border CornerRadius="9" Padding="7,1" Margin="0,2,4,0" Background="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=bg}">
+                <TextBlock Text="{Binding Text}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=fg}" />
+            </Border>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="WrapPanelTemplate">
+            <WrapPanel />
+        </ItemsPanelTemplate>
+        <!-- Labels: a colored dot and the name. Tags: quiet accent text. -->
+        <DataTemplate x:Key="LabelChipTemplate" DataType="{x:Type d:LabelChip}">
+            <Border CornerRadius="9" Padding="6,1,7,1" Margin="0,2,4,0" Background="{Binding Color, Converter={StaticResource SoftBrush}}" ToolTip="Label">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{Binding Color, Converter={StaticResource HexBrush}}" />
+                    <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+        <DataTemplate x:Key="TagChipTemplate">
+            <TextBlock Text="{Binding}" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Accent}" Margin="0,2,6,0" ToolTip="Tag" />
+        </DataTemplate>
+
+        <!-- A note on a card: its text, then who wrote it and when. -->
+        <DataTemplate x:Key="CardNoteTemplate" DataType="{x:Type d:CardNote}">
+            <Border BorderThickness="3,0,0,0" BorderBrush="{StaticResource AccentSoft}" Padding="9,2" Margin="0,6,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" FontSize="12.5" />
+                    <TextBlock Text="{Binding Meta}" Style="{StaticResource Muted}" FontSize="11" Margin="0,1,0,0" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- A list row: priority dot, text, quiet icon actions that brighten on hover. -->
+        <DataTemplate x:Key="CardTemplate" DataType="{x:Type d:CardViewModel}">
+            <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="8,8,4,8" CornerRadius="10" Background="Transparent" BorderThickness="0"
+                    AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid VerticalAlignment="Top" Margin="0,4,0,0" ToolTip="{Binding PriorityLabel}">
+                        <Ellipse Width="14" Height="14" Fill="{Binding PriorityColor, Converter={StaticResource SoftBrush}}" />
+                        <Ellipse Width="8" Height="8" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
+                    </Grid>
+                    <!-- The task's color (its own or its first label's) as a stripe at the edge. -->
+                    <Border Grid.ColumnSpan="2" Width="3" HorizontalAlignment="Left" CornerRadius="2" Margin="-6,1,0,1"
+                            Background="{Binding Accent, Converter={StaticResource HexBrush}}"
+                            Visibility="{Binding Accent, Converter={StaticResource VisibleWhen}}" />
+                    <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                        <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
+                            <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" FontSize="11.5" Margin="0,1,0,0"
+                                   Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
+                        <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        <WrapPanel Margin="0,2,0,0" Visibility="{Binding HasTagsOrLabels, Converter={StaticResource VisibleWhen}}">
+                            <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource LabelChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                            <ItemsControl ItemsSource="{Binding Tags}" ItemTemplate="{StaticResource TagChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        </WrapPanel>
+                        <Button Style="{StaticResource LinkButton}" Content="{Binding NotesToggleText}" Command="{Binding ToggleNotesCommand}" HorizontalAlignment="Left"
+                                Visibility="{Binding HasNotes, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="Notes" ToolTip="Show or hide this task's notes" />
+                        <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource CardNoteTemplate}" Focusable="False"
+                                      Visibility="{Binding IsNotesOpen, Converter={StaticResource VisibleWhen}}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
+                            <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource AttentionText}" Margin="0,0,5,0" />
+                            <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel x:Name="Actions" Orientation="Horizontal" Margin="-4,4,0,0" Opacity="0.55">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE73E;" ToolTip="Mark done" AutomationProperties.Name="Mark done"
+                                    Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" ToolTip="Bring back to Do now" AutomationProperties.Name="Bring back"
+                                    Command="{Binding DataContext.BringBackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding IsWaiting, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE823;" ToolTip="Snooze (remind me later)" AutomationProperties.Name="Snooze" Click="OnSnoozeClick" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70B;" ToolTip="Add note" AutomationProperties.Name="Add note"
+                                    Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus timer on this" AutomationProperties.Name="Focus"
+                                    Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE916;" ToolTip="Time this task" AutomationProperties.Name="Start timer"
+                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop timer" Foreground="{StaticResource Accent}"
+                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70E;" ToolTip="Move up (Alt+↑)" AutomationProperties.Name="Move up"
+                                    Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE70D;" ToolTip="Move down (Alt+↓)" AutomationProperties.Name="Move down"
+                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" />
+                        </StackPanel>
+                        <Grid Margin="0,4,0,0" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="False" TextWrapping="Wrap" MaxLength="10000"
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
+                            <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
+                                    Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="CardBorder" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="CardBorder" Property="Background" Value="{StaticResource HoverFill}" />
+                    <Setter TargetName="Actions" Property="Opacity" Value="1" />
+                </Trigger>
+                <Trigger SourceName="CardBorder" Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter TargetName="Actions" Property="Opacity" Value="1" />
+                </Trigger>
+                <DataTrigger Binding="{Binding NeedsAttention}" Value="True">
+                    <Setter TargetName="CardBorder" Property="Background" Value="{StaticResource AttentionSoft}" />
+                    <Setter TargetName="Actions" Property="Opacity" Value="1" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- The hero "Do this now" card with a gradient hairline border. -->
+        <DataTemplate x:Key="FocusTemplate" DataType="{x:Type d:CardViewModel}">
+            <Border x:Name="Frame" CornerRadius="16" Padding="1.5" Background="{StaticResource BrandGradient}" BorderThickness="0"
+                    AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
+                <Border CornerRadius="14.5" Padding="14,12,14,8" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,6">
+                            <Border DockPanel.Dock="Right" CornerRadius="10" Padding="8,1" Background="{Binding PriorityColor, Converter={StaticResource SoftBrush}, ConverterParameter=38}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="6" Height="6" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" Margin="0,0,5,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding PriorityLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="EyebrowGlyph" Text="&#xE7C1;" Style="{StaticResource Glyph}" FontSize="11" Foreground="{StaticResource Accent}" Margin="0,0,5,0" />
+                                <TextBlock x:Name="Eyebrow" Text="DO THIS NOW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
+                            <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" Margin="0,2,0,0" Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
+                        <ItemsControl ItemsSource="{Binding Chips}" ItemTemplate="{StaticResource ChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" Margin="0,2,0,0" />
+                        <WrapPanel Margin="0,2,0,0" Visibility="{Binding HasTagsOrLabels, Converter={StaticResource VisibleWhen}}">
+                            <ItemsControl ItemsSource="{Binding Labels}" ItemTemplate="{StaticResource LabelChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                            <ItemsControl ItemsSource="{Binding Tags}" ItemTemplate="{StaticResource TagChipTemplate}" ItemsPanel="{StaticResource WrapPanelTemplate}" Focusable="False" />
+                        </WrapPanel>
+                        <Border CornerRadius="10" Padding="10,7" Margin="0,8,0,0" Background="{StaticResource AttentionSoft}"
+                                Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource AttentionText}" Margin="0,0,7,0" />
+                                <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <!-- The task you're on: every note, newest first. -->
+                        <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource CardNoteTemplate}" Focusable="False" Margin="0,4,0,0"
+                                      Visibility="{Binding HasNotes, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="Notes" />
+                        <WrapPanel Margin="0,10,0,0">
+                            <Button Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Mark done" ToolTip="Mark this task done"
+                                    Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Mark done" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Snooze" Click="OnSnoozeClick">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Later" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Add note"
+                                    Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE70B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Note" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Focus"
+                                    Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE768;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                                    <TextBlock Text="Focus" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Start timer" ToolTip="Time this task"
+                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Timer" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Stop timer" ToolTip="Stop the timer"
+                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE71A;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" Foreground="{StaticResource Accent}" />
+                                    <TextBlock Text="Stop timer" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource PillButton}" ToolTip="Do something else first: moves this one down the list (Alt+↓)" AutomationProperties.Name="Skip"
+                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE74B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="Skip" />
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" Margin="0,0,0,6" />
+                        </WrapPanel>
+                        <Grid Margin="0,2,0,6" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding NoteDraft, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" MaxLength="10000"
+                                     AutomationProperties.Name="Note" KeyDown="OnNoteKeyDown" ToolTip="Saves as you type. Enter finishes the note. Paste a screenshot to attach it." />
+                            <Button Grid.Column="1" Content="Finish" Margin="6,0,0,0" Style="{StaticResource PillButton}" ToolTip="Finish this note (Enter)" AutomationProperties.Name="Finish note"
+                                    Command="{Binding DataContext.AddNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding NeedsAttention}" Value="True">
+                    <Setter TargetName="Frame" Property="Background" Value="{StaticResource AttentionGradient}" />
+                    <Setter TargetName="Eyebrow" Property="Text" Value="REMINDER" />
+                    <Setter TargetName="Eyebrow" Property="Foreground" Value="{StaticResource AttentionText}" />
+                    <Setter TargetName="EyebrowGlyph" Property="Text" Value="&#xE823;" />
+                    <Setter TargetName="EyebrowGlyph" Property="Foreground" Value="{StaticResource AttentionText}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <!-- Full sidebar -->
+        <Grid x:Name="FullView" Margin="12,10,12,10"
+              Visibility="{Binding ShowsStrip, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Brand + summary + window actions -->
+            <DockPanel Grid.Row="0" LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="CollapseButton" Style="{StaticResource IconButton}" Content="&#xE76C;" ToolTip="Collapse to a thin strip" AutomationProperties.Name="Collapse" Command="{Binding ToggleCompactCommand}" WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE8A7;" ToolTip="Open dashboard &amp; full report in browser" AutomationProperties.Name="Open dashboard" Command="{Binding OpenDashboardCommand}" WindowChrome.IsHitTestVisibleInChrome="True" />
+                    <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="Menu" AutomationProperties.Name="Menu" Click="OnMenuClick" WindowChrome.IsHitTestVisibleInChrome="True" />
+                </StackPanel>
+                <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" VerticalAlignment="Center">
+                    <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                </Border>
+                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="One Thing" FontWeight="Bold" FontSize="14.5" FontFamily="Segoe UI Variable Display, Segoe UI" />
+                    <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    <TextBlock x:Name="EnergyLine" Text="{Binding EnergyText}" FontSize="11.5" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                               Visibility="{Binding EnergyText, Converter={StaticResource VisibleWhen}}" ToolTip="Energy: each planned block's hours × its task's ⚡ an hour, against what you have in a day">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Muted}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding EnergyOver}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- Group tabs (segmented) -->
+            <Border Grid.Row="1" Margin="0,10,0,0" Padding="3" CornerRadius="14" HorizontalAlignment="Left"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                <!-- No scrollbar (the Fluent theme draws one over the tabs, even "Hidden"): the wheel, touch and keyboard scroll them. -->
+                <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" PanningMode="HorizontalOnly" PreviewMouseWheel="OnGroupTabsWheel">
+                    <ScrollViewer.Template>
+                        <ControlTemplate TargetType="ScrollViewer">
+                            <ScrollContentPresenter CanContentScroll="{TemplateBinding CanContentScroll}" />
+                        </ControlTemplate>
+                    </ScrollViewer.Template>
+                    <StackPanel Orientation="Horizontal">
+                        <ItemsControl ItemsSource="{Binding Groups}" Focusable="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type d:GroupTabViewModel}">
+                                    <ToggleButton Style="{StaticResource TabToggle}" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                  Command="{Binding DataContext.SelectGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                  AutomationProperties.Name="{Binding Name}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="7" Height="7" Margin="0,0,6,0" Fill="{Binding Color, Converter={StaticResource HexBrush}}" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Name}" />
+                                            <Border Margin="6,0,0,0" Padding="6,0" CornerRadius="8" Background="{StaticResource AccentSoft}"
+                                                    Visibility="{Binding CountText, Converter={StaticResource VisibleWhen}}">
+                                                <TextBlock Text="{Binding CountText}" FontSize="11" Foreground="{StaticResource Accent}" />
+                                            </Border>
+                                            <Ellipse Width="7" Height="7" Margin="4,0,0,0" Fill="{StaticResource Attention}" VerticalAlignment="Center"
+                                                     Visibility="{Binding HasAttention, Converter={StaticResource VisibleWhen}}" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Button Style="{StaticResource IconButton}" Content="&#xE710;" Width="26" Height="26" ToolTip="Add group" AutomationProperties.Name="Add group" Command="{Binding AddGroupCommand}" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Quick capture -->
+            <Border Grid.Row="2" Margin="0,10,0,0" CornerRadius="18" Padding="12,3,4,3" BorderThickness="1"
+                    Background="{DynamicResource ControlFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
+                <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE710;" Style="{StaticResource Glyph}" Foreground="{StaticResource Accent}" Margin="0,0,8,0" />
+                    <TextBox x:Name="CaptureBox" Grid.Column="1" Text="{Binding QuickText, UpdateSourceTrigger=PropertyChanged}" MaxLength="300"
+                             BorderThickness="0" Background="Transparent" VerticalContentAlignment="Center"
+                             AutomationProperties.Name="Quick add task" KeyDown="OnCaptureKeyDown"
+                             ToolTip="Add a task. Optional: ! high, !! critical, @2h / @tomorrow defer, due:3d deadline. Paste a screenshot to add it to the task. Ctrl+Alt+Space from anywhere." />
+                    <TextBlock Grid.Column="1" Text="What's on your mind?" IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center" Opacity="0.5"
+                               Visibility="{Binding QuickText, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                    <Button Grid.Column="2" Content="Add" Style="{StaticResource PrimaryButton}" Margin="4,0,0,0" Command="{Binding CaptureCommand}" />
+                </Grid>
+                <!-- Pictures pasted into quick add wait here; they go into the new task's details. -->
+                <ItemsControl ItemsSource="{Binding CapturePictures}" Focusable="False" Margin="0,2,0,4"
+                              AutomationProperties.Name="Pictures for the new task"
+                              Visibility="{Binding CapturePictures.Count, Converter={StaticResource VisibleWhen}}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type d:PendingPicture}">
+                            <Border CornerRadius="10" Padding="4" Margin="0,0,6,0" BorderThickness="1"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" ToolTip="{Binding Name}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding Png, Converter={StaticResource PngImage}}" Width="36" Height="36" Stretch="UniformToFill" />
+                                    <Button Style="{StaticResource IconButton}" Content="&#xE711;" VerticalAlignment="Center" Margin="2,0,0,0"
+                                            ToolTip="Remove" AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}"
+                                            Command="{Binding DataContext.RemoveCapturePictureCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="3" x:Name="Status" Text="{Binding StatusMessage}" Margin="4,6,0,0" Style="{StaticResource Muted}"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource VisibleWhen}}" />
+
+            <ScrollViewer Grid.Row="4" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel>
+                    <!-- Focus: the single next thing to do -->
+                    <ContentControl Content="{Binding Focus}" ContentTemplate="{StaticResource FocusTemplate}" Focusable="False" Margin="0,0,0,12"
+                                    Visibility="{Binding HasFocus, Converter={StaticResource VisibleWhen}}" />
+                    <Border CornerRadius="16" Padding="1.5" Background="{StaticResource CalmGradient}" Margin="0,0,0,12"
+                            Visibility="{Binding HasFocus, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+                        <Border CornerRadius="14.5" Padding="14" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="12" Background="#2210B981" Margin="0,0,12,0">
+                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{StaticResource Ok}" />
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Nothing is due. Enjoy the calm." FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding NextUpText}" Style="{StaticResource Muted}" Visibility="{Binding NextUpText, Converter={StaticResource VisibleWhen}}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </Border>
+
+                    <Border Style="{StaticResource Panel}">
+                        <Expander IsExpanded="True" Padding="6,4">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Do now" Style="{StaticResource SectionHeader}" />
+                                    <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding NowCount}" FontSize="11" FontWeight="SemiBold" /></Border>
+                                </StackPanel>
+                            </Expander.Header>
+                            <ItemsControl ItemsSource="{Binding Now}" ItemTemplate="{StaticResource CardTemplate}" Focusable="False" Margin="0,2,0,0" />
+                        </Expander>
+                    </Border>
+
+                    <Border Style="{StaticResource Panel}">
+                        <Expander Padding="6,4">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Waiting" Style="{StaticResource SectionHeader}" />
+                                    <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding WaitingCount}" FontSize="11" FontWeight="SemiBold" /></Border>
+                                </StackPanel>
+                            </Expander.Header>
+                            <ItemsControl ItemsSource="{Binding Waiting}" ItemTemplate="{StaticResource CardTemplate}" Focusable="False" Margin="0,2,0,0" />
+                        </Expander>
+                    </Border>
+
+                    <!-- What got done today: something to feel good about, and a way to undo a slip. -->
+                    <Border Style="{StaticResource Panel}">
+                        <Expander IsExpanded="True" Padding="6,4" AutomationProperties.Name="Done today">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Done today" Style="{StaticResource SectionHeader}" />
+                                    <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding DoneToday.Count}" FontSize="11" FontWeight="SemiBold" /></Border>
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel Margin="0,2,0,0">
+                                <Border CornerRadius="10" Padding="10,6" Margin="0,2,0,6" Background="#1F22C55E"
+                                        Visibility="{Binding DoneTodayCheer, Converter={StaticResource VisibleWhen}}">
+                                    <TextBlock Text="{Binding DoneTodayCheer}" FontWeight="SemiBold" Foreground="#16A34A" TextWrapping="Wrap" />
+                                </Border>
+                                <TextBlock Text="Finish something and it shows up here." Style="{StaticResource Muted}" Margin="4,2,0,6"
+                                           Visibility="{Binding DoneTodayCheer, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                                <ItemsControl ItemsSource="{Binding DoneToday}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type d:DoneViewModel}">
+                                            <DockPanel Margin="2,0,0,6">
+                                                <Border DockPanel.Dock="Left" Width="18" Height="18" CornerRadius="9" Background="#22C55E" VerticalAlignment="Top" Margin="0,1,8,0">
+                                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="10" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE7A7;" VerticalAlignment="Top"
+                                                        ToolTip="Not done after all: reopen" AutomationProperties.Name="{Binding Title, StringFormat=Reopen {0}}"
+                                                        Command="{Binding DataContext.ReopenCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" TextWrapping="Wrap" TextDecorations="Strikethrough" Opacity="0.8" />
+                                                    <TextBlock Style="{StaticResource Muted}" FontSize="11.5">
+                                                        <Run Text="{Binding Time, Mode=OneWay}" /><Run Text="{Binding Context, Mode=OneWay, StringFormat=' · {0}', TargetNullValue=''}" />
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+
+                    <Border Style="{StaticResource Panel}">
+                        <Expander Padding="6,4">
+                            <Expander.Header>
+                                <TextBlock Text="Workstreams" Style="{StaticResource SectionHeader}" />
+                            </Expander.Header>
+                            <ItemsControl ItemsSource="{Binding Workstreams}" Focusable="False" Margin="0,2,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type d:WorkstreamViewModel}">
+                                        <Button Margin="0,0,0,4" Padding="8,8" HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Command="{Binding DataContext.OpenWorkstreamReportCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                ToolTip="Open full report">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Text="&#xE8A5;" Style="{StaticResource Glyph}" FontSize="12" Opacity="0.5" />
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                </DockPanel>
+                                                <Grid Height="6" Margin="0,6,0,4">
+                                                    <Border CornerRadius="3" Background="{DynamicResource ControlFillColorSecondaryBrush}" />
+                                                    <ProgressBar Value="{Binding ProgressPercent, Mode=OneWay}" Maximum="100" Height="6" MinHeight="6" BorderThickness="0" Background="Transparent"
+                                                                 Foreground="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding Summary}" Style="{StaticResource Muted}" FontSize="11.5" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </Border>
+
+                    <Border Style="{StaticResource Panel}">
+                        <Expander Padding="6,4">
+                            <Expander.Header>
+                                <TextBlock Text="Recent notes" Style="{StaticResource SectionHeader}" />
+                            </Expander.Header>
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding RecentNotes}" Focusable="False" Margin="0,4,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type d:NoteViewModel}">
+                                            <StackPanel Margin="4,0,0,10">
+                                                <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                                <TextBlock Style="{StaticResource Muted}" FontSize="11.5" Margin="0,2,0,0">
+                                                    <Run Text="{Binding ItemTitle, Mode=OneWay}" /> · <Run Text="{Binding Meta, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Style="{StaticResource PillButton}" HorizontalAlignment="Left" Command="{Binding OpenReportCommand}" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Full timeline" />
+                                        <TextBlock Text="&#xE8A7;" Style="{StaticResource Glyph}" FontSize="11" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- The task timer (while it runs) and the focus timer -->
+            <StackPanel Grid.Row="5">
+            <Border Margin="0,6,0,0" Padding="10,6" CornerRadius="16" BorderThickness="1" BorderBrush="{StaticResource AccentSoft}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    Visibility="{Binding Timer.IsRunning, Converter={StaticResource VisibleWhen}}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="14" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="2,0,10,0" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop the timer" Command="{Binding StopTimerCommand}" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Timer.TimeText}" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0" AutomationProperties.HelpText="Time on this task"
+                               FontFamily="Segoe UI Variable Display, Segoe UI" Typography.NumeralAlignment="Tabular" />
+                    <TextBlock Text="{Binding Timer.Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Timer.Title}" />
+                </DockPanel>
+            </Border>
+            <Border Margin="0,6,0,0" Padding="10,8" CornerRadius="16" BorderThickness="1"
+                    Visibility="{Binding ShowFocusTimer, Converter={StaticResource VisibleWhen}}"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Left" Width="36" Height="36">
+                        <local:ProgressRing x:Name="PomodoroRing" Value="{Binding Pomodoro.Fraction}" Thickness="3.5" Stroke="{StaticResource Accent}" />
+                        <TextBlock Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </Grid>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus" AutomationProperties.Name="Start focus" Command="{Binding StartFocusCommand}"
+                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}}" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="Pause" AutomationProperties.Name="Pause" Command="{Binding PausePomodoroCommand}"
+                                Visibility="{Binding Pomodoro.IsRunning, Converter={StaticResource VisibleWhen}}" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Resume" AutomationProperties.Name="Resume" Command="{Binding ResumePomodoroCommand}"
+                                Visibility="{Binding Pomodoro.IsPaused, Converter={StaticResource VisibleWhen}}" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" ToolTip="Skip" AutomationProperties.Name="Skip" Command="{Binding SkipPomodoroCommand}"
+                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Reset" AutomationProperties.Name="Reset" Command="{Binding ResetPomodoroCommand}"
+                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                    </StackPanel>
+                    <StackPanel Margin="10,0,6,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Pomodoro.TimeText}" FontSize="16" FontWeight="Bold" AutomationProperties.Name="Focus timer"
+                                   FontFamily="Segoe UI Variable Display, Segoe UI" Typography.NumeralAlignment="Tabular" />
+                        <TextBlock Text="{Binding Pomodoro.Label}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+            </StackPanel>
+
+            <!-- Ask AI (plugin): one line to ask; the latest answer and the agent's questions under it. -->
+            <Border Grid.Row="6" Margin="0,6,0,0" Padding="10,6" CornerRadius="16" BorderThickness="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    Visibility="{Binding DataContext.HasAsk, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}" DataContext="{Binding Ask}">
+                <StackPanel>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE8A7;" ToolTip="Open the whole chat" AutomationProperties.Name="Open the whole chat"
+                                Command="{Binding OpenFullChatCommand}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop" AutomationProperties.Name="Stop answer"
+                                Command="{Binding StopCommand}" Visibility="{Binding IsBusy, Converter={StaticResource VisibleWhen}}" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE724;" ToolTip="Send (Enter)" AutomationProperties.Name="Send to AI"
+                                Command="{Binding SendCommand}" />
+                        <TextBlock DockPanel.Dock="Left" Text="&#xE8BD;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <Grid>
+                            <TextBox x:Name="AskBox" Text="{Binding Draft, UpdateSourceTrigger=PropertyChanged}" MaxLength="8000" VerticalAlignment="Center"
+                                     AutomationProperties.Name="Ask AI" IsEnabled="{Binding HasAgent}" BorderThickness="0" Background="Transparent">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding SendCommand}" />
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <TextBlock Text="{Binding Placeholder}" Style="{StaticResource Muted}" IsHitTestVisible="False" VerticalAlignment="Center" Margin="4,0,0,0"
+                                       TextTrimming="CharacterEllipsis" Visibility="{Binding Text.IsEmpty, ElementName=AskBox, Converter={StaticResource VisibleWhen}}" />
+                        </Grid>
+                    </DockPanel>
+                    <TextBlock Text="{Binding Privacy}" Style="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="21,2,0,0"
+                               Visibility="{Binding Privacy, Converter={StaticResource VisibleWhen}}" />
+                    <DockPanel Margin="0,6,0,2" Visibility="{Binding Message, Converter={StaticResource VisibleWhen}}">
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE711;" ToolTip="Hide" AutomationProperties.Name="Hide answer"
+                                Command="{Binding DismissCommand}" VerticalAlignment="Top" />
+                        <TextBlock x:Name="AskMessage" Text="{Binding Message}" TextWrapping="Wrap" MaxHeight="120" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+                    <StackPanel Margin="0,4,0,2" Visibility="{Binding QuestionText, Converter={StaticResource VisibleWhen}}">
+                        <TextBlock Text="{Binding QuestionText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Choices}" Focusable="False" Margin="0,4,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type d:AskChoice}">
+                                    <Button Content="{Binding Label}" Style="{StaticResource PillButton}" Margin="0,0,6,4" AutomationProperties.Name="{Binding Label}"
+                                            Command="{Binding DataContext.AnswerCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding Id}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Compact strip -->
+        <Grid x:Name="CompactView" Margin="4,12" Background="Transparent"
+              Visibility="{Binding ShowsStrip, Converter={StaticResource VisibleWhen}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+        <StackPanel HorizontalAlignment="Center">
+            <Border Width="28" Height="28" CornerRadius="8" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" Margin="0,0,0,12">
+                <Path Data="M7.5,14.5 L12,19 L20.5,9.5" Stroke="White" StrokeThickness="2.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+            </Border>
+            <Button x:Name="ExpandButton" Style="{StaticResource IconButton}" Content="&#xE76B;" ToolTip="Expand sidebar" AutomationProperties.Name="Expand" Command="{Binding ToggleCompactCommand}" Margin="0,0,0,12" WindowChrome.IsHitTestVisibleInChrome="True" />
+            <Border CornerRadius="12" Padding="8,3" Background="{StaticResource BrandGradient}" HorizontalAlignment="Center" ToolTip="Things to do now">
+                <TextBlock Text="{Binding CompactSummary}" Foreground="White" FontWeight="Bold" FontSize="14" HorizontalAlignment="Center" />
+            </Border>
+            <Ellipse Width="10" Height="10" Margin="0,10,0,0" Fill="{StaticResource Attention}" ToolTip="A reminder needs attention"
+                     Visibility="{Binding HasAttention, Converter={StaticResource VisibleWhen}}" />
+            <Grid Width="34" Height="34" Margin="0,14,0,0" Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+                <local:ProgressRing Value="{Binding Pomodoro.Fraction}" Thickness="3" Stroke="{StaticResource Accent}" />
+            </Grid>
+            <TextBlock Text="{Binding Pomodoro.TimeText}" FontSize="10.5" Margin="0,4,0,0" HorizontalAlignment="Center"
+                       Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+        </StackPanel>
+            <!-- The task at hand, written down the strip (rest the pointer on the strip to open the sidebar). In a
+                 star row: rotated text needs a finite length to measure against, else it's cut to the strip's width. -->
+            <TextBlock Grid.Row="1" x:Name="ActiveTask" Text="{Binding ActiveTitle}" FontSize="13" FontWeight="SemiBold" Margin="0,16,0,0"
+                       HorizontalAlignment="Center" VerticalAlignment="Top" TextTrimming="CharacterEllipsis"
+                       AutomationProperties.Name="Task at hand" ToolTip="{Binding ActiveTitle}">
+                <TextBlock.LayoutTransform>
+                    <RotateTransform Angle="90" />
+                </TextBlock.LayoutTransform>
+            </TextBlock>
+        </Grid>
+    </Grid>
+</Window>

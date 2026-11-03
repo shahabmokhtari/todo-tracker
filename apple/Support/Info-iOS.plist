@@ -4,16 +4,16 @@
 <dict>
 <key>BGTaskSchedulerPermittedIdentifiers</key>
 <array>
-<string>com.todotracker.ios.sync</string>
+<string>com.onething.ios.sync</string>
 </array>
 <key>CFBundleURLTypes</key>
 <array>
 <dict>
 <key>CFBundleURLName</key>
-<string>com.todotracker.task-link</string>
+<string>com.onething.task-link</string>
 <key>CFBundleURLSchemes</key>
 <array>
-<string>todotracker</string>
+<string>onething</string>
 </array>
 </dict>
 </array>
@@ -22,6 +22,6 @@
 <string>fetch</string>
 </array>
 <key>WidgetAppGroup</key>
-<string>group.com.todotracker</string>
+<string>group.com.onething</string>
 </dict>
 </plist>

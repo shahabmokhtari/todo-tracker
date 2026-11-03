@@ -1,5 +1,5 @@
 // Send feedback: the sheet in the web app (and in the Windows and Linux apps, which open it with /?feedback=button).
-// Onething passes the note to the issues relay; here that's a stand-in on this computer (playwright.config.js points
+// One Thing passes the note to the issues relay; here that's a stand-in on this computer (playwright.config.js points
 // the server at it), so nothing ever reaches issues.awesomehq.app.
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
@@ -38,7 +38,7 @@ test.afterAll(async () => {
 /** The app as the person at this computer opens it (the Windows app and the tray do the same with the owner key). */
 async function openAsOwner(page, request, where) {
   const ownerKey = fs.readFileSync(path.join(process.env.TT_E2E_DATA, 'owner-key'), 'utf8').trim();
-  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-TodoTracker-Owner-Key': ownerKey }, data: { return: where } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...auth, 'X-OneThing-Owner-Key': ownerKey }, data: { return: where } })).json();
   await page.goto(launch.url);
 }
 

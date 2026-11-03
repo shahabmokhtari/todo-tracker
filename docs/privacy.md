@@ -1,6 +1,6 @@
 # Privacy
 
-Onething keeps your tasks on your devices: markdown files in a folder you own. There's no account and no telemetry.
+One Thing keeps your tasks on your devices: markdown files in a folder you own. There's no account and no telemetry.
 The apps only talk to the services you switch on (sync, connectors, an AI model you add) and, when you choose to
 send a note, to our feedback relay. The same words are on the website at
 <https://onething.awesomehq.app/privacy>.
@@ -14,7 +14,7 @@ you switch them on.
 ## Send feedback
 
 **Send feedback** (Settings, the menus, a shake on a phone; the **Send feedback** extra) sends a note to the people
-who make Onething. It's only sent when you press **Send**.
+who make One Thing. It's only sent when you press **Send**.
 
 What's sent:
 
@@ -28,12 +28,12 @@ What's sent:
 What's never sent: your tasks or anything in them, your name, any user, install or advertising id, your IP address as
 data, your location, screenshots or logs.
 
-Where it goes: the note goes to `issues.awesomehq.app`, a small relay that files it as an issue on Onething's GitHub
+Where it goes: the note goes to `issues.awesomehq.app`, a small relay that files it as an issue on One Thing's GitHub
 repository ([shahabmokhtari/todo-tracker](https://github.com/shahabmokhtari/todo-tracker/issues)). **That repository
 is public: the issue shows your note, the facts above and, if you typed one, your email (as "Reply-to").** Leave the
 email out if you don't want it there. The relay keeps your IP address only in memory, to limit how many notes can be
 sent a minute, and deletes its own copy of the note 30 days after filing it (90 days if it couldn't be filed); the
-issue stays on GitHub until it's deleted there. The web app and the Windows and Linux apps send the note through Onething on your
+issue stays on GitHub until it's deleted there. The web app and the Windows and Linux apps send the note through One Thing on your
 computer; the phone and Mac apps send it themselves. None of them use a GitHub account or token.
 
 What it's used for: support (reading your note and, if you gave an email, replying) and making the app work better.
@@ -46,7 +46,7 @@ send feedback** in Settings only stops a shake from opening the sheet; the **Sen
 
 ## Store privacy labels
 
-What the store forms should say, from the above (Onething collects nothing else):
+What the store forms should say, from the above (One Thing collects nothing else):
 
 | Store | Answer |
 | --- | --- |

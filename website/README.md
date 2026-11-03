@@ -1,7 +1,7 @@
-# Onething website
+# One Thing website
 
 The public site at <https://onething.awesomehq.app>. Plain HTML and CSS with a little JavaScript, no build step.
-It's served by Cloudflare Workers static assets (the Worker is named `todotracker-site`).
+It's served by Cloudflare Workers static assets (the Worker is named `onething-site`).
 
 | Path | What |
 | --- | --- |

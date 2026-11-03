@@ -2,7 +2,7 @@
 """Stage a Claude Desktop extension (.mcpb) for one platform from a self-contained `tt` publish.
 
 Usage: package-mcpb.py <rid> <publish-dir> <staging-dir>
-Then: npx @anthropic-ai/mcpb pack <staging-dir> todo-tracker-<rid>.mcpb
+Then: npx @anthropic-ai/mcpb pack <staging-dir> onething-<rid>.mcpb
 
 The bundle holds manifest.json, icon.png and server/tt[.exe]. Its manifest only lists the platform the binary runs on.
 """

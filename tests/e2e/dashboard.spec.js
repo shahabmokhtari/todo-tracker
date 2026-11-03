@@ -132,11 +132,11 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   // Someone else renames the task meanwhile; typing details here must not put the old title back.
   const id = await drawer.getAttribute('data-item-id');
 
-  // Copy link: a todotracker:// link that opens this task in the app.
+  // Copy link: a onething:// link that opens this task in the app.
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await drawer.getByRole('button', { name: 'Copy link' }).click();
   await expect(page.locator('#toast')).toContainText('Link copied');
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`todotracker://task/${id}`);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`onething://task/${id}`);
   await request.patch(`/api/items/${id}`, { headers: { Authorization: `Bearer ${token}` }, data: { title: 'Launch plan (renamed elsewhere)' } });
   await drawer.getByPlaceholder(/^Details/).fill('Audience: partners');
   await expect(drawer.locator('#save-state')).toHaveText('Saved');
@@ -166,7 +166,7 @@ test('details autosave, tags and labels filter, notes save as you type, files at
   // Connecting an AI app is one click and one copy.
   await page.getByRole('button', { name: 'Connect an AI app' }).click();
   await expect(drawer.locator('details.connect[open]')).toContainText('Claude Code');
-  await expect(drawer.locator('details.connect[open] pre')).toContainText('claude mcp add todo-tracker');
+  await expect(drawer.locator('details.connect[open] pre')).toContainText('claude mcp add onething');
   await drawer.locator('details.connect', { hasText: 'VS Code' }).locator('summary').click();
   await expect(drawer.locator('details.connect', { hasText: 'VS Code' }).locator('pre')).toContainText('"servers"');
   await page.keyboard.press('Escape');
@@ -355,7 +355,7 @@ test('Plugins: an extra switched off is gone at once, and the light ones come ba
   await expect(loop).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Plan' }).uncheck();
   await expect(planLink).toBeHidden();
-  const restart = drawer.getByText('Restart Onething to switch it on.');
+  const restart = drawer.getByText('Restart One Thing to switch it on.');
   await expect(restart).toBeHidden();
   await drawer.getByRole('checkbox', { name: 'Copy for Loop' }).check();
   await expect(loop).toBeVisible();
@@ -377,7 +377,7 @@ test('Sync: the panel says where it syncs and sync can be switched off', async (
   await page.goto(launch.url);
   await page.getByRole('button', { name: /^Sync/ }).click();
   const drawer = page.locator('#drawer');
-  // The test server sees no cloud drives (TODOTRACKER_CLOUD=off).
+  // The test server sees no cloud drives (ONETHING_CLOUD=off).
   await expect(drawer).toContainText('Nothing to sync with');
   await drawer.getByRole('combobox', { name: 'Sync with' }).selectOption('off');
   await expect(drawer).toContainText('Sync is off');

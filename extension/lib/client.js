@@ -1,4 +1,4 @@
-// Talks to the local Onething server (the Windows sidebar or `TodoTracker.Web`).
+// Talks to the local One Thing server (the Windows sidebar or `OneThing.Web`).
 // Extension pages bypass CORS through host_permissions, and every call is attributed to the browser.
 
 export class ApiError extends Error {
@@ -27,7 +27,7 @@ export function pageSource(tab) {
   return { url: tab.url, title: tab.title || tab.url };
 }
 
-/** What Onething lists this browser as, e.g. "Edge on Windows". */
+/** What One Thing lists this browser as, e.g. "Edge on Windows". */
 export function browserName(userAgent = globalThis.navigator?.userAgent ?? '') {
   const ua = String(userAgent);
   if (!ua) return 'Browser';
@@ -37,7 +37,7 @@ export function browserName(userAgent = globalThis.navigator?.userAgent ?? '') {
 }
 
 /**
- * Pairs with Onething: the 6-digit code shown there (Browser extension › Get a code) is traded for this browser's
+ * Pairs with One Thing: the 6-digit code shown there (Browser extension › Get a code) is traded for this browser's
  * own token, so nothing secret has to be copied by hand. The custom header means web pages can't do this.
  */
 export async function pair({ serverUrl, code, name = browserName(), fetch = globalThis.fetch }) {
@@ -45,7 +45,7 @@ export async function pair({ serverUrl, code, name = browserName(), fetch = glob
   if (digits.length !== 6) throw new Error('The pairing code has 6 digits.');
   const response = await fetch(`${normalizeServerUrl(serverUrl)}/api/plugins/browser-extension/claim`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-TodoTracker-Client': 'browser-extension' },
+    headers: { 'Content-Type': 'application/json', 'X-OneThing-Client': 'browser-extension' },
     body: JSON.stringify({ code: digits, name }),
   });
   const text = await response.text();
@@ -57,8 +57,8 @@ export async function pair({ serverUrl, code, name = browserName(), fetch = glob
 }
 
 /**
- * Whether Send feedback belongs in the side panel: only while the feedback extra is on in Onething, as in its other
- * windows. When the list can't be read (an older Onething), it stays out.
+ * Whether Send feedback belongs in the side panel: only while the feedback extra is on in One Thing, as in its other
+ * windows. When the list can't be read (an older One Thing), it stays out.
  */
 export async function feedbackOn(client) {
   try {
@@ -76,7 +76,7 @@ export function createClient({ serverUrl, token, fetch = globalThis.fetch }) {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
-        'X-TodoTracker-Actor': 'browser-extension',
+        'X-OneThing-Actor': 'browser-extension',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

@@ -1,10 +1,10 @@
 // Screenshots for the README and docs, from a made-up demo board (never anyone's real tasks).
 //
 //   cd tests/e2e && npm install && npx playwright install chromium
-//   node screenshots.mjs                 # web views (any OS) + the Windows sidebar (Windows; quit Onething first)
+//   node screenshots.mjs                 # web views (any OS) + the Windows sidebar (Windows; quit One Thing first)
 //   node screenshots.mjs --web-only
 //
-// It starts its own Onething on a throwaway data folder and port, fills it with the demo tasks below through the
+// It starts its own One Thing on a throwaway data folder and port, fills it with the demo tasks below through the
 // API (as you and as an AI agent), and saves the pictures to docs/images. Your own app and tasks are never touched.
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -23,15 +23,15 @@ const base = `http://127.0.0.1:${port}`;
 const webOnly = process.argv.includes('--web-only');
 const auth = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
-// Everything in the throwaway folder: TODOTRACKER_VAULT (or _DATA) set in your shell would otherwise win over --data and
+// Everything in the throwaway folder: ONETHING_VAULT (or _DATA) set in your shell would otherwise win over --data and
 // put the demo tasks in your own tasks folder. No cloud sync either.
 // ONETHING_FEEDBACK_SEND=0: a demo never sends feedback anywhere.
-const isolated = { ...process.env, TODOTRACKER_DATA: data, TODOTRACKER_VAULT: path.join(data, 'vault'), TODOTRACKER_CLOUD: 'off', ONETHING_FEEDBACK_SEND: '0' };
+const isolated = { ...process.env, ONETHING_DATA: data, ONETHING_VAULT: path.join(data, 'vault'), ONETHING_CLOUD: 'off', ONETHING_FEEDBACK_SEND: '0' };
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(method, url, body, actor) {
-  const headers = { ...auth, ...(actor ? { 'X-TodoTracker-Actor': actor } : {}) };
+  const headers = { ...auth, ...(actor ? { 'X-OneThing-Actor': actor } : {}) };
   const res = await fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!res.ok) throw new Error(`${method} ${url}: ${res.status} ${await res.text()}`);
   return res.status === 204 ? null : res.json();
@@ -49,8 +49,8 @@ function stop(child) {
 }
 
 async function startServer() {
-  const server = spawn('dotnet', ['run', '--project', path.join(root, 'src', 'TodoTracker.Web'), '--no-launch-profile', '--', '--port', String(port), '--data', data, '--no-history'], {
-    env: { ...isolated, TODOTRACKER_TOKEN: token, TODOTRACKER_AGENT_PATH: path.join(data, 'no-agents') },
+  const server = spawn('dotnet', ['run', '--project', path.join(root, 'src', 'OneThing.Web'), '--no-launch-profile', '--', '--port', String(port), '--data', data, '--no-history'], {
+    env: { ...isolated, ONETHING_TOKEN: token, ONETHING_AGENT_PATH: path.join(data, 'no-agents') },
     stdio: 'ignore',
   });
   for (let i = 0; i < 240; i++) {
@@ -190,10 +190,10 @@ async function captureWeb(ids) {
   await browser.close();
 }
 
-/** Whether a Onething sidebar is running (only one runs at a time: a second one would just bring it forward). */
+/** Whether a One Thing sidebar is running (only one runs at a time: a second one would just bring it forward). */
 function sidebarRunning() {
   try {
-    return execFileSync('tasklist', ['/FI', 'IMAGENAME eq TodoTracker.exe', '/NH'], { encoding: 'utf8' }).includes('TodoTracker.exe');
+    return execFileSync('tasklist', ['/FI', 'IMAGENAME eq OneThing.exe', '/NH'], { encoding: 'utf8' }).includes('OneThing.exe');
   } catch {
     return false;
   }
@@ -202,12 +202,12 @@ function sidebarRunning() {
 /** The Windows sidebar, light and dark (the app renders itself to a PNG: --screenshot). */
 async function captureSidebar() {
   if (sidebarRunning()) {
-    console.log('Skipping the sidebar: quit Onething first (only one sidebar runs at a time), then run this again.');
+    console.log('Skipping the sidebar: quit One Thing first (only one sidebar runs at a time), then run this again.');
     return;
   }
 
-  const exe = path.join(root, 'src', 'TodoTracker.Windows', 'bin', 'Debug', 'net10.0-windows10.0.19041.0', 'TodoTracker.exe');
-  execFileSync('dotnet', ['build', path.join(root, 'src', 'TodoTracker.Windows'), '-v', 'q', '--nologo'], { stdio: 'inherit' });
+  const exe = path.join(root, 'src', 'OneThing.Windows', 'bin', 'Debug', 'net10.0-windows10.0.19041.0', 'OneThing.exe');
+  execFileSync('dotnet', ['build', path.join(root, 'src', 'OneThing.Windows'), '-v', 'q', '--nologo'], { stdio: 'inherit' });
   for (const theme of ['light', 'dark']) {
     const file = path.join(out, theme === 'light' ? 'windows-sidebar.png' : 'windows-sidebar-dark.png');
     fs.rmSync(file, { force: true });

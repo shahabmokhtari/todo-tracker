@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { breakState, breakOver, tipFor } from '../../src/TodoTracker.Server/wwwroot/js/breaks.js';
+import { breakState, breakOver, tipFor } from '../../src/OneThing.Server/wwwroot/js/breaks.js';
 
 const cases = JSON.parse(readFileSync(new URL('../fixtures/breaks.json', import.meta.url), 'utf8'));
 

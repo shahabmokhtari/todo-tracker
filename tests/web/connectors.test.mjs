@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loopMarkdown, taskMarkdown, taskHtml, taskPictures } from '../../src/TodoTracker.Server/wwwroot/js/plugins/loop.js';
-import { previewText, reposInUse } from '../../src/TodoTracker.Server/wwwroot/js/plugins/connectors.js';
+import { loopMarkdown, taskMarkdown, taskHtml, taskPictures } from '../../src/OneThing.Server/wwwroot/js/plugins/loop.js';
+import { previewText, reposInUse } from '../../src/OneThing.Server/wwwroot/js/plugins/connectors.js';
 
 const n = (title, extra = {}) => ({ title, done: false, children: [], ...extra });
 

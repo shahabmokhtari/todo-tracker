@@ -30,20 +30,20 @@ jobs:
       - name: Build
         run: |
           for p in Core Server Desktop Cli; do
-            dotnet build tests/TodoTracker.$p.Tests --configuration Release -warnaserror
+            dotnet build tests/OneThing.$p.Tests --configuration Release -warnaserror
           done
       - name: Test with coverage
         run: |
           for p in Core Server Desktop Cli; do
-            dotnet test --project tests/TodoTracker.$p.Tests --configuration Release --no-build \
+            dotnet test --project tests/OneThing.$p.Tests --configuration Release --no-build \
               --coverage --coverage-settings build/coverage.config --coverage-output-format cobertura --coverage-output $p.cobertura.xml \
               --results-directory TestResults/$p
           done
       - name: Coverage gate
         run: |
-          python3 build/coverage-gate.py "$(find TestResults/Core -name Core.cobertura.xml)" TodoTracker.Core=90
-          python3 build/coverage-gate.py "$(find TestResults/Server -name Server.cobertura.xml)" TodoTracker.Server=85
-          python3 build/coverage-gate.py "$(find TestResults/Desktop -name Desktop.cobertura.xml)" TodoTracker.Desktop=85
+          python3 build/coverage-gate.py "$(find TestResults/Core -name Core.cobertura.xml)" OneThing.Core=90
+          python3 build/coverage-gate.py "$(find TestResults/Server -name Server.cobertura.xml)" OneThing.Server=85
+          python3 build/coverage-gate.py "$(find TestResults/Desktop -name Desktop.cobertura.xml)" OneThing.Desktop=85
           python3 build/coverage-gate.py "$(find TestResults/Cli -name Cli.cobertura.xml)" tt=85
       - uses: actions/upload-artifact@v4
         if: always()
@@ -62,35 +62,35 @@ jobs:
           global-json-file: global.json
       - name: Build and test
         run: |
-          dotnet build tests/TodoTracker.Tray.Tests --configuration Release -warnaserror
-          TODOTRACKER_CLOUD=off dotnet test --project tests/TodoTracker.Tray.Tests --configuration Release --no-build
+          dotnet build tests/OneThing.Tray.Tests --configuration Release -warnaserror
+          ONETHING_CLOUD=off dotnet test --project tests/OneThing.Tray.Tests --configuration Release --no-build
       - name: Package (self-contained, no .NET needed)
         run: |
-          dotnet publish src/TodoTracker.Tray --configuration Release --runtime linux-x64 --self-contained --output artifacts/todo-tracker/app
-          rm -f artifacts/todo-tracker/app/*.pdb
-          cp packaging/linux/install.sh packaging/linux/todo-tracker.desktop packaging/linux/todo-tracker.png artifacts/todo-tracker/
-          chmod +x artifacts/todo-tracker/install.sh artifacts/todo-tracker/app/todo-tracker
-          tar -C artifacts -czf todo-tracker-linux-x64.tar.gz todo-tracker
+          dotnet publish src/OneThing.Tray --configuration Release --runtime linux-x64 --self-contained --output artifacts/onething/app
+          rm -f artifacts/onething/app/*.pdb
+          cp packaging/linux/install.sh packaging/linux/onething.desktop packaging/linux/onething.png artifacts/onething/
+          chmod +x artifacts/onething/install.sh artifacts/onething/app/onething
+          tar -C artifacts -czf onething-linux-x64.tar.gz onething
       - name: The packaged app starts (no display needed)
-        run: TODOTRACKER_CLOUD=off artifacts/todo-tracker/app/todo-tracker --smoke-test --data "$(mktemp -d)" --port 5398
+        run: ONETHING_CLOUD=off artifacts/onething/app/onething --smoke-test --data "$(mktemp -d)" --port 5398
       - name: The tray app runs on a desktop (virtual display) and serves the tasks
         run: |
           sudo apt-get install -y xvfb > /dev/null
           data=$(mktemp -d)
-          TODOTRACKER_CLOUD=off xvfb-run -a artifacts/todo-tracker/app/todo-tracker --data "$data" --port 5397 > tray.log 2>&1 &
+          ONETHING_CLOUD=off xvfb-run -a artifacts/onething/app/onething --data "$data" --port 5397 > tray.log 2>&1 &
           pid=$!
           for i in $(seq 1 40); do curl -fsS http://127.0.0.1:5397/health > /dev/null 2>&1 && break; sleep 1; done
           curl -fsS http://127.0.0.1:5397/health || { cat tray.log; exit 1; }
           sleep 3
-          pgrep -f 'todo-tracker --data' > /dev/null || { echo 'The tray app stopped'; cat tray.log; exit 1; }
+          pgrep -f 'onething --data' > /dev/null || { echo 'The tray app stopped'; cat tray.log; exit 1; }
           # Asked to stop (as at logout): it quits by itself, notes saved.
-          pkill -TERM -f 'todo-tracker --data' || true
-          for i in $(seq 1 15); do pgrep -f 'todo-tracker --data' > /dev/null || break; sleep 1; done
-          if pgrep -f 'todo-tracker --data' > /dev/null; then echo 'It ignored SIGTERM'; cat tray.log; exit 1; fi
+          pkill -TERM -f 'onething --data' || true
+          for i in $(seq 1 15); do pgrep -f 'onething --data' > /dev/null || break; sleep 1; done
+          if pgrep -f 'onething --data' > /dev/null; then echo 'It ignored SIGTERM'; cat tray.log; exit 1; fi
       - uses: actions/upload-artifact@v4
         with:
           name: linux-tray
-          path: todo-tracker-linux-x64.tar.gz
+          path: onething-linux-x64.tar.gz
 
   android:
     name: Android
@@ -136,7 +136,7 @@ jobs:
         run: node --test tests/web/*.test.mjs extension/tests/*.test.mjs
       - name: Build web host (and the scripted agent the Ask AI test talks to)
         run: |
-          dotnet build src/TodoTracker.Web --configuration Release -warnaserror
+          dotnet build src/OneThing.Web --configuration Release -warnaserror
           dotnet build tests/FakeAcpAgent --configuration Release -warnaserror
       - name: Install Playwright
         working-directory: tests/e2e
@@ -156,16 +156,16 @@ jobs:
           path: tests/e2e/playwright-report
       - name: Package browser extension (Edge/Chrome, and the Safari web extension folder)
         run: |
-          (cd extension && zip -r ../todo-tracker-extension.zip . -x 'tests/*' 'safari/*')
+          (cd extension && zip -r ../onething-extension.zip . -x 'tests/*' 'safari/*')
           mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
           cp extension/safari/manifest.json safari-src/manifest.json
-          (cd safari-src && zip -r ../todo-tracker-extension-safari.zip .)
+          (cd safari-src && zip -r ../onething-extension-safari.zip .)
       - uses: actions/upload-artifact@v4
         with:
           name: browser-extension
           path: |
-            todo-tracker-extension.zip
-            todo-tracker-extension-safari.zip
+            onething-extension.zip
+            onething-extension-safari.zip
 
   connectors:
     name: AI connectors (tt CLI, Claude Desktop extension, plugin)
@@ -186,21 +186,21 @@ jobs:
           for f in .claude-plugin/marketplace.json .github/plugin/marketplace.json integrations/agent-plugin/.claude-plugin/plugin.json integrations/agent-plugin/.mcp.json integrations/vscode/mcp.json; do
             python3 -m json.tool "$f" > /dev/null && echo "ok $f"
           done
-      - name: dotnet tool package (dotnet tool install -g TodoTracker.Cli --add-source <folder>)
-        run: dotnet pack src/TodoTracker.Cli --configuration Release --output artifacts/nuget
+      - name: dotnet tool package (dotnet tool install -g OneThing.Cli --add-source <folder>)
+        run: dotnet pack src/OneThing.Cli --configuration Release --output artifacts/nuget
       - name: Self-contained tt and Claude Desktop extensions
         run: |
           for rid in win-x64 win-arm64 osx-arm64 osx-x64 linux-x64; do
-            dotnet publish src/TodoTracker.Cli --configuration Release --runtime $rid --self-contained \
+            dotnet publish src/OneThing.Cli --configuration Release --runtime $rid --self-contained \
               -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
               --output publish/$rid
             python3 build/package-mcpb.py $rid publish/$rid staging/$rid
-            npx --yes @anthropic-ai/mcpb pack staging/$rid artifacts/todo-tracker-$rid.mcpb
+            npx --yes @anthropic-ai/mcpb pack staging/$rid artifacts/onething-$rid.mcpb
             (cd publish/$rid && zip -q ../../artifacts/tt-$rid.zip *)
           done
       - name: Smoke test tt mcp from the Linux bundle
         run: |
-          unzip -q -o artifacts/todo-tracker-linux-x64.mcpb -d bundle
+          unzip -q -o artifacts/onething-linux-x64.mcpb -d bundle
           python3 build/mcp-smoke.py bundle/server/tt
       - uses: actions/upload-artifact@v4
         with:
@@ -217,29 +217,29 @@ jobs:
         with:
           global-json-file: global.json
       - name: Build solution
-        run: dotnet build TodoTracker.slnx --configuration Release -warnaserror
+        run: dotnet build OneThing.slnx --configuration Release -warnaserror
       - name: Test
-        run: dotnet test --solution TodoTracker.slnx --configuration Release --no-build
+        run: dotnet test --solution OneThing.slnx --configuration Release --no-build
       - name: Publish sidebar
-        run: dotnet publish src/TodoTracker.Windows --configuration Release --runtime win-x64 --self-contained false --output artifacts/windows
+        run: dotnet publish src/OneThing.Windows --configuration Release --runtime win-x64 --self-contained false --output artifacts/windows
       - name: Smoke test the real app
         shell: pwsh
         run: |
           $log = "$env:RUNNER_TEMP\smoke.log"
           $shot = "$env:GITHUB_WORKSPACE\artifacts\sidebar.png"
-          $p = Start-Process artifacts\windows\TodoTracker.exe -ArgumentList '--smoke-test','--smoke-log',$log,'--screenshot',$shot -PassThru
+          $p = Start-Process artifacts\windows\OneThing.exe -ArgumentList '--smoke-test','--smoke-log',$log,'--screenshot',$shot -PassThru
           if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'Smoke test timed out' }
           Get-Content $log
           if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
       - name: System test (sidebar placement via UI Automation)
         shell: pwsh
-        run: ./tests/system/placement.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\TodoTracker.exe"
+        run: ./tests/system/placement.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\OneThing.exe"
       - name: System test (multi-monitor; skips on single-monitor runners)
         shell: pwsh
-        run: ./tests/system/multimonitor.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\TodoTracker.exe"
+        run: ./tests/system/multimonitor.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\OneThing.exe"
       - name: System test (full-screen windows, Remote Desktop, hiding)
         shell: pwsh
-        run: ./tests/system/fullscreen.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\TodoTracker.exe"
+        run: ./tests/system/fullscreen.system-test.ps1 -Exe "$env:GITHUB_WORKSPACE\artifacts\windows\OneThing.exe"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -255,7 +255,7 @@ jobs:
       - name: Toolchain
         run: xcodebuild -version && swift --version
       - name: Swift tests (shared scenarios, presentation, UI snapshots)
-        working-directory: apple/TodoTrackerKit
+        working-directory: apple/OneThingKit
         env:
           SNAPSHOT_DIR: ${{ runner.temp }}/snapshots
         run: swift test
@@ -273,26 +273,26 @@ jobs:
       - name: Build iOS app (simulator)
         working-directory: apple
         run: >
-          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-iOS
+          xcodebuild -project OneThing.xcodeproj -scheme OneThing-iOS
           -destination 'generic/platform=iOS Simulator' -configuration Debug
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
       - name: The iOS app carries its widgets
-        run: test -d apple/DerivedData/Build/Products/Debug-iphonesimulator/TodoTracker.app/PlugIns/OnethingWidgets.appex
+        run: test -d apple/DerivedData/Build/Products/Debug-iphonesimulator/OneThing.app/PlugIns/OneThingWidgets.appex
       - name: Build macOS app
         working-directory: apple
         run: >
-          xcodebuild -project TodoTracker.xcodeproj -scheme TodoTracker-macOS
+          xcodebuild -project OneThing.xcodeproj -scheme OneThing-macOS
           -destination 'platform=macOS' -configuration Release
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
       - name: The macOS app carries its widgets
-        run: test -d apple/DerivedData/Build/Products/Release/TodoTracker.app/Contents/PlugIns/OnethingWidgets.appex
+        run: test -d apple/DerivedData/Build/Products/Release/OneThing.app/Contents/PlugIns/OneThingWidgets.appex
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
       - name: Put the sync server in the Mac app (the tasks folder, synced with the other computers)
         run: |
-          dotnet publish src/TodoTracker.Web --configuration Release --runtime osx-arm64 --self-contained -p:PublishSingleFile=true --output artifacts/mac-server
-          app=apple/DerivedData/Build/Products/Release/TodoTracker.app
+          dotnet publish src/OneThing.Web --configuration Release --runtime osx-arm64 --self-contained -p:PublishSingleFile=true --output artifacts/mac-server
+          app=apple/DerivedData/Build/Products/Release/OneThing.app
           mkdir -p "$app/Contents/Resources/Server"
           cp -R artifacts/mac-server/. "$app/Contents/Resources/Server/"
           rm -f "$app/Contents/Resources/Server/"*.pdb
@@ -301,10 +301,10 @@ jobs:
           codesign --verify --deep "$app"
       - name: The bundled server starts and stops with the app that started it
         run: |
-          server=apple/DerivedData/Build/Products/Release/TodoTracker.app/Contents/Resources/Server/TodoTracker.Web
+          server=apple/DerivedData/Build/Products/Release/OneThing.app/Contents/Resources/Server/OneThing.Web
           data=$(mktemp -d)
           sleep 600 & parent=$!
-          TODOTRACKER_CLOUD=off TODOTRACKER_DATA="$data" TODOTRACKER_VAULT="$data/vault" TODOTRACKER_TOKEN=ci-token-0123456789abcdefghijklmnop \
+          ONETHING_CLOUD=off ONETHING_DATA="$data" ONETHING_VAULT="$data/vault" ONETHING_TOKEN=ci-token-0123456789abcdefghijklmnop \
             "$server" --port 5399 --parent-pid "$parent" > "$data/server.log" 2>&1 &
           server_pid=$!
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5399/health > /dev/null && break; sleep 1; done
@@ -315,16 +315,16 @@ jobs:
           if kill -0 "$server_pid" 2>/dev/null; then echo 'The server outlived its app'; cat "$data/server.log"; exit 1; fi
       - name: Package macOS app
         working-directory: apple
-        run: ditto -c -k --keepParent DerivedData/Build/Products/Release/TodoTracker.app TodoTracker-macOS.zip
+        run: ditto -c -k --keepParent DerivedData/Build/Products/Release/OneThing.app OneThing-macOS.zip
       - uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: apple/TodoTracker-macOS.zip
+          path: apple/OneThing-macOS.zip
       - name: Safari extension (an ad-hoc signed Mac app that carries the web extension)
         run: |
           mkdir -p safari-src && rsync -a --exclude tests --exclude safari extension/ safari-src/
           cp extension/safari/manifest.json safari-src/manifest.json
-          xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "Onething Extension" --bundle-identifier dev.todotracker.extension --macos-only --copy-resources --no-open --no-prompt --force
+          xcrun safari-web-extension-converter safari-src --project-location safari-build --app-name "One Thing Extension" --bundle-identifier dev.onething.extension --macos-only --copy-resources --no-open --no-prompt --force
           project=$(find safari-build -name '*.xcodeproj' -maxdepth 3 | head -1)
           # The converter names the app and its extension inconsistently; signing requires the extension's bundle id
           # to start with the app's. Set both (and the id the app's code uses to find its extension).
@@ -340,7 +340,7 @@ jobs:
               if not found:
                   return block
               appex = "SKIP_INSTALL = YES" in block or "Extension Extension" in block
-              new = "dev.todotracker.safari.extension" if appex else "dev.todotracker.safari"
+              new = "dev.onething.safari.extension" if appex else "dev.onething.safari"
               if appex:
                   old.add(found.group(1))
               return block.replace(found.group(0), f"PRODUCT_BUNDLE_IDENTIFIER = {new};")
@@ -349,7 +349,7 @@ jobs:
           for swift in glob.glob(f"{project}/../**/*.swift", recursive=True):
               code = open(swift).read()
               for ext in old:
-                  code = code.replace(f'"{ext}"', '"dev.todotracker.safari.extension"')
+                  code = code.replace(f'"{ext}"', '"dev.onething.safari.extension"')
               open(swift, "w").write(code)
           print("extension ids replaced:", old)
           PY
@@ -357,10 +357,10 @@ jobs:
           xcodebuild -list -project "$project"
           # Ad-hoc signed ("-"): Safari won't load an extension app with no signature at all, even with "Allow
           # Unsigned Extensions" on. Users still clear the download quarantine (docs/browser-extension.md).
-          xcodebuild -project "$project" -scheme "Onething Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
-          codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/Onething Extension.app"
-          ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/Onething Extension.app" TodoTracker-Safari-Extension.zip
+          xcodebuild -project "$project" -scheme "One Thing Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+          codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/One Thing Extension.app"
+          ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/One Thing Extension.app" OneThing-Safari-Extension.zip
       - uses: actions/upload-artifact@v4
         with:
           name: safari-extension
-          path: TodoTracker-Safari-Extension.zip
+          path: OneThing-Safari-Extension.zip

@@ -1,11 +1,7 @@
-# Onething guide
+# One Thing guide
 
-How to use every part of Onething. New here? Start with the [README](../README.md); for AI apps see
+How to use every part of One Thing. New here? Start with the [README](../README.md); for AI apps see
 [ai-connectors.md](ai-connectors.md).
-
-Onething used to be called Todo Tracker. Updating keeps everything where it was: your tasks folder is still
-`Documents/Todo Tracker`, sync still finds your other devices, and the `tt` command, the `todo-tracker` MCP server and
-the app's files keep their names.
 
 ## The Windows sidebar
 
@@ -14,12 +10,12 @@ The sidebar docks on the right. To move it, use **⋯ › Position**:
 - **Float as a window** makes it a normal window you can drag and resize. Turn on **⋯ › Always on top** if you want it
   to stay above other windows.
 
-Your choice is remembered. Onething also sits in the notification area (the tray): click its icon to bring the
+Your choice is remembered. One Thing also sits in the notification area (the tray): click its icon to bring the
 sidebar back; right-click it to open the full window, add a task, start or pause the focus timer, hide the sidebar
 (it gives the screen edge back) or quit. A red dot on it means a reminder is due.
 
 **⋯ › Hide the sidebar** puts it away until you want it back: it keeps running in the notification area, also after a
-restart. Click the tray icon, press Ctrl+Alt+Space, or start Onething again to bring it back.
+restart. Click the tray icon, press Ctrl+Alt+Space, or start One Thing again to bring it back.
 
 **Full-screen apps and Remote Desktop:** a full-screen window (a Remote Desktop session, a video) ignores the edge the
 sidebar reserves, so the sidebar goes behind it rather than covering part of it. A full-screen Remote Desktop session
@@ -105,7 +101,7 @@ and choose 24 hours between steps. Only the current step shows in **Do now**. Wh
 waits 24 hours and then comes back with a reminder.
 
 **Links to a task.** The link button in a task's header (or **⋯ › Copy link** on any card) copies
-`todotracker://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
+`onething://task/<id>`; paste it in a note, a chat, a mail or a calendar invite (rich editors show it as a link
 named after the task). Clicking it brings the app up on that task: on Windows the app window opens on it (and the app
 starts if it wasn't running), on macOS, iPhone and Android the task's details open,
 and on Linux the full window opens on it. `tt show` prints a task's link, `tt open <task>` opens it, and AI apps get
@@ -171,7 +167,7 @@ that folder in step with your computers and other phones through a **private Git
    **Generate token**, and copy it. Paste it in **GitHub token** (it's kept encrypted with the phone's keystore and sent
    only to GitHub).
 3. Check **Library**: devices with the same library name sync together. Your computers use the name of their tasks
-   folder, *Todo Tracker* unless you changed it. On each computer, choose **GitHub gist** in its Sync panel.
+   folder, *One Thing* unless you changed it. On each computer, choose **GitHub gist** in its Sync panel.
 4. Tap **Turn on sync**. The first sync brings in everything your other devices have, then adds the phone's own tasks
    beside them (nothing is replaced, and tabs with the same name meet). Until everything has come in, the phone's
    tasks wait to go out.
@@ -206,7 +202,7 @@ only if you'd like a reply, and press **Send**. Every note is read.
 
 No connection? The sheet keeps your note and says so; press **Send** again later (it's never filed twice). What's sent
 with it is only the app version, your system and its version, device model, language and screen size, never your tasks. The note becomes an issue on
-Onething's public GitHub repository (with your email, if you gave one): see [privacy](privacy.md). Nothing is sent
+One Thing's public GitHub repository (with your email, if you gave one): see [privacy](privacy.md). Nothing is sent
 unless you press **Send**; on the web and desktop apps you can also turn off the **Send feedback** extra (Settings ›
 Extras).
 
@@ -237,8 +233,8 @@ event at `GET /api/events`. See [hooks.md](hooks.md).
 
 ## Linux
 
-CI builds `todo-tracker-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
-(add `--autostart` to start it with your session): it puts Onething in your app menu and `todo-tracker` and `tt` in
+CI builds `onething-linux-x64.tar.gz` (artifact **linux-tray**; no .NET needed). Unpack it and run `./install.sh`
+(add `--autostart` to start it with your session): it puts One Thing in your app menu and `onething` and `tt` in
 `~/.local/bin`. The icon sits in the tray; on GNOME, tray icons need the AppIndicator extension. A second start opens
 the running one's window.
 
@@ -277,7 +273,7 @@ Workstreams and Recent notes (tap one to open its task). Drag a task in Do now a
   to rename it, change its color, or delete it. Its tasks move to the group you pick; they're never deleted.
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
-* **Settings** (in the sidebar, the gear on an iPhone, or Onething › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
+* **Settings** (in the sidebar, the gear on an iPhone, or One Thing › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
   also where your tasks are and **Sync** (below).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
@@ -318,13 +314,13 @@ The iPhone and iPad app keeps its tasks in a tasks folder on the device, the sam
 sync them with your computers and other phones on its own, with no computer running: open **Settings › Sync › Sync with
 your other devices** and pick one place.
 
-* **iCloud Drive:** choose **Choose the folder in iCloud Drive…** and pick **iCloud Drive › Apps › TodoTrackerSync**,
+* **iCloud Drive:** choose **Choose the folder in iCloud Drive…** and pick **iCloud Drive › Apps › OneThingSync**,
   the folder your Mac and Windows computers sync through. If it isn't there yet (your computers use OneDrive, or none
   synced yet), pick iCloud Drive and choose **Create it here**. To meet a Windows computer, it needs iCloud for Windows.
 * **A private GitHub gist:** choose **Make a token on GitHub…**, make a token with the **gist** scope, copy it, paste
   it and choose **Sync through a gist**. The token stays in the device's Keychain. Turn on GitHub gist sync on your
   computers too.
-* **Library:** devices with the same name sync together. It's **Todo Tracker** unless you changed it, the same as your
+* **Library:** devices with the same name sync together. It's **One Thing** unless you changed it, the same as your
   computers' tasks folder.
 
 The first sync brings everything from your other devices in before anything of this device goes out, so your tasks
@@ -345,10 +341,10 @@ stays, as `board.json.migrated`).
 
 ```bash
 # Web dashboard / API / MCP without the WPF shell (any OS)
-dotnet run --project src/TodoTracker.Web -- --port 5317 --data ./data
+dotnet run --project src/OneThing.Web -- --port 5317 --data ./data
 
 # macOS / iOS (on a Mac with Xcode)
-cd apple/TodoTrackerKit && swift test
-cd apple && brew install xcodegen && xcodegen generate && open TodoTracker.xcodeproj
+cd apple/OneThingKit && swift test
+cd apple && brew install xcodegen && xcodegen generate && open OneThing.xcodeproj
 ```
 

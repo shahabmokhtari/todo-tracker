@@ -43,7 +43,7 @@ test('Browser extension: loads unpacked, pairs with a code, and shows what to do
     const stored = await worker.evaluate(() => chrome.storage.local.get('token'));
     expect(stored.token).toMatch(/^ttb_/);
     expect(stored.token).not.toBe(token);
-    const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code } });
+    const reuse = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-OneThing-Client': 'browser-extension' }, data: { code } });
     expect(reuse.status()).toBe(400);
     expect(errors).toEqual([]);
   } finally {
@@ -59,7 +59,7 @@ test('Browser extension: the setup guide walks through the steps for this browse
   await expect(drawer).toContainText('Load unpacked');
   const download = page.waitForEvent('download');
   await drawer.getByRole('link', { name: 'Download the extension' }).click();
-  expect((await download).suggestedFilename()).toBe('todo-tracker-extension.zip');
+  expect((await download).suggestedFilename()).toBe('onething-extension.zip');
 
   await drawer.getByRole('button', { name: 'Safari (Mac)' }).click();
   await expect(drawer.getByRole('button', { name: 'Safari (Mac)' })).toHaveAttribute('aria-pressed', 'true');
@@ -72,7 +72,7 @@ test('Browser extension: the setup guide walks through the steps for this browse
 
   // When the extension uses the code, the guide says so and lists the browser, which can be removed.
   const code = (await shown.textContent()).replace(' ', '');
-  const claim = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-TodoTracker-Client': 'browser-extension' }, data: { code, name: 'Test browser' } });
+  const claim = await request.post('/api/plugins/browser-extension/claim', { headers: { 'X-OneThing-Client': 'browser-extension' }, data: { code, name: 'Test browser' } });
   expect(claim.ok()).toBeTruthy();
   await expect(drawer).toContainText('Paired with Test browser');
   await drawer.getByRole('button', { name: 'Remove Test browser' }).click();
