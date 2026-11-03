@@ -59,15 +59,21 @@ public sealed class PluginSettings
         ArgumentNullException.ThrowIfNull(plugin);
         lock (_lock)
         {
-            return Read()[plugin.Id] is JsonValue v && v.TryGetValue<bool>(out var on) ? on : plugin.DefaultEnabled;
+            return Read().All[plugin.Id] is JsonValue v && v.TryGetValue<bool>(out var on) ? on : plugin.DefaultEnabled;
         }
     }
 
+    /// <exception cref="InvalidOperationException">plugins.json can't be read: writing it now would forget the other switches.</exception>
     public void SetEnabled(string id, bool enabled)
     {
         lock (_lock)
         {
-            var all = Read();
+            var (all, problem) = Read();
+            if (problem is not null)
+            {
+                throw new InvalidOperationException($"Couldn't change your extras: {Path.GetFileName(_path)} in One Thing's data folder can't be read ({problem}). Fix or remove that file, then try again.");
+            }
+
             all[id] = enabled;
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
             File.WriteAllText(_path, all.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
@@ -77,21 +83,26 @@ public sealed class PluginSettings
         Changed?.Invoke(this, id);
     }
 
-    private JsonObject Read()
+    private (JsonObject All, string? Problem) Read()
     {
         if (_known is not null)
         {
-            return _known;
+            return (_known, null);
         }
 
         try
         {
-            return _known = File.Exists(_path) && JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? o : [];
+            if (!File.Exists(_path))
+            {
+                return (_known = [], null);
+            }
+
+            return JsonNode.Parse(File.ReadAllText(_path)) is JsonObject o ? (_known = o, null) : ([], "it isn't a list of switches");
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
             // Not remembered: read again next time rather than keep "everything off" for good.
-            return [];
+            return ([], ex.Message);
         }
     }
 }

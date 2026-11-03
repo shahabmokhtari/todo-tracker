@@ -87,11 +87,7 @@ public sealed class AppSessions
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(all, JsonSerializerOptions.Web));
-            if (!OperatingSystem.IsWindows())
-            {
-                File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
+            SecretFile.Write(_path, JsonSerializer.Serialize(all, JsonSerializerOptions.Web));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -123,16 +119,12 @@ public sealed class OwnerKey
         var path = Path.Combine(options.DataDirectory, FileName);
         if (File.Exists(path) && File.ReadAllText(path).Trim() is { Length: >= 32 } existing)
         {
+            SecretFile.Tighten(path);
             return new OwnerKey(existing);
         }
 
         var value = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        File.WriteAllText(path, value);
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-
+        SecretFile.Write(path, value);
         return new OwnerKey(value);
     }
 

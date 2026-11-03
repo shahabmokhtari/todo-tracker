@@ -34,17 +34,47 @@ public sealed class ApiToken
         var path = Path.Combine(options.DataDirectory, "api-token");
         if (File.Exists(path) && File.ReadAllText(path).Trim() is { Length: >= 32 } existing)
         {
+            SecretFile.Tighten(path);
             return new ApiToken(existing);
         }
 
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        File.WriteAllText(path, token);
-        if (!OperatingSystem.IsWindows())
+        SecretFile.Write(path, token);
+        return new ApiToken(token);
+    }
+}
+
+/// <summary>Files holding secrets (the API token, the owner key, sign-ins): readable only by this user from the start.</summary>
+internal static class SecretFile
+{
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+    /// <summary>Writes <paramref name="text"/> to <paramref name="path"/>, never readable by others even for a moment.</summary>
+    public static void Write(string path, string text)
+    {
+        if (OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.WriteAllText(path, text);
+            return;
         }
 
-        return new ApiToken(token);
+        using (var stream = new FileStream(path, new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None, UnixCreateMode = OwnerOnly }))
+        using (var writer = new StreamWriter(stream))
+        {
+            writer.Write(text);
+        }
+
+        // A file that was already there keeps its mode when it's written over.
+        Tighten(path);
+    }
+
+    /// <summary>Takes away what others could read or write in a file made before (by an older version).</summary>
+    public static void Tighten(string path)
+    {
+        if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(path) & ~OwnerOnly) != 0)
+        {
+            File.SetUnixFileMode(path, OwnerOnly);
+        }
     }
 }
 

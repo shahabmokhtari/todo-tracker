@@ -29,7 +29,41 @@ public sealed class SettingsStore
     {
         ArgumentNullException.ThrowIfNull(options);
         _path = Path.Combine(options.DataDirectory, "settings.json");
-        _current = File.Exists(_path) ? JsonSerializer.Deserialize<ServerSettings>(File.ReadAllText(_path), JsonSerializerOptions.Web) ?? new(null) : new(null);
+        _current = Load(_path, out var problem);
+        Problem = problem;
+    }
+
+    /// <summary>Why settings.json couldn't be read when the app started (it was set aside and the defaults are used), or null.</summary>
+    public string? Problem { get; }
+
+    private static ServerSettings Load(string path, out string? problem)
+    {
+        problem = null;
+        if (!File.Exists(path))
+        {
+            return new(null);
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<ServerSettings>(File.ReadAllText(path), JsonSerializerOptions.Web) ?? new(null);
+        }
+        catch (JsonException ex)
+        {
+            // A torn or hand-broken file must never stop the app (or ot) from starting: kept aside, to look at.
+            var aside = path + ".bad";
+            try
+            {
+                File.Move(path, aside, overwrite: true);
+                problem = $"Your settings couldn't be read ({ex.Message}), so One Thing started with the defaults. The old file is kept as {aside}.";
+            }
+            catch (Exception moveFailed) when (moveFailed is IOException or UnauthorizedAccessException)
+            {
+                problem = $"Your settings couldn't be read ({ex.Message}), so One Thing started with the defaults.";
+            }
+
+            return new(null);
+        }
     }
 
     public ServerSettings Current
@@ -155,11 +189,17 @@ public sealed class SettingsStore
 
     private void Save()
     {
+        // Into a file next to it, then swapped in: a crash or a full disk mid-write never leaves half a file.
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        File.WriteAllText(_path, JsonSerializer.Serialize(_current, JsonSerializerOptions.Web));
-        if (!OperatingSystem.IsWindows())
+        var temp = $"{_path}.{Guid.NewGuid():N}.tmp";
+        try
         {
-            File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            SecretFile.Write(temp, JsonSerializer.Serialize(_current, JsonSerializerOptions.Web));
+            File.Move(temp, _path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temp);
         }
     }
 
