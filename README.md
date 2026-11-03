@@ -54,9 +54,9 @@ calm until it matters.
 | ![Reports: time tracked, tasks done, a streak, time per day, a donut by group, where the time went, and when you work](docs/images/reports.png) | ![Tasks: an outline of every task with icons, labels, tags, deadlines and time spent; a rollout expanded into its steps](docs/images/tasks.png) |
 | See **where the time went**: by day, group and task, and when you work best. | **Type an outline**: Enter for the next task, Tab to nest, Space to finish. |
 
-| Everything about a task | The Windows sidebar | On your phone |
+| Everything about a task | The Windows sidebar | In a narrow window |
 |---|---|---|
-| ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app on a phone: Today with the focus card and a tab bar](docs/images/phone.png) |
+| ![A task's details: icon, labels, color, tags, priority, deadline, repeat, plan, details, time spent and reminders](docs/images/task-details.png) | ![The Windows sidebar docked to the screen edge: the focus card, Do now, a focus timer and Ask AI](docs/images/windows-sidebar.png) | ![The web app in a narrow window: Today with the focus card and a tab bar](docs/images/phone.png) |
 | Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | Native Android and iPhone apps. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
