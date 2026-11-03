@@ -22,6 +22,14 @@ final class SyncFixtureTests: XCTestCase {
         }
     }
 
+    func testSettingsWithTwoEntriesOfTheSameIdStillMergeTheFirstCounts() throws {
+        let base = try JSONText.parse(#"{"groups":[{"id":"a","name":"Work"}]}"#)
+        let mine = try JSONText.parse(#"{"groups":[{"id":"a","name":"Work"},{"id":"a","name":"Copy"},{"id":"b","name":"Home"}]}"#)
+        let theirs = try JSONText.parse(#"{"groups":[{"id":"a","name":"Job"}]}"#)
+        let merged = try XCTUnwrap(try SyncPlanner.mergeNode(base, mine, theirs))
+        XCTAssertEqual(JSONText.write(merged), #"{"groups":[{"id":"a","name":"Job"},{"id":"b","name":"Home"}]}"#)
+    }
+
     func testALongFileWithChangesCloseTogetherMergesWithoutTheWholeTable() {
         let base = (0..<3000).map { "line \($0)\n" }
         var first = base, second = base

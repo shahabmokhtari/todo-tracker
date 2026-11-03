@@ -357,18 +357,18 @@ public enum SyncPlanner {
 
     private static func mergeKeyed(_ base: [JSONValue]?, _ winner: [JSONValue], _ loser: [JSONValue], _ keyName: String) throws -> [JSONValue] {
         func key(_ node: JSONValue) -> String { JSONText.write(node.objectValue![keyName]!) }
-        func dictionary(_ list: [JSONValue]) throws -> [(String, JSONValue)] {
+        // Two entries with the same id (or name), say from a hand-edited file: the first one counts, the merge goes on.
+        func dictionary(_ list: [JSONValue]) -> [(String, JSONValue)] {
             var result: [(String, JSONValue)] = []
             for item in list {
                 let k = key(item)
-                if result.contains(where: { $0.0.oEq(k) }) { throw SyncDataError("Two entries in the settings have the same \(keyName): \(k).") }
-                result.append((k, item))
+                if !result.contains(where: { $0.0.oEq(k) }) { result.append((k, item)) }
             }
             return result
         }
         func find(_ list: [(String, JSONValue)], _ k: String) -> JSONValue? { list.first { $0.0.oEq(k) }?.1 }
-        let old = try dictionary((base ?? []).filter { isPrimitive($0.objectValue?[keyName]) })
-        let w = try dictionary(winner), l = try dictionary(loser)
+        let old = dictionary((base ?? []).filter { isPrimitive($0.objectValue?[keyName]) })
+        let w = dictionary(winner), l = dictionary(loser)
         var result: [JSONValue] = []
         for k in w.map(\.0) + l.map(\.0).filter({ k in find(w, k) == nil }) {
             let bv = find(old, k)
