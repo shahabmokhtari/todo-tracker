@@ -34,11 +34,11 @@ final class EnergyTests: XCTestCase {
         XCTAssertEqual(Energy.of(task), 3)
         XCTAssertThrowsError(try board.setEnergy(task.id, level: 4, now: now))
         XCTAssertEqual(board.dailyEnergy, 10)
-        try board.setEnergyPerDay(6)
+        try board.setEnergyPerDay(6, now: now)
         let again = try BoardCodec.decode(try BoardCodec.encode(board))
         XCTAssertEqual(again.dailyEnergy, 6)
         XCTAssertEqual(again.find(task.id)?.energy, 3)
-        XCTAssertThrowsError(try board.setEnergyPerDay(0))
+        XCTAssertThrowsError(try board.setEnergyPerDay(0, now: now))
     }
 
     func testTheLineReadsLikeTheOtherApps() {
