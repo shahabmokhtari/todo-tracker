@@ -34,6 +34,7 @@ public sealed class LauncherTests : IDisposable
 
     public void Dispose()
     {
+        CliHarness.ForgetDefaultLock(Path.Combine(_data, "vault"));
         try
         {
             Directory.Delete(_data, recursive: true);
