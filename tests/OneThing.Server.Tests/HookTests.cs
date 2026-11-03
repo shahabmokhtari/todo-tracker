@@ -18,7 +18,7 @@ public sealed class HookTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _server = await ServerFixture.StartAsync();
-        _client = _server.Client();
+        _client = _server.OwnerClient();
         await Hooks.ScanAsync(); // the first look: what's already there isn't news
     }
 
@@ -218,11 +218,53 @@ public sealed class HookTests : IAsyncLifetime
 
 
         // Names come back as written (the API's camelCase doesn't touch them: variable names are case-sensitive).
-        Assert.Equal("•••", (await _client.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
+        Assert.Equal("•••", (await _server.Client().GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
         Assert.Equal("Bearer secret", (await app.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!["headers"]!["Authorization"]!.GetValue<string>());
     }
 
     private static object Exit0 => new { type = "command", powershell = "exit 0", bash = "exit 0", name = "quiet" };
+
+    [Fact]
+    public async Task An_agent_can_switch_off_or_remove_only_the_hooks_it_added()
+    {
+        using var app = AppClient();
+        using var claude = _server.Client(actor: "agent:claude");
+        using var copilot = _server.Client(actor: "agent:copilot");
+        var yours = (await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 }))["id"]!.GetValue<string>();
+        var its = (await claude.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["id"]!.GetValue<string>();
+
+        // hooks.json keeps no versions: a hook of yours gone would be gone for good.
+        Assert.Equal(HttpStatusCode.Forbidden, (await claude.PostAsJsonAsync($"/api/hooks/{yours}/enabled", new { enabled = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await claude.DeleteAsync($"/api/hooks/{yours}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await copilot.DeleteAsync($"/api/hooks/{its}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await claude.PostAsJsonAsync($"/api/hooks/{its}/reject", new { version = "0123456789abcdef" })).StatusCode);
+
+        Assert.False((await claude.PostJson($"/api/hooks/{its}/enabled", new { enabled = false }))["hook"]!["enabled"]!.GetValue<bool>());
+        Assert.Equal(HttpStatusCode.NoContent, (await claude.DeleteAsync($"/api/hooks/{its}")).StatusCode);
+        Assert.Equal("on", Assert.Single((await app.GetJson("/api/hooks"))["hooks"]!.AsArray())!["state"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Recent_runs_and_secret_addresses_are_hidden_from_anything_but_the_owners_session()
+    {
+        using var app = AppClient();
+        using var agent = _server.Client(actor: "agent:claude");
+        const string url = "https://prod.example.com/workflows/abc/invoke?sig=s3cret";
+        await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = new { type = "command", powershell = "Write-Output private", bash = "echo private" } });
+        var web = (await app.PostJson("/api/hooks", new { @event = "reminderDue", hook = new { type = "http", url } }))["id"]!.GetValue<string>();
+        await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" });
+
+        var seen = await agent.GetJson("/api/hooks");
+
+        Assert.Empty(seen["runs"]!.AsArray());
+        Assert.NotEmpty((await app.GetJson("/api/hooks"))["runs"]!.AsArray());
+        var shown = seen["hooks"]!.AsArray().Single(h => h!["id"]!.GetValue<string>() == web)!["hook"]!;
+        Assert.Equal("https://prod.example.com/•••", shown["url"]!.GetValue<string>());
+
+        // Sent back as shown (an agent renaming it), the address stays what it was.
+        await (await agent.PutAsJsonAsync($"/api/hooks/{web}", new { hook = new { type = "http", url = shown["url"]!.GetValue<string>(), name = "renamed" } })).Json();
+        Assert.Equal(url, (await app.GetJson("/api/hooks"))["hooks"]!.AsArray().Single(h => h!["id"]!.GetValue<string>() == web)!["hook"]!["url"]!.GetValue<string>());
+    }
 
     [Fact]
     public async Task The_app_is_asked_once_about_each_version_of_a_hook_an_agent_adds_or_changes()
@@ -312,12 +354,12 @@ public sealed class HookTests : IAsyncLifetime
         var added = await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 });
         var id = added["id"]!.GetValue<string>();
         Assert.Equal(("needs approval", "claude"), (added["state"]!.GetValue<string>(), added["hook"]!["addedBy"]!.GetValue<string>()));
-        Assert.Empty((await agent.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
+        Assert.Empty((await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
 
         // The agent (anything with the token) can't approve its own hook; the app can.
         Assert.Equal(HttpStatusCode.Forbidden, (await agent.PostAsync($"/api/hooks/{id}/approve", null)).StatusCode);
         Assert.Equal("on", (await app.PostJson($"/api/hooks/{id}/approve"))["state"]!.GetValue<string>());
-        Assert.Single((await agent.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
+        Assert.Single((await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" })).AsArray());
 
         // A change by the agent needs approval again; your change to it keeps it waiting (only approving approves),
         // and one to a hook that isn't waiting runs at once.

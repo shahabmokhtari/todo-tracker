@@ -59,7 +59,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in One Thing, and whether each is on, off or waiting for approval. |
 | [`add_hook`](#add_hook) | Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. |
 | [`set_hook_enabled`](#set_hook_enabled) | Switch a hook on or off (by its id from list_hooks). |
-| [`remove_hook`](#remove_hook) | Remove a hook (by its id from list_hooks). |
+| [`remove_hook`](#remove_hook) | Remove a hook you added (by its id from list_hooks). |
 
 ### `get_dashboard`
 
@@ -187,7 +187,7 @@ Add a reminder without deferring the task.
 
 ### `complete_task`
 
-Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that). *(idempotent)*
+Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that), so don't call it twice for one repeating task.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
@@ -380,17 +380,17 @@ Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event
 
 ### `set_hook_enabled`
 
-Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.
+Switch a hook on or off (by its id from list_hooks). You can only switch hooks you added yourself; the user's own hooks are theirs to switch. A hook waiting for approval still needs the user's approval to run.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| `hookId` | text | required | The hook's id, from list_hooks. |
+| `hookId` | text | required | The hook's id, from list_hooks (one you added). |
 | `enabled` | true/false | required | On (true) or off (false). |
 
 ### `remove_hook`
 
-Remove a hook (by its id from list_hooks). *(removes something)*
+Remove a hook you added (by its id from list_hooks). The user's own hooks can only be removed by them, in Settings › Hooks. *(removes something)*
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
-| `hookId` | text | required | The hook's id, from list_hooks. |
+| `hookId` | text | required | The hook's id, from list_hooks (one you added). |

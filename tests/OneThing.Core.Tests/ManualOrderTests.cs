@@ -50,7 +50,7 @@ public class ManualOrderTests
     {
         var low = Add("Low chosen", Priority.Low);
         Add("Other");
-        _board.PutFirst([low.Id], T0);
+        _board.PutFirst([low.Id], Actor.User, T0);
 
         Add("Just captured");
 
@@ -63,7 +63,7 @@ public class ManualOrderTests
         var a = Add("A");
         _board.Complete(a.Id, Actor.User, T0);
 
-        Assert.Throws<InvalidOperationException>(() => _board.PutFirst([a.Id], T0));
+        Assert.Throws<InvalidOperationException>(() => _board.PutFirst([a.Id], Actor.User, T0));
     }
 
     [Fact]
@@ -114,9 +114,23 @@ public class ManualOrderTests
         var b = Add("B");
         var c = Add("C", Priority.Low);
 
-        _board.PutFirst([c.Id, b.Id], T0);
+        _board.PutFirst([c.Id, b.Id], Actor.User, T0);
 
         Assert.Equal(["C", "B", "A"], Now());
+    }
+
+    [Fact]
+    public void Put_first_says_who_put_the_task_first()
+    {
+        Add("A");
+        var b = Add("B");
+
+        _board.PutFirst([b.Id], Actor.Agent("claude"), T0);
+
+        var entry = _board.Activity[^1];
+        Assert.Equal(b.Id, entry.ItemId);
+        Assert.Equal("Put \"B\" first", entry.Summary);
+        Assert.Equal(Actor.Agent("claude"), entry.Actor);
     }
 
     [Fact]

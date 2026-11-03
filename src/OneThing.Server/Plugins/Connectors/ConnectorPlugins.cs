@@ -131,7 +131,8 @@ public static class ConnectorEndpoints
             return;
         }
 
-        var group = app.MapGroup("/api/plugins/connectors").AddEndpointFilter(ApiEndpoints.MapDomainErrors).AddEndpointFilter(OutsideErrors);
+        var group = app.MapGroup("/api/plugins/connectors").AddEndpointFilter(ApiEndpoints.MapDomainErrors).AddEndpointFilter(OutsideErrors)
+            .OwnerOnlyChanges("Only you can change connected apps: in Settings › Connected apps of the One Thing app.");
         group.MapGet("/", (ConnectorService c) => c.View);
         group.MapPut("/{id}", (string id, ConnectorConfigRequest request, ConnectorService c, CancellationToken ct) => c.ConfigureAsync(id, request, ct));
         group.MapPost("/{id}/preview", (string id, ConnectorService c, CancellationToken ct) => c.PreviewAsync(id, ct));

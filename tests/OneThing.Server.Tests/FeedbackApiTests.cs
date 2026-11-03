@@ -38,7 +38,7 @@ public sealed class FeedbackApiTests : IAsyncLifetime
     [Fact]
     public async Task A_note_goes_to_the_relay_with_the_public_key_coarse_facts_and_nothing_from_the_tasks()
     {
-        await _server.Client().PostJson("/api/items", new { title = "Secret project Falcon" });
+        await _server.OwnerClient().PostJson("/api/items", new { title = "Secret project Falcon" });
         using var app = await AppClientAsync();
         var id = Guid.NewGuid().ToString();
 
@@ -161,7 +161,7 @@ public sealed class FeedbackApiTests : IAsyncLifetime
     public async Task Switched_off_it_sends_nothing()
     {
         using var app = await AppClientAsync();
-        await _server.Client().PutAsJsonAsync("/api/plugins/feedback", new { enabled = false });
+        await _server.OwnerClient().PutAsJsonAsync("/api/plugins/feedback", new { enabled = false });
 
         Assert.Equal(HttpStatusCode.NotFound, (await app.PostAsJsonAsync("/api/plugins/feedback", Note(Guid.NewGuid().ToString()))).StatusCode);
         Assert.Empty(_server.Relay.Requests);

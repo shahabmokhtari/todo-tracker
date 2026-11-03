@@ -26,7 +26,8 @@ public static class OneThingHost
         // The app's own host moves the tasks if Settings asked for it (see PrepareStorage); what got in the way shows in
         // Settings › Connected apps › GitHub.
         Directory.CreateDirectory(options.DataDirectory);
-        if (PrepareStorage(options, new SettingsStore(options), TimeProvider.System) is { } storageProblem)
+        var settings = new SettingsStore(options);
+        if (PrepareStorage(options, settings, TimeProvider.System) is { } storageProblem)
         {
             new Plugins.Connectors.ConnectorFiles(options.DataDirectory, "github").Update(s => s with { LastResult = "Couldn't move your tasks", Problems = [storageProblem] });
         }
@@ -50,9 +51,15 @@ public static class OneThingHost
         });
 
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+
+        // The settings read above (one that couldn't be read was set aside then): the app logs why once it starts.
+        builder.Services.AddSingleton(settings);
         AddServices(builder.Services, options);
         return builder;
     }
+
+    private static readonly Action<ILogger, string, Exception?> LogSettingsProblem =
+        LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1, "SettingsSetAside"), "{Problem}");
 
     public static void AddServices(IServiceCollection services, OneThingServerOptions options)
     {
@@ -92,7 +99,7 @@ public static class OneThingHost
         Directory.CreateDirectory(options.DataDirectory);
         services.AddSingleton(options);
         services.TryAddSingleton(TimeProvider.System);
-        services.AddSingleton<SettingsStore>();
+        services.TryAddSingleton<SettingsStore>();
         services.TryAddSingleton(sp => OpenVault(options, sp.GetRequiredService<SettingsStore>(), sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<IBoardStore>(sp => sp.GetRequiredService<VaultBoardStore>());
         services.AddSingleton<VaultLinks>();
@@ -263,6 +270,10 @@ public static class OneThingHost
         // Fail fast if another instance owns the data folder, or the vault can't be opened.
         app.Services.GetRequiredService<InstanceLock>();
         app.Services.GetRequiredService<IBoardStore>();
+        if (app.Services.GetRequiredService<SettingsStore>().Problem is { } settingsProblem)
+        {
+            LogSettingsProblem(app.Logger, settingsProblem, null);
+        }
 
         app.Use((context, next) => Security.Guard(context, next, options, token));
 

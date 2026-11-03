@@ -8,18 +8,27 @@ namespace OneThing.Server;
 /// <summary>Version history of the vault (null <see cref="History"/> when it's off or git isn't installed).</summary>
 public sealed class HistoryService : IDisposable
 {
-    public HistoryService(VaultBoardStore vault, OneThingServerOptions options)
+    private readonly Plugins.PluginHost? _plugins;
+    private readonly VaultHistory? _history;
+
+    public HistoryService(VaultBoardStore vault, OneThingServerOptions options, Plugins.PluginHost? plugins = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        History = options.EnableHistory ? VaultHistory.TryCreate(vault, options.Git) : null;
+        _plugins = plugins;
+        _history = options.EnableHistory ? VaultHistory.TryCreate(vault, options.Git) : null;
     }
 
-    public VaultHistory? History { get; }
+    /// <summary>The versions, or null: switched off (also since the app started) or git isn't installed.</summary>
+    public VaultHistory? History => IsSwitchedOff ? null : _history;
+
+    private bool IsSwitchedOff => _plugins?.IsSwitchedOff(Plugins.HistoryPlugin.Definition.Id) == true;
 
     public VaultHistory Required =>
-        History ?? throw new NotSupportedException("Version history is off (it needs git: install it from git-scm.com and restart).");
+        IsSwitchedOff
+            ? throw new NotSupportedException("Version history is switched off. Switch it on in Settings › Extras to save and restore versions.")
+            : _history ?? throw new NotSupportedException("Version history is off (it needs git: install it from git-scm.com and restart).");
 
-    public void Dispose() => History?.Dispose();
+    public void Dispose() => _history?.Dispose();
 }
 
 /// <summary>

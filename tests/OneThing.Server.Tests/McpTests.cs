@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using OneThing.Core;
@@ -273,5 +274,52 @@ public sealed class McpTests : IAsyncLifetime
 
         Assert.Equal(_server.VaultDirectory, info.GetProperty("path").GetString());
         Assert.Contains("One Thing vault", info.GetProperty("guide").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_agent_can_not_switch_off_or_remove_the_users_own_hooks()
+    {
+        var yours = _server.App.Services.GetRequiredService<Hooks.HookStore>().Add("taskCompleted", new Hooks.HookSpec { Powershell = "exit 0", Bash = "exit 0" }, Hooks.HookAuthor.You, ServerFixture.T0);
+
+        var off = await _mcp.CallToolAsync("set_hook_enabled", new Dictionary<string, object?> { ["hookId"] = yours.Id, ["enabled"] = false });
+        var removed = await _mcp.CallToolAsync("remove_hook", new Dictionary<string, object?> { ["hookId"] = yours.Id });
+
+        Assert.True(off.IsError);
+        Assert.True(removed.IsError);
+        Assert.Contains("only switch on or off hooks it added", string.Concat(off.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        Assert.Equal("on", Assert.Single((await Call("list_hooks", new())).EnumerateArray()).GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task Completing_a_task_is_not_marked_safe_to_repeat()
+    {
+        // A repeating task moves on to its next time each time it's completed: a retry would skip one.
+        var complete = (await _mcp.ListToolsAsync()).Single(t => t.Name == "complete_task");
+
+        Assert.NotEqual(true, complete.ProtocolTool.Annotations?.IdempotentHint);
+    }
+
+    [Fact]
+    public async Task Restoring_a_version_while_version_history_is_switched_off_says_so()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Draft" });
+        _server.App.Services.GetRequiredService<Plugins.PluginHost>().Settings.SetEnabled("history", false);
+
+        var result = await _mcp.CallToolAsync("restore_task_version", new Dictionary<string, object?> { ["taskId"] = task.GetProperty("id").GetString(), ["versionId"] = "abc123" });
+
+        Assert.True(result.IsError);
+        Assert.Contains("Version history is switched off", string.Concat(result.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Putting_tasks_first_is_credited_to_the_agent()
+    {
+        var task = await Call("create_task", new() { ["title"] = "Call the bank" });
+
+        await Call("put_first", new() { ["taskIds"] = new[] { task.GetProperty("id").GetString() } });
+
+        var report = await Call("get_report", new() { ["taskId"] = task.GetProperty("id").GetString() });
+        var entry = report.GetProperty("timeline").EnumerateArray().Single(e => e.GetProperty("summary").GetString() == "Put \"Call the bank\" first");
+        Assert.Equal("Agent: copilot-test", entry.GetProperty("actor").GetString());
     }
 }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using OneThing.Core;
@@ -34,17 +35,47 @@ public sealed class ApiToken
         var path = Path.Combine(options.DataDirectory, "api-token");
         if (File.Exists(path) && File.ReadAllText(path).Trim() is { Length: >= 32 } existing)
         {
+            SecretFile.Tighten(path);
             return new ApiToken(existing);
         }
 
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        File.WriteAllText(path, token);
-        if (!OperatingSystem.IsWindows())
+        SecretFile.Write(path, token);
+        return new ApiToken(token);
+    }
+}
+
+/// <summary>Files holding secrets (the API token, the owner key, sign-ins): readable only by this user from the start.</summary>
+internal static class SecretFile
+{
+    private const UnixFileMode OwnerOnly = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+    /// <summary>Writes <paramref name="text"/> to <paramref name="path"/>, never readable by others even for a moment.</summary>
+    public static void Write(string path, string text)
+    {
+        if (OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.WriteAllText(path, text);
+            return;
         }
 
-        return new ApiToken(token);
+        using (var stream = new FileStream(path, new FileStreamOptions { Mode = FileMode.Create, Access = FileAccess.Write, Share = FileShare.None, UnixCreateMode = OwnerOnly }))
+        using (var writer = new StreamWriter(stream))
+        {
+            writer.Write(text);
+        }
+
+        // A file that was already there keeps its mode when it's written over.
+        Tighten(path);
+    }
+
+    /// <summary>Takes away what others could read or write in a file made before (by an older version).</summary>
+    public static void Tighten(string path)
+    {
+        if (!OperatingSystem.IsWindows() && (File.GetUnixFileMode(path) & ~OwnerOnly) != 0)
+        {
+            File.SetUnixFileMode(path, OwnerOnly);
+        }
     }
 }
 
@@ -66,8 +97,9 @@ internal static class Security
         context.Items.TryGetValue(ActorKey, out var actor) && actor is Actor a ? a : Actor.User;
 
     /// <summary>
-    /// The request comes from a session the app opened itself (see <see cref="AppSessions"/>), so from the person at this
-    /// computer; not from something holding the API token (an AI agent, a script, another app).
+    /// The request comes from a session the app opened itself (see <see cref="AppSessions"/>), or from an app that sends
+    /// the owner key with the token (the Mac app), so from the person at this computer; not from something holding only
+    /// the API token (an AI agent, a script, another app).
     /// </summary>
     public static bool IsAppSession(HttpContext context) => context.Items.TryGetValue(SessionKey, out var session) && session is true;
 
@@ -116,7 +148,11 @@ internal static class Security
         var bearer = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? authorization["Bearer ".Length..].Trim() : null;
         if (bearer is not null && token.Matches(bearer))
         {
-            context.Items[ActorKey] = ParseActor(context.Request.Headers[ActorHeader].ToString());
+            // The owner key (only in the data folder, never handed out) on top of the token: an app of the person at
+            // this computer, like the Mac app. The token alone could be anything that has it.
+            var owner = context.RequestServices.GetService<OwnerKey>()?.Matches(context.Request.Headers[OwnerKey.Header].ToString()) == true;
+            context.Items[ActorKey] = ParseActor(context.Request.Headers[ActorHeader].ToString(), owner);
+            context.Items[SessionKey] = owner;
         }
         else if (bearer is not null && context.RequestServices.GetService<PairedBrowsers>()?.Match(bearer) is not null
             && context.RequestServices.GetService<Plugins.PluginHost>()?.IsSwitchedOff(Plugins.BrowserExtensionPlugin.Id) != true)
@@ -181,11 +217,12 @@ internal static class Security
             IsEssential = true,
         });
 
-    internal static Actor ParseActor(string header)
+    /// <summary>Who made a change sent with the API token (the X-OneThing-Actor header); only the owner's own apps are you.</summary>
+    internal static Actor ParseActor(string header, bool owner)
     {
         if (string.IsNullOrWhiteSpace(header))
         {
-            return Actor.User;
+            return owner ? Actor.User : Actor.Agent(ApiClient);
         }
 
         var value = header.Trim();
@@ -199,9 +236,33 @@ internal static class Security
             "browser" or "browser-extension" => new Actor(ActorKind.Browser),
             "teams" => new Actor(ActorKind.Teams),
             "agent" => Actor.Agent("agent"),
-            _ => Actor.User,
+            _ => owner ? Actor.User : Actor.Agent(ApiClient),
         };
     }
+
+    /// <summary>What a change made with only the API token, without saying who, is shown as.</summary>
+    public const string ApiClient = "API client";
+
+    /// <summary>
+    /// Only the person at this computer (the app's own session, or an app with the owner key) may use these endpoints;
+    /// anything holding only the API token (an AI agent, a script) gets 403 with <paramref name="refusal"/>.
+    /// </summary>
+    public static TBuilder OwnerOnly<TBuilder>(this TBuilder builder, string refusal)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.AddEndpointFilter(async (context, next) => IsAppSession(context.HttpContext)
+            ? await next(context).ConfigureAwait(false)
+            : Results.Problem(refusal, statusCode: StatusCodes.Status403Forbidden));
+
+    /// <summary>Like <see cref="OwnerOnly"/>, for what changes things: reading stays open to the API token.</summary>
+    public static TBuilder OwnerOnlyChanges<TBuilder>(this TBuilder builder, string refusal)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.AddEndpointFilter(async (context, next) =>
+        {
+            var method = context.HttpContext.Request.Method;
+            return HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || IsAppSession(context.HttpContext)
+                ? await next(context).ConfigureAwait(false)
+                : Results.Problem(refusal, statusCode: StatusCodes.Status403Forbidden);
+        });
 
     private static bool IsLoopback(HttpContext context)
     {

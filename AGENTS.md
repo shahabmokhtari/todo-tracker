@@ -96,7 +96,8 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
   code with `OperatingSystem.IsWindows()`/`IsMacOS()`, use `Path.Combine`, and find external tools (git, gh) without
   assuming the PATH a terminal has.
 - **Local only, owner first.** The server binds to loopback, checks the Host header and a bearer token. Things only the
-  person at the computer may do (approve hooks, move where tasks live) check `Security.IsAppSession`.
+  person at the computer may do (approve hooks, move where tasks live, delete) check `Security.IsAppSession` (on an
+  endpoint: `.OwnerOnly("…")`); the Mac app counts as the owner by sending the owner key with the token.
 - **Extras are plugins** (`src/OneThing.Server/Plugins`): each can be switched off; new ones are registered in
   `Plugins.BuiltIn` (and listed in `tests/.../PluginApiTests.cs`).
 

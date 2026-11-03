@@ -87,11 +87,7 @@ public sealed class AppSessions
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(all, JsonSerializerOptions.Web));
-            if (!OperatingSystem.IsWindows())
-            {
-                File.SetUnixFileMode(_path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
+            SecretFile.Write(_path, JsonSerializer.Serialize(all, JsonSerializerOptions.Web));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -105,7 +101,8 @@ public sealed class AppSessions
 /// <summary>
 /// A second secret in the data folder (<c>owner-key</c>, readable only by this user) that the server never hands out:
 /// apps on this computer that start or find the server (the Mac app, a second tray) send it to ask for a launch link
-/// that opens the owner's session. Something with only the API token can't.
+/// that opens the owner's session, or with every request (the Mac app) to act as the owner. Something with only the
+/// API token can't.
 /// </summary>
 public sealed class OwnerKey
 {
@@ -123,16 +120,12 @@ public sealed class OwnerKey
         var path = Path.Combine(options.DataDirectory, FileName);
         if (File.Exists(path) && File.ReadAllText(path).Trim() is { Length: >= 32 } existing)
         {
+            SecretFile.Tighten(path);
             return new OwnerKey(existing);
         }
 
         var value = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
-        File.WriteAllText(path, value);
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
-
+        SecretFile.Write(path, value);
         return new OwnerKey(value);
     }
 

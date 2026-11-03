@@ -11,8 +11,11 @@ test.describe.configure({ mode: 'serial' });
 
 let group;
 
-async function open(page, request, hash = '') {
-  const launch = await (await request.post('/api/launch', { headers: auth, data: { return: '/' } })).json();
+/** The token and the owner key from the data folder: an app of the person at this computer (as the Mac app sends them). */
+const ownerAuth = () => ({ ...auth, 'X-OneThing-Owner-Key': fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim() });
+
+async function open(page, request, hash = '', { owner = false } = {}) {
+  const launch = await (await request.post('/api/launch', { headers: owner ? ownerAuth() : auth, data: { return: '/' } })).json();
   await page.goto(launch.url);
   await expect(page.locator('#board')).toBeVisible();
   // Only this file's tasks: its own group.
@@ -354,7 +357,7 @@ test('Copy for Loop: a group as a checklist to paste into a Loop page', async ({
 });
 test('Settings: light or dark for every window, and connected apps switch on at once', async ({ page, request }) => {
   const errors = watchErrors(page);
-  await open(page, request);
+  await open(page, request, '', { owner: true });
   await page.keyboard.press('Alt+7');
   await expect(page).toHaveURL(/#\/settings$/);
   const settings = page.locator('#view-settings');
@@ -789,24 +792,27 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await expect(pending).toContainText('ot hooks approve');
   await expect(pending.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 
-  // Change it: the form keeps what it doesn't show; switch it off; remove it.
+  // Change it: the form keeps what it doesn't show. Switching off and removing is only for the hooks it added itself
+  // (an agent's, like the user's own, aren't its to take away).
   await pending.getByRole('button', { name: 'Change Agent hook' }).click();
   await hooks.getByRole('textbox', { name: 'Name' }).fill('Agent hook renamed');
   await hooks.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('#toast')).toContainText('Hook changed');
   const renamed = hooks.locator('.hook-row', { hasText: 'Agent hook renamed' });
-  await renamed.getByRole('checkbox').uncheck();
   await expect(renamed).toContainText('needs approval');
-  await renamed.getByRole('button', { name: 'Remove Agent hook renamed' }).click();
-  await expect(hooks.locator('.hook-row', { hasText: 'Agent hook' })).toHaveCount(0);
+  await mine.getByRole('checkbox').uncheck();
+  await expect(mine).toContainText('needs approval');
+  await mine.getByRole('button', { name: 'Remove Log what got done' }).click();
+  await expect(hooks.locator('.hook-row', { hasText: 'Log what got done' })).toHaveCount(0);
+  await expect(renamed).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
 test('Hooks: the app asks you about a hook an agent added, and once allowed it just runs', async ({ page, request }) => {
   const errors = watchErrors(page);
   // Only the owner's session (the app's own, as the Mac app and the tray open it with the owner key) is asked.
-  for (const x of (await (await request.get('/api/hooks', { headers: auth })).json()).hooks) {
-    await request.delete(`/api/hooks/${x.id}`, { headers: auth });
+  for (const x of (await (await request.get('/api/hooks', { headers: ownerAuth() })).json()).hooks) {
+    await request.delete(`/api/hooks/${x.id}`, { headers: ownerAuth() });
   }
   const added = await (await request.post('/api/hooks', { headers: { ...auth, 'X-OneThing-Actor': 'agent:claude' }, data: { event: 'taskCompleted', hook: { type: 'command', powershell: 'exit 0', bash: 'exit 0', name: 'Celebrate' } } })).json();
   const ownerKey = fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim();
@@ -822,8 +828,8 @@ test('Hooks: the app asks you about a hook an agent added, and once allowed it j
 
   const after = (await (await request.get('/api/hooks', { headers: auth })).json()).hooks.find((x) => x.id === added.id);
   expect(after.state).toBe('on');
-  expect((await (await request.post('/api/hooks/test', { headers: auth, data: { event: 'taskCompleted' } })).json()).length).toBe(1);
-  await request.delete(`/api/hooks/${added.id}`, { headers: auth });
+  expect((await (await request.post('/api/hooks/test', { headers: ownerAuth(), data: { event: 'taskCompleted' } })).json()).length).toBe(1);
+  await request.delete(`/api/hooks/${added.id}`, { headers: ownerAuth() });
   expect(errors).toEqual([]);
 });
 test('Plan: drag a task onto a time, see the block, open it, and take it off the plan from its details', async ({ page, request }) => {
@@ -910,11 +916,11 @@ test('Energy: a task takes ⚡ to ⚡⚡⚡ an hour, the day adds up, and switch
   await expect(plan.getByRole('meter', { name: 'Energy: 6 of 4' })).toHaveClass(/over/);
 
   // The Energy extra off: no meter, no ⚡ on cards.
-  await request.put('/api/plugins/energy', { headers: auth, data: { enabled: false } });
+  await request.put('/api/plugins/energy', { headers: ownerAuth(), data: { enabled: false } });
   await page.reload();
   await expect(page.locator('#view-plan')).toBeVisible();
   await expect(page.locator('#view-plan .plan-energy')).toHaveCount(0);
-  await request.put('/api/plugins/energy', { headers: auth, data: { enabled: true } });
+  await request.put('/api/plugins/energy', { headers: ownerAuth(), data: { enabled: true } });
   await request.put('/api/energy', { headers: auth, data: {} });
   await request.post(`/api/items/${task.id}/complete`, { headers: auth });
   expect(errors).toEqual([]);

@@ -91,6 +91,11 @@ A copy is in [`integrations/vscode/mcp.json`](../integrations/vscode/mcp.json).
 While the app runs, its MCP endpoint is `http://127.0.0.1:5317/mcp` with the header
 `Authorization: Bearer <token>` (**⋯ › Copy MCP config** copies both). It only listens on this computer.
 
+Anything with the token (an agent, a script) reads and changes tasks; its changes show as `Agent: <name>` (the
+`X-OneThing-Actor: agent:<name>` header, or the MCP client's name; without one, `Agent: API client`). Some things are
+yours only and answer 403 to the token alone: deleting, Ask AI, switching extras, moving the tasks folder, the Teams
+webhook, sync and connected-app settings, approving or trying hooks, and switching off or removing hooks it didn't add.
+
 ## ChatGPT, Claude.ai, Microsoft 365 Copilot and Copilot Studio
 
 These connect **from the cloud**, so they can't reach `127.0.0.1`. They need a public HTTPS address in front of your

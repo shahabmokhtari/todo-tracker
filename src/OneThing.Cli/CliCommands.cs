@@ -216,7 +216,7 @@ internal static class CliCommands
         IReadOnlyList<string> references = a.Words.Count > 1 && a.Words.All(TaskResolver.LooksLikeId) ? a.Words : [a.WordsFrom(0, "which task")];
         await s.Store.UpdateAsync(b =>
         {
-            b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Now);
+            b.PutFirst(references.Select(r => TaskResolver.Resolve(b, r, i => !i.IsDone).Id).ToList(), s.Actor, s.Now);
             return true;
         }).ConfigureAwait(false);
         var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, null, 5, s.Links)).ConfigureAwait(false);
@@ -643,7 +643,7 @@ internal static class CliCommands
                 await s.Print(changed, (o, h) => o.Line(h.Hook.NeedsApproval == true ? $"Changed hook {h.Id}. It still waits for approval (ot hooks list)." : $"Changed hook {h.Id}.")).ConfigureAwait(false);
                 break;
             case "enable" or "disable":
-                var toggled = store.SetEnabled(Id(), verb == "enable");
+                var toggled = store.SetEnabled(Id(), verb == "enable", author);
                 await s.Print(toggled, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
             case "approve":
@@ -661,7 +661,7 @@ internal static class CliCommands
                 break;
             case "remove" or "delete":
                 var id = Id();
-                store.Remove(id);
+                store.Remove(id, author);
                 await s.Print(new { removed = id }, (o, _) => o.Line($"Removed hook {id}.")).ConfigureAwait(false);
                 break;
             case "test":

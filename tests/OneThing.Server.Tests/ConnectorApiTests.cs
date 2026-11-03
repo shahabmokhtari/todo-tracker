@@ -27,7 +27,7 @@ public sealed class ConnectorApiTests
     public async Task Connectors_are_off_until_switched_on_and_switch_on_at_once()
     {
         await using var server = await ServerFixture.StartAsync();
-        var client = server.Client();
+        var client = server.OwnerClient();
 
         // Listed (so Settings can offer them) but off: nothing can be set up or synced.
         var views = await client.GetJson(Base);
@@ -48,7 +48,7 @@ public sealed class ConnectorApiTests
     {
         using var notion = new FakeNotion();
         await using var server = await StartAsync("""{"connector-notion": true}""", s => s.AddHttpClient(NotionConnector.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => notion));
-        var client = server.Client();
+        var client = server.OwnerClient();
         var group = await GroupAsync(server, "Synced");
         await server.Store.UpdateAsync(b => b.AddTask(new NewTask("Write report") { GroupId = group }, Actor.User, ServerFixture.T0));
         notion.AddPage("p1", new JsonObject { ["Task"] = new JsonObject { ["type"] = "title", ["title"] = new JsonArray(new JsonObject { ["plain_text"] = "Call the bank" }) } });
@@ -90,7 +90,7 @@ public sealed class ConnectorApiTests
     {
         using var notion = new FakeNotion();
         await using var server = await StartAsync("""{"connector-notion": true}""", s => s.AddHttpClient(NotionConnector.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => notion));
-        var client = server.Client();
+        var client = server.OwnerClient();
         var group = await GroupAsync(server, "Synced");
         await (await client.PutAsJsonAsync($"{Base}/notion/token", new { token = "secret_token" })).Json();
         await (await client.PutAsJsonAsync($"{Base}/notion", new { target = FakeNotion.Db, groupId = group })).Json();
@@ -118,7 +118,7 @@ public sealed class ConnectorApiTests
             s.AddHttpClient(MicrosoftToDoConnector.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => graph);
             s.AddSingleton<Func<ConnectorFiles, IMicrosoftSignIn>>(_ => _ => signIn);
         });
-        var client = server.Client();
+        var client = server.OwnerClient();
         var group = await GroupAsync(server, "Synced");
 
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync($"{Base}/mstodo", new { clientId = "not a guid" })).StatusCode);

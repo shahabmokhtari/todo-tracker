@@ -107,6 +107,9 @@ public sealed record LaunchDto(string Url);
 
 internal static class ApiEndpoints
 {
+    /// <summary>Agents get no delete tool; over HTTP, only the person at this computer deletes.</summary>
+    internal const string DeleteRefusal = "Only you can delete: in the One Thing app. An agent can finish, archive or move things instead.";
+
     public static void Map(IEndpointRouteBuilder app)
     {
         app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
@@ -281,7 +284,7 @@ internal static class ApiEndpoints
         {
             await store.UpdateAsync(b => b.Delete(id, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();
-        });
+        }).OwnerOnly(DeleteRefusal);
 
         api.MapPost("/items/{id:guid}/steps", (Guid id, StepsRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
@@ -380,11 +383,11 @@ internal static class ApiEndpoints
             return Results.NoContent();
         });
 
-        api.MapPost("/now/first", async (OrderRequest request, IBoardStore store, TimeProvider time) =>
+        api.MapPost("/now/first", async (OrderRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
         {
             await store.UpdateAsync(b =>
             {
-                b.PutFirst(request.Ids ?? [], time.GetUtcNow());
+                b.PutFirst(request.Ids ?? [], Security.ActorOf(http), time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return Results.NoContent();
@@ -456,7 +459,7 @@ internal static class ApiEndpoints
         {
             await store.UpdateAsync(b => b.DeleteGroup(id, moveTo, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();
-        });
+        }).OwnerOnly(DeleteRefusal);
 
         api.MapPost("/pomodoro/{action}", (string action, FocusRequest? request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
@@ -513,11 +516,18 @@ internal static class ApiEndpoints
 
         api.MapGet("/obsidian/vaults", () => ObsidianVaults.Discover());
 
+        // Where tasks live, and where reminders go: only the person at this computer.
         api.MapPut("/settings/vault", (VaultSettingRequest request, SettingsStore settings, OneThingServerOptions options) =>
         {
+            if (!string.IsNullOrWhiteSpace(request.Path) && Path.IsPathFullyQualified(request.Path.Trim())
+                && OneThingHost.StorageProblem(options, request.Path.Trim()) is { } problem)
+            {
+                return Results.Problem(problem, statusCode: StatusCodes.Status400BadRequest);
+            }
+
             settings.SetVaultPath(request.Path);
-            return new VaultSettingDto(OneThingHost.VaultPathOf(options, settings), RestartRequired: true);
-        });
+            return Results.Ok(new VaultSettingDto(OneThingHost.VaultPathOf(options, settings), RestartRequired: true));
+        }).OwnerOnly("Only you can move where your tasks live: in Settings of the One Thing app.");
 
         api.MapGet("/settings", (SettingsStore settings) => settings.ToDto());
 
@@ -531,7 +541,7 @@ internal static class ApiEndpoints
         {
             settings.SetTeamsWebhook(request.TeamsWebhookUrl);
             return settings.ToDto();
-        });
+        }).OwnerOnly("Only you can choose where reminders are posted: in Settings of the One Thing app.");
     }
 
     internal static ConnectionDto Connection(ApiToken token, OneThingServerOptions options)
@@ -615,7 +625,7 @@ internal static class ApiEndpoints
         {
             await store.UpdateAsync(b => b.DeleteLabel(name, Security.ActorOf(http), time.GetUtcNow())).ConfigureAwait(false);
             return Results.NoContent();
-        });
+        }).OwnerOnly(DeleteRefusal);
     }
 
     private static void MapHistory(RouteGroupBuilder api)
@@ -702,7 +712,7 @@ internal static class ApiEndpoints
         {
             await links.Vault.RemoveAttachmentAsync(id, attachmentId, Security.ActorOf(http), http.RequestAborted).ConfigureAwait(false);
             return Results.NoContent();
-        });
+        }).OwnerOnly(DeleteRefusal);
 
         api.MapGet("/items/{id:guid}/rich", async (Guid id, HttpContext http, VaultLinks links) =>
         {

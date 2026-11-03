@@ -60,7 +60,8 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
    dashboards tomorrow").
 5. **Defer instead of piling up.** If something can't be done now, schedule it (`schedule_next_action`) or make it wait
    for another task (`wait_for_task`), so it leaves Do now and comes back with a reminder.
-6. **Finish things** you completed for the user (`complete_task`) and tell them in one line.
+6. **Finish things** you completed for the user (`complete_task`, once: a repeating task moves on to its next time
+   each time) and tell them in one line.
 7. **Never delete**, and never mark done what the user hasn't done. There is no delete tool; changes are versioned, so
    mistakes can be undone (`restore_task_version`).
 8. **Link to tasks** you mention: the `link` from `get_task` (`onething://task/<id>`) opens it in the app.
@@ -90,7 +91,8 @@ the last Friday", "every 3 days when done"). Completing it moves it to its next 
 tomorrow ("tomorrow 9am"). `get_time_report` if they want to see where the time went.
 
 **Automations:** `add_hook` (e.g. on `taskCompleted`, post to a webhook or run a script). A hook you add waits until
-the user allows it in the app (they get asked): tell them so, and don't add it again.
+the user allows it in the app (they get asked): tell them so, and don't add it again. You can switch off or remove
+only hooks you added; the user's own are theirs to change.
 
 ## Files
 

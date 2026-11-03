@@ -20,7 +20,7 @@ public sealed class PluginApiTests : IAsyncLifetime
             catalog.Extra.Add((new AgentOption("fake", "Fake agent", true, null), work => AcpConnectionTests.FakeAgent() with { WorkingDirectory = work }));
             return catalog;
         }));
-        _client = _server.Client();
+        _client = _server.OwnerClient();
     }
 
     public async ValueTask DisposeAsync()
@@ -58,7 +58,7 @@ public sealed class PluginApiTests : IAsyncLifetime
         {
             await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), saved, TestContext.Current.CancellationToken);
             await using var restarted = await ServerFixture.StartAsync(o => o.DataDirectory = data);
-            using var client = restarted.Client();
+            using var client = restarted.OwnerClient();
             Assert.False((await client.GetJson("/api/plugins")).AsArray().Single(p => p!["id"]!.GetValue<string>() == "agent-chat")!["enabled"]!.GetValue<bool>());
             Assert.False((await client.GetAsync(new Uri("/api/plugins/agent-chat", UriKind.Relative))).IsSuccessStatusCode);
         }
@@ -76,7 +76,7 @@ public sealed class PluginApiTests : IAsyncLifetime
         {
             await File.WriteAllTextAsync(Path.Combine(data, "plugins.json"), "{\"obsidian\": false, \"loop\": false, \"plan\": false, \"focus-timer\": false, \"connect-ai\": false, \"browser-extension\": false, \"sync-gist\": false}", TestContext.Current.CancellationToken);
             await using var server = await ServerFixture.StartAsync(o => o.DataDirectory = data);
-            using var client = server.Client();
+            using var client = server.OwnerClient();
             bool On(JsonNode list, string id) => list.AsArray().Single(p => p!["id"]!.GetValue<string>() == id)!["enabled"]!.GetValue<bool>();
 
             Assert.Equal(System.Net.HttpStatusCode.NotFound, (await client.GetAsync(new Uri("/api/plugins/connect-ai", UriKind.Relative))).StatusCode);
@@ -162,6 +162,37 @@ public sealed class PluginApiTests : IAsyncLifetime
         await _client.PostJson("/api/plugins/agent-chat/answer", new { entryId = ask["id"]!.GetValue<string>(), choice = "allow" });
         var done = await Until(s => s["status"]!.GetValue<string>() == "ready" ? s : null);
         Assert.Equal("Added \"Milk\".", done["entries"]!.AsArray().Last(e => e!["kind"]!.GetValue<string>() == "agent")!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Switching_ask_ai_off_stops_the_agent_at_once()
+    {
+        await _client.PostAsJsonAsync("/api/plugins/agent-chat/message", new { text = "add Milk" });
+        await Until(s => s["entries"]!.AsArray().FirstOrDefault(e => e!["kind"]!.GetValue<string>() == "permission" && e["status"]!.GetValue<string>() == "waiting"));
+        var chat = _server.App.Services.GetRequiredService<AgentChatService>();
+
+        await _client.PutAsJsonAsync("/api/plugins/agent-chat", new { enabled = false });
+
+        var deadline = DateTime.UtcNow + Timeout;
+        while (chat.State.Status != "idle" && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal("idle", chat.State.Status);
+    }
+
+    [Fact]
+    public async Task Extras_can_not_be_switched_while_their_file_can_not_be_read()
+    {
+        // Writing it then would forget every other switch.
+        await File.WriteAllTextAsync(Path.Combine(_server.DataDirectory, "plugins.json"), "{ \"teams\": fal", TestContext.Current.CancellationToken);
+        var settings = new OneThing.Server.Plugins.PluginSettings(_server.DataDirectory);
+
+        var refused = Assert.Throws<InvalidOperationException>(() => settings.SetEnabled("loop", false));
+
+        Assert.Contains("can't be read", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("{ \"teams\": fal", await File.ReadAllTextAsync(Path.Combine(_server.DataDirectory, "plugins.json"), TestContext.Current.CancellationToken));
     }
 
     [Fact]

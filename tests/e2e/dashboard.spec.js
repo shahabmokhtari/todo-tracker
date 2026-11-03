@@ -1,7 +1,11 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 
 const token = 'e2e-token-0123456789abcdefghijklmnop';
+// The owner key from the data folder: what the person at this computer's own apps send (Ask AI is only theirs).
+const ownerKey = () => ({ 'X-OneThing-Owner-Key': fs.readFileSync(path.join(process.env.ONETHING_E2E_DATA, 'owner-key'), 'utf8').trim() });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -246,7 +250,7 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
 test('Ask AI: chat with the agent, approve a change, and see the answer', async ({ page, request }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   await page.getByRole('button', { name: 'Ask AI' }).click();
   const drawer = page.locator('#drawer');
@@ -307,7 +311,7 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
   });
   await new Promise((resolve) => fake.listen(0, '127.0.0.1', resolve));
   try {
-    const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+    const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
     await page.goto(launch.url);
     await page.getByRole('button', { name: 'Ask AI' }).click();
     const drawer = page.locator('#drawer');
@@ -338,7 +342,7 @@ test('Ask AI: add a model with an API key and let it add a task', async ({ page,
 });
 
 test('Plugins: an extra switched off is gone at once, and the light ones come back at once', async ({ page, request }) => {
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   // The extras moved from a Plugins panel into Settings (the side bar's Settings link).
   await page.locator('#settings-link').click();
@@ -373,7 +377,7 @@ test('Plugins: an extra switched off is gone at once, and the light ones come ba
 test('Sync: the panel says where it syncs and sync can be switched off', async ({ page, request }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const launch = await (await request.post('/api/launch', { headers: { Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
+  const launch = await (await request.post('/api/launch', { headers: { ...ownerKey(), Authorization: `Bearer ${token}` }, data: { return: '/' } })).json();
   await page.goto(launch.url);
   await page.getByRole('button', { name: /^Sync/ }).click();
   const drawer = page.locator('#drawer');

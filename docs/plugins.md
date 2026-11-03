@@ -48,7 +48,9 @@ this computer, one file per model in `<data>/agent-chat/keys`: encrypted for you
 readable only by you elsewhere. A key is never shown again or sent to a screen. For a model that isn't on this
 computer, the chat says where your messages (and the tasks it looks at) are sent.
 
-An agent starts when you first ask something and then stays running (warm), so later answers are quick.
+An agent starts when you first ask something and then stays running (warm), so later answers are quick. Switching Ask
+AI off stops it at once. Only you chat: Ask AI answers only the app's own windows (an agent or a script with the API
+token gets 403), since an agent's questions can let it run commands.
 
 ### Chats are kept
 
@@ -128,7 +130,9 @@ public sealed class MyPlugin : ITodoPlugin
 ```
 
 * Endpoints live under `/api/plugins/{id}` and share the API's security (token or session, loopback only). They are
-  not part of the OpenAPI description for AI tools.
+  not part of the OpenAPI description for AI tools. What only the person at this computer may do gets
+  `.OwnerOnly("…")` (or `.OwnerOnlyChanges("…")` to leave reading open): anything with only the API token gets 403
+  with that text.
 * The web module exports `activate(host)`; `host` offers `api`, `post`, `put`, `del`, `h`, `icon`, `toast`,
   `openPanel`, `closePanel`, `refresh`, `addHeaderButton`, `addTaskAction` (a button in every task's details and its
   ⋯ menu), and `on()` (whether the plugin is on now). See `wwwroot/js/plugins/agent-chat.js`.

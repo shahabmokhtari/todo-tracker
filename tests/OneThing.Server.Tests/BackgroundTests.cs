@@ -18,7 +18,7 @@ public sealed class BackgroundTests : IAsyncLifetime
     public async Task A_timer_running_while_the_computer_slept_ends_when_it_was_last_seen()
     {
         // ServerFixture ticks every hour; a gap of more than 3 ticks means the app wasn't running (or was asleep).
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         var item = await client.PostJson("/api/items", new { title = "Write report" });
         await client.PostJson("/api/timer/start", new { itemId = item.Id() });
         _server.Time.Advance(TimeSpan.FromMinutes(20));
@@ -35,7 +35,7 @@ public sealed class BackgroundTests : IAsyncLifetime
     [Fact]
     public async Task A_timer_seen_running_keeps_running()
     {
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         var item = await client.PostJson("/api/items", new { title = "Write report" });
         await client.PostJson("/api/timer/start", new { itemId = item.Id() });
 
@@ -51,7 +51,7 @@ public sealed class BackgroundTests : IAsyncLifetime
     [Fact]
     public async Task Tick_dispatches_due_reminders_to_notifiers_once()
     {
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         var item = await client.PostJson("/api/items", new { title = "Feature B" });
         await client.PostJson($"/api/items/{item.Id()}/schedule", new { inMinutes = 30, notify = true, message = "Continue B" });
 
@@ -69,7 +69,7 @@ public sealed class BackgroundTests : IAsyncLifetime
     [Fact]
     public async Task Teams_webhook_receives_adaptive_card_when_configured()
     {
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         await client.PutAsJsonAsync("/api/settings", new { teamsWebhookUrl = "https://example.webhook.office.com/hook" });
         var item = await client.PostJson("/api/items", new { title = "Feature B", priority = "high" });
         await client.PostJson($"/api/items/{item.Id()}/reminders", new { at = ServerFixture.T0, message = "Time for ring 2" });
@@ -90,7 +90,7 @@ public sealed class BackgroundTests : IAsyncLifetime
     [Fact]
     public async Task Teams_is_skipped_when_not_configured()
     {
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         var item = await client.PostJson("/api/items", new { title = "x" });
         await client.PostJson($"/api/items/{item.Id()}/reminders", new { at = ServerFixture.T0, message = "go" });
 
@@ -106,7 +106,7 @@ public sealed class BackgroundTests : IAsyncLifetime
         var events = _server.App.Services.GetRequiredService<ServerEvents>();
         var received = new List<PomodoroEvent>();
         events.Pomodoro += (_, e) => received.Add(e);
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         await client.PostJson("/api/pomodoro/start");
 
         _server.Time.Advance(TimeSpan.FromMinutes(25));
@@ -122,7 +122,7 @@ public sealed class BackgroundTests : IAsyncLifetime
         var events = _server.App.Services.GetRequiredService<ServerEvents>();
         var received = new List<PomodoroEvent>();
         events.Pomodoro += (_, e) => received.Add(e);
-        await _server.Client().PostJson("/api/pomodoro/start");
+        await _server.OwnerClient().PostJson("/api/pomodoro/start");
 
         _server.Time.Advance(TimeSpan.FromMinutes(45));
         await Loop.RunOnceAsync(CancellationToken.None);
@@ -136,7 +136,7 @@ public sealed class BackgroundTests : IAsyncLifetime
         var events = _server.App.Services.GetRequiredService<ServerEvents>();
         var received = new List<ReminderNotification>();
         events.Reminder += (_, e) => received.Add(e);
-        var client = _server.Client();
+        var client = _server.OwnerClient();
         var item = await client.PostJson("/api/items", new { title = "x" });
         await client.PostJson($"/api/items/{item.Id()}/reminders", new { at = ServerFixture.T0, message = "go" });
 

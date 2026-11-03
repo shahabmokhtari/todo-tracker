@@ -160,7 +160,7 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "complete_task", Idempotent = true), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that).")]
+    [McpServerTool(Name = "complete_task"), Description("Mark a task done (subtasks too). Completing a rollout step schedules the next step; a repeating task moves on to its next time instead (reopen_task undoes that), so don't call it twice for one repeating task.")]
     public Task<ItemDto> CompleteTask(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId) =>
         Mutate(server, (b, now, actor) =>
         {
@@ -255,13 +255,13 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
         });
 
     [McpServerTool(Name = "put_first"), Description("Put tasks at the top of Do now, in this order; the first becomes the focus (only a reminder going off later comes above them). Use it when the user says what matters most (\"do X first\").")]
-    public Task<DashboardDto> PutFirst([Description("Task ids, most important first.")] string[] taskIds) =>
+    public Task<DashboardDto> PutFirst(McpServer server, [Description("Task ids, most important first.")] string[] taskIds) =>
         Guard(async () =>
         {
             var ids = taskIds.Select(ParseId).ToList();
             await store.UpdateAsync(b =>
             {
-                b.PutFirst(ids, time.GetUtcNow());
+                b.PutFirst(ids, ActorOf(server), time.GetUtcNow());
                 return true;
             }).ConfigureAwait(false);
             return await store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), null, 0, links)).ConfigureAwait(false);
@@ -446,17 +446,20 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
             Name = name,
             TimeoutSec = timeoutSec,
             Match = new Hooks.HookMatch { Groups = groups?.ToList(), Tags = tags?.ToList(), Labels = labels?.ToList(), Actors = actors?.ToList() },
-        }, new Hooks.HookAuthor(ActorOf(server).Name ?? "agent", Trusted: false), time.GetUtcNow()).Redacted()));
+        }, AuthorOf(server), time.GetUtcNow()).Redacted()));
 
-    [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). A hook waiting for approval still needs the user's approval to run.")]
-    public Task<Hooks.HookEntry> SetHookEnabled([Description("The hook's id, from list_hooks.")] string hookId, [Description("On (true) or off (false).")] bool enabled) => Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled).Redacted()));
+    [McpServerTool(Name = "set_hook_enabled"), Description("Switch a hook on or off (by its id from list_hooks). You can only switch hooks you added yourself; the user's own hooks are theirs to switch. A hook waiting for approval still needs the user's approval to run.")]
+    public Task<Hooks.HookEntry> SetHookEnabled(McpServer server, [Description("The hook's id, from list_hooks (one you added).")] string hookId, [Description("On (true) or off (false).")] bool enabled) =>
+        Guard(() => Task.FromResult(hooks.SetEnabled(hookId, enabled, AuthorOf(server)).Redacted()));
 
-    [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook (by its id from list_hooks).")]
-    public Task<Hooks.HookRemoved> RemoveHook([Description("The hook's id, from list_hooks.")] string hookId) => Guard(() =>
+    [McpServerTool(Name = "remove_hook", Destructive = true), Description("Remove a hook you added (by its id from list_hooks). The user's own hooks can only be removed by them, in Settings › Hooks.")]
+    public Task<Hooks.HookRemoved> RemoveHook(McpServer server, [Description("The hook's id, from list_hooks (one you added).")] string hookId) => Guard(() =>
     {
-        hooks.Remove(hookId);
+        hooks.Remove(hookId, AuthorOf(server));
         return Task.FromResult(new Hooks.HookRemoved(hookId));
     });
+
+    private static Hooks.HookAuthor AuthorOf(McpServer server) => new(ActorOf(server).Name ?? "agent", Trusted: false);
 
     /// <summary>Turns domain validation errors into MCP tool errors with a readable message for the agent.</summary>
     private static async Task<T> Guard<T>(Func<Task<T>> action)

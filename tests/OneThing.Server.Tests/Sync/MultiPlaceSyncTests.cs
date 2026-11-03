@@ -43,7 +43,7 @@ public sealed class MultiPlaceSyncTests : IAsyncLifetime
 
     private static async Task<JsonNode> Sync(ServerFixture app)
     {
-        using var client = app.Client();
+        using var client = app.OwnerClient();
         var response = await client.PostAsync(new Uri("/api/plugins/sync/now", UriKind.Relative), null, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
@@ -51,7 +51,7 @@ public sealed class MultiPlaceSyncTests : IAsyncLifetime
 
     private static async Task<JsonNode> Use(ServerFixture app, string provider, string mode)
     {
-        using var client = app.Client();
+        using var client = app.OwnerClient();
         var response = await client.PutAsJsonAsync(new Uri("/api/plugins/sync/places", UriKind.Relative), new { provider, mode }, TestContext.Current.CancellationToken);
         response.EnsureSuccessStatusCode();
         return JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
@@ -128,7 +128,7 @@ public sealed class MultiPlaceSyncTests : IAsyncLifetime
         Assert.Contains("From the desktop", await Titles(_mac));
         Assert.Contains("From the laptop", await Titles(_mac));
 
-        using var client = _desktop.Client();
+        using var client = _desktop.OwnerClient();
         var wrong = await client.PutAsJsonAsync(new Uri("/api/plugins/sync/places", UriKind.Relative), new { provider = "icloud", mode = "sometimes" }, TestContext.Current.CancellationToken);
         Assert.Equal(System.Net.HttpStatusCode.BadRequest, wrong.StatusCode);
     }

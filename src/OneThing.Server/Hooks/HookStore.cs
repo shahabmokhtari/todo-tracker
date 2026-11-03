@@ -16,10 +16,13 @@ public sealed record HookEntry(string Id, string Event, HookSpec Hook, string St
     /// <summary>What a hidden header or variable value shows (sent back unchanged, it keeps the value it had).</summary>
     public const string Hidden = "•••";
 
-    /// <summary>The same, with the values of headers and environment variables hidden (secrets for whoever set them).</summary>
+    /// <summary>
+    /// The same, with the values of headers and environment variables hidden (secrets for whoever set them), and the
+    /// address's path and query too (Teams, Slack and Discord put their secret there).
+    /// </summary>
     public HookEntry Redacted()
     {
-        if (Hook.Headers is null && Hook.Env is null)
+        if (Hook.Headers is null && Hook.Env is null && RedactUrl(Hook.Url) == Hook.Url)
         {
             return this;
         }
@@ -27,7 +30,26 @@ public sealed record HookEntry(string Id, string Event, HookSpec Hook, string St
         var copy = JsonSerializer.Deserialize<HookSpec>(JsonSerializer.Serialize(Hook, HookFile.Json), HookFile.Json)!;
         copy.Headers = copy.Headers?.ToDictionary(p => p.Key, _ => Hidden, StringComparer.Ordinal);
         copy.Env = copy.Env?.ToDictionary(p => p.Key, _ => Hidden, StringComparer.Ordinal);
+        copy.Url = RedactUrl(copy.Url);
         return this with { Hook = copy };
+    }
+
+    /// <summary>Only where an address goes (<c>https://host/•••</c>); sent back unchanged, it keeps the address it had.</summary>
+    public static string? RedactUrl(string? url)
+    {
+        if (url is null)
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return Hidden;
+        }
+
+        return uri.PathAndQuery is "/" or "" && uri.UserInfo.Length == 0 && uri.Fragment.Length == 0
+            ? url
+            : $"{uri.Scheme}://{uri.Authority}/{Hidden}";
     }
 
     /// <summary>
@@ -116,6 +138,7 @@ public sealed class HookStore
         {
             clean.Id = NewId(file);
             Stamp(clean, author, now);
+            clean.CreatedBy = author.Trusted ? null : author.Name;
             clean.Enabled = hook.Enabled == false ? false : null;
             if (!file.Hooks.TryGetValue(name, out var list))
             {
@@ -140,6 +163,10 @@ public sealed class HookStore
             // Hidden values sent back as they were shown keep the values they had.
             hook.Headers = Restore(hook.Headers, old.Headers);
             hook.Env = Restore(hook.Env, old.Env);
+            if (hook.Url is not null && hook.Url != old.Url && hook.Url == HookEntry.RedactUrl(old.Url))
+            {
+                hook.Url = old.Url;
+            }
 
             // Variables and the folder decide what a command really runs: an agent may keep the ones you set, not change them.
             if (!author.Trusted && (!SameEntries(hook.Env, old.Env) || (string.IsNullOrWhiteSpace(hook.Cwd) ? null : hook.Cwd.Trim()) != old.Cwd))
@@ -151,6 +178,7 @@ public sealed class HookStore
             clean.Id = id;
             clean.Enabled = old.Enabled;
             Stamp(clean, author, now);
+            clean.CreatedBy = old.CreatedBy;
 
             // Only approving approves: your change to a hook waiting for approval keeps it waiting (and says who added it).
             if (old.NeedsApproval == true)
@@ -185,12 +213,21 @@ public sealed class HookStore
         });
     }
 
-    /// <summary>Switches a hook on or off (anyone may; an agent's hook still needs approval to run).</summary>
-    public HookEntry SetEnabled(string id, bool enabled) => Change(file =>
+    /// <summary>
+    /// Switches a hook on or off: you, any of them; an agent, only one it added (an agent's hook still needs approval
+    /// to run).
+    /// </summary>
+    public HookEntry SetEnabled(string id, bool enabled, HookAuthor author)
     {
-        Find(file, id).Hook.Enabled = enabled ? null : false;
-        return id;
-    });
+        ArgumentNullException.ThrowIfNull(author);
+        return Change(file =>
+        {
+            var (_, hook) = Find(file, id);
+            MayChange(hook, author, "switch on or off");
+            hook.Enabled = enabled ? null : false;
+            return id;
+        });
+    }
 
     /// <summary>
     /// Lets an agent's hook run. Only the person at this computer can approve, and only the <paramref name="version"/>
@@ -218,17 +255,31 @@ public sealed class HookStore
         });
     }
 
-    public void Remove(string id) => Change(file =>
+    /// <summary>Removes a hook: you, any of them; an agent, only one it added (hooks.json keeps no versions).</summary>
+    public void Remove(string id, HookAuthor author)
     {
-        var (eventName, hook) = Find(file, id);
-        file.Hooks[eventName].Remove(hook);
-        if (file.Hooks[eventName].Count == 0)
+        ArgumentNullException.ThrowIfNull(author);
+        Change(file =>
         {
-            file.Hooks.Remove(eventName);
-        }
+            var (eventName, hook) = Find(file, id);
+            MayChange(hook, author, "remove");
+            file.Hooks[eventName].Remove(hook);
+            if (file.Hooks[eventName].Count == 0)
+            {
+                file.Hooks.Remove(eventName);
+            }
 
-        return null;
-    });
+            return null;
+        });
+    }
+
+    private static void MayChange(HookSpec hook, HookAuthor author, string what)
+    {
+        if (!author.Trusted && (hook.CreatedBy is null || !string.Equals(hook.CreatedBy, author.Name, StringComparison.Ordinal)))
+        {
+            throw new UnauthorizedAccessException($"An agent can only {what} hooks it added. This one is the user's: only they can, in Settings › Hooks of the One Thing app or with ot hooks.");
+        }
+    }
 
     /// <summary>
     /// "Don't allow": removes the hook only while it still waits for approval in the <paramref name="version"/> that
