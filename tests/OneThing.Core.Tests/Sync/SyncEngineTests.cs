@@ -156,9 +156,11 @@ public sealed class SyncEngineTests : IDisposable
         await laptop.AddTask("Fix login");
         await Settle();
 
-        // Fine here, but longer than 255 bytes in UTF-8: phones and Macs can't name a file like that.
-        var tooLong = Path.Combine(Path.GetDirectoryName(laptop.File("Fix login"))!, new string('é', 130) + ".md");
-        File.Move(laptop.File("Fix login"), tooLong);
+        // A name this computer takes but others can't: on Windows longer than 255 bytes in UTF-8 (phones and Macs
+        // can't), elsewhere a character Windows can't use in a name.
+        var name = OperatingSystem.IsWindows() ? new string('é', 130) + ".md" : "Fix login? Now.md";
+        var unusable = Path.Combine(Path.GetDirectoryName(laptop.File("Fix login"))!, name);
+        File.Move(laptop.File("Fix login"), unusable);
         laptop.Store.MarkDirty();
         var result = await laptop.Sync();
         await desktop.Sync();
@@ -166,7 +168,7 @@ public sealed class SyncEngineTests : IDisposable
 
         Assert.Contains("Fix login", await desktop.Titles());
         Assert.Contains("Fix login", await laptop.Titles());
-        Assert.True(File.Exists(tooLong));
+        Assert.True(File.Exists(unusable));
         Assert.Contains("rename it", result.Problem, StringComparison.Ordinal);
     }
 
