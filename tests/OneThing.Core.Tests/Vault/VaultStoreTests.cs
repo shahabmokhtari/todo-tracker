@@ -430,6 +430,26 @@ public sealed class VaultStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task An_attachment_file_that_cant_go_to_the_trash_doesnt_undo_removing_it_from_the_task()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows locks files against moving.");
+        var store = Open();
+        var task = await Add(store, "Plan");
+        using var content = new MemoryStream("map"u8.ToArray());
+        var attachment = await store.AddAttachmentAsync(task.Id, "map.png", content, Actor.User, TestContext.Current.CancellationToken);
+        var file = (await store.GetAttachmentFileAsync(task.Id, attachment.Id, TestContext.Current.CancellationToken)).FullPath;
+
+        using (new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            // Saved in the task file already: failing now would show the attachment again in the app only.
+            await store.RemoveAttachmentAsync(task.Id, attachment.Id, Actor.User, TestContext.Current.CancellationToken);
+
+            Assert.Empty(await store.ReadAsync(b => b.Get(task.Id).Attachments.ToList()));
+            Assert.Contains(store.Problems, p => p.Message.StartsWith("Your change was saved", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public async Task A_new_task_never_replaces_a_file_that_appeared_while_it_was_saved()
     {
         var written = false;
@@ -1271,6 +1291,23 @@ public sealed class VaultStoreTests : IDisposable
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => store.UpdateAsync(b => b.Move(task.Id, project.Id, null, null, Actor.User, T0)));
         Assert.True(File.Exists(P("Work", "Plan.html")));
+    }
+
+    [Fact]
+    public async Task A_wiki_linked_file_that_isnt_there_isnt_looked_for_again_at_once()
+    {
+        var store = Open();
+        await File.WriteAllTextAsync(P("Work", "Ship.md"), "# Ship\n\n## Attachments\n\n- ![[later.png]]\n", TestContext.Current.CancellationToken);
+        var (id, attachment) = await store.ReadAsync(b => (b.Items.Single().Id, b.Items.Single().Attachments.Single().Id));
+        Assert.False(File.Exists((await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath));
+
+        // Each look walks the whole vault: a page showing a missing image asks again and again.
+        Directory.CreateDirectory(P("Images"));
+        await File.WriteAllTextAsync(P("Images", "later.png"), "png", TestContext.Current.CancellationToken);
+        Assert.False(File.Exists((await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath));
+
+        _time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal(P("Images", "later.png"), (await store.GetAttachmentFileAsync(id, attachment, TestContext.Current.CancellationToken)).FullPath);
     }
 
     [Fact]

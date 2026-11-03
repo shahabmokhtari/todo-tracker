@@ -76,10 +76,13 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         {
             lock (_problems)
             {
-                return _legacyProblem is null ? _problems.ToList() : [.. _problems, _legacyProblem];
+                return [.. _problems, .. new[] { _legacyProblem, _afterCommitProblem }.OfType<VaultProblem>()];
             }
         }
     }
+
+    /// <summary>What couldn't follow the last saved change (a file it moves or writes); gone once one goes through.</summary>
+    private volatile VaultProblem? _afterCommitProblem;
 
     /// <summary>An old board.json that couldn't be brought in (its tasks aren't here; the file is left as it is).</summary>
     private VaultProblem? _legacyProblem;
@@ -209,7 +212,6 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                     _mutationBaseline = _board.AllItems().ToDictionary(i => i.Id, i => i.IsDone);
                     result = mutate(_board);
                     changed |= Persist();
-                    afterCommit?.Invoke(result);
                     break;
                 }
                 catch (VaultConflictException) when (attempt < 3)
@@ -227,6 +229,23 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
                 finally
                 {
                     _mutationBaseline = null;
+                }
+            }
+
+            if (afterCommit is not null)
+            {
+                try
+                {
+                    afterCommit(result);
+                    _afterCommitProblem = null;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // The change is saved (never undone in memory only): what couldn't follow it is said, not a failed change.
+                    MarkDirty();
+                    _afterCommitProblem = new VaultProblem(string.Empty, $"Your change was saved, but a file that goes with it couldn't be updated ({ex.Message}). Try again in a moment.");
+
+                    changed = true;
                 }
             }
         }
@@ -416,9 +435,12 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
         _watcher.Error += (_, _) => OnFileEvent(_root, contentCheck: true);
         _watcher.EnableRaisingEvents = true;
 
-        // Cloud folders and network shares can miss notifications (or keep timestamps): re-check contents now and then.
-        _rescan = new Timer(_ => OnFileEvent(_root, contentCheck: true), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        // Cloud folders and network shares can miss notifications: look at names, sizes and times every 30 seconds, and
+        // read contents again only every 10 minutes (reading every file would download cloud-only ones each time).
+        _rescan = new Timer(_ => OnFileEvent(_root, contentCheck: Interlocked.Increment(ref _rescans) % 20 == 0), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
+
+    private int _rescans;
 
     private void OnFileEvent(string path, bool contentCheck = false)
     {
