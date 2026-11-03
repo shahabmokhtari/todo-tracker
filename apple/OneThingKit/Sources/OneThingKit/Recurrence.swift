@@ -1,7 +1,7 @@
 import Foundation
 
 /// A calendar day (no time, no zone): what a repeat rule counts in.
-public struct LocalDay: Comparable, Hashable, CustomStringConvertible {
+public struct LocalDay: Comparable, Hashable, Sendable, CustomStringConvertible {
     public let year: Int
     public let month: Int
     public let day: Int
