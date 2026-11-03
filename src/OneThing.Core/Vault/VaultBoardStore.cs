@@ -675,6 +675,11 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
             Blocked = blocked,
         };
         PublishIndex();
+        if (_configProblem is { } configProblem)
+        {
+            problems.Add(configProblem);
+        }
+
         lock (_problems)
         {
             _problems.Clear();
@@ -1370,12 +1375,26 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     // ---- Settings, timer state, activity ------------------------------------------------
 
-    internal sealed record ConfigGroup(Guid Id, string Folder, string? Color);
+    internal sealed record ConfigGroup(Guid Id, string Folder, string? Color)
+    {
+        /// <summary>What a newer version keeps about the tab (kept as it is).</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
-    private sealed record ConfigLabel(string Name, string Color);
+    private sealed record ConfigLabel(string Name, string Color)
+    {
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
     /// <param name="EnergyPerDay">How much energy there is in a day (null: the default); in config.json because it syncs.</param>
-    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null);
+    private sealed record ConfigDocument(int SchemaVersion, List<ConfigGroup> Groups, List<ConfigLabel> Labels, List<Guid> Order, int? EnergyPerDay = null)
+    {
+        /// <summary>Settings a newer version keeps here (kept as they are, so they aren't lost when this one saves).</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Extra { get; init; }
+    }
 
     // "\n" on every system (the default is the system's line ending): these files sync, so their bytes must match.
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -1388,26 +1407,58 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
 
     private static readonly JsonSerializerOptions JsonLine = new(Json) { WriteIndented = false };
 
+    /// <summary>The settings as last read well (their unknown fields are written back from here).</summary>
+    private ConfigDocument _config = new(2, [], [], []);
+
+    /// <summary>Why config.json can't be read right now (then it's never written, and doesn't sync).</summary>
+    private VaultProblem? _configProblem;
+
+    private const string ConfigProblemText = "Your tabs and labels settings can't be read, so they're used as they were and left as they are. Fix the file (or put back an earlier version) to change them again.";
+
     private ConfigDocument ReadConfig()
     {
-        var text = ReadOrEmpty(Path.Combine(MetaDir, "config.json"));
+        var text = TryReadText(Path.Combine(MetaDir, "config.json"));
+        if (text is null)
+        {
+            // Locked or offline right now: the last good settings stay; nothing is written over the file.
+            _configProblem = new VaultProblem(Sync.SyncKeys.ConfigPath, "Your tabs and labels settings can't be opened right now. They're read again shortly.");
+            _configText = string.Empty;
+            return _config;
+        }
+
         _configText = text;
+        _configProblem = null;
+        if (text.Trim().Length == 0)
+        {
+            return _config = new ConfigDocument(2, [], [], []);
+        }
+
         try
         {
-            var doc = text.Length == 0 ? null : JsonSerializer.Deserialize<ConfigDocument>(text, Json);
-            return doc is null
-                ? new ConfigDocument(2, [], [], [])
-                : doc with { Groups = doc.Groups ?? [], Labels = doc.Labels ?? [], Order = doc.Order ?? [] };
+            if (JsonSerializer.Deserialize<ConfigDocument>(text, Json) is not { } doc)
+            {
+                throw new JsonException("The file holds no settings.");
+            }
+
+            // Entries that aren't there (null, or without a folder or name) are skipped, never a failed read.
+            return _config = doc with
+            {
+                Groups = [.. (doc.Groups ?? []).Where(g => g?.Folder is not null)],
+                Labels = [.. (doc.Labels ?? []).Where(l => l?.Name is not null && l.Color is not null)],
+                Order = doc.Order ?? [],
+            };
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or ArgumentException)
         {
-            return new ConfigDocument(2, [], [], []);
+            // Never replaced by an empty one (that would lose the tabs' order, colours and labels everywhere it syncs).
+            _configProblem = new VaultProblem(Sync.SyncKeys.ConfigPath, ConfigProblemText);
+            return _config;
         }
     }
 
     private bool WriteMetadataIfChanged(Stack<Action>? undo = null)
     {
-        var changed = WriteIfChanged(Path.Combine(MetaDir, "config.json"), ConfigText(), ref _configText, undo);
+        var changed = _configProblem is null && WriteIfChanged(Path.Combine(MetaDir, "config.json"), ConfigText(), ref _configText, undo);
         changed |= WriteIfChanged(Path.Combine(MetaDir, "state.json"), StateText(), ref _stateText, undo);
         changed |= AppendActivity(undo);
         return changed;
@@ -1462,12 +1513,16 @@ public sealed partial class VaultBoardStore : IBoardStore, IDisposable
     private string ConfigText()
     {
         var folders = _caches.GroupFolders;
+        var known = _config;
+        var groupExtra = known.Groups.Where(g => g.Extra is not null).GroupBy(g => g.Id).ToDictionary(g => g.Key, g => g.First().Extra);
+        var labelExtra = known.Labels.Where(l => l.Extra is not null).GroupBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Extra, StringComparer.OrdinalIgnoreCase);
         var doc = new ConfigDocument(
             2,
-            GroupsInOrder(_board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color)).ToList(), _dormantGroups),
-            _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color)).ToList(),
+            GroupsInOrder(_board.Groups.Where(g => folders.ContainsKey(g.Id)).Select(g => new ConfigGroup(g.Id, folders[g.Id], g.Color) { Extra = groupExtra.GetValueOrDefault(g.Id) }).ToList(), _dormantGroups),
+            _board.Labels.Select(l => new ConfigLabel(l.Name, l.Color) { Extra = labelExtra.GetValueOrDefault(l.Name) }).ToList(),
             _board.Items.Select(i => i.Id).ToList(),
-            _board.EnergyPerDay);
+            _board.EnergyPerDay)
+        { Extra = known.Extra };
         return JsonSerializer.Serialize(doc, Json) + "\n";
     }
 

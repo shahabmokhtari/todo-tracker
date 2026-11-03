@@ -270,7 +270,12 @@ public sealed partial class VaultBoardStore
             memory[key] = bytes;
         }
 
-        if (File.Exists(Path.Combine(MetaDir, "config.json")))
+        if (_configProblem is not null)
+        {
+            // Settings that can't be read don't sync (another device would take them, or merge against nothing).
+            held.Add(new SyncHeld(SyncKeys.Config, SyncKeys.ConfigPath, "your tabs and labels settings can't be read"));
+        }
+        else if (File.Exists(Path.Combine(MetaDir, "config.json")))
         {
             Remember(SyncKeys.Config, SyncKeys.ConfigPath, File.ReadAllBytes(Path.Combine(MetaDir, "config.json")));
         }

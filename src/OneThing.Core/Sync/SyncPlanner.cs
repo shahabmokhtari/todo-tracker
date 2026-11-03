@@ -426,6 +426,11 @@ public static partial class SyncPlanner
         if (l is null || (b is not null && l.Hash == b.Hash))
         {
             content = ctx.Peer.Read(p);
+            if (Parse(content) is null)
+            {
+                // Settings another device can't read itself aren't taken here either.
+                return;
+            }
         }
         else if (b is not null && p.Hash == b.Hash)
         {

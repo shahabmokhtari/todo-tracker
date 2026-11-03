@@ -2158,6 +2158,47 @@
       }
     },
     {
+      "name": "settings that aren't JSON aren't taken",
+      "local": {
+        "device": "a",
+        "name": "Laptop",
+        "entries": [
+          {
+            "key": "config",
+            "path": ".onething/config.json",
+            "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
+            "hash": "307de4e780344dcc7cce3b3b5988c5720a1ebed7040f1d75744c976851fe3bed"
+          }
+        ]
+      },
+      "peer": {
+        "device": "b",
+        "name": "Phone",
+        "entries": [
+          {
+            "key": "config",
+            "path": ".onething/config.json",
+            "text": "{\n  \"schemaVersion\": 2,\n  \"gro",
+            "hash": "37ca41e77eb1cb9ee82ffe3c4639536c340b4229655ac559dd302c63bc0442d0"
+          }
+        ]
+      },
+      "base": [
+        {
+          "key": "config",
+          "path": ".onething/config.json",
+          "text": "{\n  \"schemaVersion\": 2,\n  \"groups\": [\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000001\",\n      \"folder\": \"Work\",\n      \"color\": \"#3b82f6\"\n    }\n  ],\n  \"labels\": [],\n  \"order\": [\n    \"7b0c2f9e-0000-4000-8000-000000000001\"\n  ]\n}\n",
+          "hash": "307de4e780344dcc7cce3b3b5988c5720a1ebed7040f1d75744c976851fe3bed"
+        }
+      ],
+      "deleted": [],
+      "validateTasks": false,
+      "expected": {
+        "ops": [],
+        "conflicts": []
+      }
+    },
+    {
       "name": "the Now order changed on both (on a)",
       "local": {
         "device": "a",

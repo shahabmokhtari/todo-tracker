@@ -368,6 +368,7 @@ public sealed class SyncFixtureTests
         var configB = ConfigBase.Replace("    }\n  ],\n  \"labels\"", "    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000002\",\n      \"folder\": \"Home\"\n    },\n    {\n      \"id\": \"00000000-0000-4000-8000-000000000003\",\n      \"folder\": \"work\"\n    }\n  ],\n  \"labels\"", StringComparison.Ordinal).Replace("\"order\": [\n    \"" + Id1 + "\"\n  ]", "\"order\": [\n    \"" + Id1 + "\",\n    \"7b0c2f9e-0000-4000-8000-000000000002\"\n  ],\n  \"energyPerDay\": 8", StringComparison.Ordinal);
         foreach (var c in Both("settings changed on both", [(SyncKeys.Config, SyncKeys.ConfigPath, configA)], [(SyncKeys.Config, SyncKeys.ConfigPath, configB)], [(SyncKeys.Config, SyncKeys.ConfigPath, ConfigBase)])) yield return c;
         yield return new PlanCase("settings only the peer has", A(), B((SyncKeys.Config, SyncKeys.ConfigPath, configB)), []);
+        yield return new PlanCase("settings that aren't JSON aren't taken", A((SyncKeys.Config, SyncKeys.ConfigPath, ConfigBase)), B((SyncKeys.Config, SyncKeys.ConfigPath, "{\n  \"schemaVersion\": 2,\n  \"gro")), [(SyncKeys.Config, SyncKeys.ConfigPath, ConfigBase)]);
 
         const string Order1 = "[\"7b0c2f9e-0000-4000-8000-000000000001\",\"7b0c2f9e-0000-4000-8000-000000000002\"]";
         const string OrderA = "[\"7b0c2f9e-0000-4000-8000-000000000002\",\"7b0c2f9e-0000-4000-8000-000000000001\"]";

@@ -27,6 +27,10 @@ OneThing/                        ← the vault (default: Documents/OneThing)
 * A task's identity is the `id` in its frontmatter, not its file name. Files are never renamed when a title changes,
   so links to them keep working. Moving a task to another group moves its file and keeps its name and subfolder.
 * Renaming a group folder in Obsidian keeps the group (recognized by the tasks inside it).
+* `config.json` fields this version doesn't know (from a newer one) are kept when it saves. If the file can't be read
+  (broken JSON, or locked), the tabs and labels stay as last read, the file is never written over and it doesn't
+  sync until it's fixed; the app lists it under the files that need fixing. An empty entry (`null`, a tab without a
+  `folder`, a label without a `name` or `color`) is skipped.
 
 ## A task file
 
