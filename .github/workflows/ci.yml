@@ -312,9 +312,21 @@ jobs:
           mkdir -p "$app/Contents/Resources/Server"
           cp -R artifacts/mac-server/. "$app/Contents/Resources/Server/"
           rm -f "$app/Contents/Resources/Server/"*.pdb
-          # Changed after the build: sign the whole app again (ad hoc, as before).
-          codesign --force --deep --sign - "$app"
+          # Changed after the build: sign it again (ad hoc), inside out and each part with its own entitlements, so
+          # the widgets keep their sandbox and App Group (--deep would sign them with none and they wouldn't load).
+          # The entitlements files say $(TeamIdentifierPrefix)group…: use the App Group the build put in Info.plist.
+          group=$(/usr/libexec/PlistBuddy -c 'Print :WidgetAppGroup' "$app/Contents/Info.plist")
+          entitlements() { sed "s|\$(TeamIdentifierPrefix)group.com.onething|$group|g" "apple/Support/$1" > "$RUNNER_TEMP/$1"; echo "$RUNNER_TEMP/$1"; }
+          if [ -d "$app/Contents/Frameworks" ]; then
+            find "$app/Contents/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -exec codesign --force --sign - {} \;
+          fi
+          appex="$app/Contents/PlugIns/OneThingWidgets.appex"
+          codesign --force --sign - --entitlements "$(entitlements Widgets-macOS.entitlements)" "$appex"
+          codesign --force --sign - --entitlements "$(entitlements OneThing-macOS.entitlements)" "$app"
           codesign --verify --deep "$app"
+          signed=$(codesign -d --entitlements - "$appex" 2>/dev/null)
+          case "$signed" in *com.apple.security.app-sandbox*) ;; *) echo 'The widgets lost their sandbox'; exit 1 ;; esac
+          case "$signed" in *"$group"*) ;; *) echo 'The widgets lost their App Group'; exit 1 ;; esac
       - name: The bundled server starts and stops with the app that started it
         run: |
           server=apple/DerivedData/Build/Products/Release/OneThing.app/Contents/Resources/Server/OneThing.Web
