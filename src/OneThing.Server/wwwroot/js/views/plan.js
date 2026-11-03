@@ -90,7 +90,7 @@ export function createPlanView(ctx) {
     try {
       await ctx.api(`/api/items/${id}/plan`, { method: 'POST', body: start ? { start: start.toISOString(), minutes } : {} });
       await load({ quiet: true });
-      ctx.refreshDashboard?.();
+      ctx.refreshDashboard();
     } catch (err) {
       ctx.toast(err.message, 'error');
       load({ quiet: true });

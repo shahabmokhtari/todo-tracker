@@ -81,6 +81,12 @@ The web app (and the app window on Windows) has six views; switch with the side 
   *Later*, with when each comes back, and marked on that day; drag them in too. Each group keeps its own view (day or
   week, work hours or the whole day). An extra: switch it off in Settings.
 
+**Groups** are listed in the side bar. Each has a **⋯** next to it (Tab to it, or point at the group) with **Rename…**
+and **Delete…**; deleting asks first and moves the group's tasks to another group, so none are lost. **+** adds one.
+Extras you switch on or off in another window (or the sidebar) show or go here within a few seconds, no reload
+needed. If One Thing can't be reached (it isn't running, say), a notice at the top says so and goes away by itself
+once it answers again.
+
 **How much energy do you have?** (the Energy extra) Say how draining a task is: ⚡ (light), ⚡⚡ or ⚡⚡⚡ (draining) an
 hour, in its details (or ⋯ › Energy on a card in the sidebar, on a Mac or an iPhone; not said counts as ⚡). Say how much you have in a day in Settings ›
 Energy (10 unless you change it; every app uses the same number). Today then says "⚡ 4.5 of 10 planned today", and

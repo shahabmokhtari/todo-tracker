@@ -74,8 +74,16 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .sidenav .tabs { flex-direction: column; flex: 0 0 auto; max-width: none; overflow: visible; padding: 0; background: transparent; border: 0; border-radius: 0; gap: 2px; }
 .sidenav .tab { width: 100%; justify-content: flex-start; border-radius: 10px; padding: 7px 10px; }
 .sidenav .tab .badge { margin-left: auto; }
-.sidenav .tab[aria-selected="true"] { background: var(--surface-2); box-shadow: none; }
+.sidenav .tab[aria-current="true"] { background: var(--surface-2); box-shadow: none; }
 .sidenav .tab.add { justify-content: center; color: var(--text-3); }
+/* A group and its ⋯ (rename, delete): the ⋯ is always there for the keyboard, faint until you point at the group. */
+.tab-row { display: flex; align-items: center; gap: 2px; }
+.tab-row > .tab { flex: 1; min-width: 0; }
+.tab-row > .menu-wrap { flex: none; }
+.tab-more { color: var(--text-3); opacity: .55; }
+.tab-row:hover .tab-more, .tab-more:focus-visible, .tab-more[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .tab-more { opacity: 1; } }
+.offline { margin: 8px var(--space-4) 0; }
 .nav-foot { margin-top: auto; display: grid; gap: 2px; padding-top: var(--space-3); border-top: 1px solid var(--border); }
 
 .topbar { gap: var(--space-3); min-height: var(--topbar-h); padding: 8px var(--space-4); }
@@ -612,3 +620,8 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .plan-resize:hover { background: color-mix(in srgb, var(--task-accent, var(--accent)) 35%, transparent); }
 .plan-now { position: absolute; left: 0; right: 0; top: var(--top); height: 2px; background: var(--danger); pointer-events: none; }
 .plan-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+
+/* High contrast: the focused row of the task tree gets an outline (its background tint isn't drawn there). */
+@media (forced-colors: active) {
+  .orow:focus, .orow:focus-within { outline: 2px solid Highlight; outline-offset: -2px; }
+}
