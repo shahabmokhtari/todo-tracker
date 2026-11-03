@@ -1,0 +1,135 @@
+name: Screenshots (iPhone)
+
+# The iPhone pictures for the README and the website (docs/images/macos-ios-light.png and -dark.png, and their WebP
+# copies), from the made-up demo board (ONETHING_DEMO=1), never anyone's tasks. Download the "screenshots" artifact
+# and unzip it at the root of the repository; the other pictures come from tests/e2e/screenshots.mjs.
+on:
+  workflow_dispatch:
+  push:
+    branches: [screenshots]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  iphone:
+    name: iPhone, light and dark
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BUNDLE_ID: com.onething.ios
+      APP: apple/DerivedData/Build/Products/Debug-iphonesimulator/OneThing.app
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Toolchain
+        run: xcodebuild -version && xcrun simctl help >/dev/null
+      - name: Generate Xcode project
+        working-directory: apple
+        timeout-minutes: 10
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build iOS app (debug, simulator; the demo board is only in debug builds)
+        working-directory: apple
+        timeout-minutes: 25
+        run: >
+          xcodebuild -project OneThing.xcodeproj -scheme OneThing-iOS
+          -destination 'generic/platform=iOS Simulator' -configuration Debug
+          -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: The app was built
+        run: test -d "$APP"
+      - name: Boot an iPhone simulator
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          # The newest iOS runtime's plain "iPhone N" (else any iPhone).
+          read -r UDID NAME < <(python3 - <<'PY'
+          import json, re, subprocess
+          listing = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          def version(runtime):
+              m = re.search(r"iOS-(\d+)-(\d+)", runtime)
+              return (int(m[1]), int(m[2])) if m else (0, 0)
+          found = []
+          for runtime, devices in listing["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for d in devices:
+                  if d["name"].startswith("iPhone"):
+                      plain = re.fullmatch(r"iPhone \d+", d["name"]) is not None
+                      found.append((version(runtime), plain, d["name"], d["udid"]))
+          if not found:
+              raise SystemExit("No iPhone simulator on this runner")
+          found.sort(reverse=True)
+          print(found[0][3], found[0][2])
+          PY
+          )
+          echo "Using $NAME ($UDID)"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$UDID" -b
+          # A tidy status bar: the same time and full bars in every picture.
+          xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+            --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+      - name: Install the app
+        timeout-minutes: 5
+        run: xcrun simctl install "$UDID" "$APP"
+      - name: Take the pictures (light, then dark)
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          mkdir -p docs/images
+          for mode in light dark; do
+            xcrun simctl ui "$UDID" appearance "$mode"
+            xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
+            sleep 2
+            # SIMCTL_CHILD_ passes these to the app: the demo board, and no feedback sent anywhere.
+            SIMCTL_CHILD_ONETHING_DEMO=1 SIMCTL_CHILD_ONETHING_FEEDBACK_SEND=0 xcrun simctl launch "$UDID" "$BUNDLE_ID"
+            sleep 12
+            # Still running (it didn't crash on start)?
+            procs=$(xcrun simctl spawn "$UDID" launchctl list)
+            grep -q "$BUNDLE_ID" <<<"$procs" || { echo "The app isn't running in $mode mode"; exit 1; }
+            file="docs/images/macos-ios-$mode.png"
+            xcrun simctl io "$UDID" screenshot --type=png "$file"
+            test -s "$file"
+            sips -g pixelWidth -g pixelHeight "$file"
+          done
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: WebP copies for the website
+        working-directory: tests/e2e
+        timeout-minutes: 10
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+          node screenshots.mjs --webp-only --only macos-ios-light,macos-ios-dark
+          test -s ../../website/public/img/macos-ios-light.webp
+          test -s ../../website/public/img/macos-ios-dark.webp
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: screenshots
+          if-no-files-found: error
+          path: |
+            docs/images/macos-ios-light.png
+            docs/images/macos-ios-dark.png
+            website/public/img/macos-ios-light.webp
+            website/public/img/macos-ios-dark.webp
+            website/public/index.html
+      - name: What the simulator showed (when something failed)
+        if: failure() && env.UDID != ''
+        run: |
+          mkdir -p failure
+          xcrun simctl io "$UDID" screenshot --type=png failure/simulator.png || true
+          xcrun simctl spawn "$UDID" log show --last 5m --predicate "process == 'OneThing'" > failure/app.log 2>&1 || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: screenshots-failure
+          path: failure
+          if-no-files-found: ignore
+      - name: Shut down the simulator
+        if: always() && env.UDID != ''
+        run: xcrun simctl shutdown "$UDID" || true

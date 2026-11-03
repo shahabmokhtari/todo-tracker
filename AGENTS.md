@@ -121,7 +121,8 @@ Generated files (commit them after regenerating):
 ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
 ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json
 ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json (then build again: tests read the copies in bin/)
-cd tests/e2e && node screenshots.mjs        # docs/images/*.png, from a made-up demo board (quit the app first on Windows)
+cd tests/e2e && node screenshots.mjs        # docs/images/*.png, og.png and the website's WebP copies, from a made-up demo board (quit the app first on Windows for the sidebar; --web-only skips it, --only <names> picks some)
+# The iPhone pictures (macos-ios-light/-dark): run the Screenshots workflow (.github/workflows/screenshots.yml; also on a push to a branch named screenshots), then unzip its artifact at the repo root
 python3 build/icons.py                      # the app icon on every platform (pip install cairosvg pillow); the tray icons draw the same shapes in code
 ```
 

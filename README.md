@@ -60,19 +60,19 @@ calm until it matters.
 | Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | The full app on any phone; native Android and iPhone apps too. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
-<summary>More: dark mode, the sidebar in dark, the Mac and iPhone app, the browser extension</summary>
+<summary>More: dark mode, the sidebar in dark, the iPhone app, the browser extension</summary>
 
 | Dark mode | Sidebar, dark |
 |---|---|
 | ![Today in dark mode](docs/images/today-dark.png) | ![The Windows sidebar in dark mode](docs/images/windows-sidebar-dark.png) |
 
-| Mac and iPhone (SwiftUI) | Browser side panel |
+| iPhone (SwiftUI) | Browser side panel |
 |---|---|
-| ![The SwiftUI app on macOS and iOS](docs/images/macos-ios-light.png) | ![The Edge and Chrome side panel](docs/images/browser-extension.png) |
+| ![The SwiftUI app on iPhone: the focus card, Do now, Waiting, Done today and Workstreams](docs/images/macos-ios-light.png) | ![The Edge and Chrome side panel](docs/images/browser-extension.png) |
 
 </details>
 
-*Every screenshot shows a made-up demo board (`node tests/e2e/screenshots.mjs` makes them).*
+*Every screenshot shows a made-up demo board (`node tests/e2e/screenshots.mjs` makes them; the iPhone ones come from the Screenshots workflow).*
 
 ## Your AI can use it too
 
