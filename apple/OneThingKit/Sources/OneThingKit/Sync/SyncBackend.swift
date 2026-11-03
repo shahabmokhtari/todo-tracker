@@ -99,7 +99,7 @@ public enum SyncBackends {
         })
 
     /// GitHub's page to make a token that can only use gists.
-    public static let gistTokenPage = URL(string: "https://github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker")!
+    public static let gistTokenPage = URL(string: "https://github.com/settings/tokens/new?scopes=gist&description=One%20Thing")!
 
     /// A private GitHub gist, with a pasted token (classic with the `gist` scope, or fine-grained with Gists: read and
     /// write).

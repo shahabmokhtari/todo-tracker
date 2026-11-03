@@ -7,6 +7,8 @@ import UserNotifications
 #endif
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// View model for the iOS and macOS apps. On its own it owns a board on this device: persists after every change,
@@ -90,6 +92,11 @@ public final class BoardModel: ObservableObject {
     var widgetSnapshot: WidgetSnapshot?
     private var widgetCheckedAt = Date.distantPast
     private var etag: String?
+    /// Saves what's typed in task details when the app quits.
+    private var quitObserver: NSObjectProtocol?
+    /// The server's board came in since `use(server:)` (until then the board shown is this Mac's, maybe the empty one
+    /// left after the tasks moved into the tasks folder).
+    private var serverBoardRead = false
     private var themeSettled = false
 
     /// The phone itself (iPhone and iPad; nil on the Mac): its name and what it is.
@@ -125,37 +132,25 @@ public final class BoardModel: ObservableObject {
             Task { @MainActor in self?.tick() }
         }
         sync?.onSynced = { [weak self] in self?.reloadFromStore() }
+        // Quitting (or iOS ending the app): what's typed in a task's details is saved first.
+        #if os(iOS)
+        let quitting = UIApplication.willTerminateNotification
+        #elseif os(macOS)
+        let quitting = NSApplication.willTerminateNotification
+        #endif
+        #if os(iOS) || os(macOS)
+        quitObserver = NotificationCenter.default.addObserver(forName: quitting, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveAllDrafts() }
+        }
+        #endif
     }
 
     public static func live() -> BoardModel {
         #if os(iOS)
-        let phone = PhoneSetup.live()
-        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
-        var store: VaultBoardStore?
-        var sync: SyncModel?
-        var openError: String?
-        var fallback: TaskBoard?
-        var notice: String?
-        if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("OneThing", isDirectory: true) {
-            let syncFolder = base.appendingPathComponent("sync", isDirectory: true)
-            // Joining a sync for the first time brings a leftover board.json in after what came (never before).
-            let joining = settings.load().map { !PhoneSyncer.hasJoined(directory: syncFolder, settings: $0) } ?? false
-            let opened = VaultBoardStore.openOnDevice(base: base, importLeftover: !joining)
-            if let vault = opened.store {
-                store = vault
-                notice = opened.message
-                let syncer = PhoneSyncer(store: vault.vault, directory: syncFolder, settings: settings,
-                                         deviceName: phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
-                sync = SyncModel(syncer: syncer, settings: settings)
-            } else {
-                openError = opened.message
-                fallback = opened.fallback
-            }
-        } else {
-            openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
-        }
-        let model = BoardModel(store: store, phone: phone, sync: sync, openError: openError, fallback: fallback, notice: notice)
+        let opened = openPhoneStorage()
+        let sync = opened.sync
+        let model = BoardModel(store: opened.store, phone: opened.phone, sync: sync, openError: opened.openError,
+                               fallback: opened.fallback, notice: opened.notice)
         model.widgetShelf = WidgetShelf.shared
         // At launch: a sync now, then every minute while the app is open.
         sync?.start()
@@ -166,6 +161,51 @@ public final class BoardModel: ObservableObject {
         return model
         #endif
     }
+
+    #if os(iOS)
+    /// The phone's tasks folder and its sync.
+    struct PhoneStorage {
+        var phone: PhoneSetup
+        var store: VaultBoardStore?
+        var sync: SyncModel?
+        var openError: String?
+        var fallback: TaskBoard?
+        var notice: String?
+    }
+
+    /// Opened once per run: by the app, or before it by a background refresh (iOS can wake the app to sync without
+    /// showing it), so the two never sync the same folder side by side.
+    private static var phoneStorage: PhoneStorage?
+
+    static func openPhoneStorage() -> PhoneStorage {
+        if let phoneStorage { return phoneStorage }
+        let phone = PhoneSetup.live()
+        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
+        var opened = PhoneStorage(phone: phone)
+        if let base = try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent("OneThing", isDirectory: true) {
+            let syncFolder = base.appendingPathComponent("sync", isDirectory: true)
+            // Joining a sync for the first time brings a leftover board.json in after what came (never before).
+            let joining = settings.load().map { !PhoneSyncer.hasJoined(directory: syncFolder, settings: $0) } ?? false
+            let device = VaultBoardStore.openOnDevice(base: base, importLeftover: !joining)
+            if let vault = device.store {
+                opened.store = vault
+                opened.notice = device.message
+                let syncer = PhoneSyncer(store: vault.vault, directory: syncFolder, settings: settings,
+                                         deviceName: phone.phoneName, legacyBoard: base.appendingPathComponent("board.json"))
+                opened.sync = SyncModel(syncer: syncer, settings: settings)
+                // Kept only when it opened: a folder that couldn't be opened is tried again by whoever comes next.
+                phoneStorage = opened
+            } else {
+                opened.openError = device.message
+                opened.fallback = device.fallback
+            }
+        } else {
+            opened.openError = "Couldn't open your tasks: this device's app storage can't be reached. Restart the app to try again."
+        }
+        return opened
+    }
+    #endif
 
     public static func requestNotificationPermission() { NotificationScheduler.requestAuthorization() }
 
@@ -198,6 +238,7 @@ public final class BoardModel: ObservableObject {
         isReadOnly = false
         unansweredReads = 0
         etag = nil
+        serverBoardRead = false
         themeSettled = false
         status = nil
         Task { await reload() }
@@ -218,6 +259,7 @@ public final class BoardModel: ObservableObject {
             server = nil
             serverURL = nil
             etag = nil
+            serverBoardRead = false
             board = (try? store?.load()) ?? TaskBoard()
             refresh()
         }
@@ -266,6 +308,7 @@ public final class BoardModel: ObservableObject {
             etag = tag
             if let fresh {
                 board = fresh
+                serverBoardRead = true
                 NotificationScheduler.sync(board)
             }
             if let theme { adopt(theme: theme, from: server) }
@@ -323,6 +366,15 @@ public final class BoardModel: ObservableObject {
             // Done, failed or not: the board as the server has it now is read back.
             onSettled?()
         }
+    }
+
+    /// The board shown is the user's tasks as they are: not while the tasks folder opens, not this Mac's board once
+    /// the tasks moved into the folder (an empty or old copy), not a board that couldn't be opened. Only then do the
+    /// widgets show it and Done tapped on them get made (else the widgets keep what they showed, the requests wait).
+    var boardIsTheTasks: Bool {
+        if isConnecting { return false }
+        if server != nil { return serverBoardRead }
+        return storeFailure == nil && store?.wasMigrated != true
     }
 
     /// While the tasks folder is opening, changes wait (says so). True when it's opening.
@@ -385,7 +437,7 @@ public final class BoardModel: ObservableObject {
         }
         mutate("Added") {
             let capture = try QuickCaptureParser.parse(text, now: $0)
-            let item = try board.addTask(NewTask(capture.title, groupId: selectedGroupId, priority: capture.priority, deadline: capture.deadline), now: $0)
+            let item = try board.addTask(NewTask(capture.title, groupId: selectedGroupId, priority: capture.priority, deadline: capture.deadline, tags: capture.tags), now: $0)
             if let at = capture.nextActionAt { try board.scheduleNextAction(item.id, at: at, notify: true, now: $0) }
             quickText = ""
         }
@@ -792,16 +844,25 @@ public final class BoardModel: ObservableObject {
 
     // MARK: The app in front and behind (iPhone and iPad)
 
-    /// Pulled down to refresh: the board is read again from the server.
+    /// Pulled down to refresh: the board is read again from the server, or (iPhone and iPad) a sync runs now.
     public func pullToRefresh() async {
-        if server != nil, !isConnecting { await reload() }
+        if server != nil {
+            if !isConnecting { await reload() }
+        } else if let sync, sync.isOn {
+            sync.syncNow()
+            await sync.finish()
+        }
     }
 
     /// The app is in front again: a sync runs (then every minute while it's open).
     public func becameActive() { sync?.start() }
 
-    /// The app went to the background: syncing waits for iOS to wake the app.
-    public func wentToBackground() { sync?.stop() }
+    /// The app went to the background: what's typed in task details is saved (iOS may end the app without asking), and
+    /// syncing waits for iOS to wake the app.
+    public func wentToBackground() {
+        saveAllDrafts()
+        sync?.stop()
+    }
 
     /// The tasks folder changed (a sync brought something): the board is read again, reminders set up again.
     public func reloadFromStore() {

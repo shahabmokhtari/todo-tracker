@@ -49,6 +49,7 @@ public final class TaskBoard {
     public func addTask(_ spec: NewTask, actor: Actor = .user, now: Date) throws -> WorkItem {
         let title = try Self.requireText(spec.title, "A task title is required.")
         try Self.validate(stepDelay: spec.stepDelay)
+        let tags = try Self.normalizeTags(spec.tags)
         let parent = try spec.parentId.map { try get($0) }
         let groupId: UUID
         if let parent {
@@ -63,6 +64,7 @@ public final class TaskBoard {
         item.deadline = spec.deadline
         item.sequential = spec.sequential
         item.stepDelay = spec.stepDelay
+        item.tags = tags
         // A new card waits in the inbox until it's decided (subtasks aren't cards).
         item.stage = parent == nil ? spec.stage ?? .inbox : .next
         try attach(item, to: parent)
@@ -743,6 +745,22 @@ public final class TaskBoard {
         // Count UTF-16 units like .NET so both platforms accept exactly the same titles.
         guard trimmed.utf16.count <= maxLength else { throw BoardError.invalid("Must be at most \(maxLength) characters.") }
         return trimmed
+    }
+
+    static let maxTags = 20
+
+    /// Tags as given: cleaned, each once (ignoring case); one that can't be a tag, or more than 20, is refused (as C#).
+    static func normalizeTags(_ tags: [String]) throws -> [String] {
+        var result: [String] = []
+        for raw in tags {
+            let tag = TaskMarkdown.cleanTag(raw)
+            guard TaskMarkdown.isValidTag(tag) else {
+                throw BoardError.invalid("\"\(raw)\" isn't a valid tag. Use words of letters, numbers, - _ and / (not only digits), up to 50 characters.")
+            }
+            if !result.contains(where: { Ordinal.equalIgnoreCase($0, tag) }) { result.append(tag) }
+        }
+        guard result.count <= maxTags else { throw BoardError.invalid("At most \(maxTags) tags per task.") }
+        return result
     }
 
     static func optionalText(_ value: String?) -> String? {

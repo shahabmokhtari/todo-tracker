@@ -155,7 +155,7 @@ public struct DashboardView: View {
             }
             if scrollable {
                 ScrollView { sections.padding(.bottom, 8) }.scrollIndicators(.hidden)
-                    // Pull down: read again from the server (on a Mac).
+                    // Pull down: read again from the server (on a Mac), or sync now (iPhone and iPad).
                     .refreshable { await model.pullToRefresh() }
             } else {
                 sections

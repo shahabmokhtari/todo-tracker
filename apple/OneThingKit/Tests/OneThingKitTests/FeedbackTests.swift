@@ -92,6 +92,13 @@ final class FeedbackTests: XCTestCase {
         XCTAssertEqual(Feedback.cleanMessage(String(repeating: "😀", count: 2001)).unicodeScalars.count, 2000)
     }
 
+    func testTheTitleIsTheNotesFirstLineCutTo256CodePoints() {
+        XCTAssertEqual(Feedback.title(.bug, platform: "iOS", message: "It crashes\r\nwhen I tap Done"), "Bug · iOS: It crashes")
+        let long = Feedback.title(.idea, platform: "macOS", message: String(repeating: "😀", count: 300))
+        XCTAssertEqual(long.unicodeScalars.count, 256)
+        XCTAssertTrue(long.hasPrefix("Idea · macOS: 😀"))
+    }
+
     func testAReplyAddressLosesControlCharactersAndIsCutTo200CodePoints() {
         XCTAssertEqual(Feedback.cleanContact(" \u{7}me@example.com\r\n\u{0} "), "me@example.com")
         XCTAssertEqual(Feedback.cleanContact("me@\u{85}example.com"), "me@example.com")

@@ -3,7 +3,7 @@ import Foundation
 import OneThingKit
 
 /// What the Board, Tasks and Done views show and do. Every change works the same way as the others: made on the board
-/// on this device (and saved), or sent to the server in use (the Mac's own, or the computer this iPhone or iPad uses).
+/// on this device (and saved), or sent to the server in use (the Mac's own).
 extension BoardModel {
     // MARK: What the views show
 

@@ -5,6 +5,9 @@ import OneThingKit
 #if os(iOS) && canImport(BackgroundTasks)
 import BackgroundTasks
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 /// Settings › Sync on an iPhone or iPad: syncing on its own with the other devices through one of `SyncBackends` (a
 /// shared folder in iCloud Drive or OneDrive, or a GitHub gist), and when: at launch and back in front, a few seconds
@@ -54,6 +57,10 @@ public final class SyncModel: ObservableObject {
     /// first, so two never overlap. Each run waits for the one stopped before it, so this one is enough.
     private var stopping: Task<Void, Never>?
     private var runId = 0
+    #if os(iOS)
+    /// The time iOS gives the app after it went to the background, for the sync on its way.
+    private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    #endif
 
     public init(syncer: DeviceSyncing, settings: SyncSettingsStore, bookmarks: FolderBookmarks = SystemFolderBookmarks(), debounce: TimeInterval = 5, interval: TimeInterval = 60) {
         self.syncer = syncer
@@ -88,12 +95,44 @@ public final class SyncModel: ObservableObject {
         syncNow()
     }
 
-    /// The app went to the background: no minute timer; iOS wakes it now and then instead.
+    /// The app went to the background: no minute timer; iOS wakes it now and then instead. A change still waiting its
+    /// few seconds (or a sync on its way) syncs now, in the little time iOS gives the app.
     public func stop() {
         timer?.invalidate()
         timer = nil
+        if pendingChange != nil || running != nil {
+            pendingChange?.cancel()
+            pendingChange = nil
+            syncNow()
+            finishInBackground()
+        }
         scheduleBackground()
     }
+
+    /// Asks iOS for time to finish the sync; when time's up, it stops (what it hadn't published waits for the next one).
+    private func finishInBackground() {
+        #if os(iOS)
+        guard backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Sync") { [weak self] in
+            MainActor.assumeIsolated {
+                self?.cancelRunning()
+                self?.endBackgroundTask()
+            }
+        }
+        Task { [weak self] in
+            await self?.finish()
+            self?.endBackgroundTask()
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
+    }
+    #endif
 
     /// Something changed on this phone: synced a few seconds later (one sync for changes close together).
     public func changed() {
@@ -103,6 +142,7 @@ public final class SyncModel: ObservableObject {
         pendingChange = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled else { return }
+            self?.pendingChange = nil
             self?.syncNow()
         }
     }
@@ -136,9 +176,13 @@ public final class SyncModel: ObservableObject {
     public private(set) static weak var current: SyncModel?
 
     /// iOS woke the app for a background refresh: the next one is asked for first (even before the app's sync is
-    /// there), then one sync.
+    /// there), then one sync. Woken before the app was ever shown (nothing opened the tasks folder yet), it opens the
+    /// folder and its sync first.
     public static func backgroundRefresh() async {
         submitBackground()
+        #if os(iOS)
+        if current == nil { _ = BoardModel.openPhoneStorage() }
+        #endif
         await current?.syncInBackground()
     }
 

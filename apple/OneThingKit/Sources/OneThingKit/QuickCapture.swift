@@ -5,32 +5,53 @@ public struct QuickCapture: Equatable {
     public let priority: Priority
     public let nextActionAt: Date?
     public let deadline: Date?
+    /// `#tag` and `#"deep work"`, each once (ignoring case), as typed.
+    public var tags: [String] = []
 }
 
-/// One-line capture, same syntax as the Windows sidebar and web: `!`/`!!`/`!low` priority,
-/// `@15m`/`@2h`/`@1d`/`@tomorrow` defer, `due:today`/`due:tomorrow`/`due:3d`/`due:2026-02-01` deadline.
+/// One-line capture, same syntax as the Windows sidebar and web (C# QuickCaptureParser): `!`/`!!`/`!low` priority,
+/// `@15m`/`@2h`/`@1d`/`@tomorrow` defer (and anything "Pick a time…" reads: `@fri`, `@2w`, `@weekend`, `@14:00`,
+/// `@next-week` with hyphens for spaces), `due:today`/`due:tomorrow`/`due:3d`/`due:2026-02-01` deadline, `#tag` and
+/// `#"deep work"` tags (words like `#123` that can't be tags stay in the title, as in Obsidian).
 public enum QuickCaptureParser {
     static let morningHour = 9
     static let endOfDayHour = 17
+
+    /// #"deep work": a tag of several words, in straight or curly quotes (smart punctuation curls them as you type).
+    private static let quotedTag = Rx(#"(?<=^|\s)#["\x{201C}\x{201D}]([^"\x{201C}\x{201D}]+)["\x{201C}\x{201D}]"#)
 
     public static func parse(_ input: String, now: Date, timeZone: TimeZone = .current) throws -> QuickCapture {
         var priority = Priority.normal
         var nextAction: Date?
         var deadline: Date?
         var words: [String] = []
-        for token in input.split(whereSeparator: { $0 == " " }).map(String.init) where !token.isEmpty {
+        var tags: [String] = []
+        func addTag(_ tag: String) {
+            if !tags.contains(where: { Ordinal.equalIgnoreCase($0, tag) }) { tags.append(tag) }
+        }
+
+        let text = quotedTag.replace(input) { match in
+            let tag = TaskMarkdown.cleanTag(match.group(1))
+            guard TaskMarkdown.isValidTag(tag) else { return match.value }
+            addTag(tag)
+            return " "
+        }
+
+        for token in text.split(whereSeparator: { $0 == " " }).map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }) where !token.isEmpty {
             if let p = parsePriority(token) {
                 priority = p
             } else if let at = parseDefer(token, now: now, timeZone: timeZone) {
                 nextAction = at
             } else if let due = parseDue(token, now: now, timeZone: timeZone) {
                 deadline = due
+            } else if token.count > 1, token.hasPrefix("#"), !token.dropFirst().hasPrefix("#"), TaskMarkdown.isValidTag(String(token.dropFirst())) {
+                addTag(String(token.dropFirst()))
             } else {
                 words.append(token)
             }
         }
         guard !words.isEmpty else { throw BoardError.invalid("Type a task title.") }
-        return QuickCapture(title: words.joined(separator: " "), priority: priority, nextActionAt: nextAction, deadline: deadline)
+        return QuickCapture(title: words.joined(separator: " "), priority: priority, nextActionAt: nextAction, deadline: deadline, tags: tags)
     }
 
     static func parsePriority(_ token: String) -> Priority? {
@@ -47,7 +68,10 @@ public enum QuickCaptureParser {
         guard token.hasPrefix("@") else { return nil }
         let value = token.dropFirst().lowercased()
         if value == "tomorrow" { return tomorrowMorning(now: now, timeZone: timeZone) }
-        return parseSpan(value).map { now.addingTimeInterval($0) }
+        // @15m, @2h, @3d count from now (as always); anything else as in "Pick a time…": @fri, @2w, @weekend, @14:00,
+        // and words with spaces written with hyphens (@next-week, @tomorrow-14:00).
+        if let span = parseSpan(value) { return now.addingTimeInterval(span) }
+        return Snooze.parse(value, now: now, timeZone: timeZone) ?? Snooze.parse(value.replacingOccurrences(of: "-", with: " "), now: now, timeZone: timeZone)
     }
 
     /// Next 9:00. Before 4:00 people still mean "when I wake up", i.e. this morning (same as C#).

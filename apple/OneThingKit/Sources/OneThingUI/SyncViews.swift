@@ -175,7 +175,8 @@ struct SyncView: View {
 
         if !sync.status.conflicts.isEmpty {
             Section {
-                ForEach(sync.status.conflicts, id: \.key) { conflict in
+                // The same task can be changed on both with more than one device: one row each.
+                ForEach(sync.status.conflicts, id: \.rowId) { conflict in
                     VStack(alignment: .leading) {
                         Text(Self.title(conflict.path))
                         Text("Changed on both: here and on \(conflict.peerName)").font(.caption).foregroundStyle(.secondary)
@@ -223,6 +224,11 @@ struct SyncView: View {
         let name = (path as NSString).lastPathComponent
         return (name as NSString).deletingPathExtension
     }
+}
+
+extension SyncConflictRecord {
+    /// One row per conflict (the same task can be changed on both with more than one device, or twice).
+    var rowId: String { [key, peer, mine, theirs].joined(separator: "\u{1F}") }
 }
 
 #if os(iOS)

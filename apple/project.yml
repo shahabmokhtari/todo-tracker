@@ -21,7 +21,12 @@ targets:
   OneThing-iOS:
     type: application
     platform: iOS
-    sources: [App, Shared]
+    sources:
+      - App
+      - Shared
+      # The privacy manifest: no tracking; what Send feedback sends; why it reads UserDefaults and file times.
+      - path: Support/Privacy/App/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: OneThingKit
         product: OneThingKit
@@ -58,7 +63,12 @@ targets:
   OneThing-macOS:
     type: application
     platform: macOS
-    sources: [App, Shared]
+    sources:
+      - App
+      - Shared
+      # The privacy manifest: no tracking; what Send feedback sends; why it reads UserDefaults and file times.
+      - path: Support/Privacy/App/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: OneThingKit
         product: OneThingKit
@@ -96,7 +106,12 @@ targets:
   OneThingWidgets-iOS:
     type: app-extension
     platform: iOS
-    sources: [Widgets, Shared]
+    sources:
+      - Widgets
+      - Shared
+      # The widgets' privacy manifest: no tracking, nothing collected.
+      - path: Support/Privacy/Widgets/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: OneThingKit
         product: OneThingKit
@@ -124,7 +139,12 @@ targets:
   OneThingWidgets-macOS:
     type: app-extension
     platform: macOS
-    sources: [Widgets, Shared]
+    sources:
+      - Widgets
+      - Shared
+      # The widgets' privacy manifest: no tracking, nothing collected.
+      - path: Support/Privacy/Widgets/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: OneThingKit
         product: OneThingKit

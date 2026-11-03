@@ -78,6 +78,23 @@ final class VaultSafetyTests: XCTestCase {
 
     private let planText = "---\nid: 7b0c2f9e-0000-4000-8000-000000000001\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Plan\n"
 
+    func testNumbersTooBigInATaskFileAreAProblemWithThatFileNotACrash() throws {
+        let temp = TempDir()
+        let work = temp.url.appendingPathComponent("Work")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        try planText.write(to: work.appendingPathComponent("Plan.md"), atomically: true, encoding: .utf8)
+        let huge = "9223372036854775807"
+        try "---\nid: 7b0c2f9e-0000-4000-8000-000000000002\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\nstep-delay: \(huge)\n---\n# Wait a lot\n"
+            .write(to: work.appendingPathComponent("Wait a lot.md"), atomically: true, encoding: .utf8)
+        try "---\nid: 7b0c2f9e-0000-4000-8000-000000000003\nstatus: open\ncreated: 2026-01-05T09:00:00.000Z\n---\n# Steps\n\n## Steps\n\n1. [ ] First %%{\"id\":\"7b0c2f9e-0000-4000-8000-000000000004\",\"delay\":\(huge)}%%\n"
+            .write(to: work.appendingPathComponent("Steps.md"), atomically: true, encoding: .utf8)
+
+        let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+
+        XCTAssertEqual(try store.read { $0.items.map(\.title) }, ["Plan"], "the other tasks open as usual")
+        XCTAssertEqual(Set(store.problems.map { ($0.path as NSString).lastPathComponent }), ["Wait a lot.md", "Steps.md"])
+    }
+
     func testAFileThatCantBeReadIsNeverLeftOutOfSyncOrWrittenOver() throws {
         let temp = TempDir()
         let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })

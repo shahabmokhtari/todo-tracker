@@ -186,6 +186,18 @@ final class SyncModelTests: XCTestCase {
         XCTAssertNotNil(sync.status.lastSync)
     }
 
+    func testPullingDownSyncsNow() async throws {
+        let store = try VaultBoardStore.open(base: folder, importLeftover: true)
+        let syncer = FakeSyncer()
+        syncer.during = { _ = try store.vault.update { try $0.addTask(NewTask("From the laptop"), now: Date()) } }
+        let model = BoardModel(store: store, sync: syncModel(syncer))
+
+        await model.pullToRefresh()
+
+        XCTAssertEqual(syncer.runs, 1)
+        XCTAssertEqual(model.board.items.map(\.title), ["From the laptop"], "shown when the spinner goes away")
+    }
+
     func testASyncAskedForWhileOneRunsRunsOnceAfterIt() async throws {
         let syncer = FakeSyncer()
         syncer.delay = 100_000_000
@@ -196,6 +208,20 @@ final class SyncModelTests: XCTestCase {
         sync.syncNow()
         await sync.finish()
         XCTAssertEqual(syncer.runs, 2, "the ones asked for meanwhile: one more")
+    }
+
+    func testAChangeWaitingItsFewSecondsSyncsWhenTheAppGoesToTheBackground() async throws {
+        let syncer = FakeSyncer()
+        let sync = syncModel(syncer)
+        sync.debounce = 60
+        sync.stop()
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 0, "nothing waiting: nothing to sync")
+
+        sync.changed()
+        sync.stop()
+        await sync.finish()
+        XCTAssertEqual(syncer.runs, 1, "the last change doesn't wait for the app to come back")
     }
 
     func testNotEverythingDownloadedIsSaid() async throws {
@@ -223,7 +249,7 @@ final class SyncModelTests: XCTestCase {
         XCTAssertEqual(sync.settings?.joined, false, "the first sync joins")
         await sync.finish()
         XCTAssertEqual(syncer.runs, 1)
-        XCTAssertEqual(SyncModel.tokenPage.absoluteString, "https://github.com/settings/tokens/new?scopes=gist&description=Todo%20Tracker")
+        XCTAssertEqual(SyncModel.tokenPage.absoluteString, "https://github.com/settings/tokens/new?scopes=gist&description=One%20Thing")
     }
 
     func testAFolderWithoutOneThingSyncIsOfferedToBeMadeThere() async throws {
