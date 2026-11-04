@@ -126,7 +126,7 @@ Documents/OneThing/
 |---|---|
 | **Windows** | A native sidebar docked to the screen edge, toasts, `Ctrl+Alt+Space` quick capture, the whole app in its own window, full-screen breaks on every monitor |
 | **macOS / iOS** | Native SwiftUI apps: Today, Board, Tasks and Done with a sidebar on iPad and Mac (tabs on iPhone), keyboard shortcuts and drag and drop; home-screen, Lock Screen and desktop widgets (Now, Today) with Done; the Mac adds a menu bar glance |
-| **Android** | A native app: Today, quick capture, every task's details, search, reminders that notify you even with the app closed, snooze, notes, task timers and the focus timer with full-screen breaks; home-screen widgets (Now, Today) with Done; syncs on its own with your computers through a GitHub gist ([sync](docs/sync.md)) |
+| **Android** | A native app: Today, the Board, the Tasks outline, Done, Plan and Reports (with the Timeline), a rail and side-by-side details on tablets, quick capture, every task's details, search, reminders that notify you even with the app closed, snooze, notes, task timers and the focus timer with full-screen breaks; home-screen widgets (Now, Today) with Done; syncs on its own with your computers through a GitHub gist ([sync](docs/sync.md)) |
 | **Linux** | A tray app that runs everything; click it for the full window |
 | **Web** | The whole app at `http://127.0.0.1:5317` (local only), on any screen |
 | **Browser** | An Edge, Chrome and Safari side panel: glance, capture, and notes that keep the page you were on |
