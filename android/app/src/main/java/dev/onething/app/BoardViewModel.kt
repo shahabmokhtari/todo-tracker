@@ -10,6 +10,20 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dev.onething.core.Actor
 import dev.onething.core.Agenda
+import dev.onething.core.BoardColumn
+import dev.onething.core.BoardColumns
+import dev.onething.core.BoardScope
+import dev.onething.core.OutlineMoves
+import dev.onething.core.PlanDays
+import dev.onething.core.PlanSettings
+import dev.onething.core.PlannedMove
+import dev.onething.core.Stage
+import dev.onething.core.TimeReport
+import dev.onething.core.addInPlace
+import dev.onething.core.applyPlanned
+import dev.onething.core.plan
+import dev.onething.core.unplan
+import dev.onething.core.timeline
 import dev.onething.core.BoardException
 import dev.onething.core.Dashboard
 import dev.onething.core.Energy
@@ -705,6 +719,170 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     fun addGroup(name: String): Boolean {
         val id = UUID.randomUUID()
         return change(null, saved = { group: UUID -> selectedGroup = group }) { b, now -> b.addGroup(name, now = now, id = id).id }
+    }
+
+    // ---- Board, Tasks, Done (every change goes through the board, as you: Actor.USER) ----
+
+    /** What the views show: the group on screen and the search (read [version] to redraw when the board changes). */
+    val scope: BoardScope get() = BoardScope(board, selectedGroup, query)
+
+    /** What happened to a task and its subtasks, newest first. */
+    fun timelineOf(id: UUID): List<dev.onething.core.ActivityEntry> = if (board.find(id) == null) emptyList() else board.timeline(id)
+
+    /** Every group (for colors and the Move menu). */
+    val boardGroups: List<dev.onething.core.TaskGroup> get() = board.groups
+
+    /** A label's color (#rrggbb), or null. */
+    fun labelColor(name: String): String? = board.findLabel(name)?.color
+
+    /** How much energy there is in a day (the Plan's days say what their blocks take against it). */
+    val energyPerDay: Int get() = board.dailyEnergy
+
+    /** Makes a move worked out from the board on screen (refused with why, or nothing when there's nothing to do). */
+    private fun perform(build: (BoardScope) -> PlannedMove?): Boolean {
+        val planned = try {
+            build(scope)
+        } catch (e: BoardException) {
+            status = e.message
+            return false
+        }
+        if (planned == null || planned.moves.isEmpty()) return false
+        return change(planned.message) { b, now -> b.applyPlanned(planned, Actor.USER, now) }
+    }
+
+    /** A card to a column (Done finishes it; out of Done opens it again), before [before] (a card there). */
+    fun moveCard(id: UUID, column: BoardColumn, before: UUID? = null) = perform { it.moveCard(id, column, before, Instant.now()) }
+
+    /** A card one column left or right, or one place up or down. */
+    fun moveCard(id: UUID, direction: BoardColumns.Direction) = perform { it.moveCard(id, direction, Instant.now()) }
+
+    /** Into the task above it on screen. */
+    fun indent(id: UUID, showDone: Boolean) = perform { it.indent(id, showDone) }
+
+    /** Out one level, right after its parent. */
+    fun outdent(id: UUID) = perform { it.outdent(id) }
+
+    fun canIndent(id: UUID, showDone: Boolean): Boolean = scope.indent(id, showDone) != null
+
+    fun canOutdent(id: UUID): Boolean = scope.outdent(id) != null
+
+    /** Up (-1) or down (1) past the task above or below on screen. */
+    fun step(id: UUID, delta: Int, showDone: Boolean) = perform { it.step(id, delta, showDone) }
+
+    /** A task dropped before, after or into another. False when it can't go there (into itself). */
+    fun drop(dragged: UUID, target: UUID, zone: OutlineMoves.Zone): Boolean {
+        if (scope.drop(dragged, target, zone) == null) {
+            if (dragged != target) status = "A task can't go inside itself."
+            return false
+        }
+        return perform { it.drop(dragged, target, zone) }
+    }
+
+    /** A task (or a subtask: it becomes a task of its own) to another group. */
+    fun moveToGroupAnywhere(id: UUID, groupId: UUID) = perform { it.toGroup(id, groupId) }
+
+    /**
+     * Adds a task where it was typed: under [parentId] (first, or right after [after]), or at the top level of the group
+     * on screen (in [stage], right after [after] when given). Its id, or null when it wasn't added.
+     */
+    fun addTask(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null): UUID? {
+        if (title.isBlank()) return null
+        val id = UUID.randomUUID()
+        val group = selectedGroup
+        return if (change("Added") { b, now -> b.addInPlace(title, parentId, after, stage, group, id, Actor.USER, now) }) id else null
+    }
+
+    /** Renames a task (blank, or the same: nothing changes). */
+    fun rename(id: UUID, title: String) {
+        val clean = title.trim()
+        if (clean.isEmpty() || board.find(id)?.title == clean) return
+        edit(id, TaskChanges(title = clean), null)
+    }
+
+    /** Done, or open again. */
+    fun toggleDone(id: UUID) {
+        val item = board.find(id) ?: return
+        if (item.isDone) reopen(id) else complete(id)
+    }
+
+    // ---- Plan and Reports ----
+
+    /** Plans a block of work on a task from [start] ([minutes] null: what it had, else 30). */
+    fun plan(id: UUID, start: Instant, minutes: Int? = null): Boolean {
+        val title = titleOf(id) ?: return false
+        return change("Planned “$title” ${planWhen(start)}") { b, now -> b.plan(id, start, minutes, Actor.USER, now) }
+    }
+
+    /** Takes a task off the plan. */
+    fun unplan(id: UUID) {
+        val title = titleOf(id) ?: return
+        change("Took “$title” off the plan") { b, now -> b.unplan(id, Actor.USER, now) }
+    }
+
+    /** What the Plan view shows for some days, in this phone's time zone. */
+    fun planDays(first: java.time.LocalDate, days: Int): PlanDays =
+        PlanDays.build(board, first, days, ZoneId.systemDefault(), Instant.now(), selectedGroup)
+
+    /** Where the time went between two local dates (inclusive), for the group on screen. */
+    fun report(from: java.time.LocalDate, to: java.time.LocalDate): TimeReport =
+        TimeReport.build(board, from, to, ZoneId.systemDefault(), Instant.now(), selectedGroup)
+
+    /** The Plan's settings for the group on screen (each group keeps its own, on this phone). */
+    fun planSettings(): PlanSettings = PlanSettings.decode(prefs.getString(planKey(), null))
+
+    fun setPlanSettings(settings: PlanSettings) {
+        if (settings.problem != null) return
+        prefs.edit().putString(planKey(), settings.encode()).apply()
+        version++
+    }
+
+    private fun planKey() = "plan.settings.${selectedGroup?.toString() ?: "all"}"
+
+    /** "today 14:30", "tomorrow 09:00", "Thu 29 Oct 09:00". */
+    fun planWhen(at: Instant): String {
+        val zone = ZoneId.systemDefault()
+        val local = at.atZone(zone)
+        val time = android.text.format.DateFormat.getTimeFormat(getApplication()).format(java.util.Date(at.toEpochMilli()))
+        val today = Instant.now().atZone(zone).toLocalDate()
+        return when (local.toLocalDate()) {
+            today -> "today $time"
+            today.plusDays(1) -> "tomorrow $time"
+            else -> "${local.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))} $time"
+        }
+    }
+
+    // ---- What the views remember on this phone ----
+
+    /** The Tasks outline's open tasks. */
+    var outlineExpanded: Set<UUID> by mutableStateOf(
+        prefs.getString("outline.expanded", "").orEmpty().split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet(),
+    )
+        private set
+
+    /** The Tasks outline shows finished tasks too. */
+    var outlineShowDone: Boolean by mutableStateOf(prefs.getBoolean("outline.showDone", false))
+        private set
+
+    fun setExpanded(id: UUID, open: Boolean) = setExpanded(if (open) outlineExpanded + id else outlineExpanded - id)
+
+    fun setExpanded(ids: Set<UUID>) {
+        // Kept short (the newest few hundred), like the other apps.
+        outlineExpanded = ids.toList().takeLast(500).toSet()
+        prefs.edit().putString("outline.expanded", outlineExpanded.joinToString(",")).apply()
+    }
+
+    fun chooseOutlineShowDone(on: Boolean) {
+        outlineShowDone = on
+        prefs.edit().putBoolean("outline.showDone", on).apply()
+    }
+
+    /** The Reports' range: "7", "28", "90", "365" days, or "custom". */
+    var reportRange: String by mutableStateOf(prefs.getString("reports.range", "28") ?: "28")
+        private set
+
+    fun chooseReportRange(range: String) {
+        reportRange = range
+        prefs.edit().putString("reports.range", range).apply()
     }
 
     /**

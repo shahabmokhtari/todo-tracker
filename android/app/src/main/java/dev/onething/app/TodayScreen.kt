@@ -73,56 +73,31 @@ import java.util.UUID
 /** Asks (once) for what reminders need: notifications, and alarms on time. Called before a snooze, reminder or focus. */
 val LocalAskToNotify = staticCompositionLocalOf<() -> Unit> { {} }
 
-/** Today: the one thing to do now (big), then the rest of Do now, what's waiting, what got done, workstreams, notes. */
+/**
+ * Today: the one thing to do now (big), then the rest of Do now, what's waiting, what got done, workstreams, notes. The
+ * app's shell (AppShell) draws the task's details, Settings, the break and Send feedback over it or beside it.
+ */
 @Composable
-fun TodayScreen(vm: BoardViewModel = viewModel()) {
+fun TodayScreen(vm: BoardViewModel, onSettings: () -> Unit, onFeedback: () -> Unit, onBusy: (Boolean) -> Unit = {}) {
     // Kept across rotation and theme changes (as ids and text).
     var noteFor by rememberSaveable { mutableStateOf<String?>(null) }
     var addingGroup by rememberSaveable { mutableStateOf(false) }
     var editingGroup by rememberSaveable { mutableStateOf<String?>(null) }
-    var settings by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
-    // Send feedback is open (from where: "button" or "shake").
-    var feedback by rememberSaveable { mutableStateOf<String?>(null) }
-    val snackbar = remember { SnackbarHostState() }
-    // A snooze, a reminder or a focus session is when notifications start to matter (they tell you with the app closed).
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
-    var askExact by rememberSaveable { mutableStateOf(false) }
-    val askToNotify: () -> Unit = {
-        if (android.os.Build.VERSION.SDK_INT >= 33 &&
-            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-        // On time to the minute needs the person's OK on recent Android: offered once, with why.
-        val prefs = context.getSharedPreferences("focus-alarm", android.content.Context.MODE_PRIVATE)
-        if (!FocusAlarm.exactAllowed(context) && !prefs.getBoolean("asked-exact", false)) {
-            prefs.edit().putBoolean("asked-exact", true).apply()
-            askExact = true
-        }
-    }
+    val askToNotify = LocalAskToNotify.current
     val startFocusOn: (UUID?) -> Unit = { id ->
         askToNotify()
         vm.startFocus(id)
     }
-    val undoable = vm.undoable
-    LaunchedEffect(undoable) {
-        if (undoable != null) {
-            val result = snackbar.showSnackbar(undoable.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
-            if (result == SnackbarResult.ActionPerformed) undoable.undo()
-            vm.undoable = null
-        }
-    }
-    CompositionLocalProvider(LocalAskToNotify provides askToNotify) {
-      // The task's details and Settings are drawn over Today (full screen); Undo shows over either.
-      Box(Modifier.fillMaxSize()) {
+    // A dialog of Today's is open: a shake doesn't open Send feedback over it.
+    androidx.compose.runtime.SideEffect { onBusy(noteFor != null || addingGroup || editingGroup != null) }
+    Box(Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = { FocusBar(vm, onStart = { startFocusOn(null) }) },
             containerColor = MaterialTheme.colorScheme.background,
         ) { padding ->
             Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
-                Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = { feedback = "button" })
+                Header(vm, onSettings = onSettings, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = onFeedback)
                 GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
                 Capture(vm)
                 if (searching || vm.query.isNotEmpty()) SearchBox(vm, onClose = { searching = false; vm.search("") })
@@ -142,34 +117,6 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         }
         if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
         editingGroup?.let { GroupDialog(UUID.fromString(it), vm, onDismiss = { editingGroup = null }) }
-        // A task's details (from a card, a search, a onething://task/<id> link or a reminder's notification).
-        vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
-        if (settings) SettingsScreen(vm, onClose = { settings = false }, onFeedback = { feedback = "button" })
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
-      }
-        if (askExact) {
-            AlertDialog(
-                onDismissRequest = { askExact = false },
-                title = { Text("Ring on time?") },
-                text = { Text("So reminders, and the end of a focus session or a break, are told right when they happen (not a few minutes later), allow One Thing to set alarms.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        askExact = false
-                        if (android.os.Build.VERSION.SDK_INT >= 31) {
-                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
-                        }
-                    }) { Text("Allow") }
-                },
-                dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
-            )
-        }
-        BreakScreen(vm)
-        feedback?.let { source -> FeedbackSheet(source, onClose = { feedback = null }) }
-        // A shake opens Send feedback, only on Today with nothing over it: no other sheet or dialog, no task, no
-        // Settings, never on the full-screen break.
-        val quiet = feedback == null && !settings && noteFor == null && !addingGroup && editingGroup == null && !askExact &&
-            vm.openTaskId == null && vm.breakPrompt == null
-        ShakeToFeedback(enabled = vm.shakeToFeedback && quiet) { feedback = "shake" }
     }
 }
 
