@@ -197,7 +197,39 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         Break.Update(snapshot.Pomodoro, now, snapshot.NextFocus);
         Timer.Update(snapshot.Timer, now);
         ActiveTitle = snapshot.Timer?.Title ?? Focus?.Title;
+        UpdateTimerStrip();
     }
+
+    /// <summary>What the one timer strip shows: the task timer, the focus timer, or both (see <see cref="TimerStripLayout"/>).</summary>
+    [ObservableProperty]
+    public partial TimerStripLayout TimerStrip { get; set; } = TimerStripLayout.Hidden;
+
+    private void UpdateTimerStrip() => TimerStrip = TimerStripLayout.For(Timer.IsRunning, ShowFocusTimer && !Pomodoro.IsIdle, ShowFocusTimer);
+
+    partial void OnShowFocusTimerChanged(bool value) => UpdateTimerStrip();
+
+    /// <summary>The groups <paramref name="card"/> can move to (none for a subtask: it follows its parent).</summary>
+    public async Task<IReadOnlyList<GroupMoveTarget>> MoveTargetsAsync(CardViewModel card)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        if (!card.CanChangeGroup)
+        {
+            return [];
+        }
+
+        return await _store.ReadAsync(b => b.Groups.Select(g => new GroupMoveTarget(g.Id, g.Name, g.Color ?? "#6366f1", g.Id == card.GroupId)).ToList()).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private Task MoveToGroup(GroupMoveRequest? request) => request is null ? Task.CompletedTask : Run(async () =>
+    {
+        var name = await _store.UpdateAsync(b =>
+        {
+            b.MoveToGroup(request.Card.Id, request.GroupId, Actor.User, _time.GetUtcNow());
+            return b.GetGroup(request.GroupId).Name;
+        }).ConfigureAwait(true);
+        return $"Moved to {name}";
+    });
 
     [RelayCommand]
     private Task SelectGroup(GroupTabViewModel? tab)
@@ -978,7 +1010,7 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         var cards = d.Now.Select(e => ToCard(e, now, board, timer?.ItemId, energyOn)).ToList();
         var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, _options.TimeZone).DateTime);
         var planned = energyOn ? Core.Energy.PlannedOn(board, today, _options.TimeZone) : 0;
-        var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
+        var nextUp = d.Focus is null && d.Waiting.Count > 0 ? $"Next up: {d.Waiting[0].Item.Title} {RelativeTime.Format(d.Waiting[0].WakeAt!.Value, now)}" : null;
         return new Snapshot(
             reusedTabs,
             cards.FirstOrDefault(),
@@ -1052,6 +1084,8 @@ public sealed partial class SidebarViewModel : ObservableObject, IDisposable
         return new CardViewModel
         {
             Id = item.Id,
+            GroupId = item.GroupId,
+            CanChangeGroup = item.Parent is null,
             Title = item.Title,
             Icon = item.Icon,
             Accent = board.AccentOf(item),

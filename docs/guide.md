@@ -22,9 +22,15 @@ sidebar reserves, so the sidebar goes behind it rather than covering part of it.
 you're using is resized to sit next to the sidebar instead (turn this off in **⋯ › Position › Make room for
 full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
 
+**The sidebar, like the other apps:** the big card at the top is the one thing to do now: **Mark done**, then
+**Later**, **Focus** and **More**. Each row below has a circle in front: click it to mark the task done (a waiting
+task shows a clock instead: click it to bring the task back now). Point at a row for **Later** and **⋯**; right-click
+it (or press Shift+F10) for everything else: a note, the timer, a focus session, move up or down, **Move to group**,
+open it. One strip at the bottom shows the timer on a task and the focus timer, side by side when both run.
+
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓ (on a touch screen: **⋯ › Move up / Move down**); **Skip** on the big card (on the
-web: **More › Skip for now**) does something else first (it moves down one). New tasks
+or use Alt+↑/↓ or a row's menu (**Move up / Move down**; on a touch screen: **⋯ › Move up / Move down**);
+**More › Skip for now** on the big card does something else first (it moves down one). New tasks
 go below the ones you arranged, so your focus stays put. A reminder that
 goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
 the web task panel.

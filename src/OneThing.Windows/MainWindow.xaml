@@ -45,25 +45,55 @@
             </Border>
         </DataTemplate>
 
-        <!-- A list row: priority dot, text, quiet icon actions that brighten on hover. -->
+        <!--
+            A list row, calm like the other apps: a done circle in front (a clock on a waiting task brings it back), the
+            text, and only two quiet actions (Later, More) that show when you point at the row. Everything else is in
+            the row's menu (right-click, Shift+F10, or More).
+        -->
         <DataTemplate x:Key="CardTemplate" DataType="{x:Type d:CardViewModel}">
-            <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="8,8,4,8" CornerRadius="10" Background="Transparent" BorderThickness="0"
+            <Border x:Name="CardBorder" Margin="0,0,0,2" Padding="6,8,4,8" CornerRadius="10" Background="Transparent" BorderThickness="0"
                     AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
-                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop"
+                    ContextMenuOpening="OnCardContextMenuOpening">
+                <Border.ContextMenu>
+                    <!-- Filled when it opens (OnCardContextMenuOpening): it reads the board for its choices. -->
+                    <ContextMenu />
+                </Border.ContextMenu>
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="26" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Grid VerticalAlignment="Top" Margin="0,4,0,0" ToolTip="{Binding PriorityLabel}">
-                        <Ellipse Width="14" Height="14" Fill="{Binding PriorityColor, Converter={StaticResource SoftBrush}}" />
-                        <Ellipse Width="8" Height="8" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
+                    <Grid VerticalAlignment="Top" HorizontalAlignment="Left" Margin="0,0,0,0">
+                        <Button Style="{StaticResource DoneCircle}" Foreground="{Binding PriorityColor, Converter={StaticResource HexBrush}}"
+                                ToolTip="Mark done" AutomationProperties.Name="Mark done" AutomationProperties.HelpText="{Binding PriorityLabel, StringFormat={}{0} priority}"
+                                Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}" />
+                        <Button Style="{StaticResource IconButton}" Content="&#xE823;" Width="22" Height="22" Margin="0" ToolTip="Bring back to Do now" AutomationProperties.Name="Bring back"
+                                Command="{Binding DataContext.BringBackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                Visibility="{Binding IsWaiting, Converter={StaticResource VisibleWhen}}" />
+                        <!-- Neither (a task with open subtasks): its priority, as a dot. -->
+                        <Grid x:Name="PriorityDot" Width="22" Height="22" ToolTip="{Binding PriorityLabel}" Visibility="Collapsed">
+                            <Ellipse Width="14" Height="14" Fill="{Binding PriorityColor, Converter={StaticResource SoftBrush}}" />
+                            <Ellipse Width="8" Height="8" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" />
+                        </Grid>
                     </Grid>
                     <!-- The task's color (its own or its first label's) as a stripe at the edge. -->
-                    <Border Grid.ColumnSpan="2" Width="3" HorizontalAlignment="Left" CornerRadius="2" Margin="-6,1,0,1"
+                    <Border Grid.ColumnSpan="3" Width="3" HorizontalAlignment="Left" CornerRadius="2" Margin="-5,1,0,1"
                             Background="{Binding Accent, Converter={StaticResource HexBrush}}"
                             Visibility="{Binding Accent, Converter={StaticResource VisibleWhen}}" />
-                    <StackPanel Grid.Column="1" Margin="6,0,0,0">
+                    <!-- The two quiet actions, top right; a running timer's Stop stays in sight. -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" Margin="2,-4,0,0">
+                        <Button Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop timer" Foreground="{StaticResource Recording}"
+                                Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}}" />
+                        <StackPanel x:Name="Actions" Orientation="Horizontal" Opacity="0">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE823;" ToolTip="Later (snooze)" AutomationProperties.Name="Snooze" Click="OnSnoozeClick" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="4,1,0,0">
                         <TextBlock FontWeight="SemiBold" TextWrapping="Wrap" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
                             <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
                         </TextBlock>
@@ -81,32 +111,6 @@
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding NeedsAttention, Converter={StaticResource VisibleWhen}}">
                             <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource AttentionText}" Margin="0,0,5,0" />
                             <TextBlock Text="{Binding ReminderMessage}" Foreground="{StaticResource AttentionText}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                        </StackPanel>
-                        <StackPanel x:Name="Actions" Orientation="Horizontal" Margin="-4,4,0,0" Opacity="0.55">
-                            <Button Style="{StaticResource IconButton}" Content="&#xE73E;" ToolTip="Mark done" AutomationProperties.Name="Mark done"
-                                    Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE7A7;" ToolTip="Bring back to Do now" AutomationProperties.Name="Bring back"
-                                    Command="{Binding DataContext.BringBackCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding IsWaiting, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE823;" ToolTip="Snooze (remind me later)" AutomationProperties.Name="Snooze" Click="OnSnoozeClick" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE70B;" ToolTip="Add note" AutomationProperties.Name="Add note"
-                                    Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus timer on this" AutomationProperties.Name="Focus"
-                                    Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE916;" ToolTip="Time this task" AutomationProperties.Name="Start timer"
-                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop timer" Foreground="{StaticResource Accent}"
-                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE70E;" ToolTip="Move up (Alt+↑)" AutomationProperties.Name="Move up"
-                                    Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE70D;" ToolTip="Move down (Alt+↓)" AutomationProperties.Name="Move down"
-                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding CanReorder, Converter={StaticResource VisibleWhen}}" />
-                            <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" />
                         </StackPanel>
                         <Grid Margin="0,4,0,0" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">
                             <Grid.ColumnDefinitions>
@@ -133,17 +137,37 @@
                     <Setter TargetName="CardBorder" Property="Background" Value="{StaticResource AttentionSoft}" />
                     <Setter TargetName="Actions" Property="Opacity" Value="1" />
                 </DataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding CanComplete}" Value="False" />
+                        <Condition Binding="{Binding IsWaiting}" Value="False" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter TargetName="PriorityDot" Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
 
-        <!-- The hero "Do this now" card with a gradient hairline border. -->
+        <!--
+            The focus card ("hero"): the one thing to do now, as in the web and Apple apps. A brand-gradient hairline
+            (amber for a reminder) round a calm card with a soft glow in the priority's color, a big title, and four
+            actions: Mark done across the card, then Later, Focus and More side by side. The rest is in More.
+        -->
         <DataTemplate x:Key="FocusTemplate" DataType="{x:Type d:CardViewModel}">
-            <Border x:Name="Frame" CornerRadius="16" Padding="1.5" Background="{StaticResource BrandGradient}" BorderThickness="0"
+            <Border x:Name="Frame" CornerRadius="20" Padding="1.5" Background="{StaticResource BrandGradient}" BorderThickness="0"
                     AllowDrop="True" PreviewMouseLeftButtonDown="OnCardMouseDown" PreviewMouseMove="OnCardMouseMove"
-                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop">
-                <Border CornerRadius="14.5" Padding="14,12,14,8" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                    DragOver="OnCardDragOver" DragLeave="OnCardDragLeave" Drop="OnCardDrop"
+                    ContextMenuOpening="OnCardContextMenuOpening">
+                <Border.ContextMenu>
+                    <ContextMenu />
+                </Border.ContextMenu>
+                <Grid>
+                <Border CornerRadius="18.5" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}" />
+                <!-- The priority's glow, top right. -->
+                <Border CornerRadius="18.5" Background="{Binding PriorityColor, Converter={StaticResource SoftBrush}, ConverterParameter=60}"
+                        OpacityMask="{StaticResource GlowMask}" IsHitTestVisible="False" />
+                <Border CornerRadius="18.5" Padding="16,14,16,14" Background="Transparent">
                     <StackPanel>
-                        <DockPanel Margin="0,0,0,6">
+                        <DockPanel Margin="0,0,0,8">
                             <Border DockPanel.Dock="Right" CornerRadius="10" Padding="8,1" Background="{Binding PriorityColor, Converter={StaticResource SoftBrush}, ConverterParameter=38}">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse Width="6" Height="6" Fill="{Binding PriorityColor, Converter={StaticResource HexBrush}}" Margin="0,0,5,0" VerticalAlignment="Center" />
@@ -151,11 +175,11 @@
                                 </StackPanel>
                             </Border>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock x:Name="EyebrowGlyph" Text="&#xE7C1;" Style="{StaticResource Glyph}" FontSize="11" Foreground="{StaticResource Accent}" Margin="0,0,5,0" />
-                                <TextBlock x:Name="Eyebrow" Text="DO THIS NOW" FontSize="11" FontWeight="Bold" Foreground="{StaticResource Accent}" />
+                                <TextBlock x:Name="EyebrowGlyph" Text="&#xE7C1;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource Accent}" Margin="0,0,6,0" />
+                                <TextBlock x:Name="Eyebrow" Text="Do this now" Style="{StaticResource Eyebrow}" />
                             </StackPanel>
                         </DockPanel>
-                        <TextBlock FontSize="18" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
+                        <TextBlock FontSize="20" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" Cursor="Hand" ToolTip="Open in the app" MouseLeftButtonUp="OnTitleMouseUp">
                             <Run Text="{Binding Icon, Mode=OneWay, StringFormat='{}{0} ', TargetNullValue=''}" FontFamily="Segoe UI Emoji" /><Run Text="{Binding Title, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Text="{Binding Breadcrumb}" Style="{StaticResource Muted}" Margin="0,2,0,0" Visibility="{Binding Breadcrumb, Converter={StaticResource VisibleWhen}}" />
@@ -174,60 +198,54 @@
                         <!-- The task you're on: every note, newest first. -->
                         <ItemsControl ItemsSource="{Binding Notes}" ItemTemplate="{StaticResource CardNoteTemplate}" Focusable="False" Margin="0,4,0,0"
                                       Visibility="{Binding HasNotes, Converter={StaticResource VisibleWhen}}" AutomationProperties.Name="Notes" />
-                        <WrapPanel Margin="0,10,0,0">
-                            <Button Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Mark done" ToolTip="Mark this task done"
-                                    Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}">
+                        <!-- "Mark done", not "Done": a bare "Done" reads as "close this". -->
+                        <Button Style="{StaticResource HeroPrimaryButton}" Margin="0,12,0,8" AutomationProperties.Name="Mark done" ToolTip="Mark this task done"
+                                Command="{Binding DataContext.CompleteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                Visibility="{Binding CanComplete, Converter={StaticResource VisibleWhen}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,8,0" />
+                                <TextBlock Text="Mark done" />
+                            </StackPanel>
+                        </Button>
+                        <!-- Later, Focus (Note when the focus timer is off), More: one row, equal widths. A running timer's Stop joins them. -->
+                        <UniformGrid Rows="1" Margin="0,0,-6,0">
+                            <Button Style="{StaticResource HeroButton}" AutomationProperties.Name="Snooze" ToolTip="Later: snooze it, or wait for another task" Click="OnSnoozeClick">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
-                                    <TextBlock Text="Mark done" />
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Snooze" Click="OnSnoozeClick">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
+                                    <TextBlock Text="&#xE823;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,6,0" />
                                     <TextBlock Text="Later" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Add note"
-                                    Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                            <Button Style="{StaticResource HeroButton}" AutomationProperties.Name="Focus" ToolTip="Start a focus session on this"
+                                    Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding DataContext.ShowFocusTimer, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE70B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
-                                    <TextBlock Text="Note" />
-                                </StackPanel>
-                            </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Focus"
-                                    Command="{Binding DataContext.StartFocusCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE768;" Style="{StaticResource Glyph}" FontSize="11" Margin="0,0,6,0" />
+                                    <TextBlock Text="&#xE768;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
                                     <TextBlock Text="Focus" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Start timer" ToolTip="Time this task"
-                                    Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
-                                    Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+                            <Button Style="{StaticResource HeroButton}" AutomationProperties.Name="Add note" ToolTip="Add a note"
+                                    Command="{Binding DataContext.ToggleNoteCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                    Visibility="{Binding DataContext.ShowFocusTimer, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
-                                    <TextBlock Text="Timer" />
+                                    <TextBlock Text="&#xE70B;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,6,0" />
+                                    <TextBlock Text="Note" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource PillButton}" AutomationProperties.Name="Stop timer" ToolTip="Stop the timer"
+                            <Button Style="{StaticResource HeroButton}" AutomationProperties.Name="Stop timer" ToolTip="Stop timing this task"
                                     Command="{Binding DataContext.ToggleTimerCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
                                     Visibility="{Binding IsTiming, Converter={StaticResource VisibleWhen}}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE71A;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" Foreground="{StaticResource Accent}" />
-                                    <TextBlock Text="Stop timer" />
+                                    <TextBlock Text="&#xE71A;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" Foreground="{StaticResource Recording}" />
+                                    <TextBlock Text="Stop" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource PillButton}" ToolTip="Do something else first: moves this one down the list (Alt+↓)" AutomationProperties.Name="Skip"
-                                    Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}">
+                            <Button Style="{StaticResource HeroButton}" AutomationProperties.Name="More" ToolTip="More: a note, the timer, skip, move, open…" Click="OnMoreClick">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#xE74B;" Style="{StaticResource Glyph}" FontSize="12" Margin="0,0,6,0" />
-                                    <TextBlock Text="Skip" />
+                                    <TextBlock Text="&#xE712;" Style="{StaticResource Glyph}" FontSize="13" Margin="0,0,6,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="More" />
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource IconButton}" Content="&#xE712;" ToolTip="More" AutomationProperties.Name="More" Click="OnMoreClick" Margin="0,0,0,6" />
-                        </WrapPanel>
+                        </UniformGrid>
                         <Grid Margin="0,2,0,6" Visibility="{Binding IsNoteOpen, Converter={StaticResource VisibleWhen}}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -240,11 +258,12 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+                </Grid>
             </Border>
             <DataTemplate.Triggers>
                 <DataTrigger Binding="{Binding NeedsAttention}" Value="True">
                     <Setter TargetName="Frame" Property="Background" Value="{StaticResource AttentionGradient}" />
-                    <Setter TargetName="Eyebrow" Property="Text" Value="REMINDER" />
+                    <Setter TargetName="Eyebrow" Property="Text" Value="Reminder" />
                     <Setter TargetName="Eyebrow" Property="Foreground" Value="{StaticResource AttentionText}" />
                     <Setter TargetName="EyebrowGlyph" Property="Text" Value="&#xE823;" />
                     <Setter TargetName="EyebrowGlyph" Property="Foreground" Value="{StaticResource AttentionText}" />
@@ -397,16 +416,23 @@
                     <!-- Focus: the single next thing to do -->
                     <ContentControl Content="{Binding Focus}" ContentTemplate="{StaticResource FocusTemplate}" Focusable="False" Margin="0,0,0,12"
                                     Visibility="{Binding HasFocus, Converter={StaticResource VisibleWhen}}" />
-                    <Border CornerRadius="16" Padding="1.5" Background="{StaticResource CalmGradient}" Margin="0,0,0,12"
+                    <!-- Nothing to do now: the same calm card as the other apps ("All clear"). -->
+                    <Border CornerRadius="20" Padding="1.5" Background="{StaticResource CalmGradient}" Margin="0,0,0,12"
                             Visibility="{Binding HasFocus, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
-                        <Border CornerRadius="14.5" Padding="14" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
+                        <Border CornerRadius="18.5" Padding="16,14,16,16" Background="{DynamicResource SolidBackgroundFillColorBaseBrush}">
                             <DockPanel>
-                                <Border DockPanel.Dock="Left" Width="40" Height="40" CornerRadius="12" Background="#2210B981" Margin="0,0,12,0">
-                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="18" Foreground="{StaticResource Ok}" />
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="&#xE735;" Style="{StaticResource Glyph}" FontSize="12" Foreground="{StaticResource Ok}" Margin="0,0,6,0" />
+                                    <TextBlock Text="All clear" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Ok}" />
+                                </StackPanel>
+                                <Border DockPanel.Dock="Left" Width="48" Height="48" CornerRadius="16" Background="#2410B981" Margin="0,0,14,0" VerticalAlignment="Top">
+                                    <TextBlock Text="&#xE73E;" Style="{StaticResource Glyph}" FontSize="22" Foreground="{StaticResource Ok}" />
                                 </Border>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Nothing is due. Enjoy the calm." FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                    <TextBlock Text="{Binding NextUpText}" Style="{StaticResource Muted}" Visibility="{Binding NextUpText, Converter={StaticResource VisibleWhen}}" />
+                                    <TextBlock Text="Nothing is due. Enjoy the calm." FontSize="17" FontWeight="Bold" TextWrapping="Wrap" FontFamily="Segoe UI Variable Display, Segoe UI" />
+                                    <TextBlock Text="{Binding NextUpText}" Style="{StaticResource Muted}" FontSize="12.5" Margin="0,3,0,0" Visibility="{Binding NextUpText, Converter={StaticResource VisibleWhen}}" />
+                                    <TextBlock Text="Capture the next thing whenever it comes to mind." Style="{StaticResource Muted}" FontSize="12.5" Margin="0,3,0,0"
+                                               Visibility="{Binding NextUpText, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -420,7 +446,11 @@
                                     <Border Style="{StaticResource CountBadge}"><TextBlock Text="{Binding NowCount}" FontSize="11" FontWeight="SemiBold" /></Border>
                                 </StackPanel>
                             </Expander.Header>
-                            <ItemsControl ItemsSource="{Binding Now}" ItemTemplate="{StaticResource CardTemplate}" Focusable="False" Margin="0,2,0,0" />
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding Now}" ItemTemplate="{StaticResource CardTemplate}" Focusable="False" Margin="0,2,0,0" />
+                                <TextBlock Text="Nothing else right now." Style="{StaticResource Muted}" FontSize="12.5" Margin="4,2,0,6"
+                                           Visibility="{Binding Now.Count, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                            </StackPanel>
                         </Expander>
                     </Border>
 
@@ -536,47 +566,64 @@
                 </StackPanel>
             </ScrollViewer>
 
-            <!-- The task timer (while it runs) and the focus timer -->
-            <StackPanel Grid.Row="5">
-            <Border Margin="0,6,0,0" Padding="10,6" CornerRadius="16" BorderThickness="1" BorderBrush="{StaticResource AccentSoft}"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    Visibility="{Binding Timer.IsRunning, Converter={StaticResource VisibleWhen}}">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Left" Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="14" Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="2,0,10,0" />
-                    <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop the timer" Command="{Binding StopTimerCommand}" />
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding Timer.TimeText}" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0" AutomationProperties.HelpText="Time on this task"
-                               FontFamily="Segoe UI Variable Display, Segoe UI" Typography.NumeralAlignment="Tabular" />
-                    <TextBlock Text="{Binding Timer.Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Timer.Title}" />
-                </DockPanel>
-            </Border>
-            <Border Margin="0,6,0,0" Padding="10,8" CornerRadius="16" BorderThickness="1"
-                    Visibility="{Binding ShowFocusTimer, Converter={StaticResource VisibleWhen}}"
-                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
-                <DockPanel>
-                    <Grid DockPanel.Dock="Left" Width="36" Height="36">
-                        <local:ProgressRing x:Name="PomodoroRing" Value="{Binding Pomodoro.Fraction}" Thickness="3.5" Stroke="{StaticResource Accent}" />
-                        <TextBlock Text="&#xE916;" Style="{StaticResource Glyph}" FontSize="13" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    </Grid>
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus" AutomationProperties.Name="Start focus" Command="{Binding StartFocusCommand}"
-                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}}" />
-                        <Button Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="Pause" AutomationProperties.Name="Pause" Command="{Binding PausePomodoroCommand}"
-                                Visibility="{Binding Pomodoro.IsRunning, Converter={StaticResource VisibleWhen}}" />
-                        <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Resume" AutomationProperties.Name="Resume" Command="{Binding ResumePomodoroCommand}"
-                                Visibility="{Binding Pomodoro.IsPaused, Converter={StaticResource VisibleWhen}}" />
-                        <Button Style="{StaticResource IconButton}" Content="&#xE893;" ToolTip="Skip" AutomationProperties.Name="Skip" Command="{Binding SkipPomodoroCommand}"
-                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
-                        <Button Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Reset" AutomationProperties.Name="Reset" Command="{Binding ResetPomodoroCommand}"
-                                Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
-                    </StackPanel>
-                    <StackPanel Margin="10,0,6,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Pomodoro.TimeText}" FontSize="16" FontWeight="Bold" AutomationProperties.Name="Focus timer"
+            <!--
+                One timer strip (as in the web and Apple apps): the task being timed (a red dot, its clock, its name,
+                Stop), the focus timer (its ring, its clock, play or pause), or both side by side, the focus timer
+                then small. Alone, the focus timer also shows what it's on, Skip and Reset. TimerStrip says which.
+            -->
+            <Border Grid.Row="5" Margin="0,8,0,0" Padding="12,6,6,6" CornerRadius="22" BorderThickness="1"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    AutomationProperties.Name="Timers"
+                    Visibility="{Binding TimerStrip.IsVisible, Converter={StaticResource VisibleWhen}}">
+                <Grid>
+                    <!-- The focus timer with the strip to itself. -->
+                    <DockPanel Visibility="{Binding TimerStrip.FocusFull, Converter={StaticResource VisibleWhen}}">
+                        <Grid DockPanel.Dock="Left" Width="30" Height="30" VerticalAlignment="Center">
+                            <local:ProgressRing x:Name="PomodoroRing" Value="{Binding Pomodoro.Fraction}" Thickness="3" Stroke="{StaticResource Accent}" />
+                        </Grid>
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus" AutomationProperties.Name="Start focus" Command="{Binding StartFocusCommand}"
+                                    Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="Pause" AutomationProperties.Name="Pause" Command="{Binding PausePomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsRunning, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Resume" AutomationProperties.Name="Resume" Command="{Binding ResumePomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsPaused, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE893;" ToolTip="Skip" AutomationProperties.Name="Skip" Command="{Binding SkipPomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE72C;" ToolTip="Reset" AutomationProperties.Name="Reset" Command="{Binding ResetPomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
+                        </StackPanel>
+                        <StackPanel Margin="10,0,6,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Pomodoro.TimeText}" FontSize="15" FontWeight="Bold" AutomationProperties.Name="Focus timer"
+                                       FontFamily="Segoe UI Variable Display, Segoe UI" Typography.NumeralAlignment="Tabular" />
+                            <TextBlock Text="{Binding Pomodoro.Label}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- The task timer, with the focus timer small beside it when that's on too. -->
+                    <DockPanel Visibility="{Binding TimerStrip.Tracker, Converter={StaticResource VisibleWhen}}">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding TimerStrip.Focus, Converter={StaticResource VisibleWhen}}">
+                            <Rectangle Width="1" Height="20" Margin="6,0,10,0" Fill="{DynamicResource CardStrokeColorDefaultBrush}" />
+                            <local:ProgressRing Width="16" Height="16" Value="{Binding Pomodoro.Fraction}" Thickness="2.5" Stroke="{StaticResource Accent}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Pomodoro.TimeText}" FontWeight="SemiBold" Margin="6,0,2,0" VerticalAlignment="Center"
+                                       ToolTip="{Binding Pomodoro.Label}" AutomationProperties.Name="Focus timer" Typography.NumeralAlignment="Tabular" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Start focus" AutomationProperties.Name="Start focus" Command="{Binding StartFocusCommand}"
+                                    Visibility="{Binding Pomodoro.IsIdle, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE769;" ToolTip="Pause" AutomationProperties.Name="Pause" Command="{Binding PausePomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsRunning, Converter={StaticResource VisibleWhen}}" />
+                            <Button Style="{StaticResource IconButton}" Content="&#xE768;" ToolTip="Resume" AutomationProperties.Name="Resume" Command="{Binding ResumePomodoroCommand}"
+                                    Visibility="{Binding Pomodoro.IsPaused, Converter={StaticResource VisibleWhen}}" />
+                        </StackPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Content="&#xE71A;" ToolTip="Stop the timer" AutomationProperties.Name="Stop the timer" Command="{Binding StopTimerCommand}" />
+                        <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Fill="{StaticResource Recording}" VerticalAlignment="Center" Margin="2,0,8,0" />
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding Timer.TimeText}" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" AutomationProperties.HelpText="Time on this task"
                                    FontFamily="Segoe UI Variable Display, Segoe UI" Typography.NumeralAlignment="Tabular" />
-                        <TextBlock Text="{Binding Pomodoro.Label}" Style="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-                    </StackPanel>
-                </DockPanel>
+                        <TextBlock Text="{Binding Timer.Title}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding Timer.Title}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </DockPanel>
+                </Grid>
             </Border>
-            </StackPanel>
 
             <!-- Ask AI (plugin): one line to ask; the latest answer and the agent's questions under it. -->
             <Border Grid.Row="6" Margin="0,6,0,0" Padding="10,6" CornerRadius="16" BorderThickness="1"

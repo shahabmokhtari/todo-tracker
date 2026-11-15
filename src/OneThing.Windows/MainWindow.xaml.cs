@@ -555,6 +555,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        var menu = new ContextMenu { PlacementTarget = element };
+        await AddLaterChoicesAsync(menu, card);
+        menu.IsOpen = true;
+    }
+
+    /// <summary>Later's choices: the shared quick ones, a time you pick, or after another task.</summary>
+    private async Task AddLaterChoicesAsync(ItemsControl menu, CardViewModel card)
+    {
         // Read before the menu is built, so it opens complete (a busy board file just means no "After" choices).
         IReadOnlyList<CardViewModel> others;
         try
@@ -566,7 +574,6 @@ public partial class MainWindow : Window
             others = [];
         }
 
-        var menu = new ContextMenu { PlacementTarget = element };
         foreach (var choice in _vm.SnoozeChoices())
         {
             menu.Items.Add(new MenuItem { Header = choice.Label, InputGestureText = _vm.DescribeWhen(choice.At), Command = _vm.SnoozeCommand, CommandParameter = new SnoozeRequest(card, Choice: choice.Id) });
@@ -587,16 +594,59 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(after);
-        menu.IsOpen = true;
     }
 
-    private void OnMoreClick(object sender, RoutedEventArgs e)
+    /// <summary>A row's (or the focus card's) More: everything its few buttons leave out.</summary>
+    private async void OnMoreClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CardViewModel card } element)
         {
             return;
         }
 
+        var menu = await TaskMenuAsync(card, element, everything: false);
+        menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Right-click (or Shift+F10, or the menu key) on a row or the focus card: every action on the task, the ones its
+    /// buttons show too. A note box keeps its own Cut/Copy/Paste menu.
+    /// </summary>
+    private async void OnCardContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: CardViewModel card } element || IsInsideTextBox(e.OriginalSource as DependencyObject, element))
+        {
+            return;
+        }
+
+        // Ours is built here (it reads the board first), not the empty placeholder in the template.
+        e.Handled = true;
+        var byMouse = e.CursorLeft >= 0;
+        var menu = await TaskMenuAsync(card, element, everything: true);
+        menu.Placement = byMouse ? System.Windows.Controls.Primitives.PlacementMode.MousePoint : System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
+    }
+
+    private static bool IsInsideTextBox(DependencyObject? source, DependencyObject stop)
+    {
+        for (var node = source; node is not null && !ReferenceEquals(node, stop); node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D ? System.Windows.Media.VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+        {
+            if (node is System.Windows.Controls.Primitives.TextBoxBase)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The task's menu. <paramref name="everything"/> (the right-click menu) also has what its buttons do (Mark done,
+    /// Later); More leaves those out. Same order as the web and Apple apps: the task's own actions, moving it, opening it.
+    /// </summary>
+    private async Task<ContextMenu> TaskMenuAsync(CardViewModel card, FrameworkElement element, bool everything)
+    {
+        var isFocusCard = ReferenceEquals(card, _vm.Focus);
         var menu = new ContextMenu { PlacementTarget = element };
         if (card.NeedsAttention)
         {
@@ -604,20 +654,88 @@ public partial class MainWindow : Window
             menu.Items.Add(new Separator());
         }
 
-        if (Vault?.PathOf(card.Id) is { } rel)
+        if (everything)
         {
-            var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
-            if (On("obsidian"))
+            if (card.CanComplete)
             {
-                var obsidian = new MenuItem { Header = OneThing.Core.Vault.ObsidianVaults.IsInstalled() ? "Open in Obsidian" : "Get Obsidian (to open it there)…" };
-                obsidian.Click += (_, _) => Open(OneThing.Core.Vault.ObsidianVaults.LinkOrDownload(OneThing.Core.Vault.ObsidianVaults.OpenUrl(full)));
-                menu.Items.Add(obsidian);
+                menu.Items.Add(new MenuItem { Header = "Mark done", Command = _vm.CompleteCommand, CommandParameter = card });
             }
 
-            var show = new MenuItem { Header = "Show the markdown file" };
-            show.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{full}\"") { UseShellExecute = false });
-            menu.Items.Add(show);
-            menu.Items.Add(new Separator());
+            if (card.IsWaiting)
+            {
+                menu.Items.Add(new MenuItem { Header = "Bring back to Do now", Command = _vm.BringBackCommand, CommandParameter = card });
+            }
+
+            var later = new MenuItem { Header = "_Later" };
+            await AddLaterChoicesAsync(later, card);
+            menu.Items.Add(later);
+        }
+
+        // The focus card shows Note itself when the focus timer is off (instead of Focus).
+        if (everything || !isFocusCard || _vm.ShowFocusTimer)
+        {
+            menu.Items.Add(new MenuItem { Header = "Add a _note", Command = _vm.ToggleNoteCommand, CommandParameter = card });
+        }
+
+        if (_vm.ShowFocusTimer && !card.IsWaiting && (everything || !isFocusCard))
+        {
+            menu.Items.Add(new MenuItem { Header = "Start a _focus session", Command = _vm.StartFocusCommand, CommandParameter = card });
+        }
+
+        if (!card.IsWaiting)
+        {
+            menu.Items.Add(new MenuItem { Header = card.IsTiming ? "_Stop the timer" : "Start the _timer", Command = _vm.ToggleTimerCommand, CommandParameter = card });
+        }
+
+        if (isFocusCard)
+        {
+            if (_vm.CanMove(card, 1))
+            {
+                menu.Items.Add(new MenuItem { Header = "S_kip for now", InputGestureText = "Alt+↓", Command = _vm.MoveDownCommand, CommandParameter = card, ToolTip = "Do something else first: moves this one down the list" });
+            }
+        }
+        else
+        {
+            if (_vm.CanMove(card, -1))
+            {
+                menu.Items.Add(new MenuItem { Header = "Move _up", InputGestureText = "Alt+↑", Command = _vm.MoveUpCommand, CommandParameter = card });
+            }
+
+            if (_vm.CanMove(card, 1))
+            {
+                menu.Items.Add(new MenuItem { Header = "Move _down", InputGestureText = "Alt+↓", Command = _vm.MoveDownCommand, CommandParameter = card });
+            }
+        }
+
+        menu.Items.Add(new Separator());
+        IReadOnlyList<GroupMoveTarget> groups;
+        try
+        {
+            groups = await _vm.MoveTargetsAsync(card);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            groups = [];
+        }
+
+        if (groups.Count > 1)
+        {
+            var move = new MenuItem { Header = "Move to _group" };
+            foreach (var group in groups)
+            {
+                // Group names are user text: no access keys from underscores in them.
+                move.Items.Add(new MenuItem
+                {
+                    Header = new TextBlock { Text = group.Name, MaxWidth = 260, TextTrimming = TextTrimming.CharacterEllipsis },
+                    // The group it's in now: checked, and nothing to do.
+                    IsChecked = group.IsCurrent,
+                    IsEnabled = !group.IsCurrent,
+                    Command = _vm.MoveToGroupCommand,
+                    CommandParameter = new GroupMoveRequest(card, group.Id),
+                });
+            }
+
+            menu.Items.Add(move);
         }
 
         if (On("energy"))
@@ -633,11 +751,27 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Add subtask…", Command = _vm.AddSubtaskCommand, CommandParameter = card });
+        menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Open in the app", Command = _vm.OpenInAppCommand, CommandParameter = card, ToolTip = "The task full size: details, every note, time, files" });
         menu.Items.Add(new MenuItem { Header = "Open in the browser", Command = _vm.OpenInBrowserCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Copy link", Command = _vm.CopyLinkCommand, CommandParameter = card });
         menu.Items.Add(new MenuItem { Header = "Open full report", Command = _vm.OpenReportCommand, CommandParameter = card });
-        menu.IsOpen = true;
+        if (Vault?.PathOf(card.Id) is { } rel)
+        {
+            var full = Path.GetFullPath(Path.Combine(Vault.RootPath, rel));
+            if (On("obsidian"))
+            {
+                var obsidian = new MenuItem { Header = OneThing.Core.Vault.ObsidianVaults.IsInstalled() ? "Open in Obsidian" : "Get Obsidian (to open it there)…" };
+                obsidian.Click += (_, _) => Open(OneThing.Core.Vault.ObsidianVaults.LinkOrDownload(OneThing.Core.Vault.ObsidianVaults.OpenUrl(full)));
+                menu.Items.Add(obsidian);
+            }
+
+            var show = new MenuItem { Header = "Show the markdown file" };
+            show.Click += (_, _) => Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{full}\"") { UseShellExecute = false });
+            menu.Items.Add(show);
+        }
+
+        return menu;
     }
 
     /// <summary>Light, dark or the system's: the same choice as Settings › Appearance (every window follows it).</summary>

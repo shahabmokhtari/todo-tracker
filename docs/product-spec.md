@@ -193,10 +193,17 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   2. Group tabs with counts and an attention dot.
   3. Quick capture.
   4. Status line.
-  5. **Do this now** card.
+  5. **Do this now** card (the web's and the Apple apps' focus card): a brand-gradient hairline (amber for a
+     reminder) round a calm card with a soft glow in the priority's color; **Mark done** across the card, then
+     **Later**, **Focus** (**Note** when the focus timer is off) and **More** (a note, the timer, *Skip for now*, Move
+     to group, energy, open it…); **Stop** joins them while the task is timed. With nothing due: **All clear**.
   6. Collapsible sections: Do now, Waiting, **Done today**, Workstreams (progress bars; click for the report), and Recent
-     notes.
-  7. Focus timer bar.
+     notes. Rows carry no button row: a circle in the priority's color marks done (a clock brings a waiting task
+     back), two quiet actions show on hover or focus (**Later**, **⋯**), and the row's context menu (right-click,
+     Shift+F10) has everything: Mark done, Later, a note, a focus session, the timer, Move up/down, **Move to group**
+     (top-level tasks), energy, open, copy link.
+  7. One timer strip (`TimerStripLayout`, the same rule as `Presentation.timerStrip`): the task being timed, the focus
+     timer, or both side by side (the focus timer then small).
 * **Done today** (sidebar, web Today, Mac/iOS, Android): what was finished since local midnight, newest first, with a
   cheer that grows with the count ("First one done. Nice start!" … "12 done today. What a day!"). A subtask shows its
   parent. A parent finished together with its subtasks is one entry (the subtasks it closed aren't repeated); steps done

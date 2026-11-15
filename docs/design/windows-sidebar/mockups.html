@@ -1,0 +1,339 @@
+<!doctype html>
+<!--
+  Mockups of the Windows sidebar (src/OneThing.Windows/MainWindow.xaml) in the design the web and Apple apps share.
+  One page, one state at a time: mockups.html?state=today&theme=light. render.mjs saves every state as a PNG.
+  The sidebar is 360 px wide (MainWindow.xaml: Width="360"); the window here is 360 × 760, like the screenshot in
+  docs/images/windows-sidebar.png. Fonts: Segoe UI Variable on Windows; another system font where it's missing.
+  Icons: drawn here as SVG; the real app uses Segoe Fluent Icons (the glyph codes are in the comments).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=360">
+<title>Windows sidebar mockups</title>
+<style>
+  :root {
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    /* Fluent light (ApplicationBackgroundBrush, CardBackgroundFillColorDefaultBrush…) */
+    --bg: #f3f3f3;
+    --card: rgb(255 255 255 / .7);
+    --card-solid: #ffffff;
+    --stroke: rgb(0 0 0 / .08);
+    --control: rgb(255 255 255 / .7);
+    --control-stroke: rgb(0 0 0 / .1);
+    --control-2: rgb(0 0 0 / .04);
+    --text: #1b1b1b;
+    --text-2: #5f5f5f;
+    --accent: #6366f1;            /* Accent */
+    --accent-soft: rgb(99 102 241 / .15);
+    --hover: rgb(99 102 241 / .08); /* HoverFill */
+    --attention: #f59e0b;
+    --attention-text: #d97706;
+    --attention-soft: rgb(245 158 11 / .15);
+    --ok: #10b981;
+    --rec: #ef4444;
+    --gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #db2777 100%); /* BrandGradient */
+    --attention-gradient: linear-gradient(135deg, #f59e0b, #fb7185);
+    --calm-gradient: linear-gradient(135deg, #10b981, #22d3ee);
+    --menu: #f9f9f9;
+    --menu-shadow: 0 8px 16px rgb(0 0 0 / .14), 0 0 0 1px rgb(0 0 0 / .06);
+  }
+  :root[data-theme="dark"] {
+    --bg: #202020;
+    --card: rgb(255 255 255 / .05);
+    --card-solid: #1c1c1c;          /* SolidBackgroundFillColorBaseBrush */
+    --stroke: rgb(255 255 255 / .08);
+    --control: rgb(255 255 255 / .06);
+    --control-stroke: rgb(255 255 255 / .09);
+    --control-2: rgb(255 255 255 / .04);
+    --text: #ffffff;
+    --text-2: #c5c5c5;
+    --hover: rgb(99 102 241 / .14);
+    --menu: #2c2c2c;
+    --menu-shadow: 0 8px 16px rgb(0 0 0 / .4), 0 0 0 1px rgb(255 255 255 / .08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font: 13px/1.35 var(--font); color: var(--text); background: var(--bg); }
+  .window { position: relative; width: 360px; height: 760px; overflow: hidden; background: var(--bg); padding: 10px 12px; display: flex; flex-direction: column; }
+  svg { display: block; }
+  .glyph { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Header */
+  .header { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--gradient); position: relative; flex: none; }
+  .logo i { position: absolute; background: #fff; border-radius: 99px; }
+  .brand { flex: 1; min-width: 0; }
+  .brand b { font: 700 14.5px var(--display); display: block; }
+  .muted { color: var(--text-2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--text-2); flex: none; }
+  .icon-btn.hover { background: var(--hover); color: var(--accent); }
+
+  /* Tabs */
+  .tabs { margin-top: 10px; display: inline-flex; gap: 2px; padding: 3px; border-radius: 14px; background: var(--control-2); border: 1px solid var(--stroke); align-self: flex-start; max-width: 100%; overflow: hidden; }
+  .tab { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; border: 1px solid transparent; }
+  .tab.on { background: var(--card-solid); border-color: var(--stroke); color: var(--text); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .badge { padding: 0 6px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-size: 11px; }
+
+  /* Quick capture */
+  .capture { margin-top: 10px; display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 12px; border-radius: 18px; background: var(--control); border: 1px solid var(--control-stroke); }
+  .capture .ph { flex: 1; color: var(--text-2); opacity: .8; white-space: nowrap; }
+  .add { padding: 5px 13px; border-radius: 14px; background: var(--gradient); color: #fff; font-weight: 600; font-size: 12.5px; }
+
+  .scroll { margin-top: 10px; flex: 1; overflow: hidden; }
+
+  /* Focus card */
+  .hero { position: relative; border-radius: 20px; padding: 1.5px; background: var(--gradient); margin-bottom: 12px; }
+  .hero.attention { background: var(--attention-gradient); }
+  .hero.calm { background: var(--calm-gradient); }
+  .hero-in { position: relative; border-radius: 18.5px; padding: 14px 16px; background: var(--card-solid); overflow: hidden; }
+  .hero-in::before { content: ""; position: absolute; inset: 0; background: radial-gradient(90% 110% at 100% 0%, color-mix(in srgb, var(--prio) 24%, transparent), transparent 100%); pointer-events: none; }
+  .hero-in > * { position: relative; }
+  .hero-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .eyebrow { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--accent); }
+  .hero.attention .eyebrow { color: var(--attention-text); }
+  .hero.calm .eyebrow { color: var(--ok); }
+  .prio-pill { display: flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; color: var(--prio); background: color-mix(in srgb, var(--prio) 15%, transparent); }
+  .prio-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--prio); }
+  .hero-title { font: 700 20px/1.25 var(--display); letter-spacing: -.01em; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip { padding: 1px 7px; border-radius: 9px; font-size: 11px; font-weight: 600; }
+  .chip.info { color: #0ea5e9; background: rgb(14 165 233 / .13); }
+  .chip.warn { color: #d97706; background: rgb(245 158 11 / .16); }
+  .chip.energy { color: #ca8a04; background: rgb(234 179 8 / .15); }
+  .chip.tag { color: var(--accent); padding-left: 0; }
+  .banner { margin-top: 8px; display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: 10px; background: var(--attention-soft); color: var(--attention-text); font-weight: 600; }
+  .note { margin-top: 6px; padding: 2px 9px; border-left: 3px solid var(--accent-soft); font-size: 12.5px; }
+  .note .muted { font-size: 11px; white-space: normal; }
+  .primary { margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border-radius: 14px; background: var(--gradient); color: #fff; font-weight: 600; font-size: 13.5px; }
+  .hero-row { margin-top: 8px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
+  .pill { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 6px; border-radius: 14px; border: 1px solid var(--control-stroke); font-weight: 600; white-space: nowrap; }
+  .pill .glyph { width: 13px; height: 13px; }
+  .pill.more .glyph { color: var(--text-2); }
+  .pill.stop .glyph { color: var(--rec); }
+  .empty-row { display: flex; gap: 14px; align-items: flex-start; }
+  .empty-ill { width: 48px; height: 48px; border-radius: 16px; background: rgb(16 185 129 / .14); color: var(--ok); display: grid; place-items: center; flex: none; }
+  .empty-title { font: 700 17px/1.25 var(--display); }
+
+  /* Sections */
+  .panel { border-radius: 14px; padding: 2px 4px; margin-bottom: 10px; background: var(--card); border: 1px solid var(--stroke); }
+  .sec-head { display: flex; align-items: center; padding: 8px 6px; gap: 8px; }
+  .sec-head b { font-size: 14px; font-weight: 600; }
+  .count { padding: 0 7px; border-radius: 9px; background: var(--control-2); font-size: 11px; font-weight: 600; }
+  .chev { margin-left: auto; color: var(--text-2); }
+  .rows { padding: 0 2px 4px; }
+  .row { position: relative; display: grid; grid-template-columns: 26px 1fr auto; padding: 8px 4px 8px 6px; border-radius: 10px; margin-bottom: 2px; }
+  .row.hover { background: var(--hover); }
+  .row.attention { background: var(--attention-soft); }
+  .stripe { position: absolute; left: 1px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; }
+  .circle { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--prio); display: grid; place-items: center; position: relative; }
+  .circle::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--prio); opacity: .14; }
+  .circle.hot::after { inset: 2px; opacity: .9; }
+  .circle .glyph { position: relative; z-index: 1; color: #fff; width: 11px; height: 11px; stroke-width: 2.4; opacity: 0; }
+  .circle.hot .glyph { opacity: 1; }
+  .clock { width: 22px; height: 22px; display: grid; place-items: center; color: var(--text-2); }
+  .row-body { min-width: 0; padding: 1px 0 0 4px; }
+  .row-title { font-weight: 600; }
+  .row-acts { display: flex; margin: -4px 0 0 2px; opacity: 0; }
+  .row.hover .row-acts, .row.attention .row-acts { opacity: 1; }
+  .row-acts .icon-btn { width: 28px; height: 28px; }
+  .link { font-size: 11.5px; font-weight: 600; color: var(--text-2); margin-top: 2px; }
+  .empty-line { color: var(--text-2); padding: 4px 8px 10px; font-size: 12.5px; }
+
+  /* Timer strip */
+  .strip { margin-top: 8px; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 22px; background: var(--card); border: 1px solid var(--stroke); }
+  .strip .time { font: 700 14px var(--display); font-variant-numeric: tabular-nums; }
+  .strip .big { font-size: 15px; }
+  .strip .label { color: var(--text-2); font-size: 11px; }
+  .strip .grow { flex: 1; min-width: 0; }
+  .strip .title { color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rec { width: 8px; height: 8px; border-radius: 50%; background: var(--rec); flex: none; margin-left: 2px; }
+  .divider { width: 1px; height: 20px; background: var(--stroke); flex: none; margin: 0 2px 0 0; }
+  .ring { flex: none; }
+  .ask { margin-top: 6px; display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 16px; background: var(--card); border: 1px solid var(--stroke); color: var(--text-2); }
+  .ask .accent { color: var(--accent); }
+
+  /* Menu (Fluent context menu) */
+  .menu { position: absolute; z-index: 10; min-width: 210px; padding: 4px; border-radius: 8px; background: var(--menu); box-shadow: var(--menu-shadow); font-size: 13px; }
+  .mi { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 4px; white-space: nowrap; }
+  .mi .k { margin-left: auto; color: var(--text-2); font-size: 12px; padding-left: 16px; }
+  .mi.sel { background: var(--control-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+  .mi.off { color: var(--text-2); }
+  .mi .chk { width: 14px; }
+  .sep { height: 1px; margin: 4px 0; background: var(--stroke); }
+  .cursor { position: absolute; z-index: 20; width: 14px; height: 20px; }
+  .callout { position: absolute; z-index: 30; right: 8px; bottom: 8px; font-size: 10px; color: var(--text-2); opacity: .7; }
+</style>
+</head>
+<body>
+<div class="window" id="win"></div>
+<script>
+// ---- icons (Segoe Fluent glyphs in the real app) ----
+const P = {
+  check: '<path d="M3 8.5l3 3 7-7"/>',                                   // E73E
+  clock: '<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>',    // E823
+  play: '<path d="M5 3.5v9l7-4.5z" fill="currentColor"/>',             // E768
+  pause: '<path d="M5.5 3.5v9M10.5 3.5v9"/>',                            // E769
+  stop: '<rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/>', // E71A
+  more: '<circle cx="3.5" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="12.5" cy="8" r="1" fill="currentColor"/>', // E712
+  plus: '<path d="M8 3v10M3 8h10"/>',                                    // E710
+  chevR: '<path d="M6 3.5L10.5 8 6 12.5"/>',                             // E76C
+  chevD: '<path d="M3.5 6L8 10.5 12.5 6"/>',
+  chevU: '<path d="M3.5 10L8 5.5 12.5 10"/>',
+  open: '<path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/>',          // E8A7
+  note: '<path d="M3 13l1-3.5L11 2.5l2.5 2.5L6.5 12z"/>',               // E70B
+  flag: '<path d="M4 14V2.5M4 3h7.5l-1.5 3 1.5 3H4"/>',                  // E7C1
+  sparkle: '<path d="M8 2v4M8 10v4M2 8h4M10 8h4"/>',                     // E735
+  send: '<path d="M2.5 8L13.5 3 10 13.5 8 9z"/>',
+  chat: '<path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"/>',
+};
+const ic = (n, cls = 'glyph', size) => `<svg class="${cls}" viewBox="0 0 16 16"${size ? ` style="width:${size}px;height:${size}px"` : ''}>${P[n]}</svg>`;
+const ring = (fraction, size = 30, stroke = 3, color = 'var(--accent)') => {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgb(148 163 184 / .2)" stroke-width="${stroke}"/>`
+    + `<circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${c * fraction} ${c}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>`;
+};
+
+const q = new URLSearchParams(location.search);
+const state = q.get('state') || 'today';
+document.documentElement.dataset.theme = q.get('theme') || 'light';
+
+const PRIO = { critical: '#e11d48', high: '#f97316', normal: '#3b82f6', low: '#94a3b8' };
+
+function header(summary = '11 things to do now · 1 reminder · 4 waiting.', energy = '⚡ 2.3 of 8 planned today.') {
+  return `<div class="header">
+    <div class="logo"><i style="left:6px;top:6px;width:6px;height:6px"></i><i style="left:14px;top:8px;width:9px;height:2px"></i><i style="left:7px;top:14px;width:4px;height:4px;opacity:.3"></i><i style="left:13px;top:15px;width:8px;height:2px;opacity:.3"></i></div>
+    <div class="brand"><b>One Thing</b><div class="muted">${summary}</div>${energy ? `<div class="muted">${energy}</div>` : ''}</div>
+    <div class="icon-btn" title="Collapse">${ic('chevR')}</div><div class="icon-btn" title="Open dashboard">${ic('open')}</div><div class="icon-btn" title="Menu">${ic('more')}</div>
+  </div>
+  <div class="tabs">
+    <div class="tab on"><span class="dot" style="background:#6366f1"></span>All <span class="badge">11</span><span class="dot" style="background:var(--attention)"></span></div>
+    <div class="tab"><span class="dot" style="background:#3b82f6"></span>Work <span class="badge">6</span></div>
+    <div class="tab"><span class="dot" style="background:#22c55e"></span>Personal <span class="badge">2</span></div>
+    <div class="tab"><span class="dot" style="background:#eab308"></span>Gar</div>
+  </div>
+  <div class="capture"><span style="color:var(--accent);opacity:1">${ic('plus')}</span><span class="ph">What's on your mind?</span><div class="add">Add</div></div>`;
+}
+
+function hero({ title, prio = 'critical', attention = false, chips = '', banner = '', notes = '', timing = false }) {
+  return `<div class="hero${attention ? ' attention' : ''}" style="--prio:${PRIO[prio]}"><div class="hero-in">
+    <div class="hero-top"><span class="eyebrow">${ic(attention ? 'clock' : 'flag', 'glyph', 12)}${attention ? 'Reminder' : 'Do this now'}</span><span class="prio-pill">${prio[0].toUpperCase() + prio.slice(1)}</span></div>
+    <div class="hero-title">${title}</div>
+    ${chips ? `<div class="chips">${chips}</div>` : ''}
+    ${banner ? `<div class="banner">${ic('clock', 'glyph', 13)}${banner}</div>` : ''}
+    ${notes}
+    <div class="primary">${ic('check', 'glyph', 13)}Mark done</div>
+    <div class="hero-row">
+      <div class="pill">${ic('clock')}Later</div>
+      <div class="pill">${ic('play', 'glyph', 12)}Focus</div>
+      ${timing ? `<div class="pill stop">${ic('stop', 'glyph', 12)}Stop</div>` : ''}
+      <div class="pill more">${ic('more')}More</div>
+    </div>
+  </div></div>`;
+}
+
+function row({ title, prio = 'normal', chips = '', hover = false, waiting = false, accent = '', notes = '', hotCircle = false, timing = false }) {
+  return `<div class="row${hover ? ' hover' : ''}" style="--prio:${PRIO[prio]}">
+    ${accent ? `<span class="stripe" style="background:${accent}"></span>` : ''}
+    ${waiting ? `<span class="clock">${ic('clock')}</span>` : `<span class="circle${hotCircle ? ' hot' : ''}">${ic('check')}</span>`}
+    <div class="row-body"><div class="row-title">${title}</div>${chips ? `<div class="chips">${chips}</div>` : ''}${notes}</div>
+    <div class="row-acts" style="${timing ? 'opacity:1' : ''}">
+      ${timing ? `<div class="icon-btn" style="color:var(--rec)">${ic('stop', 'glyph', 12)}</div>` : ''}
+      <span style="display:flex;${hover ? '' : 'opacity:0'}"><div class="icon-btn">${ic('clock')}</div><div class="icon-btn${hover === 'more' ? ' hover' : ''}">${ic('more')}</div></span>
+    </div>
+  </div>`;
+}
+
+function section(name, count, body, open = true) {
+  return `<div class="panel"><div class="sec-head"><b>${name}</b><span class="count">${count}</span><span class="chev">${ic(open ? 'chevU' : 'chevD', 'glyph', 12)}</span></div>${open ? `<div class="rows">${body}</div>` : ''}</div>`;
+}
+
+const notes = `<div class="note">Two findings left: token lifetime and the CSP header.<div class="muted">You · now</div></div>`;
+const securityHero = hero({
+  title: '🛡️ Reply to the security review', attention: true,
+  chips: '<span class="chip info">Tue 11:00–11:45</span><span class="chip energy">⚡⚡⚡</span><span class="chip tag">#security</span>',
+  banner: 'Review closes at 5 pm', notes,
+});
+const doNowRows = (hover) => [
+  row({ title: '✈️ Renew passport', chips: '<span class="chip warn">due Nov 12</span><span class="chip tag">#admin</span>', hover: hover === 'passport' ? true : hover === 'passport-more' ? 'more' : false, hotCircle: hover === 'passport-circle' }),
+  row({ title: "Review Maya's API design doc", accent: '#8b5cf6', chips: '<span class="chip info">Fri 13:00–14:00</span><span class="chip energy">⚡⚡</span><span class="chip tag">#api</span>', notes: '<div class="link">2 notes ▾</div>' }),
+  row({ title: 'Book the dentist', prio: 'low' }),
+  row({ title: 'Plan the team offsite', prio: 'high', chips: '<span class="chip tag">#team</span>' }),
+].join('');
+
+function strip(kind) {
+  if (kind === 'idle') {
+    return `<div class="strip">${ring(0)}<div class="grow"><div class="time big">25:00</div><div class="label">Focus</div></div><div class="icon-btn">${ic('play', 'glyph', 12)}</div></div>`;
+  }
+  // A focus session on a task: the task timer and the focus timer side by side.
+  return `<div class="strip"><span class="rec"></span><span class="time">12:41</span><span class="title grow">Write the release notes</span>
+    <div class="icon-btn" style="width:26px">${ic('stop', 'glyph', 12)}</div><span class="divider"></span>${ring(0.27, 16, 2.5, '#6366f1')}<span class="time" style="font-weight:600;font-size:13px">18:24</span><div class="icon-btn" style="width:26px">${ic('pause', 'glyph', 12)}</div></div>`;
+}
+
+const ask = `<div class="ask"><span class="accent">${ic('chat')}</span><span style="flex:1">Ask GitHub Copilot… e.g. add: call the bank tomorrow</span>${ic('send')}</div>`;
+
+function menu(x, y, items, extra = '') {
+  return `<div class="menu" style="left:${x}px;top:${y}px">${items.map((i) => i === '-' ? '<div class="sep"></div>'
+    : `<div class="mi${i.sel ? ' sel' : ''}${i.off ? ' off' : ''}">${i.chk !== undefined ? `<span class="chk">${i.chk ? '✓' : ''}</span>` : ''}<span>${i.t}</span>${i.k ? `<span class="k">${i.k}</span>` : ''}</div>`).join('')}</div>${extra}`;
+}
+
+const pointer = (x, y) => `<svg class="cursor" style="left:${x}px;top:${y}px" viewBox="0 0 14 20"><path d="M1 1v15l4-4 3 7 2.5-1-3-7h5.5z" fill="#fff" stroke="#000" stroke-width="1.2" stroke-linejoin="round"/></svg>`;
+
+let html = '';
+switch (state) {
+  case 'today':
+  case 'hover':
+    html = header() + `<div class="scroll">${securityHero}${section('Do now', 11, doNowRows(state === 'hover' ? 'passport' : null))}</div>` + strip('idle') + ask
+      + (state === 'hover' ? pointer(250, 528) : '');
+    break;
+  case 'menu':
+    html = header() + `<div class="scroll">${securityHero}${section('Do now', 11, doNowRows('passport'))}</div>` + strip('idle') + ask
+      + menu(110, 84, [
+        { t: 'Mark done' },
+        { t: 'Later', k: '›' },
+        { t: 'Add a note' },
+        { t: 'Start a focus session' },
+        { t: 'Start the timer' },
+        { t: 'Move up', k: 'Alt+↑' },
+        { t: 'Move down', k: 'Alt+↓' },
+        '-',
+        { t: 'Move to group', k: '›', sel: true },
+        { t: 'Energy', k: '›' },
+        { t: 'Add subtask…' },
+        '-',
+        { t: 'Open in the app' },
+        { t: 'Open in the browser' },
+        { t: 'Copy link' },
+        { t: 'Open full report' },
+        { t: 'Show the markdown file' },
+      ], menu(180, 289, [
+        { t: 'Work', chk: true, off: true },
+        { t: 'Personal', chk: false, sel: true },
+        { t: 'Garden', chk: false },
+      ])) + pointer(106, 524);
+    break;
+  case 'timer':
+    html = header('6 things to do now · 2 waiting.', '') + `<div class="scroll">${hero({ title: 'Write the release notes', prio: 'high', chips: '<span class="chip tag">#release</span>', timing: true })}${section('Do now', 6, [
+      row({ title: 'Answer the support ticket', chips: '<span class="chip warn">due today</span>' }),
+      row({ title: 'Book the dentist', prio: 'low' }),
+      row({ title: 'Plan the team offsite', prio: 'high' }),
+    ].join(''))}${section('Waiting', 2, '', false)}</div>` + strip('both') + ask;
+    break;
+  case 'empty':
+    html = header('All clear. Nothing needs you right now.', '') + `<div class="scroll">
+      <div class="hero calm"><div class="hero-in" style="--prio:#10b981">
+        <div class="hero-top"><span class="eyebrow">${ic('sparkle', 'glyph', 12)}All clear</span></div>
+        <div class="empty-row"><div class="empty-ill">${ic('check', 'glyph', 22)}</div><div><div class="empty-title">Nothing is due. Enjoy the calm.</div><div class="muted" style="white-space:normal;font-size:12.5px;margin-top:3px">Next up: Water the plants in 2h</div></div></div>
+      </div></div>
+      ${section('Do now', 0, '<div class="empty-line">Nothing else right now.</div>')}
+      ${section('Waiting', 1, row({ title: '🪴 Water the plants', waiting: true, chips: '<span class="chip info">back in 2h</span>' }))}
+      ${section('Done today', 3, '<div class="empty-line" style="color:#16a34a;font-weight:600">🎉 3 done today. Keep it going!</div>')}
+    </div>` + strip('idle') + ask;
+    break;
+}
+document.getElementById('win').innerHTML = html;
+</script>
+</body>
+</html>
