@@ -266,7 +266,7 @@ private fun TaskButtons(item: WorkItem, vm: BoardViewModel, onArchive: () -> Uni
             Button(onClick = { if (item.hasOpenChildren) confirmDone = true else vm.complete(item.id) }) { Text("Mark done") }
             val waiting = item.nextActionAt?.isAfter(vm.now) == true || item.waitingFor != null
             if (waiting) OutlinedButton(onClick = { vm.bringBack(item.id) }) { Text("Do now") }
-            LaterMenu(item.id, vm)
+            LaterButton(item.id, vm)
         }
         TextButton(onClick = {
             context.getSystemService(android.content.ClipboardManager::class.java)

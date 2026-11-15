@@ -86,7 +86,8 @@ fun BoardScreen(vm: BoardViewModel, open: (UUID) -> Unit, onAdd: () -> Unit) {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
         BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
-            val visible = (maxWidth.value / 250f).toInt().coerceIn(1, all.size)
+            // Wider columns on a tablet: a card reads at a glance.
+            val visible = (maxWidth.value / (if (maxWidth >= 840.dp) 290f else 250f)).toInt().coerceIn(1, all.size)
             val columnWidth = (maxWidth - 32.dp - 12.dp * (visible - 1)) / visible
             val list = rememberLazyListState()
             val scope = rememberCoroutineScope()

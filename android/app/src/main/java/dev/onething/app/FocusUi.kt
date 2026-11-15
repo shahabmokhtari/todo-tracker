@@ -1,6 +1,19 @@
 package dev.onething.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -58,61 +70,76 @@ fun durationText(d: Duration): String {
     return if (m == 0L) "$h h" else "$h h ${m.toString().padStart(2, '0')} min"
 }
 
-/** The focus timer: its ring and clock, what it's on, and start / pause / resume / skip / reset. */
+/** What the focus timer is doing, in words ("Focus · Write the plan (paused)"). */
+private fun focusLabel(f: FocusState): String = when (f.phase) {
+    PomodoroPhase.IDLE -> "Focus"
+    PomodoroPhase.FOCUS -> "Focus"
+    PomodoroPhase.SHORT_BREAK -> "Break"
+    PomodoroPhase.LONG_BREAK -> "Long break"
+} + (f.itemTitle?.takeIf { f.phase != PomodoroPhase.IDLE }?.let { " · $it" } ?: "") + (if (f.phase != PomodoroPhase.IDLE && !f.running) " (paused)" else "")
+
+/** Whether the strip has something to show beyond Today: a focus session, a break, or a task being timed. */
+fun timersBusy(vm: BoardViewModel): Boolean = vm.focus.phase != PomodoroPhase.IDLE || vm.timer != null
+
+/**
+ * The timers in one compact strip: the focus timer (its ring, clock and what it's on; Start, Pause or Resume, and Skip
+ * and Reset under ⋯) and, while a task is timed, its clock, its name and Stop. One timer runs at a time.
+ */
 @Composable
-fun FocusBar(vm: BoardViewModel, onStart: () -> Unit) {
+fun TimerStrip(vm: BoardViewModel, onStartFocus: () -> Unit, modifier: Modifier = Modifier) {
     val f = vm.focus
     val total = vm.focusTotal()
     val fraction = if (f.phase == PomodoroPhase.IDLE || total.isZero) 0f else (1f - f.remaining.toMillis().toFloat() / total.toMillis()).coerceIn(0f, 1f)
     val ring = when (f.phase) {
-        PomodoroPhase.FOCUS -> Color(0xFFF43F5E)
+        PomodoroPhase.FOCUS -> Brand.pink
         PomodoroPhase.IDLE -> MaterialTheme.colorScheme.primary
         else -> Color(0xFF10B981)
     }
-    val label = when (f.phase) {
-        PomodoroPhase.IDLE -> "Focus timer"
-        PomodoroPhase.FOCUS -> "Focus"
-        PomodoroPhase.SHORT_BREAK -> "Break"
-        PomodoroPhase.LONG_BREAK -> "Long break"
-    } + (f.itemTitle?.takeIf { f.phase != PomodoroPhase.IDLE }?.let { " · $it" } ?: "") + (if (f.phase != PomodoroPhase.IDLE && !f.running) " (paused)" else "")
-    // Above the gesture bar (the app draws edge to edge).
-    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    val running = vm.timer
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = modifier.fillMaxWidth()) {
+        Row(Modifier.height(52.dp).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // The focus timer.
             Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(34.dp), color = ring, strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
+                CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(26.dp), color = ring, strokeWidth = 3.dp, trackColor = MaterialTheme.colorScheme.outlineVariant)
             }
-            Column(Modifier.weight(1f)) {
-                Text(clockText(f.remaining), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Text(clockText(f.remaining), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                Text(focusLabel(f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (f.phase == PomodoroPhase.IDLE) {
-                TextButton(onClick = onStart) { Text("Start") }
+                TextButton(onClick = onStartFocus) { Text("Start") }
             } else {
-                if (f.running) TextButton(onClick = { vm.pauseFocus() }) { Text("Pause") } else TextButton(onClick = { vm.resumeFocus() }) { Text("Resume") }
-                TextButton(onClick = { vm.skipFocus() }) { Text("Skip") }
-                TextButton(onClick = { vm.resetFocus() }) { Text("Reset") }
+                if (f.running) {
+                    IconButton(onClick = { vm.pauseFocus() }) { Icon(ViewIcons.pause, contentDescription = "Pause") }
+                } else {
+                    IconButton(onClick = { vm.resumeFocus() }) { Icon(Icons.Filled.PlayArrow, contentDescription = "Resume") }
+                }
+                Box {
+                    var menu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "More for the focus timer") }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(if (f.phase == PomodoroPhase.FOCUS) "Skip to the break" else "Skip the break") }, onClick = { menu = false; vm.skipFocus() })
+                        DropdownMenuItem(text = { Text("Reset") }, onClick = { menu = false; vm.resetFocus() })
+                    }
+                }
             }
-        }
-    }
-}
-
-/** The task being timed: its clock, its name and Stop. One timer runs at a time. */
-@Composable
-fun TimerBar(vm: BoardViewModel) {
-    val running = vm.timer ?: return
-    val elapsed = running.entry.duration(vm.now)
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(8.dp).background(Color(0xFFEF4444), CircleShape))
-            Text(
-                clockText(elapsed),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.semantics { contentDescription = "Timing for ${durationText(elapsed)}" },
-            )
-            Text(running.item.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            if (running.entry.source == dev.onething.core.TimeSource.FOCUS) Text("focus", style = MaterialTheme.typography.labelSmall, color = Color(0xFFB45309))
-            TextButton(onClick = { vm.stopTimer() }) { Text("Stop") }
+            // The task being timed.
+            if (running != null) {
+                val elapsed = running.entry.duration(vm.now)
+                VerticalDivider(Modifier.height(28.dp).padding(horizontal = 4.dp))
+                Box(Modifier.padding(start = 8.dp).size(8.dp).background(ViewColors.danger, CircleShape))
+                Column(
+                    Modifier.weight(1f).padding(start = 8.dp).clickable { vm.openTask(running.item.id) }
+                        .semantics(mergeDescendants = true) { contentDescription = "Timing ${running.item.title} for ${durationText(elapsed)}" },
+                ) {
+                    Text(clockText(elapsed), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text(
+                        running.item.title + if (running.entry.source == dev.onething.core.TimeSource.FOCUS) " · focus" else "",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = { vm.stopTimer() }) { Icon(ViewIcons.stop, contentDescription = "Stop the timer", tint = ViewColors.danger) }
+            }
         }
     }
 }

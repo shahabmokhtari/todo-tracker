@@ -64,7 +64,7 @@ import java.util.UUID
 
 /** The brand's accent, and the colors the other apps use for warnings, danger and done. */
 object ViewColors {
-    val accent = Color(0xFF6366F1)
+    val accent = Brand.indigo
     val danger = Color(0xFFEF4444)
     val warn = Color(0xFFCA8A04)
     val done = Color(0xFF22C55E)
@@ -84,6 +84,14 @@ object ViewColors {
 @Composable
 fun ViewHeader(title: String, vm: BoardViewModel, onAdd: (() -> Unit)?, actions: @Composable () -> Unit = {}) {
     var searching by rememberSaveable { mutableStateOf(false) }
+    // Ctrl+F (a keyboard): the search opens.
+    var searchesSeen by remember { androidx.compose.runtime.mutableIntStateOf(vm.searchRequests) }
+    LaunchedEffect(vm.searchRequests) {
+        if (vm.searchRequests != searchesSeen) {
+            searchesSeen = vm.searchRequests
+            searching = true
+        }
+    }
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1)
@@ -273,6 +281,37 @@ object ViewIcons {
                 moveTo(8f, 9f); lineTo(21f, 9f); lineTo(21f, 11.5f); lineTo(8f, 11.5f); close()
                 moveTo(8f, 14f); lineTo(21f, 14f); lineTo(21f, 16.5f); lineTo(8f, 16.5f); close()
                 moveTo(3f, 19f); lineTo(21f, 19f); lineTo(21f, 21.5f); lineTo(3f, 21.5f); close()
+            }
+        }.build()
+    }
+
+    /** A clock: Later. */
+    val later: ImageVector by lazy {
+        ImageVector.Builder("Later", 24.dp, 24.dp, 24f, 24f).apply {
+            path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = androidx.compose.ui.graphics.StrokeCap.Round) {
+                moveTo(12f, 3f)
+                arcTo(9f, 9f, 0f, true, true, 11.99f, 3f)
+                close()
+                moveTo(12f, 7.5f); lineTo(12f, 12f); lineTo(15f, 14f)
+            }
+        }.build()
+    }
+
+    /** Two bars: Pause. */
+    val pause: ImageVector by lazy {
+        ImageVector.Builder("Pause", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(6.5f, 5f); lineTo(10f, 5f); lineTo(10f, 19f); lineTo(6.5f, 19f); close()
+                moveTo(14f, 5f); lineTo(17.5f, 5f); lineTo(17.5f, 19f); lineTo(14f, 19f); close()
+            }
+        }.build()
+    }
+
+    /** A square: Stop. */
+    val stop: ImageVector by lazy {
+        ImageVector.Builder("Stop", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(7f, 7f); lineTo(17f, 7f); lineTo(17f, 17f); lineTo(7f, 17f); close()
             }
         }.build()
     }
