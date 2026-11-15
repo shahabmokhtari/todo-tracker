@@ -165,6 +165,25 @@ test('Task details: the keyboard goes in, stays in, and comes back when it close
   expect(errors).toEqual([]);
 });
 
+test('Details opened from a row’s ⋯ give the keyboard back to ⋯ when they close', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await add(request, 'Menu round trip');
+  await open(page, request);
+  await page.locator('#tabs .tab', { hasText: group.name }).click();
+  const row = page.locator('#sec-now .item', { hasText: 'Menu round trip' });
+  const more = row.getByRole('button', { name: 'More' });
+  await row.hover();
+  await more.click();
+  await row.getByRole('menuitem', { name: 'Open details' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Task details' });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.locator('.title-input')).toHaveValue('Menu round trip');
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  await expect(page.locator('#sec-now .item', { hasText: 'Menu round trip' }).getByRole('button', { name: 'More' })).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test('On a tablet: a rail of icons, big touch targets, few row buttons, and details down the right edge', async ({ browser, request }) => {
   await add(request, 'Tablet first');
   await add(request, 'Tablet second');
@@ -178,9 +197,14 @@ test('On a tablet: a rail of icons, big touch targets, few row buttons, and deta
     // The side bar is a rail: icons only, no menu button, no bottom bar.
     const nav = page.locator('#sidenav');
     expect((await nav.boundingBox()).width).toBeLessThan(100);
-    await expect(nav.locator('.nav-link .nav-label').first()).toBeHidden();
+    // (the names are clipped away, not drawn)
+    expect((await nav.locator('.nav-link .nav-label').first().boundingBox()).width).toBeLessThanOrEqual(1);
     await expect(page.locator('#nav-toggle')).toBeHidden();
     await expect(page.locator('#bottom-nav')).toBeHidden();
+    // Icons only, but each still says its name to a screen reader.
+    await expect(nav.getByRole('link', { name: /^Board/ })).toBeVisible();
+    await expect(nav.getByRole('link', { name: /^Settings/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: new RegExp(`^${group.name}`) })).toBeVisible();
     // Its own button opens it full over the page; choosing a view closes it again.
     await page.getByRole('button', { name: 'Expand the side bar' }).click();
     expect((await nav.boundingBox()).width).toBeGreaterThan(200);

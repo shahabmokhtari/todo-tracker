@@ -712,7 +712,10 @@ const coarse = () => window.matchMedia?.('(pointer: coarse)').matches ?? false;
  * the buttons stay few. `first` are this task's own, above the rest.
  */
 function moreButton(c, big = false, first = []) {
-  const item = (iconName, label, onclick, hint = null) => h('button', { role: 'menuitem', class: 'wide', onclick }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label), hint ? h('span', { class: 'menu-hint' }, hint) : null);
+  // The menu closes and ⋯ takes the keyboard back first: what the item opens (task details) then returns there, not to
+  // a hidden menu item (focus would fall to the page).
+  const choose = (action) => () => { closeMenus(); button.focus(); action(); };
+  const item = (iconName, label, onclick, hint = null) => h('button', { role: 'menuitem', class: 'wide', onclick: choose(onclick) }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label), hint ? h('span', { class: 'menu-hint' }, hint) : null);
   const menu = h('div', { class: 'menu more-menu', hidden: true, role: 'menu', 'aria-label': `More for ${c.title}` });
   const fill = () => menu.replaceChildren(
     ...first.map((a) => item(a.iconName, a.label, a.onclick, a.hint)),

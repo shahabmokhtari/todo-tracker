@@ -657,13 +657,17 @@ body.nav-rail .app { grid-template-columns: 76px minmax(0, 1fr); }
 body.nav-rail .sidenav:not(.open) { width: 76px; padding: var(--space-3) 10px; align-items: stretch; overflow-x: hidden; }
 body.nav-rail .sidenav:not(.open) .nav-top { flex-direction: column; gap: 6px; padding-bottom: 6px; }
 body.nav-rail .sidenav:not(.open) .brand { padding: 4px; }
-body.nav-rail .sidenav:not(.open) :is(.brand-name, .nav-label, .tab-name, .tab .dot, .nav-link kbd, .tab-row > .menu-wrap) { display: none; }
+body.nav-rail .sidenav:not(.open) :is(.brand-name, .tab .dot, .nav-link kbd, .tab-row > .menu-wrap) { display: none; }
+/* The names stay for screen readers (each link and group is still called by its name), just not drawn. */
+body.nav-rail .sidenav:not(.open) :is(.nav-label, .tab-name) { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 body.nav-rail .sidenav:not(.open) .nav-heading { height: 1px; margin: var(--space-2) 8px; overflow: hidden; color: transparent; background: var(--border); }
 body.nav-rail .sidenav:not(.open) :is(.nav-link, .tab) { position: relative; justify-content: center; width: 100%; min-height: 48px; padding: 0; }
 body.nav-rail .sidenav:not(.open) .nav-icon { width: auto; }
-body.nav-rail .sidenav:not(.open) .tab-glyph { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--group); background: color-mix(in srgb, var(--group) 16%, transparent); }
-body.nav-rail .sidenav:not(.open) .tab[aria-current="true"] .tab-glyph { color: #fff; background: var(--group); }
-body.nav-rail .sidenav:not(.open) .tab:not(:has(.dot)) .tab-glyph { color: var(--text-2); background: transparent; }
+/* A group's letter: in the text color on a light tint with a ring of its color; chosen, white on its color darkened
+   (so yellow, amber or a light indigo still give white text enough contrast). */
+body.nav-rail .sidenav:not(.open) .tab-glyph { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--text); background: color-mix(in srgb, var(--group) 12%, transparent); box-shadow: inset 0 0 0 2px var(--group); }
+body.nav-rail .sidenav:not(.open) .tab[aria-current="true"] .tab-glyph { color: #fff; background: color-mix(in srgb, var(--group) 55%, #000); box-shadow: none; }
+body.nav-rail .sidenav:not(.open) .tab:not(:has(.dot)) .tab-glyph { color: var(--text-2); background: transparent; box-shadow: none; }
 body.nav-rail .sidenav:not(.open) .tab[aria-current="true"]:not(:has(.dot)) .tab-glyph { color: var(--accent); }
 /* Counts become small badges on the icon's corner. */
 body.nav-rail .sidenav:not(.open) :is(.nav-count, .tab .badge) { position: absolute; top: 3px; right: 6px; min-width: 18px; padding: 0 5px; font-size: 10.5px; line-height: 17px; margin: 0; }
