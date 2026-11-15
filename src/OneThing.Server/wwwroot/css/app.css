@@ -12,18 +12,23 @@
   --surface: rgb(255 255 255 / .78);
   --surface-solid: #ffffff;
   --surface-2: #f1f3f9;
-  --surface-hover: rgb(99 102 241 / .06);
+  --surface-hover: rgb(79 70 229 / .06);
   --border: rgb(15 23 42 / .08);
   --border-strong: rgb(15 23 42 / .14);
   --text: #0f172a;
   --text-2: #475569;
   --text-3: #64748b; /* ≥4.5:1 on white: used for real (small) text */
 
-  --accent: #6366f1;
-  --accent-2: #8b5cf6;
-  --accent-3: #ec4899;
-  --accent-soft: rgb(99 102 241 / .12);
-  --gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
+  /* The brand, as in the icon: indigo → violet → pink. */
+  --brand-1: #4f46e5;
+  --brand-2: #7c3aed;
+  --brand-3: #db2777;
+  --accent: #4f46e5; /* text, links and lines (≥ 6:1 on white); lighter in dark */
+  --accent-2: #7c3aed;
+  --accent-3: #db2777;
+  --accent-strong: #4f46e5; /* fills under white text, in both themes */
+  --accent-soft: rgb(79 70 229 / .1);
+  --gradient: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
 
   --ok: #10b981;
   --ok-soft: rgb(16 185 129 / .14);
@@ -43,7 +48,8 @@
   --shadow-sm: 0 1px 2px rgb(15 23 42 / .06);
   --shadow: 0 1px 2px rgb(15 23 42 / .04), 0 8px 24px -8px rgb(15 23 42 / .12);
   --shadow-lg: 0 24px 64px -16px rgb(15 23 42 / .28);
-  --ring: 0 0 0 3px rgb(99 102 241 / .35);
+  --ring: 0 0 0 3px rgb(79 70 229 / .3);
+  --tap: 44px; /* the smallest touch target */
   --ease: cubic-bezier(.2, .8, .2, 1);
 
   font-family: var(--font);
@@ -70,7 +76,9 @@
     --text: #e8ecf8;
     --text-2: #a7b0c8;
     --text-3: #8a93ad;
+    --accent: #a5b4fc;
     --accent-soft: rgb(129 140 248 / .16);
+    --ring: 0 0 0 3px rgb(165 180 252 / .35);
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 32px -12px rgb(0 0 0 / .6);
     --shadow-lg: 0 24px 64px -12px rgb(0 0 0 / .7);
   }
@@ -88,7 +96,9 @@
     --text: #e8ecf8;
     --text-2: #a7b0c8;
     --text-3: #8a93ad;
+    --accent: #a5b4fc;
     --accent-soft: rgb(129 140 248 / .16);
+    --ring: 0 0 0 3px rgb(165 180 252 / .35);
     --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 12px 32px -12px rgb(0 0 0 / .6);
     --shadow-lg: 0 24px 64px -12px rgb(0 0 0 / .7);
   }
@@ -157,7 +167,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
   background: var(--gradient);
   border-color: transparent;
   color: #fff;
-  box-shadow: 0 6px 18px -6px rgb(99 102 241 / .6);
+  box-shadow: 0 6px 18px -6px rgb(79 70 229 / .55);
 }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.success { background: #047857; border-color: transparent; color: #fff; box-shadow: 0 6px 18px -6px rgb(16 185 129 / .6); }
@@ -224,7 +234,7 @@ button.link:hover { color: var(--accent); }
 }
 .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; letter-spacing: -.01em; }
 .brand:hover { text-decoration: none; }
-.logo { display: block; filter: drop-shadow(0 4px 10px rgb(99 102 241 / .35)); }
+.logo { display: block; filter: drop-shadow(0 4px 10px rgb(79 70 229 / .3)); }
 
 .tabs {
   display: flex;
@@ -299,8 +309,8 @@ button.link:hover { color: var(--accent); }
 .hello h1 { font-size: 30px; font-weight: 750; }
 .hello p { margin: 4px 0 0; font-size: 15px; }
 .columns { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-.column { display: grid; gap: 16px; }
-@media (min-width: 980px) { .columns { grid-template-columns: 1.35fr 1fr; } }
+.column { display: grid; gap: 16px; align-content: start; }
+/* Two columns when there's room: views.css (a container query on the Today view). */
 
 .panel {
   background: var(--surface);
@@ -390,10 +400,8 @@ button.link:hover { color: var(--accent); }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  font-size: 13.5px;
+  font-weight: 650;
   color: var(--accent);
 }
 .focus-card.attention .eyebrow { color: #d97706; }
@@ -601,7 +609,7 @@ button.link.notes-toggle { display: block; font-size: 12px; font-weight: 600; co
 /* A checkbox never shrinks next to long text (it did in the Plugins list). */
 input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .drawer-section { display: grid; gap: 10px; padding: 16px; border-radius: var(--radius); background: var(--surface-2); }
-.drawer-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
+.drawer-section h3 { font-size: 13.5px; font-weight: 650; letter-spacing: -.005em; color: var(--text-2); }
 .drawer-section details summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 14px; }
 .subtasks, .reminders, .notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .sub { display: block; padding: 6px 8px; border-radius: 10px; background: var(--surface-solid); }
@@ -656,7 +664,7 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .report-hero h1 { font-size: 30px; }
 .report-stats { display: flex; flex-wrap: wrap; gap: 8px; }
 .day { padding: 8px 0; }
-.day h2 { margin: 0 0 10px 8px; font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
+.day h2 { margin: 0 0 10px 8px; font-size: 13.5px; font-weight: 650; color: var(--text-2); letter-spacing: 0; }
 .timeline { position: relative; list-style: none; margin: 0; padding: 0 0 0 28px; display: grid; gap: 10px; }
 .timeline::before { content: ""; position: absolute; left: 11px; top: 6px; bottom: 6px; width: 2px; background: var(--border-strong); border-radius: 2px; }
 .timeline li { position: relative; display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
@@ -705,8 +713,8 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .search .filter-pick { color: var(--text-3); }
 .search .filter-pick[aria-expanded=true], .search .filter-pick:hover { color: var(--accent); }
 .filter-menu { width: min(300px, 90vw); max-height: min(70vh, 480px); overflow-y: auto; }
-.filter-menu .menu-head { margin: 8px 10px 2px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); display: grid; }
-.filter-menu .menu-head small { font-weight: 400; letter-spacing: 0; text-transform: none; }
+.filter-menu .menu-head { margin: 8px 10px 2px; font-size: 13px; font-weight: 650; color: var(--text-2); display: grid; }
+.filter-menu .menu-head small { font-weight: 400; color: var(--text-3); }
 .filter-menu .menu-empty { margin: 4px 10px 8px; font-size: 12.5px; color: var(--text-3); }
 .filter-menu button .check { width: 14px; color: var(--accent); font-weight: 700; }
 .filter-menu button .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--label); flex: none; }
@@ -786,7 +794,7 @@ input[type="checkbox"], input[type="radio"] { flex: 0 0 auto; }
 .chat-picker { margin-right: auto; }
 .chat-log { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 60vh; padding-right: 4px; }
 .chat .msg { padding: 9px 12px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 92%; line-height: 1.45; }
-.chat .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.chat .msg.user { align-self: flex-end; background: var(--accent-strong); color: #fff; border-bottom-right-radius: 4px; }
 .chat .msg.agent { align-self: flex-start; background: var(--surface-solid); border-bottom-left-radius: 4px; }
 .chat .tool { align-self: flex-start; font-size: 12.5px; color: var(--text-3, #64748b); padding: 2px 8px; border-radius: 999px; background: rgba(127, 127, 127, .1); }
 .chat .tool.failed { color: #dc2626; }

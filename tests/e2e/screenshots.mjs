@@ -9,7 +9,7 @@
 //
 // It starts its own One Thing on a throwaway data folder and port, fills it with the demo tasks below through the
 // API (as you and as an AI agent), and saves to docs/images:
-//   today-light, today-dark, board, tasks, plan, reports, task-details, phone   the web app
+//   today-light, today-dark, board, tasks, plan, reports, task-details, phone, tablet   the web app
 //   browser-extension                                                           the extension's side panel, paired
 //   logo                                                                        the app icon (from wwwroot/img/logo.svg)
 //   windows-sidebar, windows-sidebar-dark                                       the Windows sidebar (Windows only)
@@ -38,7 +38,7 @@ const only = onlyAt >= 0 ? (args[onlyAt + 1] ?? '').split(',').map((n) => n.trim
 const wanted = (name) => !only || only.includes(name);
 const base = `http://127.0.0.1:${port}`;
 
-const webViews = ['today-light', 'today-dark', 'board', 'tasks', 'plan', 'reports', 'task-details', 'phone'];
+const webViews = ['today-light', 'today-dark', 'board', 'tasks', 'plan', 'reports', 'task-details', 'phone', 'tablet'];
 const sidebarShots = ['windows-sidebar', 'windows-sidebar-dark'];
 // The pictures the website shows (website/public/index.html), as WebP.
 const onWebsite = ['today-light', 'today-dark', 'board', 'plan', 'reports', 'tasks', ...sidebarShots, 'macos-ios-light', 'macos-ios-dark', 'browser-extension'];
@@ -208,9 +208,9 @@ async function save(page, name, options = {}, folder = out) {
 }
 
 async function captureWeb(browser, ids) {
-  const shoot = async (name, { hash = '#/today', dark = false, width = 1440, height = 900, full = false, prepare } = {}) => {
+  const shoot = async (name, { hash = '#/today', dark = false, width = 1440, height = 900, full = false, touch = false, prepare } = {}) => {
     if (!wanted(name)) return;
-    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1.5, colorScheme: dark ? 'dark' : 'light' });
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1.5, colorScheme: dark ? 'dark' : 'light', hasTouch: touch });
     const page = await context.newPage();
     const launch = await api('POST', '/api/launch', { return: '/' });
     await page.goto(launch.url);
@@ -229,7 +229,9 @@ async function captureWeb(browser, ids) {
   await shoot('plan', { hash: '#/plan' });
   await shoot('reports', { hash: '#/reports' });
   await shoot('task-details', { hash: `#/task/${ids.release.id}` });
-  await shoot('phone', { width: 390, height: 844 });
+  await shoot('phone', { width: 390, height: 844, touch: true });
+  // A tablet in portrait: the rail of icons, Today, and a task's details as a panel down the right edge.
+  await shoot('tablet', { width: 820, height: 1180, touch: true, prepare: async (page) => { await page.locator('#sec-now .item .title').first().click(); await wait(600); } });
 }
 
 /**

@@ -23,7 +23,8 @@ you're using is resized to sit next to the sidebar instead (turn this off in **�
 full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
 
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓; **Skip** on the big card does something else first (it moves down one). New tasks
+or use its ↑/↓ buttons or Alt+↑/↓ (on a touch screen: **⋯ › Move up / Move down**); **Skip** on the big card (on the
+web: **More › Skip for now**) does something else first (it moves down one). New tasks
 go below the ones you arranged, so your focus stays put. A reminder that
 goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
 the web task panel.
@@ -31,6 +32,11 @@ the web task panel.
 **On every card:** **Mark done**, **Later**, **Note** (the sticky note), **Focus**, **Timer**, and **⋯** for the
 rest: **Dismiss reminder** (keeps the task, stops showing the reminder), **Copy link**, and what extras add (Copy for
 Loop; Open in Obsidian in the sidebar). Same on Windows, the web, Mac, iPhone and Android.
+
+On the web the buttons are fewer, so the one thing stands out: the big card shows **Mark done**, **Later**, **Focus**
+(or **Note** when the focus timer is off) and **More**, which has **Add a note**, **Start the timer**, **Open
+details**, **Skip for now** and the rest. Other rows show **✓**, **Later** and **⋯** (the note, focus and timer are
+in **⋯**), and only when you point at the row; on a touch screen they're always there.
 
 **Notes on cards.** The task you're on (the big card) shows every note, newest first, with who wrote it and when. Any
 other card says **2 notes ▾**: click it to read them right there, **Hide notes ▴** to fold them away.
@@ -80,6 +86,14 @@ The web app (and the app window on Windows) has six views; switch with the side 
   now. Tasks you put off (snoozed, waiting for another task, a repeating task until its next time) are under
   *Later*, with when each comes back, and marked on that day; drag them in too. Each group keeps its own view (day or
   week, work hours or the whole day). An extra: switch it off in Settings.
+
+**Phone, tablet, desktop.** On a phone the views are in a bar along the bottom and **☰** opens the side bar. On a
+tablet (or any window narrower than 1280 pixels) the side bar is a narrow row of icons, groups show as their first
+letter on their color, and the button at its top opens it in full over the page. On a wider screen the side bar is
+full; that button narrows it to icons, and the app remembers. Today puts *Do now* beside the smaller panels when
+there's room (on a tablet in portrait, the smaller panels sit side by side under it). A task's details open as a
+panel down the right edge (on a phone, over the whole screen). On a touch screen every button is at least 44 pixels,
+and the board's buttons sit along the foot of each card.
 
 **Groups** are listed in the side bar. Each has a **⋯** next to it (Tab to it, or point at the group) with **Rename…**
 and **Delete…**; deleting asks first and moves the group's tasks to another group, so none are lost. **+** adds one.

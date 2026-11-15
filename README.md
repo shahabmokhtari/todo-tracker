@@ -60,11 +60,15 @@ calm until it matters.
 | Icons, colors, labels, repeat rules, a time log and **version history**. | **Docked to your screen edge**: maximized windows don't cover it. | Native Android and iPhone apps. They sync on their own with your computers (iCloud Drive or a GitHub gist), no computer needed. |
 
 <details>
-<summary>More: dark mode, the sidebar in dark, the iPhone app, the browser extension</summary>
+<summary>More: dark mode, the sidebar in dark, a tablet, the iPhone app, the browser extension</summary>
 
 | Dark mode | Sidebar, dark |
 |---|---|
 | ![Today in dark mode](docs/images/today-dark.png) | ![The Windows sidebar in dark mode](docs/images/windows-sidebar-dark.png) |
+
+| On a tablet |
+|---|
+| ![The web app on a tablet in portrait: a rail of icons on the left, Today, and a task's details as a panel down the right edge](docs/images/tablet.png) |
 
 | iPhone (SwiftUI) | Browser side panel |
 |---|---|

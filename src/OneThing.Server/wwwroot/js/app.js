@@ -215,6 +215,10 @@ function setGroup(id) {
   state.group = id;
   if (id) localStorage.setItem('onething.group', id);
   else localStorage.removeItem('onething.group');
+  // Quick add follows the tab at once: a task typed right after switching goes to the group you see, not the last one.
+  const pick = $('#capture-group');
+  if (pick.dataset.chosen && pick.dataset.tab !== (id ?? '')) delete pick.dataset.chosen;
+  if (state.dashboard) renderCaptureGroup(state.dashboard);
 }
 
 // ---------- rendering ----------
@@ -360,7 +364,10 @@ function renderTabs(d) {
       'aria-current': (state.group || null) === id ? 'true' : null,
       onclick: () => { setGroup(id); shell.closeNav(); refreshAll(); },
       title: id ? `Show ${name}` : 'All groups',
-    }, id ? h('span', { class: 'dot' }) : null, name, count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
+      // In the narrow side bar (tablets) a group shows as its first letter on its color; the name is the tooltip.
+    }, id ? h('span', { class: 'dot' }) : null,
+    h('span', { class: 'tab-glyph', 'aria-hidden': 'true' }, id ? (Array.from(name.trim())[0] ?? '?').toUpperCase() : icon('layers', { size: 16 })),
+    h('span', { class: 'tab-name' }, name), count ? h('span', { class: `badge${alert ? ' alert' : ''}` }, count) : null);
     if (color) el.style.setProperty('--group', color);
     return el;
   };
@@ -435,19 +442,12 @@ function renderFocus(d) {
     f.needsAttention && f.reminderMessage ? h('div', { class: 'reminder-banner' }, icon('clock', { size: 16 }), f.reminderMessage) : null,
     // The task you're on: every note, newest first.
     f.notes?.length ? h('ul', { class: 'card-notes focus-notes', 'aria-label': 'Notes' }, ...f.notes.map(cardNote)) : null,
-    actions(f, { big: true }));
+    // Skip for now (in ⋯): do something else first, this one moves down the list.
+    actions(f, { big: true, skip: blockIds(f.id).length > 1 ? () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id) : null }));
   el.style.setProperty('--prio', meta.color);
   withAccent(el, f.accent);
   // Drag the focus card down to do something else first, or drop a task on it to make that the focus.
   sortable(el, f.id, { scope: 'now', ids: () => blockIds(f.id), onOrder: arrangeNow, alwaysBefore: true });
-  // Said in words: an unlabeled arrow among labeled buttons read as a menu.
-  if (blockIds(f.id).length > 1) {
-    const bar = el.querySelector('.actions.big');
-    bar.insertBefore(actionButton({
-      name: 'Skip', iconName: 'down', big: true, title: 'Do something else first: moves this one down the list (Alt+↓)',
-      onclick: () => arrangeNow(step(blockIds(f.id), f.id, 1), f.id),
-    }), bar.lastElementChild);
-  }
   $('#focus').replaceChildren(el);
 }
 
@@ -627,7 +627,7 @@ function card(c, { waiting = false, orderable = false } = {}) {
         c.attachmentCount ? h('span', { class: 'chip muted', title: 'Attachments' }, icon('paperclip', { size: 12 }), String(c.attachmentCount)) : null),
       c.needsAttention && c.reminderMessage ? h('div', { class: 'reminder' }, icon('clock', { size: 14 }), c.reminderMessage) : null,
       ...notesToggle(c)),
-    actions(c, { waiting }));
+    actions(c, { waiting, orderable }));
   li.style.setProperty('--prio', priorityMeta(c.priority).color);
   withAccent(li, c.accent);
   if (orderable) {
@@ -644,7 +644,7 @@ function actionButton({ name, iconName, big, tone = '', primary = false, onclick
     : h('button', { class: `icon-btn ${tone}`.trim(), title, 'aria-label': name, onclick }, icon(iconName));
 }
 
-function actions(c, { waiting = false, big = false } = {}) {
+function actions(c, { waiting = false, big = false, orderable = false, skip = null } = {}) {
   const bar = h('div', { class: `actions${big ? ' big' : ''}` });
   // Saved as you type; Enter finishes the note (and starts a fresh one next time).
   const noteInput = h('input', {
@@ -674,34 +674,58 @@ function actions(c, { waiting = false, big = false } = {}) {
   const noteBox = h('form', { class: 'inline-note', hidden: true, dataset: { id: c.id }, onsubmit: (e) => { e.preventDefault(); finish(); } },
     noteInput, h('button', { class: 'btn', type: 'submit', title: 'Finish this note (Enter)', 'aria-label': 'Finish note' }, icon('check', { size: 16 }), 'Finish'));
 
-  // "Mark done", not "Done": next to a panel's close button a bare "Done" reads as "I'm finished here".
+  // The few things you do most stay buttons ("Mark done", not "Done": next to a panel's close button a bare "Done"
+  // reads as "I'm finished here"); the rest wait behind ⋯, so the card and every row stay calm.
+  const toggleNote = () => { noteBox.hidden = !noteBox.hidden; if (!noteBox.hidden) noteInput.focus(); };
+  const focusOn = !waiting && pluginOn('focus-timer');
+  const startFocus = () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started');
   if (!waiting && !c.hasChildren) bar.append(actionButton({ name: 'Mark done', iconName: 'check', big, tone: 'ok', primary: true, title: 'Mark this task done', onclick: () => act(post(`/api/items/${c.id}/complete`), `Done: ${c.title}`) }));
   if (waiting) bar.append(actionButton({ name: 'Do now', iconName: 'undo', big, title: 'Bring back now', onclick: () => act(post(`/api/items/${c.id}/schedule`, { clear: true })) }));
   bar.append(snoozeButton(c, big));
-  bar.append(actionButton({ name: 'Note', iconName: 'note', big, title: 'Add note', onclick: () => { noteBox.hidden = !noteBox.hidden; noteBox.querySelector('input').focus(); } }));
-  if (!waiting && pluginOn('focus-timer')) bar.append(actionButton({ name: 'Focus', iconName: 'target', big, tone: 'warn', title: 'Start a focus session (Pomodoro)', onclick: () => act(post('/api/pomodoro/start', { itemId: c.id }), 'Focus started') }));
-  if (!waiting) {
-    bar.append(c.timing
-      ? actionButton({ name: 'Stop timer', iconName: 'stop', big, tone: 'on', title: 'Stop timing this task', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') })
-      : actionButton({ name: 'Timer', iconName: 'timer', big, title: 'Time this task (stops any other timer)', onclick: () => act(post('/api/timer/start', { itemId: c.id }), 'Timer started') }));
+  // The card you're on gets one more: what gets you started (a focus session; a note when the focus timer is off).
+  const shown = big ? (focusOn ? 'focus' : 'note') : null;
+  if (shown === 'focus') bar.append(actionButton({ name: 'Focus', iconName: 'target', big, tone: 'warn', title: 'Start a focus session (Pomodoro)', onclick: startFocus }));
+  if (shown === 'note') bar.append(actionButton({ name: 'Note', iconName: 'note', big, title: 'Add a note', onclick: toggleNote }));
+  // A running timer stays in sight, so you can stop it.
+  if (!waiting && c.timing) bar.append(actionButton({ name: 'Stop timer', iconName: 'stop', big, tone: 'on', title: 'Stop timing this task', onclick: () => act(post('/api/timer/stop'), 'Timer stopped') }));
+
+  const more = [];
+  if (shown !== 'note') more.push({ iconName: 'note', label: 'Add a note', onclick: toggleNote });
+  if (focusOn && shown !== 'focus') more.push({ iconName: 'target', label: 'Start a focus session', onclick: startFocus });
+  if (!waiting && !c.timing) more.push({ iconName: 'timer', label: 'Start the timer', onclick: () => act(post('/api/timer/start', { itemId: c.id }), 'Timer started') });
+  more.push({ iconName: 'expand', label: 'Open details', onclick: () => openDrawer(c.id) });
+  if (skip) more.push({ iconName: 'down', label: 'Skip for now', hint: 'Alt+↓', onclick: skip });
+  // A touch screen can't drag a row, and arrows on every row would crowd it: moving up and down is here instead.
+  if (orderable && coarse()) {
+    more.push({ iconName: 'up', label: 'Move up', onclick: () => arrangeNow(step(blockIds(c.id), c.id, -1), c.id) });
+    more.push({ iconName: 'down', label: 'Move down', onclick: () => arrangeNow(step(blockIds(c.id), c.id, 1), c.id) });
   }
-  // Said out loud: the title opens it too, but nothing else told you so.
-  bar.append(actionButton({ name: big ? 'Details' : 'Open', iconName: 'expand', big, title: 'Open details: subtasks, notes, time, files', onclick: () => openDrawer(c.id) }));
-  bar.append(moreButton(c, big));
+  bar.append(moreButton(c, big, more));
   return h('div', { class: 'action-wrap' }, bar, noteBox);
 }
 
-/** The rarer actions (dismissing a reminder, copying a link, what extras add) behind ⋯, so the buttons stay few. */
-function moreButton(c, big = false) {
-  const item = (iconName, label, onclick) => h('button', { role: 'menuitem', class: 'wide', onclick }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label));
+/** A touch screen: no mouse to point or drag with. */
+const coarse = () => window.matchMedia?.('(pointer: coarse)').matches ?? false;
+
+/**
+ * The rarer actions behind ⋯ (a note, the timer, details, dismissing a reminder, copying a link, what extras add), so
+ * the buttons stay few. `first` are this task's own, above the rest.
+ */
+function moreButton(c, big = false, first = []) {
+  // The menu closes and ⋯ takes the keyboard back first: what the item opens (task details) then returns there, not to
+  // a hidden menu item (focus would fall to the page).
+  const choose = (action) => () => { closeMenus(); button.focus(); action(); };
+  const item = (iconName, label, onclick, hint = null) => h('button', { role: 'menuitem', class: 'wide', onclick: choose(onclick) }, icon(iconName, { size: 15 }), h('span', { class: 'menu-label' }, label), hint ? h('span', { class: 'menu-hint' }, hint) : null);
   const menu = h('div', { class: 'menu more-menu', hidden: true, role: 'menu', 'aria-label': `More for ${c.title}` });
   const fill = () => menu.replaceChildren(
+    ...first.map((a) => item(a.iconName, a.label, a.onclick, a.hint)),
+    ...(first.length ? [h('div', { class: 'menu-sep', role: 'separator' })] : []),
     ...(c.needsAttention && c.reminderId ? [item('bellOff', 'Dismiss reminder', () => act(post(`/api/items/${c.id}/reminders/${c.reminderId}/dismiss`), 'Reminder dismissed'))] : []),
     item('expand', 'Open full size', () => { location.hash = `#/task/${c.id}`; }),
     item('external', 'Open in a new tab', () => window.open(`/#/task/${c.id}`, '_blank', 'noopener')),
     item('link', 'Copy link', () => copyTaskLink(c)),
     ...visibleTaskActions().map((a) => item(a.iconName, a.label, () => a.onClick(c.id))));
-  const button = h('button', { class: big ? 'btn' : 'icon-btn', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => {
+  const button = h('button', { class: big ? 'btn more-btn' : 'icon-btn', type: 'button', title: 'More', 'aria-label': 'More', 'aria-haspopup': 'menu', 'aria-expanded': 'false', onclick: (e) => {
     e.stopPropagation();
     const opening = menu.hidden;
     closeMenus();
@@ -711,7 +735,7 @@ function moreButton(c, big = false) {
     fitMenu(menu);
     button.setAttribute('aria-expanded', 'true');
     menu.querySelector('button')?.focus();
-  } }, icon('more', { size: big ? 16 : 18 }));
+  } }, icon('more', { size: big ? 16 : 18 }), big ? 'More' : null);
   menu.addEventListener('keydown', (e) => {
     const items = [...menu.querySelectorAll('button')];
     const i = items.indexOf(document.activeElement);
