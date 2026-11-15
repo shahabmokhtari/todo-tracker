@@ -166,6 +166,25 @@ public enum TVRemote {
     }
 }
 
+/// What the TV asks before marking a task done.
+public struct TVDoneQuestion: Equatable, Sendable {
+    public let title: String
+    public let message: String
+    public let button: String
+}
+
+public enum TVCompletion {
+    /// A task with open subtasks says they're marked done with it (as on the iPhone); any other task, that it moves on.
+    public static func question(_ item: WorkItem) -> TVDoneQuestion {
+        let open = item.children.filter { !$0.isDone }.count
+        guard open > 0 else {
+            return TVDoneQuestion(title: "Mark “\(item.title)” done?", message: "It moves to Done, and the next thing comes up.", button: "Mark done")
+        }
+        let which = open == 1 ? "1 open subtask. It’s" : "\(open) open subtasks. They’re"
+        return TVDoneQuestion(title: "Also mark the open subtasks as done?", message: "“\(item.title)” has \(which) marked done with it.", button: "Mark all done")
+    }
+}
+
 /// A column of the Board on the TV (read only).
 public struct TVColumn: Identifiable, Equatable, Sendable {
     public var id: String { title }

@@ -359,8 +359,9 @@ set up. It has four tabs along the top.
 
 With the Siri Remote:
 
-* **Select** on the task marks it done. It asks first (**Mark done** or **Not yet**); then a short celebration plays
-  and the next thing comes up.
+* **Select** on the task marks it done. It asks first (**Mark done** or **Not yet**; a task with open subtasks asks
+  whether to mark them done too); then a short celebration plays and the next thing comes up. If it couldn't be
+  marked done, the TV says why and the task stays.
 * **Swipe** down to Up next and left or right through it; select one to read it, and mark it done from there.
 * **Play/Pause** starts a focus session on the task shown, pauses it, and carries on.
 * **Menu** goes back: it closes a task's details, then takes you to the tabs, then out of the app.

@@ -448,7 +448,9 @@ public final class BoardModel: ObservableObject {
         if case .task(let id) = TaskLinks.target(link.absoluteString) { openTaskId = id }
     }
 
-    public func complete(_ id: UUID) { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }
+    /// Whether it was marked done (if not, `status` says why).
+    @discardableResult
+    public func complete(_ id: UUID) -> Bool { change("Done 🎉", server: .complete(id)) { try board.complete(id, now: $0) } }
 
     /// The quick choices right now (the same in every app).
     public var snoozeChoices: [SnoozeChoice] { Snooze.choices(now: Date(), timeZone: .current) }

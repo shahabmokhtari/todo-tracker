@@ -13,6 +13,8 @@ struct TVNowView: View {
     @State private var confirming: TVHero?
     @State private var open: TVOpenTask?
     @State private var celebration: String?
+    /// Why marking done didn't work, shown for a few seconds.
+    @State private var problem: String?
     /// The task to do now has the focus when the screen opens: Select marks it done (after asking).
     @FocusState private var heroFocused: Bool
 
@@ -40,20 +42,21 @@ struct TVNowView: View {
         }
         .animation(.spring(duration: 0.5), value: screen.focus != nil)
         .defaultFocus($heroFocused, true)
-        .onPlayPauseCommand { playPause(screen) }
+        // Play/Pause is handled by the tabs (TVRootView), so it works even when nothing here can take the focus.
         .onChange(of: screen.doneToday) { old, new in
             guard TVCelebration.shouldCelebrate(from: old, to: new) else { return }
             celebrate(screen.cheer ?? "Done!")
         }
-        .alert("Mark “\(confirming?.title ?? "")” done?", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
-            Button("Mark done") {
-                if let hero = confirming { model.complete(hero.id) }
+        .alert(question?.title ?? "", isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }), presenting: question) { q in
+            Button(q.button) {
+                if let hero = confirming, !model.complete(hero.id) { problem = model.status ?? "Couldn’t mark it done. Try again." }
                 confirming = nil
             }
             Button("Not yet", role: .cancel) { confirming = nil }
-        } message: {
-            Text("It moves to Done, and the next thing comes up.")
+        } message: { q in
+            Text(q.message)
         }
+        .tvToast($problem)
         .fullScreenCover(item: $open) { task in
             TVDetailsView(model: model, id: task.id, canMarkDone: true)
         }
@@ -141,14 +144,9 @@ struct TVNowView: View {
         }
     }
 
-    // MARK: The remote
-
-    private func playPause(_ screen: TVScreen) {
-        switch TVRemote.playPause(model.board.pomodoro, hero: screen.hero?.id) {
-        case .start(let id): model.startFocus(id)
-        case .pause: model.pausePomodoro()
-        case .resume: model.resumePomodoro()
-        }
+    /// What to ask before marking the task shown done (about its open subtasks too, if it has any).
+    private var question: TVDoneQuestion? {
+        confirming.flatMap { model.board.find($0.id) }.map(TVCompletion.question)
     }
 
     private func celebrate(_ text: String) {

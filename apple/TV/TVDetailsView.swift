@@ -10,6 +10,8 @@ struct TVDetailsView: View {
     let canMarkDone: Bool
     @Environment(\.dismiss) private var dismiss
     @State private var confirming = false
+    /// Why marking done didn't work: shown, and the details stay open.
+    @State private var problem: String?
 
     var body: some View {
         ZStack {
@@ -21,6 +23,7 @@ struct TVDetailsView: View {
                 Text("This task isn’t here any more.").font(.system(size: 40))
             }
         }
+        .tvToast($problem)
         // Menu on the remote goes back.
         .onExitCommand { dismiss() }
     }
@@ -103,14 +106,22 @@ struct TVDetailsView: View {
             }
         }
         .padding(.horizontal, 40)
-        .alert("Mark “\(details.card.title)” done?", isPresented: $confirming) {
-            Button("Mark done") {
-                model.complete(id)
-                dismiss()
+        .alert(question?.title ?? "", isPresented: $confirming, presenting: question) { q in
+            Button(q.button) {
+                if model.complete(id) {
+                    dismiss()
+                } else {
+                    problem = model.status ?? "Couldn’t mark it done. Try again."
+                }
             }
             Button("Not yet", role: .cancel) {}
+        } message: { q in
+            Text(q.message)
         }
     }
+
+    /// What to ask before marking it done (about its open subtasks too, if it has any).
+    private var question: TVDoneQuestion? { model.board.find(id).map(TVCompletion.question) }
 
     private func heading(_ text: String) -> some View {
         Text(text.uppercased())

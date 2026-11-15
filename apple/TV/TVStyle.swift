@@ -59,6 +59,39 @@ struct TVChip: View {
     }
 }
 
+/// Why something didn't work ("Couldn't save…"), along the bottom for a few seconds. Put it on a screen with
+/// `.tvToast($message)`.
+struct TVToast: ViewModifier {
+    @Binding var message: String?
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottom) {
+            if let message {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.leading)
+                    .padding(.horizontal, 36)
+                    .padding(.vertical, 22)
+                    .background(RoundedRectangle(cornerRadius: 24).fill(TVBrand.danger.opacity(0.9)))
+                    .frame(maxWidth: 1400)
+                    .padding(.bottom, 40)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .task(id: message) {
+                        try? await Task.sleep(nanoseconds: 6_000_000_000)
+                        withAnimation(.easeIn(duration: 0.4)) { self.message = nil }
+                    }
+            }
+        }
+        .animation(.spring(duration: 0.4), value: message)
+    }
+}
+
+extension View {
+    func tvToast(_ message: Binding<String?>) -> some View { modifier(TVToast(message: message)) }
+}
+
 extension TVWhen {
     var tint: Color { urgent ? TVBrand.danger : TVBrand.warning }
     var symbol: String { urgent ? "exclamationmark.circle.fill" : "calendar" }

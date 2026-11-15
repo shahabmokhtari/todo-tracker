@@ -53,18 +53,22 @@ enum TVLaunch {
     static func live() -> BoardModel {
         let name = TVPairing.deviceName(UIDevice.current.name)
         let phone = PhoneSetup(phoneName: name, deviceKind: "Apple TV")
-        let settings = SyncSettingsStore(secrets: KeychainSecretStore())
+        let keychain = KeychainSecretStore()
+        let settings = SyncSettingsStore(secrets: keychain)
         guard let base = TVStorage.defaultBase() else {
             return BoardModel(store: nil, phone: phone, openError: "Couldn't open this Apple TV's storage. Restart the app to try again.")
         }
-        let folders = TVStorage.prepare(base: base)
-        if folders.wasEmptied, var setup = settings.load() {
-            // tvOS emptied the cache: the TV joins again (everything comes in before anything goes out).
-            setup.joined = false
-            settings.save(setup)
-        }
+        // The device id lives in the Keychain too (tvOS never empties it), so the TV always rejoins as itself.
+        let folders = TVStorage.prepare(base: base, identity: keychain)
         do {
             let vault = try VaultStore(root: folders.vault)
+            // tvOS emptied the cache, or only some task files: the TV joins again (everything comes in before anything
+            // goes out), so nothing missing here is ever sent to the others as deleted.
+            let missing = TVStorage.forgetIfTasksMissing(folders, vault: vault)
+            if folders.wasEmptied || missing, var setup = settings.load() {
+                setup.joined = false
+                settings.save(setup)
+            }
             let syncer = PhoneSyncer(store: vault, directory: folders.sync, settings: settings, deviceName: name)
             let sync = SyncModel(syncer: syncer, settings: settings)
             let model = BoardModel(store: VaultBoardStore(vault), phone: phone, sync: sync)

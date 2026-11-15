@@ -5,7 +5,7 @@ import OneThingKit
 #if os(iOS) && canImport(BackgroundTasks)
 import BackgroundTasks
 #endif
-#if os(iOS)
+#if os(iOS) || os(tvOS)
 import UIKit
 #endif
 
@@ -57,8 +57,8 @@ public final class SyncModel: ObservableObject {
     /// first, so two never overlap. Each run waits for the one stopped before it, so this one is enough.
     private var stopping: Task<Void, Never>?
     private var runId = 0
-    #if os(iOS)
-    /// The time iOS gives the app after it went to the background, for the sync on its way.
+    #if os(iOS) || os(tvOS)
+    /// The time iOS (and tvOS) gives the app after it went to the background, for the sync on its way.
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     #endif
 
@@ -111,7 +111,8 @@ public final class SyncModel: ObservableObject {
 
     /// Asks iOS for time to finish the sync; when time's up, it stops (what it hadn't published waits for the next one).
     private func finishInBackground() {
-        #if os(iOS)
+        // On the Apple TV too: a task marked done just before Home reaches the other devices now, not next time.
+        #if os(iOS) || os(tvOS)
         guard backgroundTask == .invalid else { return }
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Sync") { [weak self] in
             MainActor.assumeIsolated {
@@ -126,7 +127,7 @@ public final class SyncModel: ObservableObject {
         #endif
     }
 
-    #if os(iOS)
+    #if os(iOS) || os(tvOS)
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)

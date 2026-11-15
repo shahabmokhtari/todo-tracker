@@ -143,6 +143,26 @@ final class TVScreenTests: XCTestCase {
         XCTAssertEqual(details.notes.first?.meta, "Agent: claude · 1m ago")
     }
 
+    func testMarkingAParentDoneAsksAboutItsOpenSubtasksFirst() throws {
+        let board = TaskBoard()
+        let trip = try board.addTask(NewTask("Plan the trip"), now: now)
+        let steps = try board.addSteps(parentId: trip.id, titles: ["Book flights", "Find a hotel"], stepDelay: nil, now: now)
+
+        let parent = TVCompletion.question(try XCTUnwrap(board.find(trip.id)))
+        XCTAssertEqual(parent.title, "Also mark the open subtasks as done?")
+        XCTAssertEqual(parent.message, "“Plan the trip” has 2 open subtasks. They’re marked done with it.")
+        XCTAssertEqual(parent.button, "Mark all done")
+
+        let step = TVCompletion.question(try XCTUnwrap(board.find(steps[0].id)))
+        XCTAssertEqual(step.title, "Mark “Book flights” done?")
+        XCTAssertEqual(step.button, "Mark done")
+
+        try board.complete(steps[0].id, now: now)
+        XCTAssertEqual(TVCompletion.question(try XCTUnwrap(board.find(trip.id))).message, "“Plan the trip” has 1 open subtask. It’s marked done with it.")
+        try board.complete(steps[1].id, now: now)
+        XCTAssertEqual(TVCompletion.question(try XCTUnwrap(board.find(trip.id))).title, "Mark “Plan the trip” done?", "no open subtasks left: the plain question")
+    }
+
     func testACelebrationIsOnlyForNewlyDoneTasks() {
         XCTAssertTrue(TVCelebration.shouldCelebrate(from: 2, to: 3))
         XCTAssertFalse(TVCelebration.shouldCelebrate(from: 3, to: 3))
