@@ -172,8 +172,104 @@ def web():
     (ROOT / "build/icon.svg").write_text(full_bleed() + "\n")
 
 
+
+def tv_layer(layer, width, height, scale):
+    """One layer of the Apple TV icon (back: the gradient; middle: the glow and the later tasks; front: the task to do
+    now). tvOS stacks them and tilts them apart as the icon is focused, so the lit task floats above the rest."""
+    k = scale  # the mark's 1024 grid, scaled into the 5:3 icon and centred
+    tx, ty = width / 2 - 513 * k, height / 2 - 511 * k
+    if layer == "back":
+        body = f'<rect width="{width}" height="{height}" fill="url(#bg)"/><rect width="{width}" height="{height}" fill="url(#sheen)"/>'
+    else:
+        cx, cy, r = NOW_DOT
+        x, y, w, h = NOW_BAR
+        if layer == "middle":
+            inner = f'<circle cx="{cx}" cy="{cy}" r="260" fill="url(#glow)"/>'
+            for (dx, dy, dr), (bx, by, bw, bh), o in LATER:
+                inner += f'<circle cx="{dx}" cy="{dy}" r="{dr}" fill="#fff" fill-opacity="{o}"/>'
+                inner += f'<rect x="{bx}" y="{by}" width="{bw}" height="{bh}" rx="{bh / 2}" fill="#fff" fill-opacity="{o}"/>'
+        else:
+            inner = f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="#fff"/><rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}" fill="#fff"/>'
+        body = f'<g transform="translate({tx:.2f} {ty:.2f}) scale({k})">{inner}</g>'
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">{DEFS}{body}</svg>'
+
+
+def top_shelf(width, height):
+    """The Top Shelf picture (above the apps when One Thing is in the top row): the brand gradient, the mark and one
+    calm line, like the Now screen seen from across the room."""
+    k = 0.6
+    left = 220
+    tx, ty = left - 212 * k, height / 2 - 511 * k
+    text_x = left + (814 - 212) * k + 100  # right of the mark (its grid spans 212..814)
+    font = 'font-family="Helvetica Neue, Helvetica, Arial"'
+    words = (
+        f'<text x="{text_x}" y="{height / 2 - 10}" {font} font-weight="bold" font-size="120" fill="#fff">One Thing</text>'
+        f'<text x="{text_x + 4}" y="{height / 2 + 80}" {font} font-size="52" fill="#fff" fill-opacity=".8">'
+        "One thing to do now. The rest can wait.</text>"
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}">{DEFS}'
+        f'<rect width="{width}" height="{height}" fill="url(#bg)"/><rect width="{width}" height="{height}" fill="url(#sheen)"/>'
+        f'<g transform="translate({tx:.2f} {ty:.2f}) scale({k})">{mark()}</g>{words}</svg>'
+    )
+
+
+def render(svg, width, height):
+    return Image.open(io.BytesIO(cairosvg.svg2png(bytestring=svg.encode(), output_width=width, output_height=height)))
+
+
+def tvos():
+    """The Apple TV app's "App Icon & Top Shelf Image": the icon in three layers (400x240 on the TV, 1280x768 for the
+    App Store) and the Top Shelf pictures (1920x720, and wide 2320x720; each at 1x and 2x)."""
+    info = {"author": "xcode", "version": 1}
+    base = ROOT / "apple/TV/Assets.xcassets"
+    brand = base / "App Icon & Top Shelf Image.brandassets"
+
+    def write(folder, contents):
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "Contents.json").write_text(json.dumps(contents, indent=2) + "\n")
+
+    def stack(name, width, height, scales):
+        folder = brand / f"{name}.imagestack"
+        layers = ["Front", "Middle", "Back"]
+        write(folder, {"info": info, "layers": [{"filename": f"{layer}.imagestacklayer"} for layer in layers]})
+        for layer in layers:
+            content = folder / f"{layer}.imagestacklayer" / "Content.imageset"
+            write(folder / f"{layer}.imagestacklayer", {"info": info})
+            images = []
+            for scale in scales:
+                file = f"{layer.lower()}{'' if scale == 1 else f'@{scale}x'}.png"
+                # The mark fills about 62% of the icon's height: room for the tilt, and for tvOS's own rounding.
+                svg = tv_layer(layer.lower(), width, height, height * 0.62 / 582)
+                save(render(svg, width * scale, height * scale), content.relative_to(ROOT) / file, opaque=layer == "Back")
+                images.append({"filename": file, "idiom": "tv", "scale": f"{scale}x"})
+            write(content, {"images": images, "info": info})
+
+    def shelf(name, width, height):
+        folder = brand / f"{name}.imageset"
+        images = []
+        for scale in (1, 2):
+            file = f"{name.lower().replace(' ', '-')}{'' if scale == 1 else f'@{scale}x'}.png"
+            save(render(top_shelf(width, height), width * scale, height * scale), folder.relative_to(ROOT) / file, opaque=True)
+            images.append({"filename": file, "idiom": "tv", "scale": f"{scale}x"})
+        write(folder, {"images": images, "info": info})
+
+    stack("App Icon", 400, 240, (1, 2))
+    stack("App Icon - App Store", 1280, 768, (1,))
+    shelf("Top Shelf Image", 1920, 720)
+    shelf("Top Shelf Image Wide", 2320, 720)
+    write(brand, {"assets": [
+        {"filename": "App Icon - App Store.imagestack", "idiom": "tv", "role": "primary-app-icon", "size": "1280x768"},
+        {"filename": "App Icon.imagestack", "idiom": "tv", "role": "primary-app-icon", "size": "400x240"},
+        {"filename": "Top Shelf Image Wide.imageset", "idiom": "tv", "role": "top-shelf-image-wide", "size": "2320x720"},
+        {"filename": "Top Shelf Image.imageset", "idiom": "tv", "role": "top-shelf-image", "size": "1920x720"},
+    ], "info": info})
+    write(base, {"info": info})
+
+
 if __name__ == "__main__":
     apple()
+    tvos()
     android()
     windows()
     web()
