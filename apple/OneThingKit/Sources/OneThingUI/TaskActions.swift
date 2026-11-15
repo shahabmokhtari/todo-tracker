@@ -21,7 +21,38 @@ public final class ShellState: ObservableObject {
     /// Send feedback is open (Help › Send Feedback…, or a shake), and how it was opened.
     @Published public var feedback: FeedbackSource?
 
+    /// A task with open subtasks to mark done, once you say so (marking it done finishes them too).
+    @Published public var confirmingDone: UUID?
+    /// Typing in a box inside a list (a note under a row): Space and Return are the box's, not the list's.
+    @Published public var typing = false
+
     public init(model: BoardModel) { self.model = model }
+
+    /// Marks a task done; one with open subtasks asks first ("Also mark the open subtasks as done?").
+    public func markDone(_ id: UUID) {
+        guard let item = model.board.find(id), !item.isDone else { return }
+        if item.hasOpenChildren { confirmingDone = id } else { model.complete(id) }
+    }
+
+    /// Reopens a finished task, or marks an open one done (asking first when it has open subtasks).
+    public func toggleDone(_ id: UUID) {
+        guard let item = model.board.find(id) else { return }
+        if item.isDone { model.reopen(id) } else { markDone(id) }
+    }
+
+    /// The task Space and Return act on in a list: the picked one, never while typing in a box.
+    public var keyTarget: UUID? {
+        guard !typing, let id = selectedTask, model.board.find(id) != nil else { return nil }
+        return id
+    }
+
+    /// The details go away. On Today the row is unpicked too, so a tap on it opens it again (a list opens a task when
+    /// what's picked changes).
+    public func closeDetails() {
+        model.saveAllDrafts()
+        inspected = nil
+        if view == .today { selectedTask = nil }
+    }
 
     /// Selects a task and opens its details.
     public func open(_ id: UUID) {
@@ -68,6 +99,8 @@ enum TaskDrag {
 struct TaskContextMenu: View {
     @ObservedObject var model: BoardModel
     let id: UUID
+    /// "Add a note" opens a box under the row (Today) instead of the details.
+    var inlineNote = false
     @Environment(\.shellState) private var shell
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var multipleWindows
@@ -77,7 +110,10 @@ struct TaskContextMenu: View {
             if item.isDone {
                 Button { model.reopen(id) } label: { Label("Reopen", systemImage: "arrow.uturn.backward") }
             } else {
-                Button { model.complete(id) } label: { Label("Mark done", systemImage: "checkmark") }
+                Button { markDone(model, shell, id) } label: { Label("Mark done", systemImage: "checkmark") }
+                if Presentation.canBringBack(item, now: model.now) {
+                    Button { model.bringBack(id) } label: { Label("Bring back now", systemImage: "arrow.uturn.backward") }
+                }
                 Menu {
                     ForEach(model.snoozeChoices) { choice in
                         Button("\(choice.label)  ·  \(Snooze.describe(choice.at, now: Date(), timeZone: .current))") { model.snooze(id, until: choice.at) }
@@ -85,6 +121,14 @@ struct TaskContextMenu: View {
                 } label: { Label("Later", systemImage: "clock") }
                 let timing = model.runningTimer?.item.id == id
                 Button { model.toggleTimer(id) } label: { Label(timing ? "Stop the timer" : "Start the timer", systemImage: timing ? "stop.circle" : "stopwatch") }
+                Button { model.startFocus(id) } label: { Label("Focus on this", systemImage: "play") }
+                Button {
+                    if inlineNote || shell == nil {
+                        if !model.openNotes.contains(id) { model.toggleNote(id) }
+                    } else {
+                        shell?.open(id)
+                    }
+                } label: { Label("Add a note", systemImage: "note.text") }
             }
             Divider()
             if let shell {
@@ -99,6 +143,13 @@ struct TaskContextMenu: View {
                         ForEach(BoardColumn.allCases) { column in
                             Button(column.name) { model.moveCard(id, to: column) }
                                 .disabled(BoardColumns.column(of: item) == column)
+                        }
+                    }
+                    // Up and down within its column, without dragging (Done keeps its own order).
+                    if BoardColumns.column(of: item) != .done {
+                        Section("In its column") {
+                            Button { model.moveCard(id, .up) } label: { Label("Up", systemImage: "arrow.up") }
+                            Button { model.moveCard(id, .down) } label: { Label("Down", systemImage: "arrow.down") }
                         }
                     }
                 }

@@ -54,7 +54,8 @@ public struct AppShell: View {
     @ObservedObject var model: BoardModel
     @StateObject private var shell: ShellState
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @State private var columns = NavigationSplitViewVisibility.automatic
+    /// The sidebar stays (an iPad in portrait too); hide it with the button in the bar.
+    @State private var columns = NavigationSplitViewVisibility.all
     @State private var addingGroup = false
     @State private var newGroupName = ""
     @State private var renamingGroup: TaskGroup?
@@ -78,6 +79,8 @@ public struct AppShell: View {
             }
         }
         .environment(\.shellState, shell)
+        // Section names as written ("Groups", "Do now"), not in capitals.
+        .textCase(nil)
         .focusedSceneObject(shell)
         // A onething://task/<id> link (also when it started the app): the task's details.
         .onAppear { openLinkedTask() }
@@ -100,6 +103,16 @@ public struct AppShell: View {
                 }
                 shell.deleting = nil
             }
+        }
+        // Marking done a task with open subtasks finishes them too: asked first (the same question as the details).
+        .confirmationDialog("Also mark the open subtasks as done?",
+                            isPresented: Binding(get: { shell.confirmingDone != nil }, set: { if !$0 { shell.confirmingDone = nil } }),
+                            titleVisibility: .visible) {
+            Button("Mark all done") {
+                if let id = shell.confirmingDone { model.complete(id) }
+                shell.confirmingDone = nil
+            }
+            Button("Cancel", role: .cancel) { shell.confirmingDone = nil }
         }
         .alert("New group", isPresented: $addingGroup) {
             TextField("Name", text: $newGroupName)
@@ -168,6 +181,8 @@ public struct AppShell: View {
                 .navigationTitle("One Thing")
                 #if os(macOS)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 230, max: 320)
+                #else
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
                 #endif
         } detail: {
             GeometryReader { geo in
@@ -187,21 +202,20 @@ public struct AppShell: View {
                         TaskDetailView(model: model, itemId: id, sized: false)
                             .id(id)
                             .frame(width: min(520, max(320, geo.size.width * 0.4)))
+                            .frame(maxHeight: .infinity)
                             .transition(.move(edge: .trailing))
                     }
                 }
                 .animation(.snappy(duration: 0.25), value: shell.inspected)
             }
         }
+        .navigationSplitViewStyle(.balanced)
     }
 
     private var inspectorShown: Binding<Bool> {
         Binding(get: { shell.inspected != nil }, set: { shown in
-            if !shown {
-                // However the details go away, what was typed is saved.
-                model.saveAllDrafts()
-                shell.inspected = nil
-            }
+            // However the details go away, what was typed is saved.
+            if !shown { shell.closeDetails() }
         })
     }
 
@@ -281,6 +295,12 @@ public struct AppShell: View {
     }
 
     @ToolbarContentBuilder private var primaryActions: some ToolbarContent {
+        // Both timers in one small strip (the focus timer is a tap away even when it isn't running).
+        #if os(macOS)
+        ToolbarItem(placement: .principal) { TimerStrip(model: model, style: .toolbar, showIdle: true) }
+        #else
+        ToolbarItem(placement: .topBarTrailing) { TimerStrip(model: model, style: .toolbar, showIdle: true) }
+        #endif
         ToolbarItemGroup(placement: .primaryAction) {
             Button { shell.quickAdd = true } label: { Label("New task", systemImage: "plus") }
                 .help("New task (⌘N)")
@@ -319,11 +339,20 @@ public struct AppShell: View {
                         }
                     }
                 }
+                // Both timers in one bar above the tabs, while one runs (Today also offers the focus timer). Below the
+                // view, not over it: the board's columns and the lists end above it.
+                .modifier(TimerBelow(model: model, showIdle: item == .today))
                 .tabItem { Label(item.name, systemImage: item.symbol) }
                 .tag(item)
             }
         }
-        .sheet(isPresented: Binding(get: { shell.inspected != nil }, set: { if !$0 { model.saveAllDrafts(); shell.inspected = nil } })) {
+        .sheet(isPresented: Binding(get: { shell.inspected != nil }, set: {
+            if !$0 {
+                shell.closeDetails()
+                // No keyboard to act on it: the same row (or card) opens again with a tap.
+                shell.selectedTask = nil
+            }
+        })) {
             if let id = shell.inspected { TaskDetailView(model: model, itemId: id) }
         }
     }
@@ -459,7 +488,7 @@ public struct OneThingCommands: Commands {
         CommandMenu("Task") {
             let id = shell?.currentTask
             let item = id.flatMap { shell?.model.board.find($0) }
-            Button(item?.isDone == true ? "Reopen" : "Mark Done") { if let id { shell?.model.toggleDone(id) } }
+            Button(item?.isDone == true ? "Reopen" : "Mark Done") { if let id { shell?.toggleDone(id) } }
                 // ⌘Return, never plain Return: in the views Return renames or opens.
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(item == nil)

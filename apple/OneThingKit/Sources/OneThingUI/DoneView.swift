@@ -99,7 +99,7 @@ struct DoneView: View {
         .labelStyle(AdaptiveLabelStyle())
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { shell?.open(item.id) }
-        .contextMenu { TaskContextMenu(model: model, id: item.id) }
+        .taskRowActions(model, id: item.id) { shell?.open(item.id) }
     }
 
     /// Finished tasks by the day they were finished: Today, Yesterday, then the date.
