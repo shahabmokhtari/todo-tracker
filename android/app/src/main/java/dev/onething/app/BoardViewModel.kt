@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import dev.onething.BuildConfig
 import dev.onething.core.Actor
 import dev.onething.core.Agenda
 import dev.onething.core.BoardColumn
@@ -233,20 +234,26 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     var syncNeedsSignIn: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * A made-up board (DemoBoard), for screenshots: a debug build started with `--ez demo true`. It lives in a folder
+     * of its own, cleared on every start; the person's tasks, sync, widgets and alarms are left alone.
+     */
+    val demo: Boolean = BuildConfig.DEBUG && savedState.get<Boolean>(DemoBoard.EXTRA) == true
+
     init {
         // Shown once the tasks folder is open (just below); changes wait until then.
         board = TaskBoard()
         readOnly = true
         viewModelScope.launch {
-            val local = withContext(Dispatchers.IO) { BoardHub.local(application) }
-            val sync = withContext(Dispatchers.IO) { SyncHub.get(application) }
+            val local = withContext(Dispatchers.IO) { if (demo) openDemo(application) else BoardHub.local(application) }
+            val sync = if (demo) null else withContext(Dispatchers.IO) { SyncHub.get(application) }
             val loaded = withContext(Dispatchers.IO) { runCatching { local.store?.snapshot() }.getOrNull() }
             opened = local
             phoneSync = sync
             moving = null
             showDeviceBoard(loaded)
             // From now on alarms and notification buttons change the tasks through this screen (the same store).
-            BoardHub.live = this@BoardViewModel
+            if (!demo) BoardHub.live = this@BoardViewModel
             readSyncStatus { if (syncOn) SyncHub.startBackground(application) }
             reminderSet = false
             refresh()
@@ -307,7 +314,7 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         now = Instant.now()
         // Reminders due now are told (once): with the app open, closed, or the phone locked. Told and marked as told
         // in the tasks folder, off the screen's thread (the redraw after it doesn't try again).
-        if (deliver && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
+        if (deliver && !demo && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
             delivering = true
             val app = getApplication<Application>()
             val canNotify = ReminderAlarm.canNotify(app)
@@ -335,14 +342,22 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         }
         val nextReminder = if (readOnly) null else Reminders.nextAt(board, now)
         // While the tasks folder opens, the alarm set before stays as it is (the board shown is only a placeholder).
-        if ((nextReminder != scheduledReminder || !reminderSet) && opened != null) {
+        if ((nextReminder != scheduledReminder || !reminderSet) && opened != null && !demo) {
             scheduledReminder = nextReminder
             reminderSet = true
             ReminderAlarm.schedule(getApplication(), nextReminder)
         }
         version++
         showTimers()
-        updateWidgets()
+        if (!demo) updateWidgets()
+    }
+
+    /** The made-up board, in a folder of its own in the cache (made again on every start). */
+    private fun openDemo(application: Application): LocalBoard.Opened {
+        val root = java.io.File(application.cacheDir, "demo-vault")
+        root.deleteRecursively()
+        val zone = ZoneId.systemDefault()
+        return LocalBoard.Opened(VaultStore.open(root, zone, legacyBoard = DemoBoard.board(Instant.now(), zone)), null, null)
     }
 
     // What the widgets were last told about (the board, its changes and order), and when.
@@ -502,6 +517,17 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         if (group == null) dashboard.groupCounts.values.sumOf { it.now } else dashboard.groupCounts[group]?.now ?: 0
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
+
+    /** Ctrl+N on a keyboard: AppShell opens quick add (and sets it back). */
+    var addRequested: Boolean by mutableStateOf(false)
+
+    /** Ctrl+F on a keyboard: goes up by one each time, and the view on screen opens its search. */
+    var searchRequests: Int by mutableIntStateOf(0)
+        private set
+
+    fun requestSearch() {
+        searchRequests++
+    }
 
     /** The task whose details are open (shown over Today until closed); kept when the phone stops the app meanwhile. */
     var openTaskId: UUID?

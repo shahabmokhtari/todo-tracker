@@ -50,7 +50,9 @@ The solution includes the Windows app, so on Linux and macOS build and test the 
   `tests/system/placement.system-test.ps1` (dock, float, always on top, restarts), `fullscreen.system-test.ps1`
   (full-screen apps and Remote Desktop), and `multimonitor.system-test.ps1` (needs two monitors; skipped in CI, run it
   after changing placement code).
-- **Android by hand:** an emulator (`system-images;android-35;google_apis;x86_64`) runs the app;
+- **Android by hand:** an emulator (`system-images;android-35;google_apis;x86_64`) runs the app; a debug build started
+  with `adb shell am start -n dev.onething/.app.MainActivity --ez demo true` shows a made-up board (`DemoBoard`, in a
+  folder of its own, never your tasks), for screenshots;
   `adb shell date @<seconds>` (as root) moves its clock to reach a break quickly.
 
 CI (`.github/workflows/ci.yml`) runs seven jobs on every PR: Linux (core, server, CLI, view models, coverage), Linux

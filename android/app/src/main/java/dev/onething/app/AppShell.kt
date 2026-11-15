@@ -2,6 +2,8 @@ package dev.onething.app
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -9,13 +11,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Email
@@ -24,6 +29,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -140,10 +147,27 @@ fun AppShell(vm: BoardViewModel) {
     // Another view: Back goes to Today first (an open task, a sheet or Settings answer Back before this).
     BackHandler(enabled = view != AppView.TODAY) { go(AppView.TODAY) }
     val open: (UUID) -> Unit = { vm.openTask(it) }
+    // Ctrl+N (a keyboard): quick add.
+    LaunchedEffect(vm.addRequested) {
+        if (vm.addRequested) {
+            vm.addRequested = false
+            adding = true
+        }
+    }
+    val startFocus = {
+        askToNotify()
+        vm.startFocus(null)
+        Unit
+    }
+    // The timers' strip: always on Today; elsewhere while something runs. Not while typing (the keyboard needs the room).
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    val typing = WindowInsets.isImeVisible
+    val showStrip = (view == AppView.TODAY || timersBusy(vm)) && !typing
 
     CompositionLocalProvider(LocalAskToNotify provides askToNotify) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val windowWidth = maxWidth
+            val windowHeight = maxHeight
             val wide = windowWidth >= WIDE_WINDOW
             val content: @Composable () -> Unit = {
                 Box(Modifier.fillMaxSize()) {
@@ -156,24 +180,46 @@ fun AppShell(vm: BoardViewModel) {
                         AppView.REPORTS -> ReportsScreen(vm, wide, open)
                         AppView.SETTINGS -> SettingsScreen(vm, onClose = { go(AppView.TODAY) }, onFeedback = { feedback = "button" })
                     }
-                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = if (view == AppView.TODAY) 88.dp else 16.dp))
+                    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
                 }
             }
             if (wide) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Row(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        NavigationRail(windowInsets = WindowInsets(0)) {
-                            AppView.entries.filter { it != AppView.SETTINGS }.forEach { item ->
-                                NavigationRailItem(selected = view == item, onClick = { go(item) }, icon = { Icon(item.icon, contentDescription = null) }, label = { Text(item.title) })
+                        // Short (a phone on its side): no add button on the rail (Add is on Today), labels only on
+                        // the view shown, and the rail scrolls, so every view stays in reach.
+                        val short = windowHeight < 560.dp
+                        NavigationRail(
+                            windowInsets = WindowInsets(0),
+                            header = if (short) null else ({
+                                FloatingActionButton(
+                                    onClick = { adding = true },
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    elevation = FloatingActionButtonDefaults.bottomAppBarFabElevation(),
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                                ) { Icon(Icons.Filled.Add, contentDescription = "New task (Ctrl+N)") }
+                            }),
+                        ) {
+                            Column(
+                                Modifier.fillMaxHeight().then(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                AppView.entries.filter { it != AppView.SETTINGS }.forEach { item ->
+                                    NavigationRailItem(selected = view == item, onClick = { go(item) }, icon = { Icon(item.icon, contentDescription = if (short) item.title else null) }, label = { Text(item.title) }, alwaysShowLabel = !short)
+                                }
+                                if (!short) Spacer(Modifier.weight(1f))
+                                NavigationRailItem(
+                                    selected = view == AppView.SETTINGS, onClick = { go(AppView.SETTINGS) },
+                                    icon = { Icon(AppView.SETTINGS.icon, contentDescription = if (short) AppView.SETTINGS.title else null) }, label = { Text(AppView.SETTINGS.title) }, alwaysShowLabel = !short,
+                                )
                             }
-                            Spacer(Modifier.weight(1f))
-                            NavigationRailItem(
-                                selected = view == AppView.SETTINGS, onClick = { go(AppView.SETTINGS) },
-                                icon = { Icon(AppView.SETTINGS.icon, contentDescription = null) }, label = { Text(AppView.SETTINGS.title) },
-                            )
                         }
                         VerticalDivider()
-                        Box(Modifier.weight(1f).fillMaxHeight()) { content() }
+                        Column(Modifier.weight(1f).fillMaxHeight()) {
+                            Box(Modifier.weight(1f)) { content() }
+                            if (showStrip) TimerStrip(vm, startFocus, Modifier.widthIn(max = 720.dp).align(Alignment.CenterHorizontally).padding(horizontal = 24.dp, vertical = 8.dp))
+                        }
                         // The task's details beside the view: as wide as the window allows.
                         vm.openTaskId?.let { id ->
                             VerticalDivider()
@@ -186,6 +232,8 @@ fun AppShell(vm: BoardViewModel) {
             } else {
                 Scaffold(
                     bottomBar = {
+                        Column {
+                        if (showStrip) TimerStrip(vm, startFocus, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
                         NavigationBar {
                             AppView.onBar.forEach { item ->
                                 NavigationBarItem(selected = view == item, onClick = { go(item) }, icon = { Icon(item.icon, contentDescription = null) }, label = { Text(item.title) })
@@ -195,6 +243,7 @@ fun AppShell(vm: BoardViewModel) {
                                 icon = { Icon(Icons.Filled.MoreVert, contentDescription = null) },
                                 label = { Text(if (view in AppView.more) view.title else "More") },
                             )
+                        }
                         }
                     },
                     containerColor = MaterialTheme.colorScheme.background,

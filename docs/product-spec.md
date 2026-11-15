@@ -313,17 +313,23 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * **Widgets** (WidgetKit; extensions `OneThingWidgets-iOS`/`-macOS` in `apple/Widgets`, views in the package's `OneThingWidgetUI`): **Now** (systemSmall, systemMedium; iOS also accessoryRectangular and accessoryInline) and **Today** (systemLarge). The app writes `WidgetSnapshot` (port of `WidgetSnapshot.cs`: titles, group names and colors, ids and times only) to the App Group (`group.com.onething`; on a Mac `$(TeamIdentifierPrefix)group.com.onething`, read from the Info.plist's `WidgetAppGroup`), excluded from backups, whenever the board changes (any mode) and every 15 minutes, and calls `WidgetCenter.reloadAllTimelines`. The snapshot holds the Do now list and Later today at every moment they change in the next 24 hours (snooze ends, reminders, planned blocks starting and ending, deadlines, midnight; at most 24 frames, 8 tasks per list), each worked out with `Agenda.build`; the timeline has one entry per frame. Shared fixture `tests/fixtures/widget.json`. **Done** is `MarkDoneIntent` (`Button(intent:)`, `openAppWhenRun`): the widget can't reach the tasks in any mode (the app's own storage, the Mac's server), so it writes a request file to the App Group (`WidgetShelf`), the widgets leave the task out at once, and the app (brought forward) applies it with `BoardModel.applyWidgetRequests`: the same change as Mark done (local `TaskBoard.complete` as the user, or `POST /api/items/{id}/complete`), waiting while the tasks folder opens or the Mac's server isn't answering; a request is removed before it's applied and skipped when the task was done since it was made (`WidgetDoneRequest.outcome`, so a repeating task never moves on twice). A task with open subtasks, or a change that's refused, opens in the app instead.
 
 ### Android (Jetpack Compose)
-* Today: the focus card, Do now, Waiting, Done today (with the time each was done), Workstreams (tasks with subtasks:
-  a progress bar, how many are done, to do now and waiting, when the next comes back) and Recent notes (the last five;
-  tap one to open its task). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
+* Today: the focus card (in the brand gradient; **Mark done**, **Later**, **Focus** and **More**: Open details, Add a
+  note, the timer, Skip for now, Dismiss reminder, Copy link), Do now, Coming up, Done today (with the time each was
+  done), Workstreams (tasks with subtasks: a progress bar, how many are done, to do now and waiting, when the next
+  comes back) and Recent notes (the last five; tap one to open its task). A Do now row shows a circle (Mark done), its
+  title and facts, Later and ⋯; swipe right marks it done, swipe left opens Later, a long press or a right-click opens
+  ⋯. At 840 dp and wider Today is two columns: the focus card and Do now; then Workstreams, Coming up, Done today and
+  notes. On a short window (a phone sideways) the header scrolls with the list. The focus timer and the task timer share
+  one strip at the bottom (always on Today, on other views while one runs, hidden while typing). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
   after asking which group gets its tasks. 🔍 opens a search box with the shared syntax (`TaskSearch`, same as
   `TaskQuery`); results list open tasks first and open on tap.
 * **Views and navigation** (`AppShell`): on a compact window (under 600 dp, WindowSizeClass) a bottom bar with Today,
   Board, Tasks, Done and More (Plan, Reports, Settings, Send feedback), the task's details over the view; on a medium or
-  expanded one (tablets, foldables, a phone sideways) a navigation rail of every view and the details beside the view
-  (list-detail, like the iPad's sidebar). Back on another view goes to Today. Each view has the group menu, search
+  expanded one (tablets, foldables, a phone sideways) a navigation rail of every view (with a New task button; on a
+  short window the rail scrolls and shows only the current view's label) and the details beside the view (list-detail,
+  like the iPad's sidebar; the open task's row is outlined). With a keyboard, Ctrl+N adds a task and Ctrl+F searches. Back on another view goes to Today. Each view has the group menu, search
   (narrows Board, Tasks and Done, `BoardScope`, as `BoardModel+Views.swift`) and, where it applies, a new task.
-* **Board**: Inbox/Next/Doing/Done (`BoardColumns`, shared `board-moves.json`), as many columns as fit (250 dp each),
+* **Board**: Inbox/Next/Doing/Done (`BoardColumns`, shared `board-moves.json`), as many columns as fit (250 dp each; 290 dp at 840 dp and wider),
   one at a time on a phone with a bar of column names (each a drop target). Drag a card (long press, platform drag and
   drop) onto a column, a card (before it) or a column name, or use ⇄ (to a column, Up, Down). Doing shows `n/3` and
   the over-limit warning; ▶ times a card (moves it to Doing), ✓ finishes, Archive in Done; *Add to …* per column.

@@ -116,9 +116,17 @@ Linux: `install.sh`).
 
 ## The Android app
 
-Today on your phone: the one thing to do now, the rest of Do now, what's waiting, what you did today (and when),
+Today on your phone: the one thing to do now, the rest of Do now, what's **Coming up**, what you did today (and when),
 **Workstreams** (tasks with subtasks, with how far along each is) and **Recent notes**. Tap a title, a workstream or a
 note to open that task.
+
+The one thing to do now stands out in a colored card with **Mark done**, **Later**, **Focus** and **More** (open its
+details, add a note, start the timer, skip it for now, dismiss its reminder, copy its link). The rest of Do now stays
+calm: each row has a circle to mark it done, its title, then **Later** (the clock) and **⋯**. Swipe a row right to
+mark it done or left for **Later**; touch and hold it (or right-click it with a mouse) for **⋯**.
+
+The focus timer and a task's timer share one strip at the bottom: start, pause or resume a focus session (⋯ skips or
+resets it), and tap **■** to stop timing a task. It's always on Today, and on the other views while a timer runs.
 
 **A task's details** fill the screen. Change the title and details (saved when you close it), the priority, the
 deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,
@@ -141,7 +149,9 @@ on the web.
 
 **The views.** The bar along the bottom has **Today**, **Board**, **Tasks**, **Done** and **More** (**Plan**,
 **Reports**, **Settings**, Send feedback). On a tablet, a foldable opened up or a phone turned sideways, a rail on the
-left lists every view, and a task you open shows beside the view instead of covering it (like the iPad's sidebar).
+left lists every view (with **+** for a new task), and a task you open shows beside the view instead of covering it
+(like the iPad's sidebar). Today on a tablet is two columns: the one thing and Do now on the left; Workstreams, Coming
+up and Done today on the right. With a keyboard, **Ctrl+N** adds a task and **Ctrl+F** searches.
 Each view shows the group you pick at the top (or all of them), and 🔍 narrows the Board, Tasks and Done to what
 matches.
 
