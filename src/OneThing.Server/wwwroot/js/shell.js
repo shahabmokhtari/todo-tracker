@@ -53,15 +53,51 @@ export function createShell(ctx) {
     sidenav.classList.remove('open');
     navScrim.hidden = true;
     $('#nav-toggle').setAttribute('aria-expanded', 'false');
+    syncCollapse();
   }
 
-  $('#nav-toggle').addEventListener('click', () => {
-    const open = !sidenav.classList.contains('open');
+  function openNav(open) {
     sidenav.classList.toggle('open', open);
     navScrim.hidden = !open;
     $('#nav-toggle').setAttribute('aria-expanded', String(open));
-  });
+    syncCollapse();
+  }
+
+  $('#nav-toggle').addEventListener('click', () => openNav(!sidenav.classList.contains('open')));
   navScrim.addEventListener('click', closeNav);
+
+  // The side bar's own button. On a tablet the bar is a row of icons: the button opens it full over the page. On a
+  // wide screen it's full: the button narrows it to icons (remembered), and back.
+  // Below 1280 (a tablet, even an iPad in landscape at 1180) the page gets the room.
+  const wide = window.matchMedia('(min-width: 1280px)');
+  const tablet = window.matchMedia('(min-width: 768px)');
+  const collapse = $('#nav-collapse');
+  function syncCollapse() {
+    const collapsed = document.body.classList.contains('nav-collapsed');
+    // The rail: a tablet, or a wide screen where you narrowed the bar (CSS draws it from this class).
+    document.body.classList.toggle('nav-rail', tablet.matches && (!wide.matches || collapsed));
+    const expanded = wide.matches ? !collapsed : sidenav.classList.contains('open');
+    const label = expanded ? 'Collapse the side bar' : 'Expand the side bar';
+    collapse.replaceChildren(icon('sidebar', { size: 18 }));
+    collapse.setAttribute('aria-label', label);
+    collapse.title = label;
+    collapse.setAttribute('aria-expanded', String(expanded));
+  }
+
+  collapse.addEventListener('click', () => {
+    if (wide.matches) {
+      const collapsed = !document.body.classList.contains('nav-collapsed');
+      document.body.classList.toggle('nav-collapsed', collapsed);
+      try { localStorage.setItem('onething.nav.collapsed', collapsed ? '1' : '0'); } catch { /* private window */ }
+      syncCollapse();
+    } else {
+      openNav(!sidenav.classList.contains('open'));
+    }
+  });
+  try { document.body.classList.toggle('nav-collapsed', localStorage.getItem('onething.nav.collapsed') === '1'); } catch { /* private window */ }
+  wide.addEventListener?.('change', closeNav);
+  tablet.addEventListener?.('change', closeNav);
+  syncCollapse();
 
   function setCounts(d) {
     const counts = { today: d?.now?.length ?? 0 };

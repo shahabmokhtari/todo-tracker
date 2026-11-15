@@ -20,6 +20,8 @@ struct TaskDetailView: View {
                     TaskDetailContent(model: model, itemId: id, close: close)
                 }
         }
+        // Section names as written ("Details", "Notes"), not in capitals.
+        .textCase(nil)
         #if os(macOS)
         .frame(minWidth: sized ? 460 : nil, minHeight: sized ? 600 : nil)
         #endif
@@ -28,8 +30,7 @@ struct TaskDetailView: View {
     /// Beside a view the details close by the window's own state (dismiss would close the window).
     private func close() {
         if !sized, let shell {
-            model.saveAllDrafts()
-            shell.inspected = nil
+            shell.closeDetails()
         } else {
             dismiss()
         }
@@ -54,9 +55,11 @@ struct TaskDetailContent: View {
     let itemId: UUID
     let close: () -> Void
 
-    @State private var note = ""
-    @State private var subtask = ""
-    @State private var steps = ""
+    // What's typed in the note, subtask and steps boxes lives in the model, by task: picking another task and coming
+    // back keeps it.
+    private var note: String { model.noteDrafts[itemId] ?? "" }
+    private var subtask: String { model.typed(itemId, .subtask) }
+    private var steps: String { model.typed(itemId, .steps) }
     @State private var hoursBetween = 24.0
     @State private var confirmDelete = false
     @State private var confirmComplete = false
@@ -66,6 +69,8 @@ struct TaskDetailContent: View {
     var body: some View {
         if let item = model.board.find(itemId) {
             form(item)
+                // A Mac lays a form out in grouped rows too (not label columns), so the details fit beside a view.
+                .formStyle(.grouped)
                 .navigationTitle(item.parent == nil ? "Task" : "Subtask")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
@@ -252,6 +257,7 @@ struct TaskDetailContent: View {
             TextField("Repeat", text: draftBinding(.repeatRule, current: current),
                       prompt: Text("Doesn’t repeat"))
                 .multilineTextAlignment(.trailing)
+                .labelsHidden()
                 .autocorrectionDisabled()
                 .onSubmit { saveRepeat(current) }
                 .accessibilityIdentifier("detail-repeat")
@@ -291,7 +297,7 @@ struct TaskDetailContent: View {
             if rows.isEmpty { Text("No subtasks yet.").foregroundStyle(.secondary) }
             ForEach(rows) { row in subtaskRow(row) }
             HStack {
-                TextField("Add a subtask…", text: $subtask).onSubmit(addSubtask)
+                TextField("Add a subtask…", text: model.typedBinding(itemId, .subtask)).onSubmit(addSubtask)
                     .accessibilityIdentifier("detail-subtask-field")
                 Button("Add", action: addSubtask).disabled(subtask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -303,11 +309,11 @@ struct TaskDetailContent: View {
                 }
             }
             DisclosureGroup("Add rollout steps") {
-                TextField("One step per line", text: $steps, axis: .vertical).lineLimit(3...8)
+                TextField("One step per line", text: model.typedBinding(itemId, .steps), axis: .vertical).lineLimit(3...8)
                 Stepper("Hours between the new steps: \(Int(hoursBetween))", value: $hoursBetween, in: 0...168, step: 1)
                 Button("Add steps") {
                     model.addSteps(itemId, titles: stepTitles, hoursBetween: hoursBetween)
-                    steps = ""
+                    model.setTyped(itemId, .steps, "")
                 }
                 .disabled(stepTitles.isEmpty)
             }
@@ -357,11 +363,11 @@ struct TaskDetailContent: View {
 
     private func notes(_ item: WorkItem) -> some View {
         Section("Notes") {
-            TextField("What happened? What is next?", text: $note, axis: .vertical).lineLimit(2...6)
+            TextField("What happened? What is next?", text: model.draftBinding(for: itemId), axis: .vertical).lineLimit(2...6)
                 .accessibilityIdentifier("detail-note-field")
             Button("Add note") {
+                // Saved, the box empties (the model clears it; if it can't be saved, what was typed stays).
                 model.addNote(itemId, text: note)
-                note = ""
             }
             .disabled(note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             ForEach(item.notes.reversed()) { n in
@@ -400,7 +406,7 @@ struct TaskDetailContent: View {
     private func addSubtask() {
         guard !subtask.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         model.addSubtask(itemId, title: subtask)
-        subtask = ""
+        model.setTyped(itemId, .subtask, "")
     }
 
     private func stateText(_ state: ItemState, of item: WorkItem? = nil) -> String {

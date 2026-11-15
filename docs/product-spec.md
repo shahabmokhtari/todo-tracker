@@ -299,7 +299,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 
 ### macOS and iOS (SwiftUI)
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
-* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`OneThingCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`).
+* **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`OneThingCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`). The sidebar stays visible (`.balanced`, an iPad in portrait too). Today is two columns once the view is 680 pt wide (`Presentation.todayColumns`): the focus card and Do now in a `List`, then a second column (280–380 pt) with Workstreams, Coming up (waiting), Done today and Recent notes; narrower, one list. Rows carry no button row: a circle marks done, swipes (`Presentation.rowActions`: leading Done, Now for a waiting task, Reopen for a finished one; trailing Later and More) and the context menu do the rest; on the Board only the selected card shows its buttons. Space marks the selected row done and Return opens it. The time tracker and the focus timer share one strip (`TimerStrip`, `Presentation.timerStrip`): in the toolbar on iPad and Mac, above the tabs on iPhone (while one runs; Today offers the idle focus timer too).
 * **Board** (`boardmodel.js` ported as `BoardColumns`): Inbox, Next, Doing, Done (cards finished in the last 14 days, newest first); as many columns side by side as fit at about 250 pt, the rest scroll. Cards show title and icon, group color, priority, repeat, labels, three tags, due/overdue, waiting, subtask progress and time; timer, Mark done (Archive in Done) and a Move menu. Drops and Option-arrows make the web's requests (`/stage`, `/complete`, `/reorder`); Doing shows n/3 and the web's message past three. New tasks start in Inbox (as in C#).
 * **Tasks** (`outlinemodel.js` ported as `OutlineMoves`): the tree as rows with disclosure, check box, inline rename, chips and facts, a ⋯ menu (timer, add a subtask, details, up, down, into the task above, out one level); keys as on the web (Return rename/next, Tab/⇧Tab, ⌥↑/↓, Space, ←/→). *Show finished*, expand and collapse all; expanded rows are remembered.
 * **Done**: finished top-level tasks by day (Today, Yesterday, the date) with time spent, Reopen and Archive; the Archive tab with Unarchive; a find box.
@@ -320,19 +320,48 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Icon: the layered App Icon (back: gradient; middle: glow and later tasks; front: the task now) and Top Shelf images, drawn by `build/icons.py`.
 
 ### Android (Jetpack Compose)
-* Today: the focus card, Do now, Waiting, Done today (with the time each was done), Workstreams (tasks with subtasks:
-  a progress bar, how many are done, to do now and waiting, when the next comes back) and Recent notes (the last five;
-  tap one to open its task). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
+* Today: the focus card (in the brand gradient; **Mark done**, **Later**, **Focus** and **More**: Open details, Add a
+  note, the timer, Skip for now, Dismiss reminder, Copy link), Do now, Coming up, Done today (with the time each was
+  done), Workstreams (tasks with subtasks: a progress bar, how many are done, to do now and waiting, when the next
+  comes back) and Recent notes (the last five; tap one to open its task). A Do now row shows a circle (Mark done), its
+  title and facts, Later and ⋯; swipe right marks it done, swipe left opens Later, a long press or a right-click opens
+  ⋯. At 840 dp and wider Today is two columns: the focus card and Do now; then Workstreams, Coming up, Done today and
+  notes. On a short window (a phone sideways) the header scrolls with the list. The focus timer and the task timer share
+  one strip at the bottom (always on Today, on other views while one runs, hidden while typing). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
   after asking which group gets its tasks. 🔍 opens a search box with the shared syntax (`TaskSearch`, same as
   `TaskQuery`); results list open tasks first and open on tap.
-* **Task details**, full screen (tap a title, a result, a workstream, a note, a link or a reminder's notification):
+* **Views and navigation** (`AppShell`): on a compact window (under 600 dp, WindowSizeClass) a bottom bar with Today,
+  Board, Tasks, Done and More (Plan, Reports, Settings, Send feedback), the task's details over the view; on a medium or
+  expanded one (tablets, foldables, a phone sideways) a navigation rail of every view (with a New task button; on a
+  short window the rail scrolls and shows only the current view's label) and the details beside the view (list-detail,
+  like the iPad's sidebar; the open task's row is outlined). With a keyboard, Ctrl+N adds a task and Ctrl+F searches. Back on another view goes to Today. Each view has the group menu, search
+  (narrows Board, Tasks and Done, `BoardScope`, as `BoardModel+Views.swift`) and, where it applies, a new task.
+* **Board**: Inbox/Next/Doing/Done (`BoardColumns`, shared `board-moves.json`), as many columns as fit (250 dp each; 290 dp at 840 dp and wider),
+  one at a time on a phone with a bar of column names (each a drop target). Drag a card (long press, platform drag and
+  drop) onto a column, a card (before it) or a column name, or use ⇄ (to a column, Up, Down). Doing shows `n/3` and
+  the over-limit warning; ▶ times a card (moves it to Doing), ✓ finishes, Archive in Done; *Add to …* per column.
+* **Tasks** outline (`OutlineRow.flatten`, `OutlineMoves`): expand/collapse (kept on the phone), Show finished,
+  rename in place (Done adds the next one below), ⋯ Up/Down/Into the task above/Out one level/Move to group/Add a
+  subtask/timer; drop on a row's top quarter (before), middle (inside) or bottom quarter (after).
+* **Done**: Done and Archive tabs, find box, by day (Today, Yesterday, then the date) with time spent; Reopen, Archive,
+  Unarchive.
+* **Plan** (`PlanDays`, `PlanGrid` as `PlanGrid.swift`; shared `plan.json`): a day on a phone, a day or week on a
+  tablet; work hours (stretched to show blocks outside them) or the full day; settings per group on the phone. Plan by
+  a tap on a time, *Plan…*, or (tablet) dragging a task from Not planned; long-press drag a block to move it (snapped to
+  15 minutes, across days in a week), drag its bottom edge to resize; tap a block for its menu. Deadlines, comebacks,
+  "now", and energy per day against the daily budget.
+* **Reports** (`TimeReport`, shared `reports.json`, worked out on the phone): ranges 7 days, 4 weeks, 3 months, a year
+  or custom dates; KPIs, time per day (focus and other), by group, top tasks, weekday × hour, active days (90+ days)
+  and the Timeline (Gantt) whose rows open their task.
+* **Task details**, full screen on a phone and beside the view on a tablet (tap a title, a result, a workstream, a note, a link or a reminder's notification):
   title and details (saved on Close, Back, or Save), priority, deadline (date and time pickers, Clear), energy, repeat
   rule (typed, or picked from the web app's list; a rule it doesn't understand says why), group, Mark done (asks
   before closing open subtasks) or Reopen, Later, Do now, Archive / Unarchive (finished top-level tasks), Copy link,
   Delete (asks first, and says it can't be undone and that archiving keeps it). Subtasks with check boxes (a step that
   must wait is greyed), each opens; the breadcrumb opens the parent. *Steps in order & rollout steps*: the in-order
   switch, hours between steps, and steps added one per line. Reminders: the pending ones (Dismiss) and *Remind me…*
-  with an optional message. Notes: add, and every note newest first.
+  with an optional message. Notes: add, and every note newest first. Time spent, and the task's Timeline (its and its
+  subtasks' activity, newest first, with who did it: `timeline(id)`, as Swift's).
 * **Reminders notify.** The next pending reminder (a snooze with a reminder is one) has an alarm, exact when the phone
   allows exact alarms. When it rings, each reminder due is shown as a notification with *Mark done* (*Open* when the
   task has open subtasks) and *In an hour*; tapping it opens the task. It's marked delivered (`notifiedAt`, once, like
@@ -400,10 +429,19 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 * **Calm canvas:** neutral surfaces with a soft indigo/pink ambient glow. Light and dark themes are both first-class.
 * **One hero:** the "Do this now" card has a gradient hairline border (indigo → violet → pink). The border turns
   amber → rose when a reminder is ringing and green → cyan when all is clear. The card shows a priority pill,
-  toned chips, and labeled primary and secondary actions.
+  toned chips, and labeled actions. On the web the card keeps three in sight (Mark done, Later, Focus; Note when the
+  focus timer is off) and the rest under **More** (Add a note, Start the timer, Open details, Skip for now, …).
 * **Quiet lists:**
   * Rows show a haloed priority dot, the title, the breadcrumb, and toned chips (step, back in, due, overdue, notes).
-  * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible.
+  * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible. On the web
+    a row shows only ✓, Later and ⋯ (note, focus, timer, open details; Move up/down on touch).
+* **Labels in sentence case:** section and eyebrow labels ("Reminder", "Groups") are sentence case, never uppercase.
+* **Web layout:** phone (< 768px): a bottom bar and a slide-in side bar. Tablet (768–1279px): a rail of icons that
+  opens full over the page; Today in two columns when the view is at least 860px wide (else *Do now* above the smaller
+  panels side by side); task details as a full-height panel on the right edge. Wide (≥ 1280px): the full side bar,
+  which the person can narrow to the rail (remembered). Touch screens (`pointer: coarse`): every target ≥ 44px.
+* **Brand colors:** indigo `#4f46e5` → violet `#7c3aed` → pink `#db2777`, as in the icon. Text and lines in the
+  accent use the indigo (a lighter `#a5b4fc` in dark), so it stays readable.
 * **Segmented tabs:** group tabs sit in a pill track, and the selected tab is raised. Each tab has a count badge
   and an amber dot when a reminder is waiting there.
 * **Glanceable timer:** a progress ring shows the Pomodoro phase: rose for focus, green for breaks.
@@ -598,7 +636,6 @@ Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Relea
   * Rotate the API token, and compact the activity log.
   * Phones: **Keep mine** / **Keep theirs** for lines changed on both, and OneDrive (they sync on their own today:
     Android through a gist, iPhone and iPad through iCloud Drive or a gist).
-  * Android: the Board, Plan and Reports screens (the core already has their rules).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Keyboard navigation of cards.
 * **Later:**

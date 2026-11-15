@@ -79,6 +79,9 @@ struct OneThingApp: App {
         #else
         WindowGroup("One Thing", id: AppShell.sceneId) {
             shell
+                #if DEBUG
+                .modifier(LandscapeForScreenshots())
+                #endif
                 // Back in the app: a sync runs.
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
@@ -274,6 +277,28 @@ final class BreakWindows {
     private func close() {
         windows.forEach { $0.orderOut(nil) }
         windows.removeAll()
+    }
+}
+#endif
+
+#if DEBUG && os(iOS)
+/// ONETHING_LANDSCAPE=1 (a debug build, with ONETHING_DEMO): the app laid out as on a device turned on its side, drawn
+/// turned in the portrait window (a simulator can't be turned from the command line; turn the screenshot back).
+struct LandscapeForScreenshots: ViewModifier {
+    private let on = ProcessInfo.processInfo.environment["ONETHING_LANDSCAPE"] == "1"
+
+    func body(content: Content) -> some View {
+        if on {
+            GeometryReader { geo in
+                content
+                    .frame(width: geo.size.height, height: geo.size.width)
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: geo.size.width, height: geo.size.height)
+            }
+            .ignoresSafeArea()
+        } else {
+            content
+        }
     }
 }
 #endif

@@ -23,7 +23,8 @@ you're using is resized to sit next to the sidebar instead (turn this off in **�
 full-screen Remote Desktop**); it goes back to full screen when you hide the sidebar or quit.
 
 **Order Do now your way:** drag a card (drop it on the big card to make it the focus),
-or use its ↑/↓ buttons or Alt+↑/↓; **Skip** on the big card does something else first (it moves down one). New tasks
+or use its ↑/↓ buttons or Alt+↑/↓ (on a touch screen: **⋯ › Move up / Move down**); **Skip** on the big card (on the
+web: **More › Skip for now**) does something else first (it moves down one). New tasks
 go below the ones you arranged, so your focus stays put. A reminder that
 goes off brings its task to the top; move it anywhere after that and it stays there. Subtasks reorder the same way in
 the web task panel.
@@ -31,6 +32,11 @@ the web task panel.
 **On every card:** **Mark done**, **Later**, **Note** (the sticky note), **Focus**, **Timer**, and **⋯** for the
 rest: **Dismiss reminder** (keeps the task, stops showing the reminder), **Copy link**, and what extras add (Copy for
 Loop; Open in Obsidian in the sidebar). Same on Windows, the web, Mac, iPhone and Android.
+
+On the web the buttons are fewer, so the one thing stands out: the big card shows **Mark done**, **Later**, **Focus**
+(or **Note** when the focus timer is off) and **More**, which has **Add a note**, **Start the timer**, **Open
+details**, **Skip for now** and the rest. Other rows show **✓**, **Later** and **⋯** (the note, focus and timer are
+in **⋯**), and only when you point at the row; on a touch screen they're always there.
 
 **Notes on cards.** The task you're on (the big card) shows every note, newest first, with who wrote it and when. Any
 other card says **2 notes ▾**: click it to read them right there, **Hide notes ▴** to fold them away.
@@ -81,6 +87,14 @@ The web app (and the app window on Windows) has six views; switch with the side 
   *Later*, with when each comes back, and marked on that day; drag them in too. Each group keeps its own view (day or
   week, work hours or the whole day). An extra: switch it off in Settings.
 
+**Phone, tablet, desktop.** On a phone the views are in a bar along the bottom and **☰** opens the side bar. On a
+tablet (or any window narrower than 1280 pixels) the side bar is a narrow row of icons, groups show as their first
+letter on their color, and the button at its top opens it in full over the page. On a wider screen the side bar is
+full; that button narrows it to icons, and the app remembers. Today puts *Do now* beside the smaller panels when
+there's room (on a tablet in portrait, the smaller panels sit side by side under it). A task's details open as a
+panel down the right edge (on a phone, over the whole screen). On a touch screen every button is at least 44 pixels,
+and the board's buttons sit along the foot of each card.
+
 **Groups** are listed in the side bar. Each has a **⋯** next to it (Tab to it, or point at the group) with **Rename…**
 and **Delete…**; deleting asks first and moves the group's tasks to another group, so none are lost. **+** adds one.
 Extras you switch on or off in another window (or the sidebar) show or go here within a few seconds, no reload
@@ -116,15 +130,24 @@ Linux: `install.sh`).
 
 ## The Android app
 
-Today on your phone: the one thing to do now, the rest of Do now, what's waiting, what you did today (and when),
+Today on your phone: the one thing to do now, the rest of Do now, what's **Coming up**, what you did today (and when),
 **Workstreams** (tasks with subtasks, with how far along each is) and **Recent notes**. Tap a title, a workstream or a
 note to open that task.
+
+The one thing to do now stands out in a colored card with **Mark done**, **Later**, **Focus** and **More** (open its
+details, add a note, start the timer, skip it for now, dismiss its reminder, copy its link). The rest of Do now stays
+calm: each row has a circle to mark it done, its title, then **Later** (the clock) and **⋯**. Swipe a row right to
+mark it done or left for **Later**; touch and hold it (or right-click it with a mouse) for **⋯**.
+
+The focus timer and a task's timer share one strip at the bottom: start, pause or resume a focus session (⋯ skips or
+resets it), and tap **■** to stop timing a task. It's always on Today, and on the other views while a timer runs.
 
 **A task's details** fill the screen. Change the title and details (saved when you close it), the priority, the
 deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,
 put it off with **Later**, archive it once it's done, copy its link, or delete it (it asks first: deleting can't be
 undone, archiving keeps it). Below: its subtasks (tick them off, tap one to open it; the path at the top takes you
-back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, and notes.
+back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, notes, and
+**Timeline**: what happened to it and who did it (you, an agent, another device). It also says how long you spent on it.
 
 **Reminders tell you, even with the app closed.** When a reminder is due, or something you snoozed comes back, your
 phone shows a notification: **Mark done** (or **Open**, when it has subtasks still to do), **In an hour**, or tap it to
@@ -138,10 +161,40 @@ be picked) and **After another task…**. Changed your mind? Tap **Undo** on the
 **Find a task:** tap 🔍 and type. Words match the title or details; `is:done`, `is:archived` and `group:work` work as
 on the web.
 
+**The views.** The bar along the bottom has **Today**, **Board**, **Tasks**, **Done** and **More** (**Plan**,
+**Reports**, **Settings**, Send feedback). On a tablet, a foldable opened up or a phone turned sideways, a rail on the
+left lists every view (with **+** for a new task), and a task you open shows beside the view instead of covering it
+(like the iPad's sidebar). Today on a tablet is two columns: the one thing and Do now on the left; Workstreams, Coming
+up and Done today on the right. With a keyboard, **Ctrl+N** adds a task and **Ctrl+F** searches.
+Each view shows the group you pick at the top (or all of them), and 🔍 narrows the Board, Tasks and Done to what
+matches.
+
+* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Hold a card and drag it to another column (or onto a
+  column's name above the board on a phone), or tap ⇄ on it to move it to a column or up and down. Doing says when it
+  holds more than three (finishing beats starting); starting a timer (▶) moves a card to Doing, ✓ finishes it, and a
+  finished card can be archived. Type in **Add to …** under a column to add a task there. On a phone it's one column
+  at a time: swipe, or tap a column's name.
+* **Tasks:** every task as an outline. Tap ▸ to show subtasks, the circle to finish one, a title to pick it and again
+  to rename it (Done on the keyboard saves it and starts the next task below). ⋯ moves a task up or down, into the task
+  above or out one level, to another group, adds a subtask or times it. Hold a task and drop it on the top of another
+  (before it), its middle (inside it) or its bottom (after it). **Show finished**, **Expand all** and **Collapse all**
+  are above the list.
+* **Done:** what you finished, day by day, with the time it took: **Reopen** or **Archive** each; the **Archive** tab
+  brings archived tasks back (**Unarchive**).
+* **Plan:** your day (a week on a tablet) as a time grid. Tap an empty time, or **Plan…** on a task in Not planned (☰ on
+  a phone), to give it a block; on a tablet you can drag a task from the list onto a time. Hold a block and drag it to
+  move it, drag its bottom edge to make it longer or shorter, or tap it (open it, move it by a quarter of an hour or a
+  day, change its length, take it off the plan). Work hours or the full day, and your work hours and days (⚙), are kept
+  per group. Each day says how much energy its blocks take.
+* **Reports:** where your time went for 7 days, 4 weeks, 3 months, a year or dates you pick: time tracked, focus
+  sessions, tasks done and your longest streak; time per day, by group, top tasks, when you work, active days, and the
+  **Timeline**: a row per task with its work as bars, a line from when it was made to when it was done (or is due), ◆
+  due and ● done. Tap a row to open its task. Reports are worked out on the phone, so they work offline too.
+
 **Groups:** tap the group you're in again (or **Edit**) to rename it, give it a color, or delete it. Its tasks move to
 the group you pick, so none are lost.
 
-**Settings** (⚙): sync; light, dark, or as your phone is; how much energy you have in a day;
+**Settings** (⚙ on Today, or **More › Settings**): sync; light, dark, or as your phone is; how much energy you have in a day;
 how long a focus session and its breaks last; and whether notifications and on-time alarms are on.
 
 **Where your tasks are.** The phone keeps them in a tasks folder of its own, and Settings says which way it works:
@@ -247,27 +300,41 @@ AppIndicator extension. A second start opens the running one's window.
 
 ## The iPhone, iPad and Mac app
 
-The window has the same views as the full app. On an iPad and a Mac, a sidebar lists them (**Today**, **Board**,
-**Tasks**, **Done**, **Reports**, **Plan**), your groups with how many tasks each has now, **Search** and **Settings**;
-a task's details open beside the view. On an iPhone (or an iPad in a narrow Split View or Slide Over) the views are tabs
-at the bottom, the group is picked from the menu at the top left, and a task's details open as a sheet.
+The window has the same views as the full app. On an iPad (in either orientation) and a Mac, a sidebar lists them
+(**Today**, **Board**, **Tasks**, **Done**, **Reports**, **Plan**), your groups with how many tasks each has now,
+**Search** and **Settings**; the button at the top left hides it. Tap a task and its details open beside the view, like
+an inspector; *Close* (or the details button in the bar) puts them away. On an iPhone (or an iPad in a narrow Split View
+or Slide Over) the views are tabs at the bottom, the group is picked from the menu at the top left, and a task's details
+open as a sheet.
 
-Today works like everywhere else: the Do this now card, Do now, Waiting, Done today (with when each was done),
-Workstreams and Recent notes (tap one to open its task). Drag a task in Do now above another to do it first.
+Today works like everywhere else. On an iPad and a Mac it has two columns, like the web app: the Do this now card and
+Do now on the left; Workstreams, Coming up (what waits for later), Done today (with when each was done) and Recent notes
+on the right. With less room (an iPhone, or an iPad beside another app) it's one column, the one thing first. Tap the
+circle in front of a task to mark it done (a task with open subtasks asks first). Drag a task in Do now above another to do it first.
 
-* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place (or use its
-  ⇆ menu). Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
+* **Timers:** the task you're timing and the focus timer share one small strip: in the bar at the top on an iPad and a
+  Mac, and above the tabs on an iPhone (only while one runs; Today also has the focus timer's play button). Tap the
+  task's name to open it, ■ to stop timing, ⏸ or ▶ for the focus timer, and ⋯ to skip, reset, or switch full-screen
+  breaks.
+* **Swipe a task** (Today, Tasks, Done) from the left to mark it done (*Now* brings back a waiting one, *Reopen* a
+  finished one), or from the right for *Later* (pick when) and *More* (add a note, focus, time it, open it, copy its
+  link). The card at the top keeps its own buttons.
+
+* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place. The card you
+  picked shows its buttons (time it, mark it done, ⇆ move it); every card has them in its menu. Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
   Starting a timer moves a card to Doing. Type in the box under a column to add a card there.
 * **Tasks:** every task as an outline. Tap the selected task's title (or press Return) to rename it; Return again adds
   the next task below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it;
   Space marks it done. Drag a row onto another to put it inside, or use its ⋯ menu. *Show finished* in ⋯ at the top.
 * **Done:** what you finished, day by day, with Reopen and Archive; the Archive tab brings tasks back.
-* **Every task** has the same menu on a right-click or a long press: Mark done, Later, Start the timer, Open details,
-  Open in New Window (iPad and Mac), Move to (a column or a group), Copy link, Archive and Delete. Drag a task onto a
-  group in the sidebar to move it there.
+* **Every task** has the same menu on a right-click or a long press (a card on the Board, a row anywhere): Mark done,
+  Bring back now (when it waits), Later, Start the timer, Focus on this, Add a note, Open details, Open in New Window
+  (iPad and Mac), Move to (a column, up or down within it, or a group), Copy link, Archive and Delete. Drag a task onto a group in the sidebar
+  to move it there. With a trackpad or a mouse, rows and cards light up under the pointer.
 * **With a keyboard** (iPad or Mac; hold ⌘ on an iPad to see them): ⌘N new task, ⌘F search, ⌘1 to ⌘6 the views, ⌘↩
-  mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Option and
-  the arrows move a card on the Board. On a Mac, ⇧⌘N opens another window.
+  mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Space marks
+  the picked one done and Return opens it (Today, Tasks and the Board), Option and the arrows move a card on the Board.
+  On a Mac, ⇧⌘N opens another window.
 
 * **Task details** (tap a title): change the title, details, priority, deadline (or clear it), repeat rule (type it in
   words or pick one; if a rule isn't understood, you're told why), energy and group. From there you can also snooze it

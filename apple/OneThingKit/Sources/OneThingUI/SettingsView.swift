@@ -20,14 +20,16 @@ public struct SettingsView: View {
 
     public var body: some View {
         if embedded {
+            // Section names as written ("Your tasks"), not in capitals.
             form
+                .textCase(nil)
                 #if os(macOS)
                 .formStyle(.grouped)
                 .frame(minWidth: 420, minHeight: 420)
                 #endif
         } else {
             NavigationStack {
-                form.toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
+                form.textCase(nil).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } } }
             }
             #if os(macOS)
             .frame(minWidth: 420, minHeight: 520)

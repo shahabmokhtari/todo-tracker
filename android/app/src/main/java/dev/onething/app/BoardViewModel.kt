@@ -8,8 +8,23 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import dev.onething.BuildConfig
 import dev.onething.core.Actor
 import dev.onething.core.Agenda
+import dev.onething.core.BoardColumn
+import dev.onething.core.BoardColumns
+import dev.onething.core.BoardScope
+import dev.onething.core.OutlineMoves
+import dev.onething.core.PlanDays
+import dev.onething.core.PlanSettings
+import dev.onething.core.PlannedMove
+import dev.onething.core.Stage
+import dev.onething.core.TimeReport
+import dev.onething.core.addInPlace
+import dev.onething.core.applyPlanned
+import dev.onething.core.plan
+import dev.onething.core.unplan
+import dev.onething.core.timeline
 import dev.onething.core.BoardException
 import dev.onething.core.Dashboard
 import dev.onething.core.Energy
@@ -219,20 +234,70 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     var syncNeedsSignIn: Boolean by mutableStateOf(false)
         private set
 
+    /**
+     * A made-up board (DemoBoard), for screenshots: a debug build started with `--ez demo true`. It lives in a folder
+     * of its own, cleared on every start; the person's tasks, sync, widgets and alarms are left alone.
+     */
+    var demo: Boolean by mutableStateOf(DemoMode.wanted(BuildConfig.DEBUG, savedState.get<Boolean>(DemoBoard.EXTRA)))
+        private set
+
+    // Goes up when the board shown switches (into or out of the demo): what was on its way to the other one is dropped.
+    private var generation = 0
+    private var opening: kotlinx.coroutines.Job? = null
+
     init {
         // Shown once the tasks folder is open (just below); changes wait until then.
         board = TaskBoard()
         readOnly = true
-        viewModelScope.launch {
-            val local = withContext(Dispatchers.IO) { BoardHub.local(application) }
-            val sync = withContext(Dispatchers.IO) { SyncHub.get(application) }
+        open()
+        refresh()
+    }
+
+    /**
+     * An intent came (the app opened again, from the launcher or a link): the demo board is left unless this one asks
+     * for it too (and taken up when it does), so your own tasks never go into the demo's folder.
+     */
+    fun useIntent(demoExtra: Boolean?) {
+        val next = DemoMode.next(demo, BuildConfig.DEBUG, demoExtra) ?: return
+        demo = next
+        savedState[DemoBoard.EXTRA] = next
+        generation++
+        if (BoardHub.live === this) BoardHub.live = null
+        opened = null
+        phoneSync = null
+        board = TaskBoard()
+        readOnly = true
+        openTaskId = null
+        requestedTaskId = null
+        selectedGroup = null
+        undoable = null
+        status = null
+        scheduled = null
+        reminderSet = false
+        open()
+        refresh()
+    }
+
+    /** Leaves the demo board for your own tasks (the banner's button). */
+    fun leaveDemo() = useIntent(null)
+
+    /** Opens the tasks folder (or the demo's), off the screen's thread, then shows it. */
+    private fun open() {
+        val application = getApplication<Application>()
+        val asDemo = demo
+        val gen = generation
+        opening?.cancel()
+        opening = viewModelScope.launch {
+            val local = withContext(Dispatchers.IO) { if (asDemo) openDemo(application) else BoardHub.local(application) }
+            val sync = if (asDemo) null else withContext(Dispatchers.IO) { SyncHub.get(application) }
             val loaded = withContext(Dispatchers.IO) { runCatching { local.store?.snapshot() }.getOrNull() }
+            if (gen != generation) return@launch
             opened = local
             phoneSync = sync
             moving = null
             showDeviceBoard(loaded)
             // From now on alarms and notification buttons change the tasks through this screen (the same store).
-            BoardHub.live = this@BoardViewModel
+            if (!asDemo) BoardHub.live = this@BoardViewModel
             readSyncStatus { if (syncOn) SyncHub.startBackground(application) }
             reminderSet = false
             refresh()
@@ -242,7 +307,6 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
                 openLink(it)
             }
         }
-        refresh()
     }
 
     /**
@@ -293,7 +357,7 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         now = Instant.now()
         // Reminders due now are told (once): with the app open, closed, or the phone locked. Told and marked as told
         // in the tasks folder, off the screen's thread (the redraw after it doesn't try again).
-        if (deliver && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
+        if (deliver && !demo && !readOnly && !delivering && opened != null && Reminders.due(board, now).isNotEmpty()) {
             delivering = true
             val app = getApplication<Application>()
             val canNotify = ReminderAlarm.canNotify(app)
@@ -321,14 +385,22 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         }
         val nextReminder = if (readOnly) null else Reminders.nextAt(board, now)
         // While the tasks folder opens, the alarm set before stays as it is (the board shown is only a placeholder).
-        if ((nextReminder != scheduledReminder || !reminderSet) && opened != null) {
+        if ((nextReminder != scheduledReminder || !reminderSet) && opened != null && !demo) {
             scheduledReminder = nextReminder
             reminderSet = true
             ReminderAlarm.schedule(getApplication(), nextReminder)
         }
         version++
         showTimers()
-        updateWidgets()
+        if (!demo) updateWidgets()
+    }
+
+    /** The made-up board, in a folder of its own in the cache (made again on every start). */
+    private fun openDemo(application: Application): LocalBoard.Opened {
+        val root = java.io.File(application.cacheDir, "demo-vault")
+        root.deleteRecursively()
+        val zone = ZoneId.systemDefault()
+        return LocalBoard.Opened(VaultStore.open(root, zone, legacyBoard = DemoBoard.board(Instant.now(), zone)), null, null)
     }
 
     // What the widgets were last told about (the board, its changes and order), and when.
@@ -489,6 +561,17 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     fun titleOf(id: UUID): String? = board.find(id)?.title
 
+    /** Ctrl+N on a keyboard: AppShell opens quick add (and sets it back). */
+    var addRequested: Boolean by mutableStateOf(false)
+
+    /** Ctrl+F on a keyboard: goes up by one each time, and the view on screen opens its search. */
+    var searchRequests: Int by mutableIntStateOf(0)
+        private set
+
+    fun requestSearch() {
+        searchRequests++
+    }
+
     /** The task whose details are open (shown over Today until closed); kept when the phone stops the app meanwhile. */
     var openTaskId: UUID?
         get() = openTask
@@ -517,9 +600,19 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
             when {
                 opened == null -> pendingLink = link
                 board.find(target.id) == null -> status = "That task isn't on this phone"
-                openTaskId == null || openTaskId == target.id -> openTaskId = target.id
-                else -> requestedTaskId = target.id
+                else -> openTask(target.id)
             }
+        }
+    }
+
+    /**
+     * Opens a task. When another one is open (beside the view on a tablet), that one saves what's typed first (or
+     * asks), then switches: nothing typed is lost.
+     */
+    fun openTask(id: UUID) {
+        when (TaskOpening.route(openTaskId, id)) {
+            TaskOpening.OPEN -> openTaskId = id
+            TaskOpening.REQUEST -> requestedTaskId = id
         }
     }
 
@@ -707,6 +800,170 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         return change(null, saved = { group: UUID -> selectedGroup = group }) { b, now -> b.addGroup(name, now = now, id = id).id }
     }
 
+    // ---- Board, Tasks, Done (every change goes through the board, as you: Actor.USER) ----
+
+    /** What the views show: the group on screen and the search (read [version] to redraw when the board changes). */
+    val scope: BoardScope get() = BoardScope(board, selectedGroup, query)
+
+    /** What happened to a task and its subtasks, newest first. */
+    fun timelineOf(id: UUID): List<dev.onething.core.ActivityEntry> = if (board.find(id) == null) emptyList() else board.timeline(id)
+
+    /** Every group (for colors and the Move menu). */
+    val boardGroups: List<dev.onething.core.TaskGroup> get() = board.groups
+
+    /** A label's color (#rrggbb), or null. */
+    fun labelColor(name: String): String? = board.findLabel(name)?.color
+
+    /** How much energy there is in a day (the Plan's days say what their blocks take against it). */
+    val energyPerDay: Int get() = board.dailyEnergy
+
+    /** Makes a move worked out from the board on screen (refused with why, or nothing when there's nothing to do). */
+    private fun perform(build: (BoardScope) -> PlannedMove?): Boolean {
+        val planned = try {
+            build(scope)
+        } catch (e: BoardException) {
+            status = e.message
+            return false
+        }
+        if (planned == null || planned.moves.isEmpty()) return false
+        return change(planned.message) { b, now -> b.applyPlanned(planned, Actor.USER, now) }
+    }
+
+    /** A card to a column (Done finishes it; out of Done opens it again), before [before] (a card there). */
+    fun moveCard(id: UUID, column: BoardColumn, before: UUID? = null) = perform { it.moveCard(id, column, before, Instant.now()) }
+
+    /** A card one column left or right, or one place up or down. */
+    fun moveCard(id: UUID, direction: BoardColumns.Direction) = perform { it.moveCard(id, direction, Instant.now()) }
+
+    /** Into the task above it on screen. */
+    fun indent(id: UUID, showDone: Boolean) = perform { it.indent(id, showDone) }
+
+    /** Out one level, right after its parent. */
+    fun outdent(id: UUID) = perform { it.outdent(id) }
+
+    fun canIndent(id: UUID, showDone: Boolean): Boolean = scope.indent(id, showDone) != null
+
+    fun canOutdent(id: UUID): Boolean = scope.outdent(id) != null
+
+    /** Up (-1) or down (1) past the task above or below on screen. */
+    fun step(id: UUID, delta: Int, showDone: Boolean) = perform { it.step(id, delta, showDone) }
+
+    /** A task dropped before, after or into another. False when it can't go there (into itself). */
+    fun drop(dragged: UUID, target: UUID, zone: OutlineMoves.Zone): Boolean {
+        if (scope.drop(dragged, target, zone) == null) {
+            if (dragged != target) status = "A task can't go inside itself."
+            return false
+        }
+        return perform { it.drop(dragged, target, zone) }
+    }
+
+    /** A task (or a subtask: it becomes a task of its own) to another group. */
+    fun moveToGroupAnywhere(id: UUID, groupId: UUID) = perform { it.toGroup(id, groupId) }
+
+    /**
+     * Adds a task where it was typed: under [parentId] (first, or right after [after]), or at the top level of the group
+     * on screen (in [stage], right after [after] when given). Its id, or null when it wasn't added.
+     */
+    fun addTask(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null): UUID? {
+        if (title.isBlank()) return null
+        val id = UUID.randomUUID()
+        val group = selectedGroup
+        return if (change("Added") { b, now -> b.addInPlace(title, parentId, after, stage, group, id, Actor.USER, now) }) id else null
+    }
+
+    /** Renames a task (blank, or the same: nothing changes). */
+    fun rename(id: UUID, title: String) {
+        val clean = title.trim()
+        if (clean.isEmpty() || board.find(id)?.title == clean) return
+        edit(id, TaskChanges(title = clean), null)
+    }
+
+    /** Done, or open again. */
+    fun toggleDone(id: UUID) {
+        val item = board.find(id) ?: return
+        if (item.isDone) reopen(id) else complete(id)
+    }
+
+    // ---- Plan and Reports ----
+
+    /** Plans a block of work on a task from [start] ([minutes] null: what it had, else 30). */
+    fun plan(id: UUID, start: Instant, minutes: Int? = null): Boolean {
+        val title = titleOf(id) ?: return false
+        return change("Planned “$title” ${planWhen(start)}") { b, now -> b.plan(id, start, minutes, Actor.USER, now) }
+    }
+
+    /** Takes a task off the plan. */
+    fun unplan(id: UUID) {
+        val title = titleOf(id) ?: return
+        change("Took “$title” off the plan") { b, now -> b.unplan(id, Actor.USER, now) }
+    }
+
+    /** What the Plan view shows for some days, in this phone's time zone. */
+    fun planDays(first: java.time.LocalDate, days: Int): PlanDays =
+        PlanDays.build(board, first, days, ZoneId.systemDefault(), Instant.now(), selectedGroup)
+
+    /** Where the time went between two local dates (inclusive), for the group on screen. */
+    fun report(from: java.time.LocalDate, to: java.time.LocalDate): TimeReport =
+        TimeReport.build(board, from, to, ZoneId.systemDefault(), Instant.now(), selectedGroup)
+
+    /** The Plan's settings for the group on screen (each group keeps its own, on this phone). */
+    fun planSettings(): PlanSettings = PlanSettings.decode(prefs.getString(planKey(), null))
+
+    fun setPlanSettings(settings: PlanSettings) {
+        if (settings.problem != null) return
+        prefs.edit().putString(planKey(), settings.encode()).apply()
+        version++
+    }
+
+    private fun planKey() = "plan.settings.${selectedGroup?.toString() ?: "all"}"
+
+    /** "today 14:30", "tomorrow 09:00", "Thu 29 Oct 09:00". */
+    fun planWhen(at: Instant): String {
+        val zone = ZoneId.systemDefault()
+        val local = at.atZone(zone)
+        val time = android.text.format.DateFormat.getTimeFormat(getApplication()).format(java.util.Date(at.toEpochMilli()))
+        val today = Instant.now().atZone(zone).toLocalDate()
+        return when (local.toLocalDate()) {
+            today -> "today $time"
+            today.plusDays(1) -> "tomorrow $time"
+            else -> "${local.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))} $time"
+        }
+    }
+
+    // ---- What the views remember on this phone ----
+
+    /** The Tasks outline's open tasks. */
+    var outlineExpanded: Set<UUID> by mutableStateOf(
+        prefs.getString("outline.expanded", "").orEmpty().split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet(),
+    )
+        private set
+
+    /** The Tasks outline shows finished tasks too. */
+    var outlineShowDone: Boolean by mutableStateOf(prefs.getBoolean("outline.showDone", false))
+        private set
+
+    fun setExpanded(id: UUID, open: Boolean) = setExpanded(if (open) outlineExpanded + id else outlineExpanded - id)
+
+    fun setExpanded(ids: Set<UUID>) {
+        // Kept short (the newest few hundred), like the other apps.
+        outlineExpanded = ids.toList().takeLast(500).toSet()
+        prefs.edit().putString("outline.expanded", outlineExpanded.joinToString(",")).apply()
+    }
+
+    fun chooseOutlineShowDone(on: Boolean) {
+        outlineShowDone = on
+        prefs.edit().putBoolean("outline.showDone", on).apply()
+    }
+
+    /** The Reports' range: "7", "28", "90", "365" days, or "custom". */
+    var reportRange: String by mutableStateOf(prefs.getString("reports.range", "28") ?: "28")
+        private set
+
+    fun chooseReportRange(range: String) {
+        reportRange = range
+        prefs.edit().putString("reports.range", range).apply()
+    }
+
     /**
      * Applies a change: it's checked and shown at once on the board on screen, then made again on the tasks folder (the
      * one store) off the screen's thread, where only the files it touched are written (all or nothing; a file changed
@@ -751,13 +1008,15 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
      */
     private fun <T> save(changed: Boolean = true, at: Instant, mutate: (TaskBoard, Instant) -> T, after: (Result<T>) -> Unit) {
         val s = store ?: return after(Result.failure(BoardException("Your board is from a newer version of the app, so changes are off to protect it.")))
+        val gen = generation
         writing++
         BoardHub.disk.launch {
             val result = runCatching { s.update { mutate(it, at) } }
             val saved = runCatching { s.snapshot() }.getOrNull()
             withContext(Dispatchers.Main) {
                 writing--
-                if (saved != null && writing == 0) board = saved
+                // Saved to a board no longer shown (the demo was left meanwhile): not shown.
+                if (gen == generation && saved != null && writing == 0) board = saved
                 if (changed && result.isSuccess) syncSchedule.changed(Instant.now())
                 after(result)
             }
@@ -767,9 +1026,11 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** Sync (or another part of the app) changed the tasks folder: show it as it is now (read off the screen's thread). */
     override fun reloadLocal() {
         val s = store ?: return
+        val gen = generation
         BoardHub.disk.launch {
             val saved = runCatching { s.snapshot() }.getOrNull()
             withContext(Dispatchers.Main) {
+                if (gen != generation) return@withContext
                 if (saved != null && writing == 0) board = saved
                 reminderSet = false
                 refresh()
@@ -886,5 +1147,14 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     private companion object {
         const val OPEN_TASK = "open-task"
+    }
+}
+
+/** How a task opens: straight away, or as a request the open task answers once it has saved what's typed. */
+enum class TaskOpening {
+    OPEN, REQUEST;
+
+    companion object {
+        fun route(open: UUID?, wanted: UUID): TaskOpening = if (open == null || open == wanted) OPEN else REQUEST
     }
 }

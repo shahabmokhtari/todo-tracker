@@ -16,6 +16,15 @@ struct BoardView: View {
     /// How many columns fit side by side.
     @State private var visibleCount = BoardColumn.allCases.count
 
+    /// How to move and act on cards, said once above the columns.
+    static var hint: String {
+        #if os(macOS)
+        return "Drag a card to another column, or right-click it for more. Select one and use Option and the arrow keys to move it."
+        #else
+        return "Drag a card to another column, or touch and hold it for more. Starting a timer moves a card to Doing."
+        #endif
+    }
+
     var body: some View {
         let columns = model.boardColumns
         GeometryReader { geo in
@@ -23,7 +32,7 @@ struct BoardView: View {
             let visible = max(1, min(BoardColumn.allCases.count, Int(geo.size.width / 250)))
             VStack(alignment: .leading, spacing: 8) {
                 SearchFilterBar(model: model).padding(.horizontal, 16)
-                Text("Drag cards along, or select one and use Option and the arrow keys. Starting a timer moves a card to Doing.")
+                Text(Self.hint)
                     .font(.caption).foregroundStyle(.secondary)
                     .padding(.horizontal, 16)
                 if visible < BoardColumn.allCases.count {
@@ -131,7 +140,7 @@ struct BoardView: View {
             return .handled
         }
         if press.key == .space {
-            model.toggleDone(card.id)
+            shell.toggleDone(card.id)
             return .handled
         }
         if press.key == .return {
@@ -253,6 +262,7 @@ struct BoardCard: View {
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if card.repeatRule != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(.secondary).accessibilityLabel("Repeats") }
+                if timing { Image(systemName: "stopwatch").font(.caption).foregroundStyle(Color(hex: "#ef4444")).accessibilityLabel("Being timed") }
             }
             if !card.labels.isEmpty || !card.tags.isEmpty {
                 FlowLayout(spacing: 4) {
@@ -264,40 +274,8 @@ struct BoardCard: View {
             if !facts.isEmpty {
                 FlowLayout(spacing: 4) { ForEach(facts, id: \.self) { ChipView(chip: $0) } }
             }
-            HStack(spacing: 14) {
-                if !card.isDone {
-                    Button { model.toggleTimer(card.id) } label: { Image(systemName: timing ? "stop.circle.fill" : "play.circle") }
-                        .foregroundStyle(timing ? Color(hex: "#ef4444") : .secondary)
-                        .accessibilityLabel(timing ? "Stop timing \(card.title)" : "Start timing \(card.title)")
-                        .help(timing ? "Stop the timer" : "Start the timer")
-                }
-                if column == .done {
-                    Button { model.archive(card.id) } label: { Image(systemName: "archivebox") }
-                        .accessibilityLabel("Archive \(card.title)").help("Archive")
-                } else {
-                    Button { model.complete(card.id) } label: { Image(systemName: "checkmark.circle") }
-                        .accessibilityLabel("Mark \(card.title) done").help("Mark done")
-                }
-                Menu {
-                    ForEach(BoardColumn.allCases.filter { $0 != column }) { to in
-                        Button("To \(to.name)") { model.moveCard(card.id, to: to) }
-                    }
-                    if column != .done {
-                        Divider()
-                        Button("Up") { model.moveCard(card.id, .up) }
-                        Button("Down") { model.moveCard(card.id, .down) }
-                    }
-                } label: { Image(systemName: "arrow.left.arrow.right") }
-                    .menuStyle(.button)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .accessibilityLabel("Move \(card.title)")
-                    .help("Move to another column")
-                Spacer(minLength: 0)
-            }
-            .buttonStyle(.borderless)
-            .font(.callout)
-            .foregroundStyle(.secondary)
+            // Only the picked card shows its buttons; every card has them in its context menu (right-click or long press).
+            if selected { actions(timing: timing) }
         }
         .padding(10)
         .padding(.leading, 4)
@@ -325,6 +303,45 @@ struct BoardCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(card.title)\(card.isDone ? ", done" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .animation(.snappy(duration: 0.2), value: selected)
+    }
+
+    /// The picked card's buttons: time it, finish it (or archive it), move it.
+    private func actions(timing: Bool) -> some View {
+        HStack(spacing: 14) {
+            if !card.isDone {
+                Button { model.toggleTimer(card.id) } label: { Image(systemName: timing ? "stop.circle.fill" : "play.circle") }
+                    .foregroundStyle(timing ? Color(hex: "#ef4444") : .secondary)
+                    .accessibilityLabel(timing ? "Stop timing \(card.title)" : "Start timing \(card.title)")
+                    .help(timing ? "Stop the timer" : "Start the timer")
+            }
+            if column == .done {
+                Button { model.archive(card.id) } label: { Image(systemName: "archivebox") }
+                    .accessibilityLabel("Archive \(card.title)").help("Archive")
+            } else {
+                Button { markDone(model, shell, card.id) } label: { Image(systemName: "checkmark.circle") }
+                    .accessibilityLabel("Mark \(card.title) done").help("Mark done")
+            }
+            Menu {
+                ForEach(BoardColumn.allCases.filter { $0 != column }) { to in
+                    Button("To \(to.name)") { model.moveCard(card.id, to: to) }
+                }
+                if column != .done {
+                    Divider()
+                    Button("Up") { model.moveCard(card.id, .up) }
+                    Button("Down") { model.moveCard(card.id, .down) }
+                }
+            } label: { Image(systemName: "arrow.left.arrow.right") }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .accessibilityLabel("Move \(card.title)")
+                .help("Move to another column")
+            Spacer(minLength: 0)
+        }
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .foregroundStyle(.secondary)
     }
 }
 #endif
