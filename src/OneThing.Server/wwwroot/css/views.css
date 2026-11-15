@@ -66,12 +66,12 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .nav-icon { display: grid; place-items: center; width: 20px; }
 .nav-label { flex: 1; }
 .nav-count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--border); font-size: 11.5px; font-weight: 650; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; }
-.nav-link[aria-current="page"] .nav-count { background: var(--accent); color: #fff; }
+.nav-link[aria-current="page"] .nav-count { background: var(--accent-strong); color: #fff; }
 .nav-link kbd { font-size: 11px; color: var(--text-3); padding: 1px 6px; border: 1px solid var(--border); border-radius: 6px; }
-.nav-heading { margin: var(--space-4) 10px 2px; font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
+.nav-heading { margin: var(--space-4) 10px 2px; font-size: 13px; font-weight: 650; color: var(--text-3); }
 
 /* Groups: the same tabs as before, as a vertical list. */
-.sidenav .tabs { flex-direction: column; flex: 0 0 auto; max-width: none; overflow: visible; padding: 0; background: transparent; border: 0; border-radius: 0; gap: 2px; }
+.sidenav .tabs { order: 0; flex-direction: column; flex: 0 0 auto; max-width: none; overflow: visible; padding: 0; background: transparent; border: 0; border-radius: 0; gap: 2px; }
 .sidenav .tab { width: 100%; justify-content: flex-start; border-radius: 10px; padding: 7px 10px; }
 .sidenav .tab .badge { margin-left: auto; }
 .sidenav .tab[aria-current="true"] { background: var(--surface-2); box-shadow: none; }
@@ -121,16 +121,19 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .bottom-link[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
 .bottom-link .nav-count { position: absolute; top: 2px; left: 55%; font-size: 10px; min-width: 16px; padding: 0 4px; }
 
-@media (min-width: 900px) {
+/* Tablets and up: the side bar stays. Full on a wide screen; a row of icons (a rail) on a tablet, or when you narrow
+   it (body.nav-rail, set by shell.js); opened from the rail, it slides out full over the page. */
+@media (min-width: 768px) {
   .app { grid-template-columns: var(--nav-w) 1fr; }
-  .sidenav { position: sticky; top: 0; z-index: 15; height: 100vh; width: var(--nav-w); transform: none; box-shadow: none; visibility: visible; }
-  .nav-toggle, .nav-scrim, .bottom-nav { display: none !important; }
+  .sidenav { position: sticky; top: 0; z-index: 15; height: 100vh; height: 100dvh; width: var(--nav-w); transform: none; box-shadow: none; visibility: visible; }
+  .nav-toggle, .bottom-nav { display: none !important; }
   .layout { padding: var(--space-6) var(--space-6) 64px; }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 767.98px) {
   .topbar .search { flex-basis: auto; }
   .brand-name { display: inline; }
+  .nav-collapse { display: none; }
 }
 
 @media (max-width: 640px) {
@@ -478,8 +481,9 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .done-results { display: contents; }
 
 /* ---------- settings ---------- */
-.settings { display: grid; gap: var(--space-5); max-width: 760px; }
-.settings-section { display: grid; gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); max-width: 760px; }
+.settings-section code { overflow-wrap: anywhere; }
+.settings-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: var(--space-4); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .settings-section h2 { font-size: 17px; }
 .settings-section > p { margin: 0; }
 .theme-seg button { display: inline-flex; align-items: center; gap: 6px; }
@@ -493,7 +497,8 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .github-group p { margin: 4px 0 0; }
 .connector.off { opacity: .85; }
 .shortcuts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; align-items: center; }
-.shortcuts dd { margin: 0; color: var(--text-2); }
+.shortcuts dd { margin: 0; min-width: 0; color: var(--text-2); overflow-wrap: anywhere; }
+.shortcuts { grid-template-columns: max-content minmax(0, 1fr); }
 .settings-section > .btn { justify-self: start; }
 
 /* ---------- snooze: the Later menu, "Pick a time…" and "After another task…" ---------- */
@@ -575,9 +580,13 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .plan-settings { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(420px, 90vw); padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / .18)); display: grid; gap: 10px; }
 .plan-days { flex-wrap: wrap; gap: 8px; }
 .plan-main { display: grid; grid-template-columns: 220px 1fr; gap: 14px; align-items: start; }
-@media (max-width: 760px) { .plan-main { grid-template-columns: 1fr; } }
+/* Narrower than a tablet in landscape: the week gets the whole width; what isn't planned sits above it, in a grid. */
+@media (max-width: 1023.98px) {
+  .plan-main { grid-template-columns: minmax(0, 1fr); }
+  .plan-unplanned ul { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
 .plan-unplanned { padding: 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); max-height: 70vh; overflow: auto; }
-.plan-unplanned h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #64748b); }
+.plan-unplanned h3 { margin: 0 0 8px; font-size: 13.5px; font-weight: 650; color: var(--text-2); }
 .plan-unplanned ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .plan-unplanned .plan-later-head { margin-top: 14px; }
 .plan-task.later { opacity: .8; }
@@ -596,7 +605,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .plan-heads { border-bottom: 1px solid var(--border); }
 .plan-body { max-height: 70vh; overflow: auto; }
 .plan-day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; padding: 8px; border-left: 1px solid var(--border); min-width: 0; }
-.plan-day-head.today .plan-day-date { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 7px; }
+.plan-day-head.today .plan-day-date { background: var(--accent-strong); color: #fff; border-radius: 999px; padding: 0 7px; }
 .plan-day-name { font-size: 12px; color: var(--muted, #64748b); }
 .plan-day-date { font-weight: 700; }
 .plan-deadline { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
@@ -624,4 +633,172 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 /* High contrast: the focused row of the task tree gets an outline (its background tint isn't drawn there). */
 @media (forced-colors: active) {
   .orow:focus, .orow:focus-within { outline: 2px solid Highlight; outline-offset: -2px; }
+}
+
+/* ======================================================================================================
+   Phone, tablet, desktop. Phones (< 768): a bottom bar, the menu slides in. Tablets (768–1179): a rail of
+   icons, Today in two columns where it fits, task details as a panel down the right edge. Wide (≥ 1280):
+   the full side bar (it narrows to the rail on request). Touch screens get 44px targets everywhere.
+   ====================================================================================================== */
+
+body.signed-out .app { grid-template-columns: minmax(0, 1fr); }
+/* The page keeps its column while the side bar slides out over it. */
+@media (min-width: 768px) { body:not(.signed-out) .main-col { grid-column: 2; grid-row: 1; } }
+
+/* The side bar's header: the logo and the button that narrows or widens it. */
+.nav-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 0 0 8px; }
+.nav-top .brand { padding: 4px 8px; min-width: 0; }
+.nav-collapse { flex: none; color: var(--text-3); }
+.tab-glyph { display: none; }
+.tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- the rail ---------- */
+body.nav-rail .app { grid-template-columns: 76px minmax(0, 1fr); }
+body.nav-rail .sidenav:not(.open) { width: 76px; padding: var(--space-3) 10px; align-items: stretch; overflow-x: hidden; }
+body.nav-rail .sidenav:not(.open) .nav-top { flex-direction: column; gap: 6px; padding-bottom: 6px; }
+body.nav-rail .sidenav:not(.open) .brand { padding: 4px; }
+body.nav-rail .sidenav:not(.open) :is(.brand-name, .nav-label, .tab-name, .tab .dot, .nav-link kbd, .tab-row > .menu-wrap) { display: none; }
+body.nav-rail .sidenav:not(.open) .nav-heading { height: 1px; margin: var(--space-2) 8px; overflow: hidden; color: transparent; background: var(--border); }
+body.nav-rail .sidenav:not(.open) :is(.nav-link, .tab) { position: relative; justify-content: center; width: 100%; min-height: 48px; padding: 0; }
+body.nav-rail .sidenav:not(.open) .nav-icon { width: auto; }
+body.nav-rail .sidenav:not(.open) .tab-glyph { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-size: 13px; font-weight: 700; color: var(--group); background: color-mix(in srgb, var(--group) 16%, transparent); }
+body.nav-rail .sidenav:not(.open) .tab[aria-current="true"] .tab-glyph { color: #fff; background: var(--group); }
+body.nav-rail .sidenav:not(.open) .tab:not(:has(.dot)) .tab-glyph { color: var(--text-2); background: transparent; }
+body.nav-rail .sidenav:not(.open) .tab[aria-current="true"]:not(:has(.dot)) .tab-glyph { color: var(--accent); }
+/* Counts become small badges on the icon's corner. */
+body.nav-rail .sidenav:not(.open) :is(.nav-count, .tab .badge) { position: absolute; top: 3px; right: 6px; min-width: 18px; padding: 0 5px; font-size: 10.5px; line-height: 17px; margin: 0; }
+body.nav-rail .sidenav:not(.open) .nav-foot { justify-items: stretch; }
+/* Opened from the rail: the full side bar, over the page. */
+body.nav-rail .sidenav.open { position: fixed; inset: 0 auto 0 0; z-index: 35; width: var(--nav-w); box-shadow: var(--shadow-lg); }
+body.nav-rail .sidenav { transition: none; }
+@media (min-width: 768px) {
+  body.nav-rail.nav-collapsed .sidenav.open { position: fixed; }
+}
+
+/* ---------- Today ---------- */
+/* Two columns when the page is wide enough for both (a tablet in landscape, a desktop). A tablet in portrait: one
+   column for what to do, and the smaller panels side by side under it. */
+#board { container-type: inline-size; }
+.columns { grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 600px) {
+  .columns > .column + .column { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .columns > .column + .column > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@container (min-width: 860px) {
+  .columns { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+  .columns > .column + .column { grid-template-columns: minmax(0, 1fr); }
+  .columns > .column + .column > :last-child:nth-child(odd) { grid-column: auto; }
+}
+.hello h2 { font-size: clamp(24px, 1.6vw + 16px, 32px); font-weight: 750; letter-spacing: -.025em; }
+.hello p { margin: 6px 0 0; }
+
+/* The one thing to do now: room to breathe, a clear title, few buttons. */
+.focus-card { gap: 14px; padding: 26px 28px 24px; }
+.focus-title { font-size: clamp(22px, 1.4vw + 15px, 30px); }
+.focus-card .actions.big { gap: 8px; margin-top: 4px; align-items: center; }
+.actions.big .btn { min-height: 42px; padding: 0 16px; font-size: 14.5px; }
+.actions.big .btn.primary { padding: 0 20px; }
+.actions.big .btn:not(.primary) { background: transparent; border-color: var(--border-strong); }
+.actions.big .btn:not(.primary):hover { background: var(--surface-hover); border-color: var(--accent); }
+.actions.big .menu-wrap:last-child { margin-left: auto; }
+.actions.big .more-btn { color: var(--text-2); }
+.more-menu { min-width: 220px; }
+.more-menu .menu-sep { margin: 4px 6px; }
+
+/* Rows: the actions are few (done, later, ⋯) and quiet until you point at the row. */
+.item { padding: 12px 12px 12px 14px; }
+.item .actions { gap: 0; }
+.section > summary { padding: 16px 20px; }
+.section-title { font-size: 15.5px; }
+
+/* Empty states: calm, centered, a little icon. */
+.empty { justify-content: center; padding: 18px 12px 22px; color: var(--text-3); }
+
+/* ---------- task details: a panel down the right edge on tablets and up; the whole screen on a phone ---------- */
+/* One column that never grows past the panel (a long field used to push the close button off a phone's screen). */
+.drawer { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
+.drawer-head { position: sticky; top: -22px; z-index: 2; margin: -22px -22px 0; padding: 14px 16px 10px 22px; background: var(--surface-solid); border-bottom: 1px solid transparent; }
+.drawer.full .drawer-head { top: calc(-1 * var(--space-5)); margin: calc(-1 * var(--space-5)) 0 0; padding: 16px 0 10px; }
+@media (min-width: 1100px) { .drawer.full > .title-row { grid-column: 1 / -1; } }
+.drawer-head .prio-pill { margin-right: auto; }
+.drawer-head .save-state { margin-left: 0; }
+@media (min-width: 768px) {
+  .drawer:not(.full) { top: 0; right: 0; bottom: 0; width: min(520px, 62vw); border-radius: 24px 0 0 24px; border-right: 0; }
+  /* The page stays readable beside the panel. */
+  .scrim { background: rgb(15 23 42 / .18); backdrop-filter: none; }
+}
+@media (max-width: 767.98px) {
+  .drawer:not(.full) { inset: 0; width: auto; border-radius: 0; border: 0; padding: 22px max(16px, env(safe-area-inset-right)) calc(22px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .drawer-head { margin: -22px -16px 0; padding-left: 16px; }
+  @keyframes sheet-up { from { opacity: 0; transform: translateY(24px); } }
+  .drawer:not(.full) { animation-name: sheet-up; }
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 640px) {
+  .focus-card { padding: 20px 18px 18px; border-radius: 22px; }
+  .actions.big .btn.primary { flex: 1 1 100%; justify-content: center; }
+  .actions.big .menu-wrap:last-child { margin-left: 0; }
+  .actions.big > * { flex: 1 1 0; }
+  .actions.big > * > .btn, .actions.big > .btn { width: 100%; justify-content: center; }
+  .item .action-wrap { justify-items: end; grid-column: 1 / -1; }
+  .item { grid-template-columns: 10px minmax(0, 1fr); }
+  /* The top bar in two rows: the menu, the view's name and the extras; then the filter and the focus timer. */
+  .topbar { row-gap: 8px; column-gap: 4px; }
+  .view-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .plugin-buttons { order: 3; gap: 0; }
+  .topbar .search { order: 5; flex: 1 1 200px; min-width: 0; }
+  .topbar .pomodoro { order: 6; margin-left: 6px; }
+  .topbar .timer-chip { order: 7; }
+}
+
+/* ---------- touch: every target at least 44px; no hover-only controls ---------- */
+@media (pointer: coarse) {
+  .btn { min-height: var(--tap); padding-inline: 16px; }
+  .btn.small { min-height: 36px; position: relative; }
+  .icon-btn { width: var(--tap); height: var(--tap); border-radius: 12px; }
+  .icon-btn.small, .order .order-btn { width: 40px; height: 40px; }
+  .nav-link, .tab, .bottom-link { min-height: var(--tap); }
+  .menu button { min-height: var(--tap); }
+  .capture { padding: 6px 6px 6px 16px; }
+  .capture .btn { min-height: 44px; }
+  .capture-group select { min-height: 36px; }
+  .search input { min-height: var(--tap); padding-right: 46px; }
+  .search:has(#filter-clear:not([hidden])) input { padding-right: 88px; }
+  /* The filter's own small buttons sit inside the box: drawn small, touched big. */
+  .search .icon-btn { width: 40px; height: 40px; right: 2px; }
+  .search #filter-clear { right: 44px; }
+  .check-btn, .ocheck, .sib-check, .done-check { position: relative; }
+  .check-btn::after, .ocheck::after, .otwisty::after { content: ""; position: absolute; inset: -11px; }
+  .otwisty { position: relative; width: 32px; height: 32px; }
+  .orow { min-height: 52px; }
+  .seg button { min-height: 40px; padding-inline: 14px; }
+  .move-select { height: 40px; max-width: 110px; font-size: 13.5px; }
+  .chip.tag, .chip.label { min-height: 28px; }
+  /* Moving a row up or down is in its ⋯ menu here (rows can't be dragged by touch). */
+  .item > .order { display: none; }
+  .item .actions { opacity: 1; }
+  /* Board cards: the title gets the whole line; the buttons sit along the card's foot. */
+  .card-top { display: contents; }
+  .card-actions { order: 10; justify-content: flex-end; align-items: center; gap: 2px; opacity: 1; margin: 0 -6px -4px; padding-top: 4px; border-top: 1px solid var(--border); }
+  .card-actions .icon-btn.small { width: 40px; height: 40px; }
+  .card-actions .move-select { margin-right: auto; order: -1; }
+  /* Task tree rows: the title gets the room; open a row for its timer and subtasks (a running timer stays). */
+  .oactions .icon-btn:not(:last-of-type):not(.on) { display: none; }
+  .orow .ofacts .ofact:not(:first-child) { display: none; }
+  .board { grid-auto-columns: minmax(280px, 1fr); }
+}
+
+/* ---------- desktop ---------- */
+@media (min-width: 1440px) {
+  .layout { padding-inline: 48px; }
+}
+
+/* Keyboard focus: a clear ring everywhere, in both themes. */
+:is(.nav-link, .tab, .bottom-link, .kcard, .item .title.link, .crumb, .palette-item):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+
+/* Less motion when asked: no sliding panels, no pulsing dots, no smooth scrolling. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .sidenav, .drawer, .menu, .toast, .palette { transition: none !important; animation: none !important; }
 }

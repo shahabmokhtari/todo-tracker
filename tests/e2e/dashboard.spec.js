@@ -50,7 +50,10 @@ test('dashboard: capture, rollout steps, gating, groups, and report', async ({ p
   await expect(page.locator('.inline-note').first()).toBeHidden();
 
   // Log a note, then finish the step: the next step is gated for 24h and waits.
-  await page.locator('.focus-card').getByRole('button', { name: 'Note', exact: true }).click();
+  // The focus card keeps three buttons in sight (Mark done, Later, Focus); a note is under More.
+  await expect(page.locator('.focus-card .actions.big > button, .focus-card .actions.big > .menu-wrap > button')).toHaveText(['Mark done', 'Later', 'Focus', 'More']);
+  await page.locator('.focus-card').getByRole('button', { name: 'More', exact: true }).click();
+  await page.locator('.focus-card .more-menu').getByRole('menuitem', { name: 'Add a note' }).click();
   await page.locator('.focus-card .inline-note input').fill('Ring 0 healthy');
   await page.locator('.focus-card .inline-note button').click();
   await page.locator('#sec-notes > summary').click();
@@ -223,8 +226,9 @@ test('order Do now and subtasks with arrows, Alt+arrow keys, and drag and drop',
   await expect(focus).toHaveText('Order bravo');
   await expect.poll(nowTitles).toEqual(['Order bravo', 'Order alpha', 'Order charlie']);
 
-  // The focus card has its own way down.
-  await page.locator('.focus-card').getByRole('button', { name: 'Skip', exact: true }).click();
+  // The focus card has its own way down: Skip for now, under More.
+  await page.locator('.focus-card').getByRole('button', { name: 'More', exact: true }).click();
+  await page.locator('.focus-card .more-menu').getByRole('menuitem', { name: /^Skip for now/ }).click();
   await expect(focus).toHaveText('Order alpha');
   await expect.poll(nowTitles).toEqual(['Order alpha', 'Order bravo', 'Order charlie']);
 

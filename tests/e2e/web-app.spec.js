@@ -165,6 +165,57 @@ test('Task details: the keyboard goes in, stays in, and comes back when it close
   expect(errors).toEqual([]);
 });
 
+test('On a tablet: a rail of icons, big touch targets, few row buttons, and details down the right edge', async ({ browser, request }) => {
+  await add(request, 'Tablet first');
+  await add(request, 'Tablet second');
+  const context = await browser.newContext({ viewport: { width: 820, height: 1180 }, hasTouch: true });
+  const page = await context.newPage();
+  const errors = watchErrors(page);
+  try {
+    await open(page, request);
+    await page.locator('#tabs .tab', { hasText: group.name }).click();
+
+    // The side bar is a rail: icons only, no menu button, no bottom bar.
+    const nav = page.locator('#sidenav');
+    expect((await nav.boundingBox()).width).toBeLessThan(100);
+    await expect(nav.locator('.nav-link .nav-label').first()).toBeHidden();
+    await expect(page.locator('#nav-toggle')).toBeHidden();
+    await expect(page.locator('#bottom-nav')).toBeHidden();
+    // Its own button opens it full over the page; choosing a view closes it again.
+    await page.getByRole('button', { name: 'Expand the side bar' }).click();
+    expect((await nav.boundingBox()).width).toBeGreaterThan(200);
+    await expect(nav.getByText('Board', { exact: true })).toBeVisible();
+    await nav.locator('.nav-link[data-view="today"]').click();
+    expect((await nav.boundingBox()).width).toBeLessThan(100);
+
+    // A row shows three buttons (Mark done, Later, More), each at least 44px; moving it is under More.
+    const row = page.locator('#sec-now .item', { hasText: 'Tablet second' });
+    const buttons = row.locator('.actions > button:visible, .actions > .menu-wrap > button:visible');
+    await expect(buttons).toHaveCount(3);
+    for (const box of await buttons.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()))) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(row.locator('.order')).toBeHidden();
+    await row.getByRole('button', { name: 'More' }).click();
+    await expect(row.getByRole('menuitem', { name: 'Move up' })).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Details open as a panel along the right edge, the full height of the screen.
+    await row.getByRole('button', { name: 'Tablet second' }).click();
+    const drawer = page.getByRole('dialog', { name: 'Task details' });
+    await expect(drawer).toBeVisible();
+    // (after it slides in)
+    await expect.poll(async () => { const b = await drawer.boundingBox(); return Math.round(b.x + b.width); }).toBe(820);
+    const box = await drawer.boundingBox();
+    expect(Math.round(box.height)).toBe(1180);
+    expect(box.width).toBeLessThan(600);
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
 test('Groups: ⋯ renames a group and deletes it (its tasks move, after asking)', async ({ page, request }) => {
   const errands = await (await request.post('/api/groups', { headers: auth, data: { name: 'Errands' } })).json();
   const task = await add(request, 'Post the parcel', errands.id);

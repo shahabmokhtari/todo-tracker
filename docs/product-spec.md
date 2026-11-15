@@ -393,10 +393,19 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 * **Calm canvas:** neutral surfaces with a soft indigo/pink ambient glow. Light and dark themes are both first-class.
 * **One hero:** the "Do this now" card has a gradient hairline border (indigo → violet → pink). The border turns
   amber → rose when a reminder is ringing and green → cyan when all is clear. The card shows a priority pill,
-  toned chips, and labeled primary and secondary actions.
+  toned chips, and labeled actions. On the web the card keeps three in sight (Mark done, Later, Focus; Note when the
+  focus timer is off) and the rest under **More** (Add a note, Start the timer, Open details, Skip for now, …).
 * **Quiet lists:**
   * Rows show a haloed priority dot, the title, the breadcrumb, and toned chips (step, back in, due, overdue, notes).
-  * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible.
+  * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible. On the web
+    a row shows only ✓, Later and ⋯ (note, focus, timer, open details; Move up/down on touch).
+* **Labels in sentence case:** section and eyebrow labels ("Reminder", "Groups") are sentence case, never uppercase.
+* **Web layout:** phone (< 768px): a bottom bar and a slide-in side bar. Tablet (768–1279px): a rail of icons that
+  opens full over the page; Today in two columns when the view is at least 860px wide (else *Do now* above the smaller
+  panels side by side); task details as a full-height panel on the right edge. Wide (≥ 1280px): the full side bar,
+  which the person can narrow to the rail (remembered). Touch screens (`pointer: coarse`): every target ≥ 44px.
+* **Brand colors:** indigo `#4f46e5` → violet `#7c3aed` → pink `#db2777`, as in the icon. Text and lines in the
+  accent use the indigo (a lighter `#a5b4fc` in dark), so it stays readable.
 * **Segmented tabs:** group tabs sit in a pill track, and the selected tab is raised. Each tab has a count badge
   and an amber dot when a reminder is waiting there.
 * **Glanceable timer:** a progress ring shows the Pomodoro phase: rose for focus, green for breaks.

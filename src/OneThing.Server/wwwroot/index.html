@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#6366f1">
+  <meta name="theme-color" content="#4f46e5">
   <title>One Thing</title>
   <script src="js/theme.js"></script>
   <link rel="stylesheet" href="css/app.css">
@@ -17,10 +17,13 @@
 
   <div class="app" id="app">
     <aside class="sidenav" id="sidenav" aria-label="Navigation">
-      <a class="brand" href="#/today" aria-label="One Thing home">
-        <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
-        <span class="brand-name">One Thing</span>
-      </a>
+      <div class="nav-top">
+        <a class="brand" href="#/today" aria-label="One Thing home">
+          <img class="logo" src="img/logo.svg" alt="" width="28" height="28">
+          <span class="brand-name">One Thing</span>
+        </a>
+        <button id="nav-collapse" class="icon-btn nav-collapse" type="button" aria-controls="sidenav"></button>
+      </div>
       <nav class="nav-views" id="nav-views" aria-label="Views"></nav>
       <div class="nav-heading">Groups</div>
       <nav id="tabs" class="tabs" aria-label="Task groups"></nav>
