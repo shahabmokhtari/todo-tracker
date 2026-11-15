@@ -72,7 +72,8 @@ grep over `tests/`).
 - Hover actions show on hover and on keyboard focus (Tab into a row), and stay shown on a reminder row.
 - Move to group: the current group checked and greyed out; a subtask shows no Move to group.
 - The timer strip in each case: idle (focus only, Play), focus running alone (ring, time, label, Pause, Skip, Reset),
-  a task timed (dot, time, title, Stop, then small focus ring/time/Play), both running, and the Focus timer plugin off.
+  a task timed (dot, time, title, Stop, then small focus ring/time/Play, and while it runs a ⋯ with the phase, Skip
+  and Reset), both running, and the Focus timer plugin off.
 - Drag to reorder still starts from a row's empty area and not from the done circle or the hover buttons.
 - Dark mode contrast of `Accent` text (`#6366F1`) on the dark card, and of the white title text on the hero.
 - The compact 56 px strip and peek (not changed, but they share the window).

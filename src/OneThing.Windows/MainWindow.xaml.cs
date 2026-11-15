@@ -789,6 +789,17 @@ public partial class MainWindow : Window
         return menu;
     }
 
+    /// <summary>The small focus timer beside a task timer: what it's on, Skip and Reset, which only the full strip shows.</summary>
+    private void OnFocusTimerMenuClick(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
+        menu.Items.Add(new MenuItem { Header = _vm.Pomodoro.Label, IsEnabled = false });
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = _vm.Pomodoro.IsBreak ? "Skip the break" : "Skip to the break", Command = _vm.SkipPomodoroCommand });
+        menu.Items.Add(new MenuItem { Header = "Reset", Command = _vm.ResetPomodoroCommand });
+        menu.IsOpen = true;
+    }
+
     private async void OnMenuClick(object sender, RoutedEventArgs e)
     {
         var menu = new ContextMenu { PlacementTarget = (UIElement)sender };
