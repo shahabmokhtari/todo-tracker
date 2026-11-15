@@ -257,7 +257,7 @@ open as a sheet.
 Today works like everywhere else. On an iPad and a Mac it has two columns, like the web app: the Do this now card and
 Do now on the left; Workstreams, Coming up (what waits for later), Done today (with when each was done) and Recent notes
 on the right. With less room (an iPhone, or an iPad beside another app) it's one column, the one thing first. Tap the
-circle in front of a task to mark it done. Drag a task in Do now above another to do it first.
+circle in front of a task to mark it done (a task with open subtasks asks first). Drag a task in Do now above another to do it first.
 
 * **Timers:** the task you're timing and the focus timer share one small strip: in the bar at the top on an iPad and a
   Mac, and above the tabs on an iPhone (only while one runs; Today also has the focus timer's play button). Tap the
@@ -276,7 +276,7 @@ circle in front of a task to mark it done. Drag a task in Do now above another t
 * **Done:** what you finished, day by day, with Reopen and Archive; the Archive tab brings tasks back.
 * **Every task** has the same menu on a right-click or a long press (a card on the Board, a row anywhere): Mark done,
   Bring back now (when it waits), Later, Start the timer, Focus on this, Add a note, Open details, Open in New Window
-  (iPad and Mac), Move to (a column or a group), Copy link, Archive and Delete. Drag a task onto a group in the sidebar
+  (iPad and Mac), Move to (a column, up or down within it, or a group), Copy link, Archive and Delete. Drag a task onto a group in the sidebar
   to move it there. With a trackpad or a mouse, rows and cards light up under the pointer.
 * **With a keyboard** (iPad or Mac; hold ⌘ on an iPad to see them): ⌘N new task, ⌘F search, ⌘1 to ⌘6 the views, ⌘↩
   mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Space marks
