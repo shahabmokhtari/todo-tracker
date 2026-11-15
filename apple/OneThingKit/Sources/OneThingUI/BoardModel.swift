@@ -30,6 +30,9 @@ public final class BoardModel: ObservableObject {
     /// Note drafts and open note boxes live here (not in row views) so they survive a card moving between lists.
     @Published public var noteDrafts: [UUID: String] = [:]
     @Published public var openNotes: Set<UUID> = []
+    /// What's typed in a task's details boxes that add something (a subtask, rollout steps), per task: kept when
+    /// another task is picked and this one opened again.
+    @Published public var boxDrafts: [UUID: [DetailBox: String]] = [:]
     /// Rows whose notes are shown ("2 notes ▾"): kept here so they stay open when a card moves to another list.
     @Published public var shownNotes: Set<UUID> = []
     /// The search box: the lists show only matching tasks (TaskSearch, the same syntax as the other apps).
@@ -531,6 +534,20 @@ public final class BoardModel: ObservableObject {
         Binding(get: { self.noteDrafts[id] ?? "" }, set: { self.noteDrafts[id] = $0 })
     }
 
+    /// What's typed in one of a task's adding boxes ("" when nothing).
+    public func typed(_ id: UUID, _ box: DetailBox) -> String { boxDrafts[id]?[box] ?? "" }
+
+    /// Keeps what's typed in one of a task's adding boxes (empty: nothing kept).
+    public func setTyped(_ id: UUID, _ box: DetailBox, _ text: String) {
+        var boxes = boxDrafts[id] ?? [:]
+        boxes[box] = text.isEmpty ? nil : text
+        boxDrafts[id] = boxes.isEmpty ? nil : boxes
+    }
+
+    public func typedBinding(_ id: UUID, _ box: DetailBox) -> Binding<String> {
+        Binding(get: { self.typed(id, box) }, set: { self.setTyped(id, box, $0) })
+    }
+
     /// Saves fields changed in a task's details (only those: edits made elsewhere meanwhile stay).
     /// `onFail`: the change didn't happen (the server said no or didn't answer, or it isn't valid here).
     @discardableResult
@@ -978,6 +995,9 @@ public final class BoardModel: ObservableObject {
 
 /// A field of a task's details that keeps what's typed until it's saved.
 public enum DraftField: Hashable, Sendable { case title, details, repeatRule }
+
+/// A box in a task's details that adds something when you press Add (what's typed waits there until then).
+public enum DetailBox: Hashable, Sendable { case subtask, steps }
 
 /// What's typed in a field, and the value it started from.
 public struct FieldDraft: Equatable, Sendable {

@@ -15,11 +15,11 @@ struct TaskRowActions: ViewModifier {
     @State private var later = false
     @State private var more = false
     @State private var picking = false
+    @Environment(\.shellState) private var shell
 
     func body(content: Content) -> some View {
         let item = model.board.find(id)
-        let waiting = item.map { !$0.isDone && Agenda.state(of: $0, now: model.now) == .waiting } ?? false
-        let actions = Presentation.rowActions(isDone: item?.isDone ?? false, isWaiting: waiting)
+        let actions = Presentation.rowActions(isDone: item?.isDone ?? false, canBringBack: item.map { Presentation.canBringBack($0, now: model.now) } ?? false)
         content
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 ForEach(actions.leading, id: \.self) { swipeButton($0) }
@@ -59,7 +59,7 @@ struct TaskRowActions: ViewModifier {
     @ViewBuilder private func swipeButton(_ action: RowAction) -> some View {
         switch action {
         case .done:
-            Button { model.complete(id) } label: { Label(action.title, systemImage: action.symbol) }.tint(.green)
+            Button { markDone(model, shell, id) } label: { Label(action.title, systemImage: action.symbol) }.tint(.green)
         case .reopen:
             Button { model.reopen(id) } label: { Label(action.title, systemImage: action.symbol) }.tint(Theme.accent)
         case .bringBack:
@@ -70,6 +70,12 @@ struct TaskRowActions: ViewModifier {
             Button { more = true } label: { Label(action.title, systemImage: action.symbol) }.tint(.gray)
         }
     }
+}
+
+/// Marks a task done through the window (a task with open subtasks asks first); on its own, at once.
+@MainActor
+func markDone(_ model: BoardModel, _ shell: ShellState?, _ id: UUID) {
+    if let shell { shell.markDone(id) } else { model.complete(id) }
 }
 
 extension View {

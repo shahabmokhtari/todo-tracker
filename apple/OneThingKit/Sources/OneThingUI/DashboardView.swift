@@ -405,7 +405,7 @@ public struct DashboardView: View {
 
     private var doneSection: some View {
         listSection("Done today", count: model.doneToday.count, expanded: $showDone) {
-            doneContent
+            doneContent(inList: true)
         }
     }
 
@@ -479,7 +479,28 @@ public struct DashboardView: View {
 
     private var workstreamsEmpty: String { "Give a task subtasks or steps and its progress shows here." }
 
-    @ViewBuilder private var doneContent: some View {
+    /// A task finished today: its title (and parent), and when.
+    private func doneRow(_ item: WorkItem) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title).strikethrough().foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                if let parent = item.parent {
+                    Text(parent.title).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            if let at = Agenda.doneAt(model.board, item) {
+                Text(at.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .accessibilityLabel("done at \(at.formatted(date: .omitted, time: .shortened))")
+            }
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    /// `inList`: rows of a list (picked to open, swiped); else rows of a card, each a button that opens it, with Reopen.
+    @ViewBuilder private func doneContent(inList: Bool) -> some View {
         if let cheer = Agenda.cheer(model.doneToday.count) {
             Text("🎉 \(cheer)")
                 .font(.subheadline.weight(.semibold))
@@ -493,24 +514,22 @@ public struct DashboardView: View {
                 .listRowSeparator(.hidden)
         }
         ForEach(model.doneToday) { item in
-            HStack(spacing: 10) {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(item.title).strikethrough().foregroundStyle(.secondary)
-                    if let parent = item.parent {
-                        Text(parent.title).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
-                    }
+            if inList {
+                doneRow(item)
+                    .tag(item.id)
+                    .taskRowActions(model, id: item.id) { open(item.id) }
+            } else {
+                HStack(spacing: 8) {
+                    Button { open(item.id) } label: { doneRow(item) }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens it")
+                    Button("Reopen") { model.reopen(item.id) }
+                        .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
+                        .accessibilityLabel("Reopen \(item.title)")
                 }
-                Spacer(minLength: 4)
-                if let at = Agenda.doneAt(model.board, item) {
-                    Text(at.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                        .accessibilityLabel("done at \(at.formatted(date: .omitted, time: .shortened))")
-                }
+                .pointerHover(cornerRadius: 8)
+                .contextMenu { TaskContextMenu(model: model, id: item.id) }
             }
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
-            .tag(item.id)
-            .taskRowActions(model, id: item.id) { open(item.id) }
         }
         if model.archivedCount > 0 && model.searchText.isEmpty {
             // Put away, never gone: the search finds them (and their details have Unarchive).
@@ -603,7 +622,7 @@ public struct DashboardView: View {
                 }
             }
             foldingCard("Done today", count: model.doneToday.count, expanded: $showDone) {
-                doneContent
+                doneContent(inList: false)
             }
             foldingCard("Recent notes", count: model.dashboard.recentNotes.count, expanded: $showNotes) {
                 notesContent
@@ -1084,14 +1103,20 @@ struct SnoozePicker: View {
 struct NoteField: View {
     @ObservedObject var model: BoardModel
     let id: UUID
+    @Environment(\.shellState) private var shell
+    /// Typing here: the list's Space and Return wait (they'd mark the picked task done, or open it).
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack {
             TextField("What did you do? What is next?", text: model.draftBinding(for: id))
                 .textFieldStyle(.roundedBorder)
+                .focused($focused)
                 .onSubmit(save)
             Button("Save", action: save).buttonStyle(.borderedProminent).tint(Theme.accent)
         }
+        .onChange(of: focused) { _, now in shell?.typing = now }
+        .onDisappear { if focused { shell?.typing = false } }
     }
 
     private func save() {
@@ -1157,10 +1182,12 @@ struct DoneCircle: View {
     @ObservedObject var model: BoardModel
     let entry: AgendaEntry
     @State private var hovering = false
+    @Environment(\.shellState) private var shell
 
     var body: some View {
         let color = Color(hex: entry.effectivePriority.hexColor)
-        if entry.state == .waiting {
+        // Only its own snooze or wait can be lifted here (one that waits for its parent is finished like any other).
+        if Presentation.canBringBack(entry.item, now: model.now) {
             Button { model.bringBack(entry.item.id) } label: {
                 Image(systemName: "clock").font(.body).foregroundStyle(.secondary).frame(width: 22, height: 22)
             }
@@ -1168,7 +1195,7 @@ struct DoneCircle: View {
             .accessibilityLabel("Bring back now")
             .help("Bring back now")
         } else {
-            Button { model.complete(entry.item.id) } label: {
+            Button { markDone(model, shell, entry.item.id) } label: {
                 ZStack {
                     Circle().strokeBorder(color, lineWidth: 2)
                     Circle().fill(color.opacity(hovering ? 0.9 : 0.12)).padding(3)
@@ -1218,12 +1245,12 @@ struct ListKeys: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onKeyPress(.space) {
-                guard let id = shell?.selectedTask, model.board.find(id) != nil else { return .ignored }
-                model.toggleDone(id)
+                guard let shell, let id = shell.keyTarget else { return .ignored }
+                shell.toggleDone(id)
                 return .handled
             }
             .onKeyPress(.return) {
-                guard let id = shell?.selectedTask, model.board.find(id) != nil else { return .ignored }
+                guard let id = shell?.keyTarget else { return .ignored }
                 open(id)
                 return .handled
             }

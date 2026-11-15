@@ -76,11 +76,17 @@ public struct TimerStripLayout: Equatable, Sendable {
 }
 
 public enum Presentation {
-    /// A row's swipes: Done (Reopen when finished, Now when it waits) from the leading edge; Later and More from the
-    /// trailing one.
-    public static func rowActions(isDone: Bool, isWaiting: Bool) -> RowActions {
+    /// A row's swipes: Done (Reopen when finished, Now when it waits on its own) from the leading edge; Later and More
+    /// from the trailing one.
+    public static func rowActions(isDone: Bool, canBringBack: Bool) -> RowActions {
         if isDone { return RowActions(leading: [.reopen], trailing: [.more]) }
-        return RowActions(leading: [isWaiting ? .bringBack : .done], trailing: [.later, .more])
+        return RowActions(leading: [canBringBack ? .bringBack : .done], trailing: [.later, .more])
+    }
+
+    /// The task waits because of its own snooze or wait (not only a parent's), so *Bring back now* does something.
+    public static func canBringBack(_ item: WorkItem, now: Date) -> Bool {
+        guard !item.isDone, Agenda.state(of: item, now: now) == .waiting else { return false }
+        return item.afterId != nil || (item.nextActionAt.map { $0 > now } ?? false)
     }
 
     /// The one strip for both timers (nil: nothing to show). `showIdle`: offer the focus timer even when it isn't

@@ -104,6 +104,16 @@ public struct AppShell: View {
                 shell.deleting = nil
             }
         }
+        // Marking done a task with open subtasks finishes them too: asked first (the same question as the details).
+        .confirmationDialog("Also mark the open subtasks as done?",
+                            isPresented: Binding(get: { shell.confirmingDone != nil }, set: { if !$0 { shell.confirmingDone = nil } }),
+                            titleVisibility: .visible) {
+            Button("Mark all done") {
+                if let id = shell.confirmingDone { model.complete(id) }
+                shell.confirmingDone = nil
+            }
+            Button("Cancel", role: .cancel) { shell.confirmingDone = nil }
+        }
         .alert("New group", isPresented: $addingGroup) {
             TextField("Name", text: $newGroupName)
             Button("Add") {
@@ -204,11 +214,8 @@ public struct AppShell: View {
 
     private var inspectorShown: Binding<Bool> {
         Binding(get: { shell.inspected != nil }, set: { shown in
-            if !shown {
-                // However the details go away, what was typed is saved.
-                model.saveAllDrafts()
-                shell.inspected = nil
-            }
+            // However the details go away, what was typed is saved.
+            if !shown { shell.closeDetails() }
         })
     }
 
@@ -341,9 +348,8 @@ public struct AppShell: View {
         }
         .sheet(isPresented: Binding(get: { shell.inspected != nil }, set: {
             if !$0 {
-                model.saveAllDrafts()
-                shell.inspected = nil
-                // No keyboard to act on it: the same row opens again with a tap.
+                shell.closeDetails()
+                // No keyboard to act on it: the same row (or card) opens again with a tap.
                 shell.selectedTask = nil
             }
         })) {
@@ -482,7 +488,7 @@ public struct OneThingCommands: Commands {
         CommandMenu("Task") {
             let id = shell?.currentTask
             let item = id.flatMap { shell?.model.board.find($0) }
-            Button(item?.isDone == true ? "Reopen" : "Mark Done") { if let id { shell?.model.toggleDone(id) } }
+            Button(item?.isDone == true ? "Reopen" : "Mark Done") { if let id { shell?.toggleDone(id) } }
                 // ⌘Return, never plain Return: in the views Return renames or opens.
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(item == nil)

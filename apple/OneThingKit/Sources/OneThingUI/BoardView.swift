@@ -140,7 +140,7 @@ struct BoardView: View {
             return .handled
         }
         if press.key == .space {
-            model.toggleDone(card.id)
+            shell.toggleDone(card.id)
             return .handled
         }
         if press.key == .return {
@@ -319,7 +319,7 @@ struct BoardCard: View {
                 Button { model.archive(card.id) } label: { Image(systemName: "archivebox") }
                     .accessibilityLabel("Archive \(card.title)").help("Archive")
             } else {
-                Button { model.complete(card.id) } label: { Image(systemName: "checkmark.circle") }
+                Button { markDone(model, shell, card.id) } label: { Image(systemName: "checkmark.circle") }
                     .accessibilityLabel("Mark \(card.title) done").help("Mark done")
             }
             Menu {

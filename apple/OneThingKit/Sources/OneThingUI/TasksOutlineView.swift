@@ -113,7 +113,7 @@ struct TasksOutlineView: View {
             .buttonStyle(.borderless)
             .disabled(!row.hasChildren)
             .accessibilityLabel(row.expanded ? "Hide subtasks of \(item.title)" : "Show subtasks of \(item.title)")
-            Button { model.toggleDone(item.id) } label: {
+            Button { if let shell { shell.toggleDone(item.id) } else { model.toggleDone(item.id) } } label: {
                 Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(item.isDone ? Color.green : Color(hex: item.priority.hexColor))
             }
@@ -327,7 +327,7 @@ struct TasksOutlineView: View {
         case .return:
             startRename(item)
         case .space:
-            model.toggleDone(id)
+            if let shell { shell.toggleDone(id) } else { model.toggleDone(id) }
         case .tab:
             return nest(id, out: press.modifiers.contains(.shift))
         case .upArrow where press.modifiers.contains(.option):
