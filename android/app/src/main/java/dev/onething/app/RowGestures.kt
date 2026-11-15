@@ -23,7 +23,11 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -35,6 +39,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -65,6 +70,34 @@ fun Modifier.rowGestures(onClick: () -> Unit, onMenu: () -> Unit, hover: Boolean
 }
 
 /**
+ * Decides when a swipe on a row does its action: only when the row has really moved past [fraction] of its width in
+ * that direction (a quick flick while scrolling doesn't count), and once per swipe (material3 asks more than once).
+ * [moved] back to the start lets the next swipe act.
+ */
+class SwipeGuard(private val fraction: Float = 0.35f) {
+    enum class Action { DONE, LATER }
+
+    private var acted = false
+
+    /** The action to do now for a swipe toward [wanted] with the row at [offset] (px, + is right) of [width], or null. */
+    fun decide(wanted: Action, offset: Float, width: Float): Action? {
+        if (acted || width <= 0f) return null
+        val far = when (wanted) {
+            Action.DONE -> offset >= width * fraction
+            Action.LATER -> -offset >= width * fraction
+        }
+        if (!far) return null
+        acted = true
+        return wanted
+    }
+
+    /** The row is at [offset]: back in place, the next swipe may act. */
+    fun moved(offset: Float) {
+        if (kotlin.math.abs(offset) < 1f) acted = false
+    }
+}
+
+/**
  * Swipe a row right to mark it done ([onDone]; null: it can't be, it has subtasks to do) or left for Later
  * ([onLater]). The row springs back: what happens next (Undo, the Later menu) shows on its own.
  */
@@ -73,21 +106,37 @@ fun Modifier.rowGestures(onClick: () -> Unit, onMenu: () -> Unit, hover: Boolean
 fun SwipeActions(onDone: (() -> Unit)?, onLater: () -> Unit, content: @Composable () -> Unit) {
     val done by rememberUpdatedState(onDone)
     val later by rememberUpdatedState(onLater)
+    val guard = remember { SwipeGuard() }
+    var width by remember { mutableFloatStateOf(0f) }
+    // Set once the state exists (confirmValueChange reads the row's real offset through it).
+    val holder = remember { arrayOfNulls<androidx.compose.material3.SwipeToDismissBoxState>(1) }
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            when (value) {
-                SwipeToDismissBoxValue.StartToEnd -> done?.invoke()
-                SwipeToDismissBoxValue.EndToStart -> later()
-                SwipeToDismissBoxValue.Settled -> Unit
+            val offset = holder[0]?.let { runCatching { it.requireOffset() }.getOrNull() } ?: 0f
+            val wanted = when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> SwipeGuard.Action.DONE
+                SwipeToDismissBoxValue.EndToStart -> SwipeGuard.Action.LATER
+                SwipeToDismissBoxValue.Settled -> null
+            }
+            when (wanted?.let { guard.decide(it, offset, width) }) {
+                SwipeGuard.Action.DONE -> done?.invoke()
+                SwipeGuard.Action.LATER -> later()
+                null -> Unit
             }
             // Never dismissed: the list redraws (done) or the menu opens (Later).
             false
         },
         positionalThreshold = { it * 0.35f },
     )
+    holder[0] = state
+    // Back in place: the next swipe may act.
+    LaunchedEffect(state) {
+        snapshotFlow { runCatching { state.requireOffset() }.getOrDefault(0f) }.collect { guard.moved(it) }
+    }
     SwipeToDismissBox(
         state = state,
         enableDismissFromStartToEnd = onDone != null,
+        modifier = Modifier.onSizeChanged { width = it.width.toFloat() },
         backgroundContent = {
             val direction = state.dismissDirection
             val toDone = direction == SwipeToDismissBoxValue.StartToEnd

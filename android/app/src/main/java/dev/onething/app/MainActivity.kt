@@ -27,7 +27,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // When a focus session or break ends with the app closed, the phone says so.
-        if (!vm.demo) vm.onPhaseEnds = { ends -> FocusAlarm.schedule(applicationContext, ends) }
+        // (Not for the demo board's made-up timer.)
+        vm.onPhaseEnds = { ends -> if (!vm.demo) FocusAlarm.schedule(applicationContext, ends) }
         setContent {
             // The status bar's icons follow the chosen theme (dark icons on the light one).
             val dark = vm.theme == "dark" || (vm.theme == "system" && isSystemInDarkTheme())
@@ -53,18 +54,28 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // Opened again without asking for the demo board (the launcher, a link): back to your own tasks.
+        vm.useIntent(if (intent.hasExtra(DemoBoard.EXTRA)) intent.getBooleanExtra(DemoBoard.EXTRA, false) else null)
         vm.openLink(intent.dataString)
     }
 
-    // A keyboard (a tablet's, a Chromebook's): Ctrl+N adds a task, Ctrl+F searches.
+    // A keyboard (a tablet's, a Chromebook's): Ctrl+N adds a task, Ctrl+F searches. Not while you type in a box: the
+    // keys are the box's then, and its focus stays where it is.
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.isCtrlPressed && event.repeatCount == 0) {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && event.isCtrlPressed && event.repeatCount == 0 && !typing()) {
             when (event.keyCode) {
                 android.view.KeyEvent.KEYCODE_N -> { vm.addRequested = true; return true }
                 android.view.KeyEvent.KEYCODE_F -> { vm.requestSearch(); return true }
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /** Whether a text box has the keyboard's input now (the input method is serving one). */
+    private fun typing(): Boolean {
+        val imm = getSystemService(android.view.inputmethod.InputMethodManager::class.java) ?: return false
+        val focused = window?.decorView?.findFocus() ?: return false
+        return imm.isActive(focused) && imm.isAcceptingText
     }
 
     // Back to the app: what came back meanwhile (this morning's "tomorrow" tasks) shows at once.

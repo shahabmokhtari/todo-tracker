@@ -52,7 +52,8 @@ The solution includes the Windows app, so on Linux and macOS build and test the 
   after changing placement code).
 - **Android by hand:** an emulator (`system-images;android-35;google_apis;x86_64`) runs the app; a debug build started
   with `adb shell am start -n dev.onething/.app.MainActivity --ez demo true` shows a made-up board (`DemoBoard`, in a
-  folder of its own, never your tasks), for screenshots;
+  folder of its own, never your tasks; a banner says so, and opening the app again without the extra leaves it), for
+  screenshots;
   `adb shell date @<seconds>` (as root) moves its clock to reach a break quickly.
 
 CI (`.github/workflows/ci.yml`) runs seven jobs on every PR: Linux (core, server, CLI, view models, coverage), Linux

@@ -84,6 +84,9 @@ import java.util.UUID
 /** Asks (once) for what reminders need: notifications, and alarms on time. Called before a snooze, reminder or focus. */
 val LocalAskToNotify = staticCompositionLocalOf<() -> Unit> { {} }
 
+/** A window this short (dp; a phone on its side) scrolls Today's top away with the list. */
+const val SHORT_WINDOW = 680
+
 /** How wide Today must be for two columns: the one thing and Do now, then Workstreams, Coming up and Done today. */
 val TODAY_TWO_COLUMNS: Dp = 840.dp
 
@@ -119,8 +122,9 @@ fun TodayScreen(vm: BoardViewModel, onSettings: () -> Unit, onFeedback: () -> Un
     androidx.compose.runtime.SideEffect { onBusy(noteFor != null || addingGroup || editingGroup != null) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val twoColumns = maxWidth >= TODAY_TWO_COLUMNS
-        // Short (a phone on its side): the top scrolls away with the list, so the list has room.
-        val short = maxHeight < 520.dp && !twoColumns
+        // Short (a phone on its side): the top scrolls away with the list, so the list has room. Worked out from the
+        // window, not the room left (the timers' strip comes and goes), so the boxes up there stay put while you type.
+        val short = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp < SHORT_WINDOW && !twoColumns
         val gutter = if (twoColumns) 24.dp else 16.dp
         val top: @Composable () -> Unit = {
             Header(vm, onSettings = onSettings, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = onFeedback)
@@ -134,7 +138,17 @@ fun TodayScreen(vm: BoardViewModel, onSettings: () -> Unit, onFeedback: () -> Un
             val results = vm.searchResults
             val bottom = PaddingValues(top = 4.dp, bottom = 24.dp)
             when {
-                results != null -> SearchResults(results, vm, if (short) top else null)
+                // One list whose first row is the top (the same row while you type, search or not).
+                short -> LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item(key = "top") { Column { top() } }
+                    if (results != null) {
+                        found(results, vm)
+                    } else {
+                        doNow(vm, onNote, startFocusOn)
+                        aside(vm, showStreams, { showStreams = !showStreams }, showNotes, { showNotes = !showNotes })
+                    }
+                }
+                results != null -> SearchResults(results, vm)
                 twoColumns -> Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     LazyColumn(Modifier.weight(1.25f).fillMaxHeight(), contentPadding = bottom, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         doNow(vm, onNote, startFocusOn)
@@ -144,7 +158,6 @@ fun TodayScreen(vm: BoardViewModel, onSettings: () -> Unit, onFeedback: () -> Un
                     }
                 }
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (short) item(key = "top") { Column { top() } }
                     doNow(vm, onNote, startFocusOn)
                     aside(vm, showStreams, { showStreams = !showStreams }, showNotes, { showNotes = !showNotes })
                 }
@@ -309,36 +322,38 @@ private fun SearchBox(vm: BoardViewModel, onClose: () -> Unit) {
 }
 
 @Composable
-private fun SearchResults(results: List<WorkItem>, vm: BoardViewModel, top: (@Composable () -> Unit)? = null) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) {
-        top?.let { item(key = "top") { Column { it() } } }
-        item { SectionTitle("Found", results.size) }
-        if (results.isEmpty()) item { Text("Nothing matches. Done tasks are found with is:done, archived ones with is:archived.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        items(results, key = { "f" + it.id }) { item ->
-            Card(Modifier.fillMaxWidth().clickable { vm.openTask(item.id) }) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(
-                        titleWithIcon(item),
-                        style = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (item.isDone) TextDecoration.LineThrough else null),
-                    )
-                    val state = Agenda.stateOf(item, vm.now)
-                    val parts = listOfNotNull(
-                        item.ancestors.reversed().takeIf { it.isNotEmpty() }?.joinToString(" › ") { it.title },
-                        vm.groupName(item.groupId),
-                        when {
-                            item.isArchived -> "archived"
-                            state == ItemState.DONE -> "done"
-                            state == ItemState.WAITING -> "waiting"
-                            state == ItemState.LOCKED -> "after an earlier step"
-                            else -> null
-                        },
-                    )
-                    Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+private fun SearchResults(results: List<WorkItem>, vm: BoardViewModel) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxSize()) { found(results, vm) }
+}
+
+/** What the search found, as rows of a list. */
+private fun LazyListScope.found(results: List<WorkItem>, vm: BoardViewModel) {
+    item(key = "found") { SectionTitle("Found", results.size) }
+    if (results.isEmpty()) item(key = "nothing") { Text("Nothing matches. Done tasks are found with is:done, archived ones with is:archived.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    items(results, key = { "f" + it.id }) { item ->
+        Card(Modifier.fillMaxWidth().clickable { vm.openTask(item.id) }) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    titleWithIcon(item),
+                    style = MaterialTheme.typography.bodyLarge.copy(textDecoration = if (item.isDone) TextDecoration.LineThrough else null),
+                )
+                val state = Agenda.stateOf(item, vm.now)
+                val parts = listOfNotNull(
+                    item.ancestors.reversed().takeIf { it.isNotEmpty() }?.joinToString(" › ") { it.title },
+                    vm.groupName(item.groupId),
+                    when {
+                        item.isArchived -> "archived"
+                        state == ItemState.DONE -> "done"
+                        state == ItemState.WAITING -> "waiting"
+                        state == ItemState.LOCKED -> "after an earlier step"
+                        else -> null
+                    },
+                )
+                Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        item { Spacer(Modifier.height(24.dp)) }
     }
+    item(key = "found-end") { Spacer(Modifier.height(24.dp)) }
 }
 
 @Composable

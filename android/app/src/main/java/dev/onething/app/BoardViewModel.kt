@@ -238,22 +238,66 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
      * A made-up board (DemoBoard), for screenshots: a debug build started with `--ez demo true`. It lives in a folder
      * of its own, cleared on every start; the person's tasks, sync, widgets and alarms are left alone.
      */
-    val demo: Boolean = BuildConfig.DEBUG && savedState.get<Boolean>(DemoBoard.EXTRA) == true
+    var demo: Boolean by mutableStateOf(DemoMode.wanted(BuildConfig.DEBUG, savedState.get<Boolean>(DemoBoard.EXTRA)))
+        private set
+
+    // Goes up when the board shown switches (into or out of the demo): what was on its way to the other one is dropped.
+    private var generation = 0
+    private var opening: kotlinx.coroutines.Job? = null
 
     init {
         // Shown once the tasks folder is open (just below); changes wait until then.
         board = TaskBoard()
         readOnly = true
-        viewModelScope.launch {
-            val local = withContext(Dispatchers.IO) { if (demo) openDemo(application) else BoardHub.local(application) }
-            val sync = if (demo) null else withContext(Dispatchers.IO) { SyncHub.get(application) }
+        open()
+        refresh()
+    }
+
+    /**
+     * An intent came (the app opened again, from the launcher or a link): the demo board is left unless this one asks
+     * for it too (and taken up when it does), so your own tasks never go into the demo's folder.
+     */
+    fun useIntent(demoExtra: Boolean?) {
+        val next = DemoMode.next(demo, BuildConfig.DEBUG, demoExtra) ?: return
+        demo = next
+        savedState[DemoBoard.EXTRA] = next
+        generation++
+        if (BoardHub.live === this) BoardHub.live = null
+        opened = null
+        phoneSync = null
+        board = TaskBoard()
+        readOnly = true
+        openTaskId = null
+        requestedTaskId = null
+        selectedGroup = null
+        undoable = null
+        status = null
+        scheduled = null
+        reminderSet = false
+        open()
+        refresh()
+    }
+
+    /** Leaves the demo board for your own tasks (the banner's button). */
+    fun leaveDemo() = useIntent(null)
+
+    /** Opens the tasks folder (or the demo's), off the screen's thread, then shows it. */
+    private fun open() {
+        val application = getApplication<Application>()
+        val asDemo = demo
+        val gen = generation
+        opening?.cancel()
+        opening = viewModelScope.launch {
+            val local = withContext(Dispatchers.IO) { if (asDemo) openDemo(application) else BoardHub.local(application) }
+            val sync = if (asDemo) null else withContext(Dispatchers.IO) { SyncHub.get(application) }
             val loaded = withContext(Dispatchers.IO) { runCatching { local.store?.snapshot() }.getOrNull() }
+            if (gen != generation) return@launch
             opened = local
             phoneSync = sync
             moving = null
             showDeviceBoard(loaded)
             // From now on alarms and notification buttons change the tasks through this screen (the same store).
-            if (!demo) BoardHub.live = this@BoardViewModel
+            if (!asDemo) BoardHub.live = this@BoardViewModel
             readSyncStatus { if (syncOn) SyncHub.startBackground(application) }
             reminderSet = false
             refresh()
@@ -263,7 +307,6 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
                 openLink(it)
             }
         }
-        refresh()
     }
 
     /**
@@ -965,13 +1008,15 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
      */
     private fun <T> save(changed: Boolean = true, at: Instant, mutate: (TaskBoard, Instant) -> T, after: (Result<T>) -> Unit) {
         val s = store ?: return after(Result.failure(BoardException("Your board is from a newer version of the app, so changes are off to protect it.")))
+        val gen = generation
         writing++
         BoardHub.disk.launch {
             val result = runCatching { s.update { mutate(it, at) } }
             val saved = runCatching { s.snapshot() }.getOrNull()
             withContext(Dispatchers.Main) {
                 writing--
-                if (saved != null && writing == 0) board = saved
+                // Saved to a board no longer shown (the demo was left meanwhile): not shown.
+                if (gen == generation && saved != null && writing == 0) board = saved
                 if (changed && result.isSuccess) syncSchedule.changed(Instant.now())
                 after(result)
             }
@@ -981,9 +1026,11 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** Sync (or another part of the app) changed the tasks folder: show it as it is now (read off the screen's thread). */
     override fun reloadLocal() {
         val s = store ?: return
+        val gen = generation
         BoardHub.disk.launch {
             val saved = runCatching { s.snapshot() }.getOrNull()
             withContext(Dispatchers.Main) {
+                if (gen != generation) return@withContext
                 if (saved != null && writing == 0) board = saved
                 reminderSet = false
                 refresh()

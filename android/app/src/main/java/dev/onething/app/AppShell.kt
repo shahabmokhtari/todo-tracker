@@ -1,6 +1,7 @@
 package dev.onething.app
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -170,7 +172,9 @@ fun AppShell(vm: BoardViewModel) {
             val windowHeight = maxHeight
             val wide = windowWidth >= WIDE_WINDOW
             val content: @Composable () -> Unit = {
-                Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                if (vm.demo) DemoBanner(onLeave = { vm.leaveDemo() })
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     when (view) {
                         AppView.TODAY -> TodayScreen(vm, onSettings = { go(AppView.SETTINGS) }, onFeedback = { feedback = "button" }, onBusy = { todayBusy = it })
                         AppView.BOARD -> BoardScreen(vm, open, onAdd = { adding = true })
@@ -181,6 +185,7 @@ fun AppShell(vm: BoardViewModel) {
                         AppView.SETTINGS -> SettingsScreen(vm, onClose = { go(AppView.TODAY) }, onFeedback = { feedback = "button" })
                     }
                     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
+                }
                 }
             }
             if (wide) {
@@ -297,6 +302,23 @@ fun AppShell(vm: BoardViewModel) {
         // the full-screen break.
         val quiet = feedback == null && !more && !adding && !todayBusy && !askExact && vm.openTaskId == null && vm.breakPrompt == null
         ShakeToFeedback(enabled = vm.shakeToFeedback && quiet) { feedback = "shake" }
+    }
+}
+
+/** Says the demo board is on (made-up tasks, in a folder of their own), with a way back to your own tasks. */
+@Composable
+private fun DemoBanner(onLeave: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(Brand.violet).padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "Demo board: made-up tasks, not yours. Changes here aren't kept.",
+            style = MaterialTheme.typography.labelLarge, color = androidx.compose.ui.graphics.Color.White, modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onLeave, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = androidx.compose.ui.graphics.Color.White)) {
+            Text("Leave", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        }
     }
 }
 

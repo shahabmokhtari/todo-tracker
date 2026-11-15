@@ -15,6 +15,15 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
+/** When the app shows the demo board: only a debug build started with the extra, and only until it's opened without it. */
+object DemoMode {
+    /** Whether a start with the demo extra [extra] shows the demo board. */
+    fun wanted(debug: Boolean, extra: Boolean?): Boolean = debug && extra == true
+
+    /** What an intent with [extra] switches the board to (true: the demo, false: your tasks), or null: it stays. */
+    fun next(on: Boolean, debug: Boolean, extra: Boolean?): Boolean? = wanted(debug, extra).takeIf { it != on }
+}
+
 /**
  * A made-up board for screenshots and trying the app (the iPhone's DemoBoard, the same story as the README's other
  * screenshots). Only a debug build opens it, started with `--ez demo true`, in a folder of its own that's cleared on
