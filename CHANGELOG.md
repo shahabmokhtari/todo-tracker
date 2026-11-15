@@ -11,7 +11,7 @@ it's due, and lets AI agents read and change your list. Your tasks are markdown 
 ### Apps
 
 - **Windows:** a sidebar that docks to either edge of any monitor or floats on top, with a tray icon, a global
-  hotkey, toasts, and the full app in its own window. It sits beside full-screen apps and Remote Desktop.
+  hotkey, toasts, and the full app in its own window. A full-screen Remote Desktop session makes room for it.
 - **Mac:** a native app with a sidebar (Today, Board, Tasks, Plan, Done, Reports), a menu bar glance and desktop
   widgets.
 - **iPhone and iPad:** a native app. On iPad it has a persistent sidebar, a two-column Today and task details
@@ -20,7 +20,7 @@ it's due, and lets AI agents read and change your list. Your tasks are markdown 
   On tablets it has a side rail and a two-column Today.
 - **Apple TV:** one thing now, in big type, with a focus timer you run from the remote.
 - **Web and browser:** the web app in any browser, and a side panel extension for Edge, Chrome and Safari.
-- **Linux:** a tray app for quick add.
+- **Linux:** a tray app that runs everything, with the full app in a window.
 
 ### Focus on one thing
 
@@ -35,8 +35,8 @@ it's due, and lets AI agents read and change your list. Your tasks are markdown 
 
 - Tasks are markdown files in a folder you choose (an Obsidian vault works), with version history. Nothing is ever
   lost: changes are versions, and agents can't delete.
-- Sync between your devices through OneDrive, iCloud Drive or a private GitHub gist. Phones sync on their own, or
-  use your computer's tasks over Wi-Fi or Tailscale.
+- Sync between your devices through OneDrive, iCloud Drive or a private GitHub gist. Phones sync on their own, no
+  computer needed.
 - Connectors for Notion, Microsoft To Do and GitHub Issues that never delete.
 
 ### For AI agents
@@ -49,7 +49,7 @@ it's due, and lets AI agents read and change your list. Your tasks are markdown 
 
 ### Also
 
-- Send feedback from every app.
+- Send feedback from the apps on your computer, phone and browser.
 - A new app icon and the name One Thing (formerly Todo Tracker).
 
 [2.0.0]: https://github.com/shahabmokhtari/todo-tracker/releases/tag/v2.0.0
