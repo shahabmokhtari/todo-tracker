@@ -38,7 +38,81 @@ public struct SubtaskRow: Identifiable {
     public let depth: Int
 }
 
+/// What a swipe on a task's row does (iPhone, iPad and Mac): the same as its context menu, fewer of them.
+public enum RowAction: String, Sendable {
+    case done, reopen, bringBack, later, more
+
+    public var title: String {
+        switch self {
+        case .done: return "Done"
+        case .reopen: return "Reopen"
+        case .bringBack: return "Now"
+        case .later: return "Later"
+        case .more: return "More"
+        }
+    }
+
+    public var symbol: String {
+        switch self {
+        case .done: return "checkmark"
+        case .reopen, .bringBack: return "arrow.uturn.backward"
+        case .later: return "clock"
+        case .more: return "ellipsis.circle"
+        }
+    }
+}
+
+/// A row's swipe actions: from the leading edge (the one you do most), and from the trailing edge.
+public struct RowActions: Equatable, Sendable {
+    public let leading: [RowAction]
+    public let trailing: [RowAction]
+}
+
+/// What the timer strip shows: the time tracker, and the focus timer in full or as a small clock beside it.
+public struct TimerStripLayout: Equatable, Sendable {
+    public enum Focus: Equatable, Sendable { case full, compact }
+    public let tracker: Bool
+    public let focus: Focus?
+}
+
 public enum Presentation {
+    /// A row's swipes: Done (Reopen when finished, Now when it waits) from the leading edge; Later and More from the
+    /// trailing one.
+    public static func rowActions(isDone: Bool, isWaiting: Bool) -> RowActions {
+        if isDone { return RowActions(leading: [.reopen], trailing: [.more]) }
+        return RowActions(leading: [isWaiting ? .bringBack : .done], trailing: [.later, .more])
+    }
+
+    /// The one strip for both timers (nil: nothing to show). `showIdle`: offer the focus timer even when it isn't
+    /// running (Today, and the toolbar on an iPad or a Mac).
+    public static func timerStrip(tracking: Bool, focusPhase: PomodoroPhase, showIdle: Bool) -> TimerStripLayout? {
+        let focusing = focusPhase != .idle
+        switch (tracking, focusing) {
+        case (false, false): return showIdle ? TimerStripLayout(tracker: false, focus: .full) : nil
+        case (true, false): return TimerStripLayout(tracker: true, focus: showIdle ? .compact : nil)
+        case (false, true): return TimerStripLayout(tracker: false, focus: .full)
+        case (true, true): return TimerStripLayout(tracker: true, focus: .compact)
+        }
+    }
+
+    /// "Focus timer" (not running), "Focus", "Break · Write the doc".
+    public static func focusLabel(_ timer: PomodoroTimer, taskTitle: String?) -> String {
+        let phase: String
+        switch timer.phase {
+        case .shortBreak: phase = "Break"
+        case .longBreak: phase = "Long break"
+        case .focus: phase = "Focus"
+        case .idle: return "Focus timer"
+        }
+        return taskTitle.map { "\(phase) · \($0)" } ?? phase
+    }
+
+    /// Today in two columns (the one thing and Do now; then Workstreams, Coming up and Done today) once both fit.
+    public static func todayColumns(width: Double) -> Int { width >= 680 ? 2 : 1 }
+
+    /// The width of Today's second column: about a third of the room, never cramped, never wider than it reads well.
+    public static func todaySideWidth(width: Double) -> Double { min(380, max(280, (width * 0.36).rounded())) }
+
     /// Why a waiting task waits ("Waits for “Sign-off” and snoozed until Fri 9:00"), or nil when it doesn't.
     public static func waiting(_ item: WorkItem, now: Date, timeZone: TimeZone = .current) -> WaitingLine? {
         guard !item.isDone, Agenda.state(of: item, now: now) == .waiting else { return nil }

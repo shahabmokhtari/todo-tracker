@@ -20,6 +20,8 @@ struct TaskDetailView: View {
                     TaskDetailContent(model: model, itemId: id, close: close)
                 }
         }
+        // Section names as written ("Details", "Notes"), not in capitals.
+        .textCase(nil)
         #if os(macOS)
         .frame(minWidth: sized ? 460 : nil, minHeight: sized ? 600 : nil)
         #endif
@@ -66,6 +68,8 @@ struct TaskDetailContent: View {
     var body: some View {
         if let item = model.board.find(itemId) {
             form(item)
+                // A Mac lays a form out in grouped rows too (not label columns), so the details fit beside a view.
+                .formStyle(.grouped)
                 .navigationTitle(item.parent == nil ? "Task" : "Subtask")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
@@ -252,6 +256,7 @@ struct TaskDetailContent: View {
             TextField("Repeat", text: draftBinding(.repeatRule, current: current),
                       prompt: Text("Doesn’t repeat"))
                 .multilineTextAlignment(.trailing)
+                .labelsHidden()
                 .autocorrectionDisabled()
                 .onSubmit { saveRepeat(current) }
                 .accessibilityIdentifier("detail-repeat")

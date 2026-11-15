@@ -247,27 +247,41 @@ AppIndicator extension. A second start opens the running one's window.
 
 ## The iPhone, iPad and Mac app
 
-The window has the same views as the full app. On an iPad and a Mac, a sidebar lists them (**Today**, **Board**,
-**Tasks**, **Done**, **Reports**, **Plan**), your groups with how many tasks each has now, **Search** and **Settings**;
-a task's details open beside the view. On an iPhone (or an iPad in a narrow Split View or Slide Over) the views are tabs
-at the bottom, the group is picked from the menu at the top left, and a task's details open as a sheet.
+The window has the same views as the full app. On an iPad (in either orientation) and a Mac, a sidebar lists them
+(**Today**, **Board**, **Tasks**, **Done**, **Reports**, **Plan**), your groups with how many tasks each has now,
+**Search** and **Settings**; the button at the top left hides it. Tap a task and its details open beside the view, like
+an inspector; *Close* (or the details button in the bar) puts them away. On an iPhone (or an iPad in a narrow Split View
+or Slide Over) the views are tabs at the bottom, the group is picked from the menu at the top left, and a task's details
+open as a sheet.
 
-Today works like everywhere else: the Do this now card, Do now, Waiting, Done today (with when each was done),
-Workstreams and Recent notes (tap one to open its task). Drag a task in Do now above another to do it first.
+Today works like everywhere else. On an iPad and a Mac it has two columns, like the web app: the Do this now card and
+Do now on the left; Workstreams, Coming up (what waits for later), Done today (with when each was done) and Recent notes
+on the right. With less room (an iPhone, or an iPad beside another app) it's one column, the one thing first. Tap the
+circle in front of a task to mark it done. Drag a task in Do now above another to do it first.
 
-* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place (or use its
-  ⇆ menu). Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
+* **Timers:** the task you're timing and the focus timer share one small strip: in the bar at the top on an iPad and a
+  Mac, and above the tabs on an iPhone (only while one runs; Today also has the focus timer's play button). Tap the
+  task's name to open it, ■ to stop timing, ⏸ or ▶ for the focus timer, and ⋯ to skip, reset, or switch full-screen
+  breaks.
+* **Swipe a task** (Today, Tasks, Done) from the left to mark it done (*Now* brings back a waiting one, *Reopen* a
+  finished one), or from the right for *Later* (pick when) and *More* (add a note, focus, time it, open it, copy its
+  link). The card at the top keeps its own buttons.
+
+* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place. The card you
+  picked shows its buttons (time it, mark it done, ⇆ move it); every card has them in its menu. Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
   Starting a timer moves a card to Doing. Type in the box under a column to add a card there.
 * **Tasks:** every task as an outline. Tap the selected task's title (or press Return) to rename it; Return again adds
   the next task below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it;
   Space marks it done. Drag a row onto another to put it inside, or use its ⋯ menu. *Show finished* in ⋯ at the top.
 * **Done:** what you finished, day by day, with Reopen and Archive; the Archive tab brings tasks back.
-* **Every task** has the same menu on a right-click or a long press: Mark done, Later, Start the timer, Open details,
-  Open in New Window (iPad and Mac), Move to (a column or a group), Copy link, Archive and Delete. Drag a task onto a
-  group in the sidebar to move it there.
+* **Every task** has the same menu on a right-click or a long press (a card on the Board, a row anywhere): Mark done,
+  Bring back now (when it waits), Later, Start the timer, Focus on this, Add a note, Open details, Open in New Window
+  (iPad and Mac), Move to (a column or a group), Copy link, Archive and Delete. Drag a task onto a group in the sidebar
+  to move it there. With a trackpad or a mouse, rows and cards light up under the pointer.
 * **With a keyboard** (iPad or Mac; hold ⌘ on an iPad to see them): ⌘N new task, ⌘F search, ⌘1 to ⌘6 the views, ⌘↩
-  mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Option and
-  the arrows move a card on the Board. On a Mac, ⇧⌘N opens another window.
+  mark done, ⌘L later (in an hour; ⇧⌘L tomorrow morning), ⌘I the task's details, the arrow keys pick a task, Space marks
+  the picked one done and Return opens it (Today, Tasks and the Board), Option and the arrows move a card on the Board.
+  On a Mac, ⇧⌘N opens another window.
 
 * **Task details** (tap a title): change the title, details, priority, deadline (or clear it), repeat rule (type it in
   words or pick one; if a rule isn't understood, you're told why), energy and group. From there you can also snooze it

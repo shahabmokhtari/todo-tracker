@@ -17,7 +17,8 @@ extension Color {
 /// Design tokens shared with the web dashboard and the Windows sidebar.
 enum Theme {
     static let accent = Color(hex: "#6366f1")
-    static let brand = LinearGradient(colors: [Color(hex: "#6366f1"), Color(hex: "#8b5cf6"), Color(hex: "#ec4899")], startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// The app icon's gradient (wwwroot/img/logo.svg): indigo, violet, pink.
+    static let brand = LinearGradient(colors: [Color(hex: "#4f46e5"), Color(hex: "#7c3aed"), Color(hex: "#db2777")], startPoint: .topLeading, endPoint: .bottomTrailing)
     static let attention = LinearGradient(colors: [Color(hex: "#f59e0b"), Color(hex: "#fb7185")], startPoint: .topLeading, endPoint: .bottomTrailing)
     static let calm = LinearGradient(colors: [Color(hex: "#10b981"), Color(hex: "#22d3ee")], startPoint: .topLeading, endPoint: .bottomTrailing)
     static let warnText = Color(hex: "#d97706")
@@ -114,7 +115,7 @@ public struct DashboardView: View {
     @ObservedObject var model: BoardModel
     var scrollable = true
     @State private var detailId: UUID?
-    @State private var showWaiting = false
+    @State private var showWaiting = true
     @State private var showDone = true
     @State private var showNotes = false
     @State private var showNow = true
@@ -146,24 +147,38 @@ public struct DashboardView: View {
 
     public var body: some View {
         VStack(spacing: 12) {
-            header
-            if chrome { groupTabs }
-            captureBar
-            if searching || !model.searchText.isEmpty { searchBar }
-            if let status = model.status {
-                Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+            VStack(spacing: 12) {
+                header
+                if chrome { groupTabs }
+                captureBar
+                if searching || !model.searchText.isEmpty { searchBar }
+                if let status = model.status {
+                    Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
+                }
             }
+            .padding(.horizontal, Self.margin)
+            .padding(.top, 14)
             if scrollable {
-                ScrollView { sections.padding(.bottom, 8) }.scrollIndicators(.hidden)
-                    // Pull down: read again from the server (on a Mac), or sync now (iPhone and iPad).
-                    .refreshable { await model.pullToRefresh() }
+                GeometryReader { geo in
+                    if Presentation.todayColumns(width: geo.size.width) == 2 {
+                        // A wide screen (an iPad, a Mac): the one thing and Do now on the left; the rest beside them.
+                        HStack(alignment: .top, spacing: 0) {
+                            mainList
+                            ScrollView { sideCards.padding(.top, Self.listTop).padding(.bottom, 16) }
+                                .scrollIndicators(.hidden)
+                                .frame(width: Presentation.todaySideWidth(width: geo.size.width))
+                                .padding(.trailing, Self.margin)
+                        }
+                    } else {
+                        singleList
+                    }
+                }
             } else {
-                sections
+                sections.padding(.horizontal, Self.margin)
             }
-            if model.runningTimer != nil { TimerBar(model: model) }
-            PomodoroBar(model: model)
+            // No sidebar (an iPhone shows the strip above its tabs), or the dashboard on its own: the timers here.
+            if shell == nil { TimerStrip(model: model, style: .bar, showIdle: true).padding(.horizontal, Self.margin).padding(.bottom, 10) }
         }
-        .padding(14)
         .background(backdrop)
         // However the details go away (Close, swipe down, Esc, a break covering them), what was typed is saved.
         .sheet(item: Binding(get: { detailId.map(IdentifiedID.init) }, set: { detailId = $0?.id }), onDismiss: { model.saveAllDrafts() }) { wrapped in
@@ -231,39 +246,6 @@ public struct DashboardView: View {
             Button("Cancel", role: .cancel) { deletingGroup = nil }
         }
         .sheet(isPresented: $showSettings) { SettingsView(model: model) }
-    }
-
-    /// Every task the search finds, done and archived ones too (the lists below show only what's open or done today):
-    /// each opens its details.
-    private var searchResultsCard: some View {
-        Card {
-            VStack(alignment: .leading, spacing: 4) {
-                sectionLabel("Found", count: model.searchResults.count)
-                if model.searchResults.isEmpty { emptyText("No tasks match your search.") }
-                ForEach(model.searchResults.prefix(50)) { item in
-                    Button { open(item.id) } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: item.isArchived ? "archivebox" : item.isDone ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(item.isDone ? Color.green : .secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(Presentation.titleWithIcon(item)).strikethrough(item.isDone).foregroundStyle(item.isDone ? .secondary : .primary)
-                                if item.parent != nil {
-                                    Text(item.path.dropLast().joined(separator: " › ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens it")
-                }
-                if model.searchResults.count > 50 {
-                    Text("Showing 50 of \(model.searchResults.count): add a word to narrow it down.").font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
     }
 
     private var searchBar: some View {
@@ -337,122 +319,308 @@ public struct DashboardView: View {
         }
     }
 
+    /// The space beside Today's lists and its header, and above the first card.
+    static let margin: CGFloat = 20
+    static let listTop: CGFloat = 8
+
+    /// The task picked in the lists (arrows move it, Space finishes it, Return opens it); picking one opens it.
+    private var selection: Binding<UUID?> {
+        Binding(get: { shell?.selectedTask }, set: { id in
+            shell?.selectedTask = id
+            if let id { open(id) }
+        })
+    }
+
+    // MARK: Lists (swipe actions work in a List)
+
+    /// A wide screen's first column: the one thing, then Do now.
+    private var mainList: some View {
+        List(selection: selection) {
+            if !model.searchText.isEmpty { searchSection }
+            heroSection
+            doNowSection
+        }
+        .todayList()
+        .modifier(ListKeys(model: model, open: open))
+    }
+
+    /// A narrow screen: everything in one column, the one thing first.
+    private var singleList: some View {
+        List(selection: selection) {
+            if !model.searchText.isEmpty { searchSection }
+            heroSection
+            doNowSection
+            comingUpSection
+            doneSection
+            workstreamsSection
+            notesSection
+        }
+        .todayList()
+        .modifier(ListKeys(model: model, open: open))
+    }
+
+    private var heroSection: some View {
+        Section {
+            focusCard
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 4, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        }
+    }
+
+    private var rest: [AgendaEntry] {
+        model.dashboard.now.filter { $0.item.id != model.dashboard.focus?.item.id }
+    }
+
+    private var doNowSection: some View {
+        listSection("Do now", count: model.dashboard.now.count, expanded: $showNow) {
+            if rest.isEmpty {
+                emptyText(model.searchText.isEmpty ? "Nothing else right now. Type above to add a task, or enjoy the calm." : "Nothing else here matches your search.")
+                    .listRowSeparator(.hidden)
+            }
+            ForEach(rest) { entry in
+                taskRow(entry)
+                    // Drag a task above another to do it first.
+                    .draggable(TaskDrag.payload(entry.item.id))
+                    .dropDestination(for: String.self) { texts, _ in
+                        let ids = TaskDrag.ids(texts)
+                        ids.forEach { model.arrangeNow(moving: $0, before: entry.item.id) }
+                        return !ids.isEmpty
+                    } isTargeted: { over in
+                        if over { dropTarget = entry.item.id } else if dropTarget == entry.item.id { dropTarget = nil }
+                    }
+                    .overlay(alignment: .top) {
+                        if dropTarget == entry.item.id { Capsule().fill(Theme.accent).frame(height: 3).offset(y: -6) }
+                    }
+            }
+        }
+    }
+
+    private var comingUpSection: some View {
+        listSection("Coming up", count: model.dashboard.waiting.count, expanded: $showWaiting) {
+            if model.dashboard.waiting.isEmpty { emptyText(comingUpEmpty).listRowSeparator(.hidden) }
+            ForEach(model.dashboard.waiting) { entry in taskRow(entry) }
+        }
+    }
+
+    private var doneSection: some View {
+        listSection("Done today", count: model.doneToday.count, expanded: $showDone) {
+            doneContent
+        }
+    }
+
+    private var workstreamsSection: some View {
+        let streams = Presentation.workstreams(model.dashboard)
+        return listSection("Workstreams", count: streams.count, expanded: $showWorkstreams) {
+            if streams.isEmpty { emptyText(workstreamsEmpty).listRowSeparator(.hidden) }
+            ForEach(streams) { o in
+                WorkstreamRow(entry: o, now: model.now).tag(o.item.id)
+                    .contextMenu { TaskContextMenu(model: model, id: o.item.id) }
+            }
+        }
+    }
+
+    private var notesSection: some View {
+        listSection("Recent notes", count: model.dashboard.recentNotes.count, expanded: $showNotes) {
+            notesContent
+        }
+    }
+
+    private var searchSection: some View {
+        Section {
+            if model.searchResults.isEmpty { emptyText("No tasks match your search. Try fewer words.") }
+            ForEach(model.searchResults.prefix(50)) { item in searchRow(item) }
+        } header: {
+            sectionLabel("Found", count: model.searchResults.count)
+        } footer: {
+            if model.searchResults.count > 50 { Text("Showing 50 of \(model.searchResults.count): add a word to narrow it down.") }
+        }
+        .textCase(nil)
+    }
+
+    /// A row of Do now or Coming up: tap to open, swipe or right-click for the rest.
+    private func taskRow(_ entry: AgendaEntry) -> some View {
+        TaskRow(entry: entry, model: model, now: model.now)
+            .tag(entry.item.id)
+            .listRowBackground(entry.needsAttention ? Color(hex: "#f59e0b").opacity(0.12) : nil)
+            .taskRowActions(model, id: entry.item.id, inlineNote: true) { open(entry.item.id) }
+            .accessibilityHint("Opens it. Swipe right to finish it, left to put it off.")
+    }
+
+    /// A section of a list with its name and count; the name folds it away.
+    private func listSection<Content: View>(_ title: String, count: Int, expanded: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
+        Section {
+            if expanded.wrappedValue { content() }
+        } header: {
+            Button { withAnimation(.snappy(duration: 0.2)) { expanded.wrappedValue.toggle() } } label: {
+                HStack(spacing: 6) {
+                    sectionLabel(title, count: count)
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(expanded.wrappedValue ? 0 : -90))
+                }
+                .foregroundStyle(.primary)
+                .padding(.bottom, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(expanded.wrappedValue ? "Folds it away" : "Shows it")
+        }
+        .textCase(nil)
+        .headerProminence(.increased)
+    }
+
+    // MARK: Cards (the wide screen's second column, and the snapshot)
+
+    private var comingUpEmpty: String {
+        model.searchText.isEmpty ? "Nothing is waiting. Put a task off with Later and it waits here until it's time." : "Nothing waiting matches your search."
+    }
+
+    private var workstreamsEmpty: String { "Give a task subtasks or steps and its progress shows here." }
+
+    @ViewBuilder private var doneContent: some View {
+        if let cheer = Agenda.cheer(model.doneToday.count) {
+            Text("🎉 \(cheer)")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.green)
+                .padding(.vertical, 6).padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                .listRowSeparator(.hidden)
+        } else {
+            emptyText(model.searchText.isEmpty ? "Nothing yet. Finish something and it shows up here." : "Nothing done today matches your search.")
+                .listRowSeparator(.hidden)
+        }
+        ForEach(model.doneToday) { item in
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.title).strikethrough().foregroundStyle(.secondary)
+                    if let parent = item.parent {
+                        Text(parent.title).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 4)
+                if let at = Agenda.doneAt(model.board, item) {
+                    Text(at.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .accessibilityLabel("done at \(at.formatted(date: .omitted, time: .shortened))")
+                }
+            }
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+            .tag(item.id)
+            .taskRowActions(model, id: item.id) { open(item.id) }
+        }
+        if model.archivedCount > 0 && model.searchText.isEmpty {
+            // Put away, never gone: the search finds them (and their details have Unarchive).
+            Button {
+                searching = true
+                model.searchText = "is:archived"
+            } label: {
+                Label("Archived (\(model.archivedCount))", systemImage: "archivebox").font(.caption.weight(.semibold))
+                    .labelStyle(InlineLabelStyle())
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(Theme.accent)
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder private var notesContent: some View {
+        if model.dashboard.recentNotes.isEmpty { emptyText("Notes you and your agents add to tasks show here.").listRowSeparator(.hidden) }
+        ForEach(model.dashboard.recentNotes) { n in
+            // The note's task opens.
+            Button { open(n.item.id) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(n.note.text).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                    HStack(spacing: 5) {
+                        Avatar(actor: n.note.author)
+                        Text("\(n.note.author.displayName) · \(n.item.title) · \(RelativeTime.format(n.note.at, now: model.now))")
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityHint("Opens \(n.item.title)")
+        }
+    }
+
+    private func searchRow(_ item: WorkItem) -> some View {
+        Button { open(item.id) } label: {
+            HStack(spacing: 8) {
+                Image(systemName: item.isArchived ? "archivebox" : item.isDone ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(item.isDone ? Color.green : .secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Presentation.titleWithIcon(item)).strikethrough(item.isDone).foregroundStyle(item.isDone ? .secondary : .primary)
+                    if item.parent != nil {
+                        Text(item.path.dropLast().joined(separator: " › ")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .contextMenu { TaskContextMenu(model: model, id: item.id) }
+        .accessibilityHint("Opens it")
+    }
+
+    /// A card that folds away: its name and count, then what's in it.
+    private func foldingCard<Content: View>(_ title: String, count: Int, expanded: Binding<Bool>, @ViewBuilder content: () -> Content) -> some View {
+        let inside = content()
+        return Card {
+            DisclosureGroup(isExpanded: expanded) {
+                VStack(alignment: .leading, spacing: 2) { inside }.padding(.top, 6)
+            } label: { sectionLabel(title, count: count) }
+        }
+    }
+
+    /// The wide screen's second column: what moves (Workstreams), what's coming, what's done, and the latest notes.
+    private var sideCards: some View {
+        let streams = Presentation.workstreams(model.dashboard)
+        return VStack(alignment: .leading, spacing: 12) {
+            foldingCard("Workstreams", count: streams.count, expanded: $showWorkstreams) {
+                if streams.isEmpty { emptyText(workstreamsEmpty) }
+                ForEach(streams) { o in
+                    Button { open(o.item.id) } label: { WorkstreamRow(entry: o, now: model.now) }
+                        .buttonStyle(.plain)
+                        .pointerHover()
+                        .contextMenu { TaskContextMenu(model: model, id: o.item.id) }
+                }
+            }
+            foldingCard("Coming up", count: model.dashboard.waiting.count, expanded: $showWaiting) {
+                if model.dashboard.waiting.isEmpty { emptyText(comingUpEmpty) }
+                ForEach(model.dashboard.waiting) { entry in
+                    Button { open(entry.item.id) } label: { ComingUpRow(entry: entry, now: model.now, selected: shell?.selectedTask == entry.item.id) }
+                        .buttonStyle(.plain)
+                        .pointerHover(cornerRadius: 10)
+                        .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
+                }
+            }
+            foldingCard("Done today", count: model.doneToday.count, expanded: $showDone) {
+                doneContent
+            }
+            foldingCard("Recent notes", count: model.dashboard.recentNotes.count, expanded: $showNotes) {
+                notesContent
+            }
+        }
+        .tint(.secondary)
+    }
+
+    /// Offscreen snapshots can't draw lists: the same content as cards.
     private var sections: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !model.searchText.isEmpty { searchResultsCard }
             focusCard
-            Card {
-                DisclosureGroup(isExpanded: $showNow) {
-                    let rest = model.dashboard.now.filter { $0.item.id != model.dashboard.focus?.item.id }
-                    if rest.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing else right now. Nice." : "Nothing else here matches your search.") }
-                    ForEach(rest) { entry in
-                        TaskRow(entry: entry, model: model, now: model.now) { open(entry.item.id) }
-                            .pointerHover()
-                            .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
-                            // Drag a task above another to do it first.
-                            .draggable(TaskDrag.payload(entry.item.id))
-                            .dropDestination(for: String.self) { texts, _ in
-                                let ids = TaskDrag.ids(texts)
-                                ids.forEach { model.arrangeNow(moving: $0, before: entry.item.id) }
-                                return !ids.isEmpty
-                            } isTargeted: { over in
-                                if over { dropTarget = entry.item.id } else if dropTarget == entry.item.id { dropTarget = nil }
-                            }
-                            .overlay(alignment: .top) {
-                                if dropTarget == entry.item.id { Capsule().fill(Theme.accent).frame(height: 3).offset(y: -2) }
-                            }
-                    }
-                } label: { sectionLabel("Do now", count: model.dashboard.now.count) }
+            foldingCard("Do now", count: model.dashboard.now.count, expanded: $showNow) {
+                if rest.isEmpty { emptyText("Nothing else right now.") }
+                ForEach(rest) { entry in TaskRow(entry: entry, model: model, now: model.now) }
             }
-            Card {
-                DisclosureGroup(isExpanded: $showWaiting) {
-                    if model.dashboard.waiting.isEmpty { emptyText(model.searchText.isEmpty ? "Nothing is parked." : "Nothing waiting matches your search.") }
-                    ForEach(model.dashboard.waiting) { entry in
-                        TaskRow(entry: entry, model: model, now: model.now) { open(entry.item.id) }
-                            .pointerHover()
-                            .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
-                    }
-                } label: { sectionLabel("Waiting", count: model.dashboard.waiting.count) }
-            }
-            Card {
-                DisclosureGroup(isExpanded: $showDone) {
-                    if let cheer = Agenda.cheer(model.doneToday.count) {
-                        Text("🎉 \(cheer)")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.green)
-                            .padding(.vertical, 6).padding(.horizontal, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                    } else {
-                        emptyText(model.searchText.isEmpty ? "Finish something and it shows up here." : "Nothing done today matches your search.")
-                    }
-                    ForEach(model.doneToday) { item in
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Button { open(item.id) } label: { Text(item.title).strikethrough().foregroundStyle(.secondary) }
-                                    .buttonStyle(.plain)
-                                if let parent = item.parent {
-                                    Text(parent.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer()
-                            if let at = Agenda.doneAt(model.board, item) {
-                                Text(at.formatted(date: .omitted, time: .shortened)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                                    .accessibilityLabel("done at \(at.formatted(date: .omitted, time: .shortened))")
-                            }
-                            Button("Reopen") { model.reopen(item.id) }
-                                .buttonStyle(.plain).font(.caption).foregroundStyle(Theme.accent)
-                                .accessibilityLabel("Reopen \(item.title)")
-                        }
-                        .padding(.vertical, 3)
-                    }
-                    if model.archivedCount > 0 && model.searchText.isEmpty {
-                        // Put away, never gone: the search finds them (and their details have Unarchive).
-                        Button {
-                            searching = true
-                            model.searchText = "is:archived"
-                        } label: {
-                            Label("Archived (\(model.archivedCount))", systemImage: "archivebox").font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Theme.accent)
-                        .padding(.top, 4)
-                    }
-                } label: { sectionLabel("Done today", count: model.doneToday.count) }
-            }
-            let streams = Presentation.workstreams(model.dashboard)
-            Card {
-                DisclosureGroup(isExpanded: $showWorkstreams) {
-                    if streams.isEmpty { emptyText("Tasks with subtasks or rollout steps show up here.") }
-                    ForEach(streams) { o in
-                        Button { open(o.item.id) } label: { WorkstreamRow(entry: o, now: model.now) }.buttonStyle(.plain)
-                    }
-                } label: { sectionLabel("Workstreams", count: streams.count) }
-            }
-            Card {
-                DisclosureGroup(isExpanded: $showNotes) {
-                    if model.dashboard.recentNotes.isEmpty { emptyText("Notes you and your agents log appear here.") }
-                    ForEach(model.dashboard.recentNotes) { n in
-                        // The note's task opens.
-                        Button { open(n.item.id) } label: {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(n.note.text).foregroundStyle(.primary).multilineTextAlignment(.leading)
-                                HStack(spacing: 5) {
-                                    Avatar(actor: n.note.author)
-                                    Text("\(n.note.author.displayName) · \(n.item.title) · \(RelativeTime.format(n.note.at, now: model.now))")
-                                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 5)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens \(n.item.title)")
-                    }
-                } label: { sectionLabel("Recent notes", count: model.dashboard.recentNotes.count) }
-            }
+            sideCards
         }
         .tint(.secondary)
     }
@@ -569,8 +737,8 @@ public struct DashboardView: View {
                     .frame(width: 48, height: 48)
                     .overlay(Image(systemName: "checkmark").font(.title3.weight(.bold)).foregroundStyle(Color(hex: "#10b981")))
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("ALL CLEAR", systemImage: "sparkles").font(.caption2.weight(.bold)).foregroundStyle(Color(hex: "#10b981"))
-                    Text("Nothing is due. Enjoy the calm.").font(.headline)
+                    Label("All clear", systemImage: "sparkles").font(.subheadline.weight(.semibold)).foregroundStyle(Color(hex: "#10b981"))
+                    Text("Nothing to do right now. Enjoy the calm, or type above to add a task.").font(.headline)
                     if let next = model.dashboard.waiting.first, let wake = next.wakeAt {
                         Text("Next up: \(next.item.title) \(RelativeTime.format(wake, now: model.now))").font(.caption).foregroundStyle(.secondary)
                     }
@@ -628,8 +796,8 @@ struct FocusCard: View {
         let priority = Color(hex: entry.effectivePriority.hexColor)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label(entry.needsAttention ? "REMINDER" : "DO THIS NOW", systemImage: entry.needsAttention ? "alarm" : "scope")
-                    .font(.caption2.weight(.bold))
+                Label(entry.needsAttention ? "Reminder" : "Do this now", systemImage: entry.needsAttention ? "alarm" : "scope")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(entry.needsAttention ? Theme.warnText : Theme.accent)
                 Spacer()
                 HStack(spacing: 5) {
@@ -696,6 +864,18 @@ struct FocusCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous)))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(entry.needsAttention ? Theme.attention : Theme.brand, lineWidth: 1.5))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
+        // In a list a label gets a list row's icon column and tint: here it stays a plain icon and title.
+        .labelStyle(InlineLabelStyle())
+    }
+}
+
+/// An icon and its title side by side, as they are outside a list.
+struct InlineLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) {
+            configuration.icon
+            configuration.title
+        }
     }
 }
 
@@ -921,22 +1101,23 @@ struct NoteField: View {
     }
 }
 
+/// A task in Do now or Coming up: a circle to finish it, its title and what to know about it. The rest is a swipe or a
+/// right-click away (TaskRowActions), so the list stays calm.
 struct TaskRow: View {
     let entry: AgendaEntry
     @ObservedObject var model: BoardModel
     let now: Date
-    let open: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            PriorityDot(priority: entry.effectivePriority).padding(.top, 2)
+        HStack(alignment: .top, spacing: 12) {
+            DoneCircle(model: model, entry: entry)
             VStack(alignment: .leading, spacing: 4) {
-                Button(action: open) {
-                    Text(Presentation.titleWithIcon(entry.item)).fontWeight(.semibold).multilineTextAlignment(.leading).foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
+                Text(Presentation.titleWithIcon(entry.item))
+                    .font(.body.weight(.medium))
+                    .multilineTextAlignment(.leading)
+                    .foregroundStyle(entry.state == .waiting ? .secondary : .primary)
                 if !entry.breadcrumb.isEmpty {
-                    Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.tertiary)
+                    Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
                 }
                 let chips = Presentation.chips(for: entry, now: now, notes: false)
                 if !chips.isEmpty {
@@ -954,41 +1135,113 @@ struct TaskRow: View {
                     .accessibilityLabel(notesOpen ? "Hide notes" : "Show notes")
                     if notesOpen { CardNotes(item: entry.item, now: now) }
                 }
-                HStack(spacing: 14) {
-                    if entry.state == .actionable {
-                        iconButton("checkmark", "Mark done") { model.complete(entry.item.id) }
-                    }
-                    if entry.state == .waiting && !entry.needsAttention {
-                        iconButton("arrow.uturn.backward", "Bring back now") { model.bringBack(entry.item.id) }
-                    }
-                    SnoozeMenu(model: model, id: entry.item.id)
-                    iconButton("note.text", "Note") { model.toggleNote(entry.item.id) }
-                    if entry.state != .waiting {
-                        iconButton("play", "Focus") { model.startFocus(entry.item.id) }
-                        let timing = model.runningTimer?.item.id == entry.item.id
-                        iconButton(timing ? "stop.circle" : "stopwatch", timing ? "Stop the timer" : "Time this task") { model.toggleTimer(entry.item.id) }
-                    }
-                    MoreMenu(model: model, entry: entry, openDetails: open)
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
                 if model.openNotes.contains(entry.item.id) {
                     NoteField(model: model, id: entry.item.id)
                 }
             }
             Spacer(minLength: 0)
+            if model.runningTimer?.item.id == entry.item.id {
+                Image(systemName: "stopwatch").font(.caption).foregroundStyle(Color(hex: "#ef4444"))
+                    .padding(.top, 3)
+                    .accessibilityLabel("Being timed")
+            }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 8)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(entry.needsAttention ? Color(hex: "#f59e0b").opacity(0.12) : .clear))
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .labelStyle(InlineLabelStyle())
     }
+}
 
-    private func iconButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol) }
+/// The circle in front of a task: tap it to finish the task (a waiting one shows a clock and comes back with a tap).
+struct DoneCircle: View {
+    @ObservedObject var model: BoardModel
+    let entry: AgendaEntry
+    @State private var hovering = false
+
+    var body: some View {
+        let color = Color(hex: entry.effectivePriority.hexColor)
+        if entry.state == .waiting {
+            Button { model.bringBack(entry.item.id) } label: {
+                Image(systemName: "clock").font(.body).foregroundStyle(.secondary).frame(width: 22, height: 22)
+            }
             .buttonStyle(.plain)
-            .accessibilityLabel(label)
-            .help(label)
+            .accessibilityLabel("Bring back now")
+            .help("Bring back now")
+        } else {
+            Button { model.complete(entry.item.id) } label: {
+                ZStack {
+                    Circle().strokeBorder(color, lineWidth: 2)
+                    Circle().fill(color.opacity(hovering ? 0.9 : 0.12)).padding(3)
+                    if hovering { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white) }
+                }
+                .frame(width: 22, height: 22)
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .accessibilityLabel("Mark done, \(entry.effectivePriority.label) priority")
+            .help("Mark done")
+        }
+    }
+}
+
+/// A task waiting for later in Today's side column: its title and when it comes back.
+struct ComingUpRow: View {
+    let entry: AgendaEntry
+    let now: Date
+    var selected = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: entry.needsAttention ? "alarm" : "clock").font(.subheadline)
+                .foregroundStyle(entry.needsAttention ? Theme.warnText : .secondary)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Presentation.titleWithIcon(entry.item)).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading)
+                let chips = Presentation.chips(for: entry, now: now, notes: false)
+                if !chips.isEmpty { FlowLayout(spacing: 4) { ForEach(chips, id: \.self) { ChipView(chip: $0) } } }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 6).padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(selected ? Theme.accent.opacity(0.12) : .clear))
+        .contentShape(Rectangle())
+    }
+}
+
+/// Space finishes the picked task, Return opens it (⌘↩ and the Task menu do too).
+struct ListKeys: ViewModifier {
+    @ObservedObject var model: BoardModel
+    let open: (UUID) -> Void
+    @Environment(\.shellState) private var shell
+
+    func body(content: Content) -> some View {
+        content
+            .onKeyPress(.space) {
+                guard let id = shell?.selectedTask, model.board.find(id) != nil else { return .ignored }
+                model.toggleDone(id)
+                return .handled
+            }
+            .onKeyPress(.return) {
+                guard let id = shell?.selectedTask, model.board.find(id) != nil else { return .ignored }
+                open(id)
+                return .handled
+            }
+    }
+}
+
+extension View {
+    /// Today's lists: grouped cards on the iPhone and iPad, an inset list on a Mac; the backdrop shows through.
+    func todayList() -> some View {
+        self
+            #if os(iOS)
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
+            #else
+            .listStyle(.inset)
+            #endif
+            .scrollContentBackground(.hidden)
+            .contentMargins(.top, DashboardView.listTop, for: .scrollContent)
     }
 }
 
@@ -1027,96 +1280,6 @@ struct WorkstreamRow: View {
         if entry.waitingCount > 0 { chips.append(Chip("\(entry.waitingCount) waiting", .info)) }
         if let next = entry.nextWakeAt { chips.append(Chip("next \(RelativeTime.format(next, now: now))", .muted)) }
         return chips
-    }
-}
-
-/// The task being timed: its clock, its name (opens it) and Stop. One timer runs at a time.
-struct TimerBar: View {
-    @ObservedObject var model: BoardModel
-
-    var body: some View {
-        if let running = model.runningTimer {
-            HStack(spacing: 10) {
-                Circle().fill(Color(hex: "#ef4444")).frame(width: 8, height: 8).accessibilityHidden(true)
-                Text(Presentation.clock(running.entry.duration(model.now)))
-                    .font(.headline.monospacedDigit())
-                    .accessibilityLabel("Timing for \(Presentation.duration(running.entry.duration(model.now)))")
-                Text(running.item.title).font(.subheadline).lineLimit(1).truncationMode(.tail)
-                if running.entry.source == .focus {
-                    Text("focus").font(.caption2.weight(.semibold)).padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Capsule().fill(Color(hex: "#f59e0b").opacity(0.2)))
-                }
-                Spacer(minLength: 0)
-                Button { model.stopTimer() } label: { Image(systemName: "stop.fill") }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Stop timing \(running.item.title)")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.background.secondary))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.quaternary, lineWidth: 1))
-        }
-    }
-}
-
-struct PomodoroBar: View {
-    @ObservedObject var model: BoardModel
-
-    var body: some View {
-        let p = model.board.pomodoro
-        let fraction = Presentation.pomodoroFraction(p, now: model.now)
-        let ringColor = p.phase == .focus ? Color(hex: "#f43f5e") : p.phase == .idle ? Theme.accent : Color(hex: "#10b981")
-        HStack(spacing: 12) {
-            ZStack {
-                Circle().stroke(.quaternary, lineWidth: 3.5)
-                Circle().trim(from: 0, to: fraction).stroke(ringColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round)).rotationEffect(.degrees(-90))
-                Image(systemName: "timer").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            .frame(width: 34, height: 34)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.pomodoroText).font(.headline.monospacedDigit())
-                Text(label(p)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            Button { model.fullScreenBreaks.toggle() } label: {
-                Image(systemName: "rectangle.inset.filled")
-                    .foregroundStyle(model.fullScreenBreaks ? Theme.accent : Color.secondary)
-            }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(model.fullScreenBreaks ? .isSelected : [])
-                .help("Full-screen breaks: when a focus session ends, a reminder to rest covers the screen (you can skip it)")
-                .accessibilityLabel("Full-screen breaks")
-            Group {
-                if p.phase == .idle {
-                    Button { model.startFocus(nil) } label: { Image(systemName: "play.fill") }.accessibilityLabel("Start focus")
-                } else {
-                    if p.isRunning {
-                        Button { model.pausePomodoro() } label: { Image(systemName: "pause.fill") }.accessibilityLabel("Pause")
-                    } else {
-                        Button { model.resumePomodoro() } label: { Image(systemName: "play.fill") }.accessibilityLabel("Resume")
-                    }
-                    Button { model.skipPomodoro() } label: { Image(systemName: "forward.end.fill") }.accessibilityLabel("Skip")
-                    Button { model.resetPomodoro() } label: { Image(systemName: "arrow.counterclockwise") }.accessibilityLabel("Reset")
-                }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(.quaternary, lineWidth: 1))
-    }
-
-    private func label(_ p: PomodoroTimer) -> String {
-        let phase: String
-        switch p.phase {
-        case .shortBreak: phase = "Break"
-        case .longBreak: phase = "Long break"
-        case .focus: phase = "Focus"
-        case .idle: phase = "Focus timer"
-        }
-        if p.phase != .idle, let id = p.itemId, let item = model.board.find(id) { return "\(phase) · \(item.title)" }
-        return phase
     }
 }
 

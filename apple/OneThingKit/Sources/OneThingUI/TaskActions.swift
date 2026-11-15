@@ -68,6 +68,8 @@ enum TaskDrag {
 struct TaskContextMenu: View {
     @ObservedObject var model: BoardModel
     let id: UUID
+    /// "Add a note" opens a box under the row (Today) instead of the details.
+    var inlineNote = false
     @Environment(\.shellState) private var shell
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var multipleWindows
@@ -78,6 +80,9 @@ struct TaskContextMenu: View {
                 Button { model.reopen(id) } label: { Label("Reopen", systemImage: "arrow.uturn.backward") }
             } else {
                 Button { model.complete(id) } label: { Label("Mark done", systemImage: "checkmark") }
+                if Agenda.state(of: item, now: model.now) == .waiting {
+                    Button { model.bringBack(id) } label: { Label("Bring back now", systemImage: "arrow.uturn.backward") }
+                }
                 Menu {
                     ForEach(model.snoozeChoices) { choice in
                         Button("\(choice.label)  ·  \(Snooze.describe(choice.at, now: Date(), timeZone: .current))") { model.snooze(id, until: choice.at) }
@@ -85,6 +90,14 @@ struct TaskContextMenu: View {
                 } label: { Label("Later", systemImage: "clock") }
                 let timing = model.runningTimer?.item.id == id
                 Button { model.toggleTimer(id) } label: { Label(timing ? "Stop the timer" : "Start the timer", systemImage: timing ? "stop.circle" : "stopwatch") }
+                Button { model.startFocus(id) } label: { Label("Focus on this", systemImage: "play") }
+                Button {
+                    if inlineNote || shell == nil {
+                        if !model.openNotes.contains(id) { model.toggleNote(id) }
+                    } else {
+                        shell?.open(id)
+                    }
+                } label: { Label("Add a note", systemImage: "note.text") }
             }
             Divider()
             if let shell {
