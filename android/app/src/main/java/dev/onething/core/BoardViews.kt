@@ -194,20 +194,39 @@ data class OutlineRow(val item: WorkItem, val depth: Int, val hasChildren: Boole
     }
 }
 
-/** Finished tasks by the day they were finished (Done): Today, Yesterday, then the date. */
+/** One day on Done: [day] keys it, [label] is what it says (Today, Yesterday, or the date). */
+data class DoneDay(val day: LocalDate, val label: String, val items: List<WorkItem>)
+
+/** Finished tasks by the day they were finished (Done), or archived ones by the day they were put away (Archive). */
 object DoneDays {
-    fun byDay(items: List<WorkItem>, now: Instant, zone: ZoneId, dateLabel: (LocalDate) -> String): List<Pair<String, List<WorkItem>>> {
+    /** When [item] counts for its day: finished (Done), or archived ([archived]: the Archive tab). */
+    fun at(item: WorkItem, archived: Boolean): Instant? =
+        if (archived) item.archivedAt ?: item.completedAt else item.completedAt ?: item.archivedAt
+
+    /**
+     * Newest day first, each day once, the items in the order given. [dateLabel] names a day before yesterday; its
+     * second argument says to add the year (a day from another year).
+     */
+    fun byDay(
+        items: List<WorkItem>,
+        now: Instant,
+        zone: ZoneId,
+        archived: Boolean = false,
+        dateLabel: (LocalDate, Boolean) -> String,
+    ): List<DoneDay> {
         val today = now.atZone(zone).toLocalDate()
-        val days = mutableListOf<Pair<String, MutableList<WorkItem>>>()
+        val days = linkedMapOf<LocalDate, MutableList<WorkItem>>()
         for (item in items) {
-            val day = (item.completedAt ?: item.archivedAt ?: now).atZone(zone).toLocalDate()
+            val day = (at(item, archived) ?: now).atZone(zone).toLocalDate()
+            days.getOrPut(day) { mutableListOf() }.add(item)
+        }
+        return days.entries.sortedByDescending { it.key }.map { (day, list) ->
             val label = when (day) {
                 today -> "Today"
                 today.minusDays(1) -> "Yesterday"
-                else -> dateLabel(day)
+                else -> dateLabel(day, day.year != today.year)
             }
-            if (days.lastOrNull()?.first == label) days.last().second.add(item) else days.add(label to mutableListOf(item))
+            DoneDay(day, label, list)
         }
-        return days
     }
 }

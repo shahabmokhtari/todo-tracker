@@ -531,9 +531,19 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
             when {
                 opened == null -> pendingLink = link
                 board.find(target.id) == null -> status = "That task isn't on this phone"
-                openTaskId == null || openTaskId == target.id -> openTaskId = target.id
-                else -> requestedTaskId = target.id
+                else -> openTask(target.id)
             }
+        }
+    }
+
+    /**
+     * Opens a task. When another one is open (beside the view on a tablet), that one saves what's typed first (or
+     * asks), then switches: nothing typed is lost.
+     */
+    fun openTask(id: UUID) {
+        when (TaskOpening.route(openTaskId, id)) {
+            TaskOpening.OPEN -> openTaskId = id
+            TaskOpening.REQUEST -> requestedTaskId = id
         }
     }
 
@@ -1064,5 +1074,14 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     private companion object {
         const val OPEN_TASK = "open-task"
+    }
+}
+
+/** How a task opens: straight away, or as a request the open task answers once it has saved what's typed. */
+enum class TaskOpening {
+    OPEN, REQUEST;
+
+    companion object {
+        fun route(open: UUID?, wanted: UUID): TaskOpening = if (open == null || open == wanted) OPEN else REQUEST
     }
 }

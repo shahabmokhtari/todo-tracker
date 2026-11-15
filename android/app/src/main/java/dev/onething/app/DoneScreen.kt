@@ -61,6 +61,7 @@ fun DoneScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
     val spent = list.fold(Duration.ZERO) { sum, item -> sum.plus(item.timeSpent(vm.now)) }
     val zone = ZoneId.systemDefault()
     val dateFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
+    val yearFormat = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy")
     Column(Modifier.fillMaxSize()) {
         ViewHeader("Done", vm, onAdd = null)
         LazyColumn(Modifier.fillMaxSize().imePadding(), contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
@@ -101,8 +102,8 @@ fun DoneScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
                     }
                 }
             }
-            DoneDays.byDay(list, vm.now, zone) { it.format(dateFormat) }.forEach { (label, items) ->
-                item(key = "day-$label") {
+            DoneDays.byDay(list, vm.now, zone, archived = archive) { day, withYear -> day.format(if (withYear) yearFormat else dateFormat) }.forEach { (day, label, items) ->
+                item(key = "day-${day.toEpochDay()}") {
                     Text("$label · ${items.size}", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
                 }
                 items(items, key = { it.id }) { item -> DoneRow(vm, item, archive, open) }

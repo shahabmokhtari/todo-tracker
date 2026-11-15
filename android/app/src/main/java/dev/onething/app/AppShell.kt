@@ -139,7 +139,7 @@ fun AppShell(vm: BoardViewModel) {
     }
     // Another view: Back goes to Today first (an open task, a sheet or Settings answer Back before this).
     BackHandler(enabled = view != AppView.TODAY) { go(AppView.TODAY) }
-    val open: (UUID) -> Unit = { vm.openTaskId = it }
+    val open: (UUID) -> Unit = { vm.openTask(it) }
 
     CompositionLocalProvider(LocalAskToNotify provides askToNotify) {
         BoxWithConstraints(Modifier.fillMaxSize()) {

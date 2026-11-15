@@ -196,8 +196,53 @@ class BoardViewsTest {
         board.complete(a, now = now)
         board.complete(b, now = now.minus(Duration.ofDays(1)))
         board.complete(c, now = now.minus(Duration.ofDays(3)))
-        val days = DoneDays.byDay(BoardScope(board, null).finishedRoots, now, zone) { d: LocalDate -> d.toString() }
-        assertEquals(listOf("Today", "Yesterday", "2026-10-25"), days.map { it.first })
-        assertEquals(1, days[0].second.size)
+        val days = DoneDays.byDay(BoardScope(board, null).finishedRoots, now, zone) { d: LocalDate, _ -> d.toString() }
+        assertEquals(listOf("Today", "Yesterday", "2026-10-25"), days.map { it.label })
+        assertEquals(1, days[0].items.size)
+    }
+
+    @Test
+    fun `archived tasks are grouped by the day they were archived, each day once`() {
+        val zone = ZoneId.of("UTC")
+        val a = add("A")
+        val b = add("B")
+        val c = add("C")
+        // Finished in an order unlike the one they were archived in: A and C are put away today, B yesterday.
+        board.complete(a, now = now.minus(Duration.ofDays(5)))
+        board.complete(b, now = now.minus(Duration.ofDays(1)))
+        board.complete(c, now = now.minus(Duration.ofDays(9)))
+        board.archive(c, now = now.minus(Duration.ofHours(2)))
+        board.archive(b, now = now.minus(Duration.ofDays(1)))
+        board.archive(a, now = now)
+        val days = DoneDays.byDay(BoardScope(board, null).archivedRoots, now, zone, archived = true) { d: LocalDate, _ -> d.toString() }
+        assertEquals(listOf("Today", "Yesterday"), days.map { it.label })
+        assertEquals(listOf("A", "C"), titles(days[0].items))
+        assertEquals(days.size, days.map { it.day }.toSet().size)
+    }
+
+    @Test
+    fun `a day is shown once even when the tasks come out of order`() {
+        val zone = ZoneId.of("UTC")
+        val a = add("A")
+        val b = add("B")
+        val c = add("C")
+        board.complete(a, now = now.minus(Duration.ofDays(3)))
+        board.complete(b, now = now)
+        board.complete(c, now = now.minus(Duration.ofDays(3)).plus(Duration.ofHours(1)))
+        val items = listOfNotNull(board.find(a), board.find(b), board.find(c))
+        val days = DoneDays.byDay(items, now, zone) { d: LocalDate, _ -> d.toString() }
+        assertEquals(listOf("Today", "2026-10-25"), days.map { it.label })
+        assertEquals(listOf("A", "C"), titles(days[1].items))
+    }
+
+    @Test
+    fun `a day from another year says the year`() {
+        val zone = ZoneId.of("UTC")
+        val a = add("A")
+        val b = add("B")
+        board.complete(a, now = now.minus(Duration.ofDays(4)))
+        board.complete(b, now = now.minus(Duration.ofDays(400)))
+        val days = DoneDays.byDay(BoardScope(board, null).finishedRoots, now, zone) { d: LocalDate, withYear -> if (withYear) "$d (year)" else "$d" }
+        assertEquals(listOf("2026-10-24", "2025-09-23 (year)"), days.map { it.label })
     }
 }

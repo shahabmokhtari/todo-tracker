@@ -51,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -341,7 +342,8 @@ private fun PlanDayColumn(
     var bounds by remember { mutableStateOf(Rect.Zero) }
     var targeted by remember { mutableStateOf(false) }
     val lineColor = MaterialTheme.colorScheme.outlineVariant
-    val target = remember(day) {
+    // Keyed on the hours shown and the scale: switching Work hours / Full day changes where a drop lands.
+    val target = remember(day, from, pxPerMinute) {
         object : DragAndDropTarget {
             override fun onDrop(event: DragAndDropEvent): Boolean {
                 targeted = false
@@ -370,7 +372,7 @@ private fun PlanDayColumn(
             }
             .dragAndDropTarget(shouldStartDragAndDrop = TaskDrag::isTask, target = target)
             // A tap on an empty time: plan a task there.
-            .pointerInput(day, from) {
+            .pointerInput(day, from, pxPerMinute) {
                 detectTapGestures { at ->
                     val minutes = PlanGrid.snapped(from + at.y / pxPerMinute.toDouble() - 7.5)
                     ask(PlanRequest(null, PlanGrid.time(minutes, day, ZoneId.systemDefault()), null))
@@ -417,6 +419,13 @@ private fun PlanBlock(
     val columnPx = with(density) { column.toPx() }
     val start = item.plannedAt!!
     val movable = !item.isDone
+    // The gestures outlive a recomposition: they read the latest time, day, length and scale, not the ones they began with.
+    val latestStart by rememberUpdatedState(start)
+    val latestLength by rememberUpdatedState(item.plannedLength)
+    val latestDayIndex by rememberUpdatedState(dayIndex)
+    val latestDays by rememberUpdatedState(days)
+    val latestColumnPx by rememberUpdatedState(columnPx)
+    val latestPxPerMinute by rememberUpdatedState(pxPerMinute)
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
@@ -460,13 +469,15 @@ private fun PlanBlock(
                         dragY += amount.y
                     },
                     onDragEnd = {
-                        val target = (dayIndex + (dragX / columnPx).roundToInt()).coerceIn(0, days.size - 1)
-                        val shift = (days[target].toEpochDay() - days[dayIndex].toEpochDay()).toInt()
-                        val moved = PlanGrid.moved(start, dragY / pxPerMinute.toDouble(), shift, zone)
+                        val shown = latestDays
+                        val target = (latestDayIndex + (dragX / latestColumnPx).roundToInt()).coerceIn(0, shown.size - 1)
+                        val shift = (shown[target].toEpochDay() - shown[latestDayIndex].toEpochDay()).toInt()
+                        val from = latestStart
+                        val moved = PlanGrid.moved(from, dragY / latestPxPerMinute.toDouble(), shift, zone)
                         dragging = false
                         dragX = 0f
                         dragY = 0f
-                        if (moved != start) vm.plan(item.id, moved)
+                        if (moved != from) vm.plan(item.id, moved)
                     },
                     onDragCancel = {
                         dragging = false
@@ -495,16 +506,17 @@ private fun PlanBlock(
             // The bottom edge: drag it to make the block longer or shorter.
             Box(
                 Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.6f).height(12.dp)
-                    .pointerInput(item.id, length) {
+                    .pointerInput(item.id) {
                         detectVerticalDragGestures(
                             onVerticalDrag = { change, amount ->
                                 change.consume()
                                 stretch += amount
                             },
                             onDragEnd = {
-                                val next = PlanGrid.resized(length, stretch / pxPerMinute.toDouble())
+                                val was = latestLength
+                                val next = PlanGrid.resized(was, stretch / latestPxPerMinute.toDouble())
                                 stretch = 0f
-                                if (next != length) vm.plan(item.id, start, next)
+                                if (next != was) vm.plan(item.id, latestStart, next)
                             },
                             onDragCancel = { stretch = 0f },
                         )

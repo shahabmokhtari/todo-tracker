@@ -154,7 +154,7 @@ private fun Lists(vm: BoardViewModel, onNote: (UUID) -> Unit, onFocus: (UUID?) -
         if (notes.isNotEmpty()) {
             item { FoldTitle("Recent notes", notes.size, showNotes) { showNotes = !showNotes } }
             if (showNotes) items(notes, key = { "n" + it.note.id }) { n ->
-                Column(Modifier.fillMaxWidth().clickable { vm.openTaskId = n.item.id }.padding(vertical = 4.dp)) {
+                Column(Modifier.fillMaxWidth().clickable { vm.openTask(n.item.id) }.padding(vertical = 4.dp)) {
                     Text(n.note.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
                     Text("${n.note.author.displayName} · ${n.item.title} · ${ago(n.note.at, vm.now)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
@@ -261,7 +261,7 @@ private fun SearchResults(results: List<WorkItem>, vm: BoardViewModel) {
         item { SectionTitle("Found", results.size) }
         if (results.isEmpty()) item { Text("Nothing matches. Done tasks are found with is:done, archived ones with is:archived.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(results, key = { "f" + it.id }) { item ->
-            Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = item.id }) {
+            Card(Modifier.fillMaxWidth().clickable { vm.openTask(item.id) }) {
                 Column(Modifier.padding(12.dp)) {
                     Text(
                         titleWithIcon(item),
@@ -365,7 +365,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             // The title opens the task's details.
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.openTaskId = entry.item.id })
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.openTask(entry.item.id) })
             Meta(entry, vm.now)
             // The task you're on: every note, newest first.
             CardNotes(entry.item)
@@ -378,7 +378,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
 private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id })
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().clickable { vm.openTask(entry.item.id) })
             Meta(entry, vm.now)
             if (entry.item.notes.isNotEmpty()) {
                 var open by rememberSaveable(entry.item.id) { mutableStateOf(false) }
@@ -420,7 +420,7 @@ private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
         TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // The task's details: edit it, its subtasks, reminders, every note.
-            DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTaskId = entry.item.id })
+            DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTask(entry.item.id) })
             entry.dueReminder?.let { r ->
                 DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
             }
@@ -488,7 +488,7 @@ internal fun LaterMenu(id: UUID, vm: BoardViewModel) {
 private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).clickable { vm.openTaskId = entry.item.id }) {
+            Column(Modifier.weight(1f).clickable { vm.openTask(entry.item.id) }) {
                 Text(titleWithIcon(entry.item), style = MaterialTheme.typography.bodyLarge)
                 entry.wakeAt?.let { Text("back ${relative(it, vm.now)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 entry.waitingFor?.let { Text("after “${it.title}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -501,7 +501,7 @@ private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
 /** A task with subtasks: how far along it is, what's to do now or waiting (tap: its details). */
 @Composable
 private fun WorkstreamRow(entry: OverviewEntry, vm: BoardViewModel) {
-    Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id }) {
+    Card(Modifier.fillMaxWidth().clickable { vm.openTask(entry.item.id) }) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             LinearProgressIndicator(
@@ -539,7 +539,7 @@ private fun DoneRow(item: WorkItem, vm: BoardViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("✓", color = Color(0xFF16A34A), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.weight(1f).clickable { vm.openTaskId = item.id }) {
+        Column(Modifier.weight(1f).clickable { vm.openTask(item.id) }) {
             Text(item.title, style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.LineThrough), color = MaterialTheme.colorScheme.onSurfaceVariant)
             val at = vm.doneAt(item)?.let { android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it.toEpochMilli())) }
             val line = listOfNotNull(at, item.parent?.title).joinToString(" · ")

@@ -299,7 +299,7 @@ private fun BoardCard(vm: BoardViewModel, card: WorkItem, column: BoardColumn, o
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (!card.isDone) {
-                        TextButton(onClick = { vm.toggleTimer(card.id) }, modifier = Modifier.semantics { contentDescription = if (timing) "Stop timing ${card.title}" else "Start timing ${card.title}" }) {
+                        TextButton(onClick = { if (timing) vm.stopTimer() else vm.toggleTimer(card.id) }, modifier = Modifier.semantics { contentDescription = if (timing) "Stop timing ${card.title}" else "Start timing ${card.title}" }) {
                             Text(if (timing) "■" else "▶", color = if (timing) ViewColors.danger else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
