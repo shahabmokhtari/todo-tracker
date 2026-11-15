@@ -252,7 +252,7 @@ strong { font-weight: 650; }
 
 .site-footer { border-top: 1px solid var(--border); padding: 28px 0; color: var(--text-2); font-size: .95rem; }
 .footer-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
-.footer-row p { margin: 0; display: inline-flex; align-items: center; gap: 8px; }
+.footer-row p { margin: 0; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 /* ---------- 404 ---------- */
 .lost { min-height: 70vh; display: grid; place-items: center; text-align: center; padding: 80px 0; }
