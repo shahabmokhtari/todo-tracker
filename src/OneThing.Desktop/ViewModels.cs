@@ -48,6 +48,41 @@ public sealed record SnoozeRequest(CardViewModel Card, string? Choice = null, st
 /// <summary>Set how much energy a card's task takes per hour (1 to 3; null: not said).</summary>
 public sealed record CardEnergyRequest(CardViewModel Card, int? Level);
 
+/// <summary>Move a card's task to another group (the row's "Move to group" menu).</summary>
+public sealed record GroupMoveRequest(CardViewModel Card, Guid GroupId);
+
+/// <summary>A group a card can move to; <see cref="IsCurrent"/>: the one it's in now.</summary>
+public sealed record GroupMoveTarget(Guid Id, string Name, string Color, bool IsCurrent);
+
+/// <summary>
+/// What the one timer strip at the foot of the sidebar shows (the same rule as the Apple and web apps): the task being
+/// timed, the focus timer, or both side by side, the focus timer then small (its ring, its clock and play or pause).
+/// </summary>
+/// <param name="Tracker">The task timer (its clock, its task, Stop).</param>
+/// <param name="Focus">The focus timer.</param>
+/// <param name="FocusFull">The focus timer with its label and Skip and Reset (it has the strip to itself).</param>
+public sealed record TimerStripLayout(bool Tracker, bool Focus, bool FocusFull)
+{
+    public static TimerStripLayout Hidden { get; } = new(false, false, false);
+
+    /// <summary>Anything to show at all.</summary>
+    public bool IsVisible => Tracker || Focus;
+
+    /// <summary>A line between the two timers when both show.</summary>
+    public bool HasDivider => Tracker && Focus;
+
+    /// <param name="tracking">A task is being timed.</param>
+    /// <param name="focusActive">A focus session or a break is on (running or paused).</param>
+    /// <param name="showIdle">Offer the focus timer even when it isn't on (the Focus timer plugin is on).</param>
+    public static TimerStripLayout For(bool tracking, bool focusActive, bool showIdle) => (tracking, focusActive) switch
+    {
+        (false, false) => showIdle ? new(false, true, true) : Hidden,
+        (true, false) => new(true, showIdle, false),
+        (false, true) => new(false, true, true),
+        (true, true) => new(true, true, false),
+    };
+}
+
 /// <summary>A label shown on a card: its name and <c>#rrggbb</c> color.</summary>
 public sealed record LabelChip(string Name, string Color);
 
@@ -142,6 +177,12 @@ public sealed partial class CardViewModel : ObservableObject
 
     public Guid Id { get; init; }
 
+    /// <summary>The group the task is in.</summary>
+    public Guid GroupId { get; set; }
+
+    /// <summary>A top-level task can change group (a subtask follows its parent).</summary>
+    public bool CanChangeGroup { get; set; }
+
     /// <summary>The note this draft is autosaving into (null until the first save).</summary>
     internal Guid? DraftNoteId { get; set; }
 
@@ -182,6 +223,8 @@ public sealed partial class CardViewModel : ObservableObject
         Chips = other.Chips;
         Tags = other.Tags;
         Labels = other.Labels;
+        GroupId = other.GroupId;
+        CanChangeGroup = other.CanChangeGroup;
         OnPropertyChanged(nameof(HasBreadcrumb));
     }
 }
