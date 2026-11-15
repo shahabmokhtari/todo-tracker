@@ -122,6 +122,14 @@ Sync with your other devices** ([guide](guide.md#sync-an-iphone-or-ipad-with-you
   and the tokens in the Keychain aren't. A new iPhone restored from a backup is a new device: it joins again (pulling
   first) and, for a gist, asks for a token.
 
+## Apple TV
+
+The Apple TV joins the same way, through a gist only (a token typed or pasted on the TV; [guide](guide.md#apple-tv)).
+tvOS gives apps no lasting storage, so its tasks folder and what sync remembers live in the app's cache
+(`Library/Caches/OneThing/vault` and `sync`). If tvOS clears the tasks folder, what sync remembered goes with it before
+anything opens: the TV is then a new device that joins again, pulling everything first, and never tells the others its
+tasks were deleted. A change made on the TV and not synced yet (a few seconds) is the most it can lose.
+
 ## Safety
 
 * Only files inside the tasks folder's own folders sync; never `AGENTS.md`, hidden folders (`.obsidian`, `.git`,

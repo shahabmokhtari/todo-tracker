@@ -344,14 +344,58 @@ nothing is deleted either way.
 When you update from an earlier version, the tasks the app kept move into the tasks folder by themselves (the old file
 stays, as `board.json.migrated`).
 
+## Apple TV
+
+The Apple TV app is the one thing to do now, seen from across the room: no lists to scroll, nothing to type once it's
+set up. It has four tabs along the top.
+
+* **Now:** the task to do now in huge type on the brand gradient, with its group, when it's due and any reminder that
+  went off. The focus timer shows big beside it while it runs, the time tracker at the top when a task is being timed,
+  how many you've done today at the top right, and **Up next**: the next few tasks.
+* **Board:** Inbox, Next, Doing and Done side by side, every group together. It's for looking: select a card to read
+  its details (steps, reminders, notes); move cards on your phone or computer.
+* **Done:** today's count in big, a cheer, and what you finished today and in the last two weeks.
+* **Sync:** where it syncs, when it last did, and your other devices.
+
+With the Siri Remote:
+
+* **Select** on the task marks it done. It asks first (**Mark done** or **Not yet**); then a short celebration plays
+  and the next thing comes up.
+* **Swipe** down to Up next and left or right through it; select one to read it, and mark it done from there.
+* **Play/Pause** starts a focus session on the task shown, pauses it, and carries on.
+* **Menu** goes back: it closes a task's details, then takes you to the tabs, then out of the app.
+
+Every change the TV makes is yours (it carries you as the actor, the same as the phone app), so the timeline on your
+other devices shows it.
+
+### Set up sync on the Apple TV
+
+The TV doesn't keep tasks of its own: tvOS gives apps no lasting storage, so the TV keeps only a copy and syncs it with
+your other devices through the same **private GitHub gist** your iPhone or Android phone can use (see
+[Sync an iPhone or iPad](#sync-an-iphone-or-ipad-with-your-other-devices)). Your computers need GitHub gist sync turned
+on too.
+
+1. Open the **Sync** tab. Scan the code with your phone: it opens GitHub's page to make a token that can only use
+   gists. Make one (or use the token your phone already syncs with).
+2. Select **GitHub token** and type it, or paste it: when a nearby iPhone is signed in to the same Apple Account, it
+   offers its keyboard, so you can paste the token there.
+3. Leave **Library** as **OneThing** unless your other devices use another name, and choose **Connect**.
+
+The first sync brings everything in before anything of the TV goes out. Then it syncs when you open the app, a few
+seconds after a change and every minute while it's open. The token stays in the TV's Keychain; **Turn off sync**
+forgets it. If tvOS clears the TV's copy to make room, the TV simply joins again and brings everything back in: the
+tasks live on your other devices, so nothing is lost.
+
 ## The server on its own, and the Apple apps from source
 
 ```bash
 # Web dashboard / API / MCP without the WPF shell (any OS)
 dotnet run --project src/OneThing.Web -- --port 5317 --data ./data
 
-# macOS / iOS (on a Mac with Xcode)
+# macOS / iOS / Apple TV (on a Mac with Xcode)
 cd apple/OneThingKit && swift test
 cd apple && brew install xcodegen && xcodegen generate && open OneThing.xcodeproj
+# The Apple TV app in the simulator on a made-up board (debug builds only; nothing is saved or synced)
+SIMCTL_CHILD_ONETHING_DEMO=1 SIMCTL_CHILD_ONETHING_TAB=board xcrun simctl launch booted com.onething.tv
 ```
 

@@ -297,6 +297,20 @@ jobs:
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
       - name: The iOS app carries its widgets
         run: test -d apple/DerivedData/Build/Products/Debug-iphonesimulator/OneThing.app/PlugIns/OneThingWidgets.appex
+      - name: Build Apple TV app (simulator)
+        working-directory: apple
+        run: |
+          # The tvOS SDK comes with Xcode on the runner; download it if this image left it out.
+          xcrun --sdk appletvsimulator --show-sdk-path > /dev/null 2>&1 || xcodebuild -downloadPlatform tvOS
+          xcodebuild -project OneThing.xcodeproj -scheme OneThing-tvOS \
+            -destination 'generic/platform=tvOS Simulator' -configuration Debug \
+            -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
+      - name: The Apple TV app carries its icon and Top Shelf picture
+        run: |
+          app=apple/DerivedData/Build/Products/Debug-appletvsimulator/OneThing.app
+          test -f "$app/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Print :TVTopShelfImage' "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon' "$app/Info.plist"
       - name: Build macOS app
         working-directory: apple
         run: >

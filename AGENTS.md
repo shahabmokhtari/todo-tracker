@@ -21,7 +21,7 @@ Mac app have native ports of the core rules.
 | `src/OneThing.Desktop` | Platform-neutral view models for the sidebar and tray | any OS |
 | `src/OneThing.Windows` | The WPF sidebar (AppBar docking, toasts, hotkey, app window with WebView2) | Windows |
 | `src/OneThing.Tray` | The Avalonia tray app for Linux (and macOS) | any OS |
-| `apple/` | Swift core port, SwiftUI app for macOS and iOS (XcodeGen) | macOS CI only |
+| `apple/` | Swift core port, SwiftUI app for macOS and iOS, the Apple TV app (`apple/TV`, logic in `OneThingKit/Sources/OneThingTV`) (XcodeGen) | macOS CI only |
 | `android/` | Kotlin core port and Jetpack Compose app | JDK 17 + Android SDK |
 | `extension/` | Edge/Chrome/Safari side panel extension | any OS |
 | `integrations/` | Claude Desktop extension, Claude Code / Copilot CLI plugin and skill, VS Code sample | — |

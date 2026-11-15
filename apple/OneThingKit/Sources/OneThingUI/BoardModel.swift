@@ -1005,10 +1005,11 @@ public struct PhoneSetup {
     #endif
 }
 
-/// Mirrors pending reminders into local notifications (the OS delivers them even when the app is closed).
+/// Mirrors pending reminders into local notifications (the OS delivers them even when the app is closed). Not on Apple
+/// TV: tvOS notifications carry only a badge, and the TV is a screen to glance at.
 enum NotificationScheduler {
     static func requestAuthorization() {
-        #if canImport(UserNotifications)
+        #if canImport(UserNotifications) && !os(tvOS)
         let center = UNUserNotificationCenter.current()
         center.delegate = ForegroundPresenter.shared
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
@@ -1016,7 +1017,7 @@ enum NotificationScheduler {
     }
 
     static func sync(_ board: TaskBoard) {
-        #if canImport(UserNotifications)
+        #if canImport(UserNotifications) && !os(tvOS)
         // Only inside the app: the notification center crashes in a bare process (like the test runner, which still
         // has a bundle id).
         guard Bundle.main.bundleIdentifier != nil, Bundle.main.bundleURL.pathExtension == "app" else { return }
@@ -1060,7 +1061,7 @@ enum NotificationScheduler {
     }
 }
 
-#if canImport(UserNotifications)
+#if canImport(UserNotifications) && !os(tvOS)
 /// Shows reminder banners even while the app is in the foreground (iOS/macOS hide them by default).
 final class ForegroundPresenter: NSObject, UNUserNotificationCenterDelegate {
     static let shared = ForegroundPresenter()

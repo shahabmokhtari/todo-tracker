@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "17.0"
     macOS: "14.0"
+    tvOS: "17.0"
   createIntermediateGroups: true
 packages:
   OneThingKit:
@@ -102,6 +103,43 @@ targets:
       properties:
         com.apple.security.automation.apple-events: true
         com.apple.security.application-groups: [$(TeamIdentifierPrefix)group.com.onething]
+  # The Apple TV app: a calm "one thing now" screen for the living room (apple/TV). It syncs with the other devices
+  # through the same private gist the phones use, and keeps only a cache. It reuses the phones' view model and sync
+  # (the OneThingUI files below, compiled in here) but none of their views, so it never changes how they look.
+  OneThing-tvOS:
+    type: application
+    platform: tvOS
+    sources:
+      - TV
+      - path: OneThingKit/Sources/OneThingUI/BoardModel.swift
+      - path: OneThingKit/Sources/OneThingUI/BoardModel+Views.swift
+      - path: OneThingKit/Sources/OneThingUI/BoardModel+Plan.swift
+      - path: OneThingKit/Sources/OneThingUI/BoardModel+Widgets.swift
+      - path: OneThingKit/Sources/OneThingUI/DeviceBoardStore.swift
+      - path: OneThingKit/Sources/OneThingUI/SyncModel.swift
+      - path: OneThingKit/Sources/OneThingUI/Presentation.swift
+      - path: OneThingKit/Sources/OneThingUI/Appearance.swift
+      - path: OneThingKit/Sources/OneThingUI/DemoBoard.swift
+      # The privacy manifest: no tracking, nothing collected; why it reads UserDefaults and file times.
+      - path: Support/Privacy/TV/PrivacyInfo.xcprivacy
+        buildPhase: resources
+    dependencies:
+      - package: OneThingKit
+        product: OneThingKit
+      - package: OneThingKit
+        product: OneThingTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.onething.tv
+        PRODUCT_NAME: OneThing
+        TARGETED_DEVICE_FAMILY: "3"
+        ASSETCATALOG_COMPILER_APPICON_NAME: App Icon & Top Shelf Image
+        INFOPLIST_KEY_UIUserInterfaceStyle: Dark
+    # The TV only goes online over HTTPS (the gist): no local networking.
+    info:
+      path: Support/Info-tvOS.plist
+      properties:
+        UILaunchScreen: {}
   # The widgets: they read what the app writes to the App Group and never touch the tasks themselves.
   OneThingWidgets-iOS:
     type: app-extension
@@ -180,3 +218,7 @@ schemes:
     build:
       targets:
         OneThing-macOS: all
+  OneThing-tvOS:
+    build:
+      targets:
+        OneThing-tvOS: all
