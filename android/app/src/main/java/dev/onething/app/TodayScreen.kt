@@ -73,56 +73,31 @@ import java.util.UUID
 /** Asks (once) for what reminders need: notifications, and alarms on time. Called before a snooze, reminder or focus. */
 val LocalAskToNotify = staticCompositionLocalOf<() -> Unit> { {} }
 
-/** Today: the one thing to do now (big), then the rest of Do now, what's waiting, what got done, workstreams, notes. */
+/**
+ * Today: the one thing to do now (big), then the rest of Do now, what's waiting, what got done, workstreams, notes. The
+ * app's shell (AppShell) draws the task's details, Settings, the break and Send feedback over it or beside it.
+ */
 @Composable
-fun TodayScreen(vm: BoardViewModel = viewModel()) {
+fun TodayScreen(vm: BoardViewModel, onSettings: () -> Unit, onFeedback: () -> Unit, onBusy: (Boolean) -> Unit = {}) {
     // Kept across rotation and theme changes (as ids and text).
     var noteFor by rememberSaveable { mutableStateOf<String?>(null) }
     var addingGroup by rememberSaveable { mutableStateOf(false) }
     var editingGroup by rememberSaveable { mutableStateOf<String?>(null) }
-    var settings by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
-    // Send feedback is open (from where: "button" or "shake").
-    var feedback by rememberSaveable { mutableStateOf<String?>(null) }
-    val snackbar = remember { SnackbarHostState() }
-    // A snooze, a reminder or a focus session is when notifications start to matter (they tell you with the app closed).
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val askNotifications = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) {}
-    var askExact by rememberSaveable { mutableStateOf(false) }
-    val askToNotify: () -> Unit = {
-        if (android.os.Build.VERSION.SDK_INT >= 33 &&
-            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            askNotifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-        // On time to the minute needs the person's OK on recent Android: offered once, with why.
-        val prefs = context.getSharedPreferences("focus-alarm", android.content.Context.MODE_PRIVATE)
-        if (!FocusAlarm.exactAllowed(context) && !prefs.getBoolean("asked-exact", false)) {
-            prefs.edit().putBoolean("asked-exact", true).apply()
-            askExact = true
-        }
-    }
+    val askToNotify = LocalAskToNotify.current
     val startFocusOn: (UUID?) -> Unit = { id ->
         askToNotify()
         vm.startFocus(id)
     }
-    val undoable = vm.undoable
-    LaunchedEffect(undoable) {
-        if (undoable != null) {
-            val result = snackbar.showSnackbar(undoable.message, actionLabel = "Undo", duration = SnackbarDuration.Short)
-            if (result == SnackbarResult.ActionPerformed) undoable.undo()
-            vm.undoable = null
-        }
-    }
-    CompositionLocalProvider(LocalAskToNotify provides askToNotify) {
-      // The task's details and Settings are drawn over Today (full screen); Undo shows over either.
-      Box(Modifier.fillMaxSize()) {
+    // A dialog of Today's is open: a shake doesn't open Send feedback over it.
+    androidx.compose.runtime.SideEffect { onBusy(noteFor != null || addingGroup || editingGroup != null) }
+    Box(Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = { FocusBar(vm, onStart = { startFocusOn(null) }) },
             containerColor = MaterialTheme.colorScheme.background,
         ) { padding ->
             Column(Modifier.padding(padding).imePadding().padding(horizontal = 16.dp)) {
-                Header(vm, onSettings = { settings = true }, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = { feedback = "button" })
+                Header(vm, onSettings = onSettings, onSearch = { searching = !searching; if (!searching) vm.search("") }, onFeedback = onFeedback)
                 GroupTabs(vm, onAdd = { addingGroup = true }, onEdit = { editingGroup = it.toString() })
                 Capture(vm)
                 if (searching || vm.query.isNotEmpty()) SearchBox(vm, onClose = { searching = false; vm.search("") })
@@ -142,34 +117,6 @@ fun TodayScreen(vm: BoardViewModel = viewModel()) {
         }
         if (addingGroup) TextDialog("New group", "Name", onDone = { vm.addGroup(it) }, onDismiss = { addingGroup = false })
         editingGroup?.let { GroupDialog(UUID.fromString(it), vm, onDismiss = { editingGroup = null }) }
-        // A task's details (from a card, a search, a onething://task/<id> link or a reminder's notification).
-        vm.openTaskId?.let { id -> TaskScreen(id, vm, onClose = { vm.openTaskId = null }) }
-        if (settings) SettingsScreen(vm, onClose = { settings = false }, onFeedback = { feedback = "button" })
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 88.dp))
-      }
-        if (askExact) {
-            AlertDialog(
-                onDismissRequest = { askExact = false },
-                title = { Text("Ring on time?") },
-                text = { Text("So reminders, and the end of a focus session or a break, are told right when they happen (not a few minutes later), allow One Thing to set alarms.") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        askExact = false
-                        if (android.os.Build.VERSION.SDK_INT >= 31) {
-                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, android.net.Uri.parse("package:${context.packageName}")))
-                        }
-                    }) { Text("Allow") }
-                },
-                dismissButton = { TextButton(onClick = { askExact = false }) { Text("Not now") } },
-            )
-        }
-        BreakScreen(vm)
-        feedback?.let { source -> FeedbackSheet(source, onClose = { feedback = null }) }
-        // A shake opens Send feedback, only on Today with nothing over it: no other sheet or dialog, no task, no
-        // Settings, never on the full-screen break.
-        val quiet = feedback == null && !settings && noteFor == null && !addingGroup && editingGroup == null && !askExact &&
-            vm.openTaskId == null && vm.breakPrompt == null
-        ShakeToFeedback(enabled = vm.shakeToFeedback && quiet) { feedback = "shake" }
     }
 }
 
@@ -207,7 +154,7 @@ private fun Lists(vm: BoardViewModel, onNote: (UUID) -> Unit, onFocus: (UUID?) -
         if (notes.isNotEmpty()) {
             item { FoldTitle("Recent notes", notes.size, showNotes) { showNotes = !showNotes } }
             if (showNotes) items(notes, key = { "n" + it.note.id }) { n ->
-                Column(Modifier.fillMaxWidth().clickable { vm.openTaskId = n.item.id }.padding(vertical = 4.dp)) {
+                Column(Modifier.fillMaxWidth().clickable { vm.openTask(n.item.id) }.padding(vertical = 4.dp)) {
                     Text(n.note.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4)
                     Text("${n.note.author.displayName} · ${n.item.title} · ${ago(n.note.at, vm.now)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
@@ -314,7 +261,7 @@ private fun SearchResults(results: List<WorkItem>, vm: BoardViewModel) {
         item { SectionTitle("Found", results.size) }
         if (results.isEmpty()) item { Text("Nothing matches. Done tasks are found with is:done, archived ones with is:archived.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         items(results, key = { "f" + it.id }) { item ->
-            Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = item.id }) {
+            Card(Modifier.fillMaxWidth().clickable { vm.openTask(item.id) }) {
                 Column(Modifier.padding(12.dp)) {
                     Text(
                         titleWithIcon(item),
@@ -418,7 +365,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Do this now", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
             // The title opens the task's details.
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.openTaskId = entry.item.id })
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { vm.openTask(entry.item.id) })
             Meta(entry, vm.now)
             // The task you're on: every note, newest first.
             CardNotes(entry.item)
@@ -431,7 +378,7 @@ private fun FocusCard(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit
 private fun TaskRow(entry: AgendaEntry, vm: BoardViewModel, onNote: () -> Unit, onFocus: (UUID?) -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id })
+            Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth().clickable { vm.openTask(entry.item.id) })
             Meta(entry, vm.now)
             if (entry.item.notes.isNotEmpty()) {
                 var open by rememberSaveable(entry.item.id) { mutableStateOf(false) }
@@ -473,7 +420,7 @@ private fun MoreMenu(entry: AgendaEntry, vm: BoardViewModel) {
         TextButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "More" }) { Text("⋯") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             // The task's details: edit it, its subtasks, reminders, every note.
-            DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTaskId = entry.item.id })
+            DropdownMenuItem(text = { Text("Open") }, onClick = { open = false; vm.openTask(entry.item.id) })
             entry.dueReminder?.let { r ->
                 DropdownMenuItem(text = { Text("Dismiss reminder") }, onClick = { open = false; vm.dismissReminder(entry.item.id, r.id) })
             }
@@ -541,7 +488,7 @@ internal fun LaterMenu(id: UUID, vm: BoardViewModel) {
 private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
     Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Row(Modifier.padding(12.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).clickable { vm.openTaskId = entry.item.id }) {
+            Column(Modifier.weight(1f).clickable { vm.openTask(entry.item.id) }) {
                 Text(titleWithIcon(entry.item), style = MaterialTheme.typography.bodyLarge)
                 entry.wakeAt?.let { Text("back ${relative(it, vm.now)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 entry.waitingFor?.let { Text("after “${it.title}”", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -554,7 +501,7 @@ private fun WaitingRow(entry: AgendaEntry, vm: BoardViewModel) {
 /** A task with subtasks: how far along it is, what's to do now or waiting (tap: its details). */
 @Composable
 private fun WorkstreamRow(entry: OverviewEntry, vm: BoardViewModel) {
-    Card(Modifier.fillMaxWidth().clickable { vm.openTaskId = entry.item.id }) {
+    Card(Modifier.fillMaxWidth().clickable { vm.openTask(entry.item.id) }) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(titleWithIcon(entry.item), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             LinearProgressIndicator(
@@ -592,7 +539,7 @@ private fun DoneRow(item: WorkItem, vm: BoardViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("✓", color = Color(0xFF16A34A), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.weight(1f).clickable { vm.openTaskId = item.id }) {
+        Column(Modifier.weight(1f).clickable { vm.openTask(item.id) }) {
             Text(item.title, style = MaterialTheme.typography.bodyLarge.copy(textDecoration = TextDecoration.LineThrough), color = MaterialTheme.colorScheme.onSurfaceVariant)
             val at = vm.doneAt(item)?.let { android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(it.toEpochMilli())) }
             val line = listOfNotNull(at, item.parent?.title).joinToString(" · ")

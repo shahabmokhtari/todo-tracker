@@ -318,14 +318,37 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   tap one to open its task). Group tabs; tapping the chosen tab (or *Edit*) renames it, sets its color or deletes it,
   after asking which group gets its tasks. 🔍 opens a search box with the shared syntax (`TaskSearch`, same as
   `TaskQuery`); results list open tasks first and open on tap.
-* **Task details**, full screen (tap a title, a result, a workstream, a note, a link or a reminder's notification):
+* **Views and navigation** (`AppShell`): on a compact window (under 600 dp, WindowSizeClass) a bottom bar with Today,
+  Board, Tasks, Done and More (Plan, Reports, Settings, Send feedback), the task's details over the view; on a medium or
+  expanded one (tablets, foldables, a phone sideways) a navigation rail of every view and the details beside the view
+  (list-detail, like the iPad's sidebar). Back on another view goes to Today. Each view has the group menu, search
+  (narrows Board, Tasks and Done, `BoardScope`, as `BoardModel+Views.swift`) and, where it applies, a new task.
+* **Board**: Inbox/Next/Doing/Done (`BoardColumns`, shared `board-moves.json`), as many columns as fit (250 dp each),
+  one at a time on a phone with a bar of column names (each a drop target). Drag a card (long press, platform drag and
+  drop) onto a column, a card (before it) or a column name, or use ⇄ (to a column, Up, Down). Doing shows `n/3` and
+  the over-limit warning; ▶ times a card (moves it to Doing), ✓ finishes, Archive in Done; *Add to …* per column.
+* **Tasks** outline (`OutlineRow.flatten`, `OutlineMoves`): expand/collapse (kept on the phone), Show finished,
+  rename in place (Done adds the next one below), ⋯ Up/Down/Into the task above/Out one level/Move to group/Add a
+  subtask/timer; drop on a row's top quarter (before), middle (inside) or bottom quarter (after).
+* **Done**: Done and Archive tabs, find box, by day (Today, Yesterday, then the date) with time spent; Reopen, Archive,
+  Unarchive.
+* **Plan** (`PlanDays`, `PlanGrid` as `PlanGrid.swift`; shared `plan.json`): a day on a phone, a day or week on a
+  tablet; work hours (stretched to show blocks outside them) or the full day; settings per group on the phone. Plan by
+  a tap on a time, *Plan…*, or (tablet) dragging a task from Not planned; long-press drag a block to move it (snapped to
+  15 minutes, across days in a week), drag its bottom edge to resize; tap a block for its menu. Deadlines, comebacks,
+  "now", and energy per day against the daily budget.
+* **Reports** (`TimeReport`, shared `reports.json`, worked out on the phone): ranges 7 days, 4 weeks, 3 months, a year
+  or custom dates; KPIs, time per day (focus and other), by group, top tasks, weekday × hour, active days (90+ days)
+  and the Timeline (Gantt) whose rows open their task.
+* **Task details**, full screen on a phone and beside the view on a tablet (tap a title, a result, a workstream, a note, a link or a reminder's notification):
   title and details (saved on Close, Back, or Save), priority, deadline (date and time pickers, Clear), energy, repeat
   rule (typed, or picked from the web app's list; a rule it doesn't understand says why), group, Mark done (asks
   before closing open subtasks) or Reopen, Later, Do now, Archive / Unarchive (finished top-level tasks), Copy link,
   Delete (asks first, and says it can't be undone and that archiving keeps it). Subtasks with check boxes (a step that
   must wait is greyed), each opens; the breadcrumb opens the parent. *Steps in order & rollout steps*: the in-order
   switch, hours between steps, and steps added one per line. Reminders: the pending ones (Dismiss) and *Remind me…*
-  with an optional message. Notes: add, and every note newest first.
+  with an optional message. Notes: add, and every note newest first. Time spent, and the task's Timeline (its and its
+  subtasks' activity, newest first, with who did it: `timeline(id)`, as Swift's).
 * **Reminders notify.** The next pending reminder (a snooze with a reminder is one) has an alarm, exact when the phone
   allows exact alarms. When it rings, each reminder due is shown as a notification with *Mark done* (*Open* when the
   task has open subtasks) and *In an hour*; tapping it opens the task. It's marked delivered (`notifiedAt`, once, like
@@ -591,7 +614,6 @@ Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Relea
   * Rotate the API token, and compact the activity log.
   * Phones: **Keep mine** / **Keep theirs** for lines changed on both, and OneDrive (they sync on their own today:
     Android through a gist, iPhone and iPad through iCloud Drive or a gist).
-  * Android: the Board, Plan and Reports screens (the core already has their rules).
   * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
   * Keyboard navigation of cards.
 * **Later:**

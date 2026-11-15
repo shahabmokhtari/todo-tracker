@@ -124,7 +124,8 @@ note to open that task.
 deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,
 put it off with **Later**, archive it once it's done, copy its link, or delete it (it asks first: deleting can't be
 undone, archiving keeps it). Below: its subtasks (tick them off, tap one to open it; the path at the top takes you
-back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, and notes.
+back), **Steps in order & rollout steps** (one step after another, with hours between them), reminders, notes, and
+**Timeline**: what happened to it and who did it (you, an agent, another device). It also says how long you spent on it.
 
 **Reminders tell you, even with the app closed.** When a reminder is due, or something you snoozed comes back, your
 phone shows a notification: **Mark done** (or **Open**, when it has subtasks still to do), **In an hour**, or tap it to
@@ -138,10 +139,38 @@ be picked) and **After another task…**. Changed your mind? Tap **Undo** on the
 **Find a task:** tap 🔍 and type. Words match the title or details; `is:done`, `is:archived` and `group:work` work as
 on the web.
 
+**The views.** The bar along the bottom has **Today**, **Board**, **Tasks**, **Done** and **More** (**Plan**,
+**Reports**, **Settings**, Send feedback). On a tablet, a foldable opened up or a phone turned sideways, a rail on the
+left lists every view, and a task you open shows beside the view instead of covering it (like the iPad's sidebar).
+Each view shows the group you pick at the top (or all of them), and 🔍 narrows the Board, Tasks and Done to what
+matches.
+
+* **Board:** your tasks as cards in Inbox, Next, Doing and Done. Hold a card and drag it to another column (or onto a
+  column's name above the board on a phone), or tap ⇄ on it to move it to a column or up and down. Doing says when it
+  holds more than three (finishing beats starting); starting a timer (▶) moves a card to Doing, ✓ finishes it, and a
+  finished card can be archived. Type in **Add to …** under a column to add a task there. On a phone it's one column
+  at a time: swipe, or tap a column's name.
+* **Tasks:** every task as an outline. Tap ▸ to show subtasks, the circle to finish one, a title to pick it and again
+  to rename it (Done on the keyboard saves it and starts the next task below). ⋯ moves a task up or down, into the task
+  above or out one level, to another group, adds a subtask or times it. Hold a task and drop it on the top of another
+  (before it), its middle (inside it) or its bottom (after it). **Show finished**, **Expand all** and **Collapse all**
+  are above the list.
+* **Done:** what you finished, day by day, with the time it took: **Reopen** or **Archive** each; the **Archive** tab
+  brings archived tasks back (**Unarchive**).
+* **Plan:** your day (a week on a tablet) as a time grid. Tap an empty time, or **Plan…** on a task in Not planned (☰ on
+  a phone), to give it a block; on a tablet you can drag a task from the list onto a time. Hold a block and drag it to
+  move it, drag its bottom edge to make it longer or shorter, or tap it (open it, move it by a quarter of an hour or a
+  day, change its length, take it off the plan). Work hours or the full day, and your work hours and days (⚙), are kept
+  per group. Each day says how much energy its blocks take.
+* **Reports:** where your time went for 7 days, 4 weeks, 3 months, a year or dates you pick: time tracked, focus
+  sessions, tasks done and your longest streak; time per day, by group, top tasks, when you work, active days, and the
+  **Timeline**: a row per task with its work as bars, a line from when it was made to when it was done (or is due), ◆
+  due and ● done. Tap a row to open its task. Reports are worked out on the phone, so they work offline too.
+
 **Groups:** tap the group you're in again (or **Edit**) to rename it, give it a color, or delete it. Its tasks move to
 the group you pick, so none are lost.
 
-**Settings** (⚙): sync; light, dark, or as your phone is; how much energy you have in a day;
+**Settings** (⚙ on Today, or **More › Settings**): sync; light, dark, or as your phone is; how much energy you have in a day;
 how long a focus session and its breaks last; and whether notifications and on-time alarms are on.
 
 **Where your tasks are.** The phone keeps them in a tasks folder of its own, and Settings says which way it works:

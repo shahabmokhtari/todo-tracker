@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
             }
             OneThingTheme(vm.theme) {
                 val moving = vm.moving
-                if (moving != null) MovingTasks(moving) else TodayScreen(vm)
+                if (moving != null) MovingTasks(moving) else AppShell(vm)
             }
         }
         // Started by a onething://task/<id> link (not again after rotation, nor when reopened from Recents, which

@@ -188,6 +188,9 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                         textStyle = MaterialTheme.typography.titleLarge, modifier = Modifier.fillMaxWidth(),
                     )
                     StateLine(item, vm)
+                    item.timeSpent(vm.now).takeIf { !it.isZero }?.let {
+                        Text("Time spent: ${dev.onething.core.durationWords(it)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     TaskButtons(item, vm, onArchive = { leave { vm.archive(id); onClose() } })
                     OutlinedTextField(
                         value = details, onValueChange = { typedDetails = it }, label = { Text("Details") },
@@ -211,6 +214,16 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                         OutlinedTextField(value = note, onValueChange = { note = it }, placeholder = { Text("What happened, what's next…") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                         Button(onClick = { if (vm.addNote(id, note)) note = "" }, enabled = note.isNotBlank()) { Text("Add note") }
                         CardNotes(item)
+                    }
+                    HorizontalDivider()
+                    // What happened to it, and who did it (you, an agent, a connector, another device).
+                    Section("Timeline") {
+                        vm.timelineOf(id).take(20).forEach { entry ->
+                            Column {
+                                Text(entry.summary, style = MaterialTheme.typography.bodyMedium)
+                                Text("${entry.actor.displayName} · ${dev.onething.core.RelativeTime.format(entry.at, vm.now)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                     Spacer(Modifier.height(32.dp))
                 }
