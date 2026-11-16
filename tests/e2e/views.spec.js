@@ -478,7 +478,7 @@ test('Later: quick choices with times, a time typed in words, and after another 
   await when.fill('when pigs fly');
   await expect(sheet.locator('.later-preview.bad')).toContainText('tell when');
   await sheet.getByRole('button', { name: 'next week' }).click();
-  await expect(sheet.locator('.later-preview.ok')).toContainText(/(Mon.*|tomorrow) 9:00 · in /); // on a Sunday, next Monday is "tomorrow"
+  await expect(sheet.locator('.later-preview.ok')).toContainText(/(Mon.*|tomorrow) 9:00 · (in |[A-Z][a-z]{2} \d+)/); // on a Sunday, next Monday is "tomorrow"; on a Monday, a week away shows its date
   await when.press('Enter');
   await expect(sheet).toBeHidden();
   await expect(drawer.locator('.waiting-banner')).toContainText(/Snoozed until (Mon.*|tomorrow) 9:00/);
