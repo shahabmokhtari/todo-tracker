@@ -65,8 +65,7 @@ public struct SettingsView: View {
 
             Section {
                 Picker("Energy in a day", selection: Binding(get: { model.board.dailyEnergy }, set: { model.setDailyEnergy($0) })) {
-                    // In words: a picker draws ⚡ as a missing glyph on iPad.
-                    ForEach(energyChoices, id: \.self) { Text("\($0) a day").tag($0) }
+                    ForEach(energyChoices, id: \.self) { Text("\($0) ⚡").tag($0) }
                 }
                 .accessibilityIdentifier("settings-energy")
             } header: {
