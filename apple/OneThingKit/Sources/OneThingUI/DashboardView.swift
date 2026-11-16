@@ -935,7 +935,7 @@ struct MoreMenu: View {
             Menu {
                 ForEach(EnergyChoice.all) { choice in
                     Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
-                        if entry.item.energy == choice.level { Label(choice.words, systemImage: "checkmark") } else { Text(choice.words) }
+                        if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
                     }
                 }
             } label: { Label("Energy per hour", systemImage: "bolt") }
@@ -987,15 +987,14 @@ struct CardNotes: View {
 /// A task's energy per hour, as offered in ⋯ › Energy per hour.
 struct EnergyChoice: Identifiable {
     let level: Int?
-    /// In words, not ⚡: pickers and menus draw ⚡ as a missing glyph on iPad.
-    let words: String
-    var id: String { words }
+    let label: String
+    var id: String { label }
 
     static let all = [
-        EnergyChoice(level: nil, words: "Not said (counts as light)"),
-        EnergyChoice(level: 1, words: "Light"),
-        EnergyChoice(level: 2, words: "Medium"),
-        EnergyChoice(level: 3, words: "Draining"),
+        EnergyChoice(level: nil, label: "Not said (counts as ⚡)"),
+        EnergyChoice(level: 1, label: "⚡ light"),
+        EnergyChoice(level: 2, label: "⚡⚡"),
+        EnergyChoice(level: 3, label: "⚡⚡⚡ draining"),
     ]
 }
 
