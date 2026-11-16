@@ -909,7 +909,8 @@ struct MoreMenu: View {
     var body: some View {
         Menu {
             if focusCard {
-                Button { model.toggleNote(entry.item.id) } label: { Label("Add a note", systemImage: "note.text") }
+                let noteOpen = model.openNotes.contains(entry.item.id)
+                Button { model.toggleNote(entry.item.id) } label: { Label(noteOpen ? "Close the note" : "Add a note", systemImage: "note.text") }
                 if model.runningTimer?.item.id != entry.item.id {
                     Button { model.toggleTimer(entry.item.id) } label: { Label("Start the timer", systemImage: "stopwatch") }
                 }
@@ -934,7 +935,7 @@ struct MoreMenu: View {
             Menu {
                 ForEach(EnergyChoice.all) { choice in
                     Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
-                        if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+                        if entry.item.energy == choice.level { Label(choice.words, systemImage: "checkmark") } else { Text(choice.words) }
                     }
                 }
             } label: { Label("Energy per hour", systemImage: "bolt") }
@@ -986,16 +987,15 @@ struct CardNotes: View {
 /// A task's energy per hour, as offered in ⋯ › Energy per hour.
 struct EnergyChoice: Identifiable {
     let level: Int?
-    let label: String
-    /// The same in words, for a picker: its label draws ⚡ as a missing glyph on iPad.
+    /// In words, not ⚡: pickers and menus draw ⚡ as a missing glyph on iPad.
     let words: String
-    var id: String { label }
+    var id: String { words }
 
     static let all = [
-        EnergyChoice(level: nil, label: "Not said (counts as ⚡)", words: "Not said (counts as light)"),
-        EnergyChoice(level: 1, label: "⚡ light", words: "Light"),
-        EnergyChoice(level: 2, label: "⚡⚡", words: "Medium"),
-        EnergyChoice(level: 3, label: "⚡⚡⚡ draining", words: "Draining"),
+        EnergyChoice(level: nil, words: "Not said (counts as light)"),
+        EnergyChoice(level: 1, words: "Light"),
+        EnergyChoice(level: 2, words: "Medium"),
+        EnergyChoice(level: 3, words: "Draining"),
     ]
 }
 
