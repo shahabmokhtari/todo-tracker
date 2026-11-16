@@ -859,16 +859,12 @@ struct FocusCard: View {
                     .buttonStyle(.plain)
                 }
                 SnoozeMenu(model: model, id: entry.item.id, style: .pill)
-                PillButton(title: "Note", systemImage: "note.text") { model.toggleNote(entry.item.id) }
                 PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
-                let timing = model.runningTimer?.item.id == entry.item.id
-                PillButton(title: timing ? "Stop timer" : "Timer", systemImage: timing ? "stop.circle" : "stopwatch") { model.toggleTimer(entry.item.id) }
-                if model.dashboard.now.count > 1 {
-                    // Said in words: an unlabeled arrow among labeled buttons reads as a menu.
-                    PillButton(title: "Skip", systemImage: "arrow.down") { model.skip(entry.item.id) }
-                        .help("Do something else first: moves this one down the list")
+                // While this task is timed, stopping it is one tap away; Note, Timer and Skip are in ⋯.
+                if model.runningTimer?.item.id == entry.item.id {
+                    PillButton(title: "Stop timer", systemImage: "stop.circle") { model.toggleTimer(entry.item.id) }
                 }
-                MoreMenu(model: model, entry: entry, pill: true, openDetails: open)
+                MoreMenu(model: model, entry: entry, pill: true, focusCard: true, openDetails: open)
             }
             if model.openNotes.contains(entry.item.id) {
                 NoteField(model: model, id: entry.item.id)
@@ -903,6 +899,8 @@ struct MoreMenu: View {
     @ObservedObject var model: BoardModel
     let entry: AgendaEntry
     var pill = false
+    /// On the focus card: Note, the task timer and Skip are here instead of buttons of their own.
+    var focusCard = false
 
     @Environment(\.openURL) var openURL
     /// Opens the task's details here (nil: not offered).
@@ -910,6 +908,17 @@ struct MoreMenu: View {
 
     var body: some View {
         Menu {
+            if focusCard {
+                let noteOpen = model.openNotes.contains(entry.item.id)
+                Button { model.toggleNote(entry.item.id) } label: { Label(noteOpen ? "Close the note" : "Add a note", systemImage: "note.text") }
+                if model.runningTimer?.item.id != entry.item.id {
+                    Button { model.toggleTimer(entry.item.id) } label: { Label("Start the timer", systemImage: "stopwatch") }
+                }
+                if model.dashboard.now.count > 1 {
+                    Button { model.skip(entry.item.id) } label: { Label("Skip: do something else first", systemImage: "arrow.down") }
+                }
+                Divider()
+            }
             if let openDetails {
                 Button(action: openDetails) { Label("Open details", systemImage: "arrow.up.left.and.arrow.down.right") }
             }
@@ -926,15 +935,16 @@ struct MoreMenu: View {
             Menu {
                 ForEach(EnergyChoice.all) { choice in
                     Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
-                        if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+                        if entry.item.energy == choice.level { Label(choice.words, systemImage: "checkmark") } else { Text(choice.words) }
                     }
                 }
             } label: { Label("Energy per hour", systemImage: "bolt") }
             Button { Clipboard.copy(TaskLinks.forTask(entry.item.id)) } label: { Label("Copy link", systemImage: "link") }
         } label: {
             if pill {
-                Image(systemName: "ellipsis").font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12).padding(.vertical, 9)
+                // In a Text the symbol takes the line's height, so the pill matches the labeled ones beside it.
+                Text(Image(systemName: "ellipsis")).font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(Capsule().fill(.background))
                     .overlay(Capsule().strokeBorder(.quaternary, lineWidth: 1))
             } else {
@@ -977,14 +987,15 @@ struct CardNotes: View {
 /// A task's energy per hour, as offered in ⋯ › Energy per hour.
 struct EnergyChoice: Identifiable {
     let level: Int?
-    let label: String
-    var id: String { label }
+    /// In words, not ⚡: pickers and menus draw ⚡ as a missing glyph on iPad.
+    let words: String
+    var id: String { words }
 
     static let all = [
-        EnergyChoice(level: nil, label: "Not said (counts as ⚡)"),
-        EnergyChoice(level: 1, label: "⚡ light"),
-        EnergyChoice(level: 2, label: "⚡⚡"),
-        EnergyChoice(level: 3, label: "⚡⚡⚡ draining"),
+        EnergyChoice(level: nil, words: "Not said (counts as light)"),
+        EnergyChoice(level: 1, words: "Light"),
+        EnergyChoice(level: 2, words: "Medium"),
+        EnergyChoice(level: 3, words: "Draining"),
     ]
 }
 
