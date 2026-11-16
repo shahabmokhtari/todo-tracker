@@ -27,6 +27,7 @@ Mac app have native ports of the core rules.
 | `integrations/` | Claude Desktop extension, Claude Code / Copilot CLI plugin and skill, VS Code sample | — |
 | `tests/` | xUnit v3 tests per project, `web/` (node:test), `e2e/` (Playwright), `system/` (Windows UI Automation), `fixtures/` (shared by C#, Swift and Kotlin) | |
 | `docs/` | User docs, the product spec, and generated references (`mcp.md`, `cli.md`) | |
+| `store/` | Store screenshots (raw and framed), the Play feature graphic, and the scripts that make them | macOS |
 | `website/` | The public site at onething.awesomehq.app (static, Cloudflare Workers; `website/README.md` says how to deploy) | any OS |
 
 ## Build and test
@@ -127,6 +128,7 @@ ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportF
 ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, og.png and the website's WebP copies, from a made-up demo board (quit the app first on Windows for the sidebar; --web-only skips it, --only <names> picks some)
 # The iPhone pictures (macos-ios-light/-dark): run the Screenshots workflow (.github/workflows/screenshots.yml; also on a push to a branch named screenshots), then unzip its artifact at the repo root
+store/capture-mac.sh && /usr/bin/python3 store/frame.py   # Mac store screenshots from the demo board, then every store shot framed (store/README.md)
 python3 build/icons.py                      # the app icon on every platform (pip install cairosvg pillow); the tray icons draw the same shapes in code
 ```
 
