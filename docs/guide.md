@@ -315,7 +315,9 @@ open as a sheet.
 
 Today works like everywhere else. On an iPad and a Mac it has two columns, like the web app: the Do this now card and
 Do now on the left; Workstreams, Coming up (what waits for later), Done today (with when each was done) and Recent notes
-on the right. With less room (an iPhone, or an iPad beside another app) it's one column, the one thing first. Tap the
+on the right. With less room (an iPhone, or an iPad beside another app) it's one column, the one thing first. The Do
+this now card has **Mark done**, **Later**, **Focus** and **⋯** (Add a note, Start the timer, Skip, Open details and
+the rest; **Stop timer** joins them while you're timing it). Tap the
 circle in front of a task to mark it done (a task with open subtasks asks first). Drag a task in Do now above another to do it first.
 
 * **Timers:** the task you're timing and the focus timer share one small strip: in the bar at the top on an iPad and a

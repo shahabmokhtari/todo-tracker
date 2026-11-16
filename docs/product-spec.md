@@ -437,7 +437,8 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 * **One hero:** the "Do this now" card has a gradient hairline border (indigo → violet → pink). The border turns
   amber → rose when a reminder is ringing and green → cyan when all is clear. The card shows a priority pill,
   toned chips, and labeled actions. On the web the card keeps three in sight (Mark done, Later, Focus; Note when the
-  focus timer is off) and the rest under **More** (Add a note, Start the timer, Open details, Skip for now, …).
+  focus timer is off) and the rest under **More** (Add a note, Start the timer, Open details, Skip for now, …). The
+  Apple apps, Android and the Windows sidebar show the same four (Mark done, Later, Focus, More).
 * **Quiet lists:**
   * Rows show a haloed priority dot, the title, the breadcrumb, and toned chips (step, back in, due, overdue, notes).
   * Row actions are icon buttons that stay subdued until hover or focus. On touch they are always visible. On the web
