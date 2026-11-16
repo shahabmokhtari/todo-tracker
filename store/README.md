@@ -18,7 +18,7 @@ Android's notification shade and widgets, the Mac menu bar glance and desktop wi
 ## Making them again
 
 * **Mac:** `store/capture-mac.sh` builds a Debug app and captures each view in a 1440 × 900 window (Screen Recording
-  for the terminal). It runs beside an installed One Thing and leaves it as it was.
+  for the terminal; a Retina screen). It runs beside an installed One Thing and leaves it as it was.
 * **iPhone and iPad:** a Debug build in a simulator, started with
   `SIMCTL_CHILD_ONETHING_DEMO=1 SIMCTL_CHILD_ONETHING_VIEW=<today|board|plan|reports> [SIMCTL_CHILD_ONETHING_OPEN=1]
   xcrun simctl launch <udid> com.onething.ios`, the status bar set with
@@ -28,4 +28,4 @@ Android's notification shade and widgets, the Mac menu bar glance and desktop wi
 * **Android:** a debug build on a Pixel emulator, `adb shell am start -n dev.onething/.app.MainActivity --ez demo true`,
   then `adb exec-out screencap -p`. Its demo banner shows in the frame.
 * **Framing and the graphic:** `/usr/bin/python3 store/frame.py` and `/usr/bin/python3 store/graphic.py` (Pillow, and
-  the SF Pro font macOS ships).
+  the SF Pro font macOS ships; `/usr/bin/python3 -m pip install --user pillow` if it's missing).

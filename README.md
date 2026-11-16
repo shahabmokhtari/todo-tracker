@@ -159,7 +159,7 @@ extension. Every change's builds are also attached to its
 **Linux.** Unpack `onething-linux-x64.tar.gz` and run `./install.sh` (add `--autostart` to start with your session).
 
 **macOS / iOS.** `cd apple && brew install xcodegen && xcodegen generate && open OneThing.xcodeproj`. To build the Mac
-app with its sync server and put it in /Applications: `build/install-mac.sh` (needs Xcode and the .NET SDK).
+app with its sync server and put it in /Applications: `build/install-mac.sh` (needs Xcode, xcodegen and the .NET SDK).
 
 **Anywhere (the web app, API and MCP server):**
 
