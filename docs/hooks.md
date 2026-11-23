@@ -29,14 +29,17 @@ Only you can turn one down (**Don't allow**) or try hooks (**Try it**, `POST /ap
 
 **You're asked.** You don't have to go looking: on Windows a notification says *"Claude wants to run a hook"* with what
 it would run. When that line is all of it (a short, plain command or address with nothing else set), it has **Allow**;
-otherwise **Review…** opens all of it in Settings › Hooks first. Both have **Don't allow**. Without the Windows app, or
-with its notifications switched off, the app's own window or browser tab (the owner's session) asks in a dialog that
-shows everything. Each version is asked about once: **Allow** approves exactly what you saw, and from then on the hook
+otherwise **Review…** opens all of it in Settings › Hooks first. Both have **Don't allow**. On a Mac the app asks
+itself, with everything the hook would do in full; **Don't allow** is the default button (Return), and **Later**
+(Escape) leaves it waiting. Without the Windows app, or with its notifications switched off, the app's own window or
+browser tab (the owner's session) asks in a dialog that shows everything (the Mac's One Thing window leaves it to the
+Mac app's own question). Each version is asked about once: **Allow** approves exactly what you saw, and from then on the hook
 just runs, with nothing more to check; **Don't allow** removes it (only if it still waits, in the version you saw);
 *Later* leaves it waiting in Settings › Hooks. If an agent changes it afterwards, you're asked again.
 
 Who is "you": `ot` run without `--as`, a window the app opened itself (the sidebar, Settings in the app window,
-*Open in browser* from the tray or the Mac app), and an app that sends the owner key with the API token (the Mac app).
+*Open in browser* from the tray, the Mac app's One Thing window or *Open in the browser*), and an app that sends the
+owner key with the API token (the Mac app).
 Those links come from the app's own process, or with the owner key (`owner-key` next to `api-token` in the data
 folder, never sent by the server). A browser signed in by pasting the API
 token, or with a link asked for with the token alone, is treated like anything else holding the token: what it adds

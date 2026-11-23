@@ -82,8 +82,9 @@ Windows computer does:
   from there. They are added to the other computers' tasks, never replace them (a task already there stays as it
   is). The old file is kept as `board.json.migrated`. While the folder opens, changes wait a moment.
 * Version history needs git (Xcode's command line tools, or Homebrew's git); without it, history is off on the Mac.
-* **More:** the menu bar glance shows where the tasks are and **Open One Thing…** opens the full window in the
-  browser (board, reports, Settings, the Sync panel).
+* **More:** Settings › **Sync** (or File › Open the Full App) opens the Sync panel in the One Thing window, inside the
+  app and signed in as you; Settings › **Your tasks** shows the folder (Show in Finder). The menu bar glance has
+  **Open One Thing…** (the same window) and **In the browser**.
 * The server comes for Apple silicon Macs. If it can't start, the app says so and keeps the tasks on the Mac
   (`~/Library/Logs/OneThing/server.log` says why). A downloaded, unsigned app may need
   `xattr -dr com.apple.quarantine "/Applications/OneThing.app"` once.
