@@ -17,15 +17,21 @@ public struct OutlineMemory {
 
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
-    /// The open tasks (kept to the newest few hundred).
+    /// The open tasks (kept to the newest few hundred, in the order they were opened).
     public var expanded: Set<UUID> {
         get { Self.ids(defaults.string(forKey: Self.expandedKey)) }
-        nonmutating set { defaults.set(Self.text(newValue), forKey: Self.expandedKey) }
+        nonmutating set { defaults.set(Self.text(newValue, after: defaults.string(forKey: Self.expandedKey)), forKey: Self.expandedKey) }
     }
 
     public var closedGroups: Set<UUID> {
         get { Self.ids(defaults.string(forKey: Self.closedGroupsKey)) }
-        nonmutating set { defaults.set(Self.text(newValue), forKey: Self.closedGroupsKey) }
+        nonmutating set { defaults.set(Self.text(newValue, after: defaults.string(forKey: Self.closedGroupsKey)), forKey: Self.closedGroupsKey) }
+    }
+
+    /// Opens or closes rows and groups, keeping only tasks and groups still on `board` (one that's gone is forgotten).
+    public func set(expanded: Set<UUID>, closedGroups: Set<UUID>, on board: TaskBoard) {
+        defaults.set(Self.text(expanded, after: defaults.string(forKey: Self.expandedKey), keeping: Self.tasks(on: board)), forKey: Self.expandedKey)
+        defaults.set(Self.text(closedGroups, after: defaults.string(forKey: Self.closedGroupsKey), keeping: Self.groups(on: board)), forKey: Self.closedGroupsKey)
     }
 
     public var show: OutlineShow {
@@ -44,11 +50,40 @@ public struct OutlineMemory {
         if OutlineShow(rawValue: saved) == nil { show = OutlineShow.initial(saved: nil, showDone: defaults.bool(forKey: Self.showDoneKey)) }
     }
 
-    static func ids(_ text: String?) -> Set<UUID> {
-        Set((text ?? "").split(separator: ",").compactMap { UUID(uuidString: String($0)) })
+    /// How many open rows are remembered (the newest).
+    static let keep = 500
+
+    static func ids(_ text: String?) -> Set<UUID> { Set(order(text)) }
+
+    /// The ids as kept, oldest first.
+    static func order(_ text: String?) -> [UUID] {
+        var seen = Set<UUID>()
+        return (text ?? "").split(separator: ",").compactMap { UUID(uuidString: String($0)) }.reversed().filter { seen.insert($0).inserted }.reversed()
     }
 
-    static func text(_ ids: Set<UUID>) -> String { ids.map(\.uuidString).sorted().suffix(500).joined(separator: ",") }
+    /// The ids in the order they were added, the newest `keep` of them, those `keeping` says still exist.
+    static func text(_ order: [UUID], keeping: (UUID) -> Bool = { _ in true }) -> String {
+        var seen = Set<UUID>()
+        let newestLast = order.reversed().filter { seen.insert($0).inserted }.reversed().filter(keeping)
+        return newestLast.suffix(keep).map(\.uuidString).joined(separator: ",")
+    }
+
+    /// A set of ids, in the order the ones already kept (`after`) were added, new ones after them.
+    static func text(_ ids: Set<UUID>, after previous: String?, keeping: (UUID) -> Bool = { _ in true }) -> String {
+        let before = order(previous).filter(ids.contains)
+        let added = ids.subtracting(before).sorted { $0.uuidString < $1.uuidString }
+        return text(before + added, keeping: keeping)
+    }
+
+    /// Whether a task is still there (anything goes while nothing is loaded yet).
+    static func tasks(on board: TaskBoard) -> (UUID) -> Bool {
+        board.items.isEmpty ? { _ in true } : { board.find($0) != nil }
+    }
+
+    static func groups(on board: TaskBoard) -> (UUID) -> Bool {
+        let ids = Set(board.groups.map(\.id))
+        return board.items.isEmpty ? { _ in true } : { ids.contains($0) }
+    }
 }
 
 /// "Show in tree": the task Tasks brings into view, and the Show choice to use until another is picked (nil: the one
@@ -64,11 +99,18 @@ extension ShellState {
     /// it gives way for now (not saved: Everything for a finished task, else To do).
     public func showInTree(_ id: UUID, memory: OutlineMemory = OutlineMemory()) {
         guard let item = model.board.find(id), !item.isArchived else { return }
+        // The details' sheet going away (a phone) unpicks the row: not this time.
+        keepSelection = id
         closeDetails()
         if let picked = model.selectedGroupId, picked != item.groupId { model.select(group: item.groupId) }
         if let zoom = memory.zoom, !item.ancestors.contains(where: { $0.id == zoom }) { memory.zoom = nil }
-        memory.expanded = memory.expanded.union(item.ancestors.map(\.id))
-        memory.closedGroups = memory.closedGroups.subtracting([item.groupId])
+        memory.set(expanded: memory.expanded.union(item.ancestors.map(\.id)), closedGroups: memory.closedGroups.subtracting([item.groupId]), on: model.board)
+        // A search that leaves it out goes (and says so); one that keeps it stays.
+        if !model.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !Outline.kept(model.board, OutlineOptions(groupId: model.selectedGroupId, show: .all, query: model.searchText), now: model.now)(item) {
+            model.searchText = ""
+            model.status = "Cleared the search to show the task."
+        }
         let show = memory.show
         let shown = Outline.kept(model.board, OutlineOptions(groupId: model.selectedGroupId, show: show), now: model.now)(item)
         view = .tasks

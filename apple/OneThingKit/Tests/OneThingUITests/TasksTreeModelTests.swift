@@ -87,11 +87,13 @@ final class TasksTreeModelTests: XCTestCase {
         model.addTask("Pick a hotel", parentId: place.parentId)
         XCTAssertEqual(trip.children.first?.title, "Pick a hotel", "first inside the zoomed task")
 
-        // Finished (its subtasks with it) and hidden under To do: out to the top.
+        // Finished (its subtasks with it): To do shows nothing under it, but the zoom stays (Show only narrows it).
         _ = model.complete(trip.id)
-        XCTAssertNil(Outline.resolveZoom(model.board, options, now: model.now))
+        XCTAssertEqual(Outline.resolveZoom(model.board, options, now: model.now), trip.id)
+        XCTAssertEqual(Outline.rememberedZoom(model.board, options), trip.id)
+        XCTAssertEqual(Outline.rows(model.board, options, now: model.now).count, 0)
         options.show = .all
-        XCTAssertEqual(Outline.resolveZoom(model.board, options, now: model.now), trip.id, "Everything still shows it")
+        XCTAssertEqual(Outline.rows(model.board, options, now: model.now).count, 4, "Everything shows what's done under it")
     }
 
     func testShowNarrowsTheTreeAndMovesOnlySeeWhatsShown() throws {
@@ -201,5 +203,44 @@ final class TasksTreeModelTests: XCTestCase {
         XCTAssertEqual(model.selectedGroupId, work)
         let rows = Outline.rows(model.board, OutlineOptions(groupId: model.selectedGroupId, show: .all, expanded: memory.expanded), now: model.now)
         XCTAssertTrue(rows.contains { $0.id == sunscreen.id }, "drawn with the parents open")
+    }
+
+    func testOpenRowsAreKeptInTheOrderTheyWereOpenedNewestLongest() {
+        let ids = (0..<(OutlineMemory.keep + 1)).map { _ in UUID() }
+        let kept = OutlineMemory.order(OutlineMemory.text(ids))
+        XCTAssertEqual(kept, Array(ids.dropFirst()), "the oldest goes, whatever its id")
+        let (a, b, c) = (ids[0], ids[1], ids[2])
+        XCTAssertEqual(OutlineMemory.order(OutlineMemory.text([a, b, c, a])), [b, c, a], "opened again: the newest")
+        XCTAssertEqual(OutlineMemory.order(OutlineMemory.text([c, a], after: OutlineMemory.text([a, b, c]))), [a, c], "a set keeps the order they were opened in")
+    }
+
+    func testTasksAndGroupsThatAreGoneAreForgotten() throws {
+        let model = try tripBoard()
+        let memory = memory()
+        let trip = try task(model, "Plan the trip")
+        let work = model.groups[0].id
+        memory.set(expanded: [trip.id, UUID()], closedGroups: [work, UUID()], on: model.board)
+        XCTAssertEqual(memory.expanded, [trip.id])
+        XCTAssertEqual(memory.closedGroups, [work])
+        // Nothing loaded yet: nothing is forgotten.
+        let other = UUID()
+        memory.set(expanded: [other], closedGroups: [other], on: TaskBoard())
+        XCTAssertEqual(memory.expanded, [other])
+    }
+
+    func testShowInTreeClearsOnlyASearchThatLeavesTheTaskOutAndSaysSo() throws {
+        let model = try tripBoard()
+        let shell = ShellState(model: model)
+        let sunscreen = try task(model, "Sunscreen")
+        model.searchText = "sun"
+        shell.showInTree(sunscreen.id, memory: memory())
+        XCTAssertEqual(model.searchText, "sun", "a search that keeps it stays")
+        model.searchText = "passport"
+        shell.showInTree(sunscreen.id, memory: memory())
+        XCTAssertEqual(model.searchText, "")
+        XCTAssertEqual(model.status, "Cleared the search to show the task.")
+        XCTAssertEqual(shell.keepSelection, sunscreen.id, "the details going away leaves its row picked")
+        shell.open(sunscreen.id)
+        XCTAssertNil(shell.keepSelection, "once")
     }
 }

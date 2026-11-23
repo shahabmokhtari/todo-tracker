@@ -10,9 +10,10 @@ struct AddPlace: Equatable {
 }
 
 /// Tasks (the web's outline.js; the rules are OneThingKit's `Outline`). Under All groups the top level is the groups;
-/// a parent shows how far along it is; ⤢ zooms into a branch, with a path back (Escape on a keyboard). Return renames
-/// the selected task, and Return while typing adds the next one below; Tab and Shift-Tab nest and un-nest; Option-up
-/// and down reorder; Space finishes; drag a row before, after or into another, or onto a group (or use its ⋯ menu).
+/// a parent shows how far along it is; ⤢ (or Option-Return) zooms into a branch, with a path back (Back, or Escape on a
+/// keyboard, goes up one level). Return renames the selected task, and Return while typing adds the next one below; Tab
+/// and Shift-Tab nest and un-nest; Option-up and down reorder; Space finishes; drag a row before, after or into another,
+/// or onto a group (or use its ⋯ menu).
 struct TasksOutlineView: View {
     @ObservedObject var model: BoardModel
     @Environment(\.shellState) private var shell
@@ -27,6 +28,8 @@ struct TasksOutlineView: View {
     @State private var titleDraft = ""
     @State private var adding: AddPlace?
     @State private var newTitle = ""
+    /// The row Show in tree brought into view, highlighted for a moment.
+    @State private var highlighted: UUID?
     @FocusState private var field: Field?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -39,6 +42,8 @@ struct TasksOutlineView: View {
         let path: [OutlinePathPart]
         /// Under All groups and not zoomed: the groups are the top level.
         let grouped: Bool
+        /// The zoom to keep (what's remembered): the one asked unless the task is really gone.
+        let remembered: UUID?
         var zoom: UUID? { options.zoomId }
         func row(_ id: UUID) -> OutlineRow? { rows.first { $0.id == id } }
     }
@@ -52,21 +57,25 @@ struct TasksOutlineView: View {
     private var drawn: Drawn {
         var options = OutlineOptions(groupId: model.selectedGroupId, zoomId: UUID(uuidString: zoomText), show: show,
                                      query: model.searchText, expanded: expanded, closedGroups: closedGroups)
+        let remembered = Outline.rememberedZoom(model.board, options)
         options.zoomId = Outline.resolveZoom(model.board, options, now: model.now)
         return Drawn(options: options, rows: Outline.rows(model.board, options, now: model.now), path: Outline.path(model.board, options, now: model.now),
-                     grouped: options.groupId == nil && options.zoomId == nil)
+                     grouped: options.groupId == nil && options.zoomId == nil, remembered: remembered)
     }
 
+    /// Opened last is kept longest; tasks that are gone are forgotten.
     private func setExpanded(_ id: UUID, _ open: Bool) {
-        var set = expanded
-        if open { set.insert(id) } else { set.remove(id) }
-        expandedText = OutlineMemory.text(set)
+        let order = OutlineMemory.order(expandedText).filter { $0 != id } + (open ? [id] : [])
+        expandedText = OutlineMemory.text(order, keeping: OutlineMemory.tasks(on: model.board))
+    }
+
+    private func setExpanded(_ ids: Set<UUID>) {
+        expandedText = OutlineMemory.text(ids, after: expandedText, keeping: OutlineMemory.tasks(on: model.board))
     }
 
     private func setGroupOpen(_ id: UUID, _ open: Bool) {
-        var set = closedGroups
-        if open { set.remove(id) } else { set.insert(id) }
-        closedText = OutlineMemory.text(set)
+        let order = OutlineMemory.order(closedText).filter { $0 != id } + (open ? [] : [id])
+        closedText = OutlineMemory.text(order, keeping: OutlineMemory.groups(on: model.board))
     }
 
     private var selection: Binding<UUID?> {
@@ -91,7 +100,7 @@ struct TasksOutlineView: View {
             .environment(\.defaultMinListRowHeight, 34)
             .safeAreaInset(edge: .top, spacing: 0) { header(now) }
             .onKeyPress(phases: .down) { press in key(press, now) }
-            .onChange(of: now.zoom, initial: true) { _, resolved in fixZoom(resolved, now) }
+            .onChange(of: ZoomCheck(asked: zoomText, remembered: now.remembered), initial: true) { _, check in fixZoom(check) }
             .modifier(RevealWatcher(shell: shell) { reveal($0, proxy) })
             .onAppear { OutlineMemory().migrate() }
             .toolbar {
@@ -108,7 +117,10 @@ struct TasksOutlineView: View {
     private func editorAtTop(_ now: Drawn) -> Bool {
         guard let adding, adding.after == nil else { return false }
         if let zoom = now.zoom, adding.parent == zoom { return true }
-        return adding.parent == nil && (adding.group == nil || !now.grouped)
+        guard adding.parent == nil else { return false }
+        // First in a group whose row isn't shown (a Show choice or a search leaves it out): at the top all the same.
+        guard let group = adding.group, now.grouped else { return true }
+        return !now.rows.contains { $0.kind == .group && $0.id == group }
     }
 
     /// Under All groups: a section per group, its row pinned at the top while its tasks scroll under it.
@@ -147,17 +159,28 @@ struct TasksOutlineView: View {
         Group {
             if now.options.searching {
                 Text("Nothing here matches the filter.")
+            } else if now.zoom != nil {
+                // Show narrows a zoom: what it leaves out, and how to see it.
+                Text("\(Self.emptyHere(show)) \(compact ? "Tap Back to go up." : "Press Esc to go up.")")
             } else if show == .now {
                 Text("Nothing can be done right now.")
             } else if show == .waiting {
                 Text("Nothing is waiting.")
-            } else if now.zoom != nil {
-                Text(compact ? "Nothing left under this task. Tap Back to go back out." : "Nothing left under this task. Press Esc to go back out.")
             } else {
                 Text("No tasks here yet. Press ⌘N or + to add one.")
             }
         }
         .foregroundStyle(.secondary)
+    }
+
+    /// A zoom with nothing under it the Show choice keeps.
+    static func emptyHere(_ show: OutlineShow) -> String {
+        switch show {
+        case .todo: return "Nothing left to do here. Show › Everything shows what’s done."
+        case .now: return "Nothing here can be done right now. Show › To do shows the rest."
+        case .waiting: return "Nothing here is waiting. Show › To do shows the rest."
+        case .all: return "Nothing under this task."
+        }
     }
 
     // MARK: Above the tree: Show, Open to, and the path while zoomed
@@ -386,6 +409,8 @@ struct TasksOutlineView: View {
         .padding(.leading, CGFloat(level) * step)
         .padding(.vertical, 6)
         .background(alignment: .leading) { guides(level) }
+        // Show in tree: the row lights up for a moment.
+        .background(highlighted == item.id ? Theme.accent.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
         .listRowInsets(EdgeInsets(top: 0, leading: compact ? 12 : 10, bottom: 0, trailing: compact ? 12 : 10))
         .taskRowActions(model, id: item.id) { shell?.open(item.id) }
@@ -531,10 +556,10 @@ struct TasksOutlineView: View {
 
     // MARK: Zoom
 
-    /// Into a task's branch (nil: out to the whole tree).
+    /// Into a task's branch (nil: out to the whole tree). A title being renamed is saved first, as leaving the box does.
     private func zoom(to id: UUID?) {
+        if let editing { finishRename(editing) }
         adding = nil
-        editing = nil
         zoomText = id?.uuidString ?? ""
     }
 
@@ -542,17 +567,17 @@ struct TasksOutlineView: View {
     private func zoomOut(_ now: Drawn) {
         guard let zoom = now.zoom else { return }
         if let item = model.board.find(zoom) {
-            expandedText = OutlineMemory.text(expanded.union(item.ancestors.map(\.id)))
+            setExpanded(expanded.union(item.ancestors.map(\.id)))
             setGroupOpen(item.groupId, true)
         }
         self.zoom(to: nil)
         selection.wrappedValue = zoom
     }
 
-    /// Back (a phone): up to the task above the zoom, else out.
+    /// Back (a phone) and Escape: up one level, to the zoomed task's parent (the task it came from picked); from the
+    /// first level out to the tree.
     private func back(_ now: Drawn) {
-        let tasks = now.path.filter { $0.kind == .task }
-        if tasks.count >= 2, let up = tasks[tasks.count - 2].id {
+        if let up = Outline.zoomUp(model.board, now.options, now: model.now) {
             selection.wrappedValue = now.zoom
             zoom(to: up)
         } else {
@@ -560,29 +585,40 @@ struct TasksOutlineView: View {
         }
     }
 
-    /// A zoom that can't be shown any more (finished and hidden, moved, gone): out to its nearest parent that can. A
-    /// search only narrows for now (the zoom stays, for when it's cleared).
-    private func fixZoom(_ resolved: UUID?, _ now: Drawn) {
-        guard !now.options.searching, !model.board.items.isEmpty, resolved != UUID(uuidString: zoomText) else { return }
-        zoomText = resolved?.uuidString ?? ""
+    /// The zoom asked and the one to keep: when they differ, the task is really gone (deleted, archived, moved out of the
+    /// group picked, without subtasks) and the zoom goes for good. A search or a Show choice only narrows for now.
+    private struct ZoomCheck: Equatable {
+        let asked: String
+        let remembered: UUID?
+    }
+
+    private func fixZoom(_ check: ZoomCheck) {
+        guard !model.board.items.isEmpty, check.remembered != UUID(uuidString: check.asked) else { return }
+        zoomText = check.remembered?.uuidString ?? ""
     }
 
     // MARK: Actions
 
     private func openTo(_ level: OutlineLevel, _ now: Drawn) {
         let open = Outline.openTo(model.board, now.options, level: level, now: model.now)
-        expandedText = OutlineMemory.text(open.expanded)
-        closedText = OutlineMemory.text(open.closedGroups)
+        setExpanded(open.expanded)
+        closedText = OutlineMemory.text(open.closedGroups, after: closedText, keeping: OutlineMemory.groups(on: model.board))
     }
 
-    /// Show in tree: the Show choice it needs for now, and the row brought into view.
+    /// Show in tree: the Show choice it needs for now, and the row brought into view, picked and lit up for a moment. A
+    /// title being renamed is saved first.
     private func reveal(_ request: TreeReveal, _ proxy: ScrollViewProxy) {
         if let choice = request.show { showForNow = choice }
+        if let editing { finishRename(editing) }
         adding = nil
-        editing = nil
         DispatchQueue.main.async {
             shell?.treeReveal = nil
+            selection.wrappedValue = request.id
+            highlighted = request.id
             withAnimation { proxy.scrollTo(request.id, anchor: .center) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
+                if highlighted == request.id { withAnimation { highlighted = nil } }
+            }
         }
     }
 
@@ -656,13 +692,13 @@ struct TasksOutlineView: View {
         return .ignored
     }
 
-    /// The keys on the selected row (not while typing): Return renames, Space finishes, Tab nests, Option-arrows
-    /// reorder, Left and Right close and open; Escape leaves the zoom.
+    /// The keys on the selected row (not while typing): Return renames, Option-Return zooms in, Space finishes, Tab
+    /// nests, Option-arrows reorder, Left and Right close and open; Escape goes up one level of the zoom.
     private func key(_ press: KeyPress, _ now: Drawn) -> KeyPress.Result {
         guard editing == nil, field != .new else { return .ignored }
         if press.key == .escape {
             guard now.zoom != nil else { return .ignored }
-            zoomOut(now)
+            back(now)
             return .handled
         }
         guard let id = selection.wrappedValue, let item = model.board.find(id), let row = now.row(id) else { return .ignored }
@@ -670,6 +706,9 @@ struct TasksOutlineView: View {
         case .return where press.modifiers.contains(.command):
             // ⌘Return is Mark Done (the menu's); ⌘I opens the details.
             return .ignored
+        case .return where press.modifiers.contains(.option):
+            guard !item.children.isEmpty else { return .ignored }
+            zoom(to: id)
         case .return:
             startRename(item)
         case .space:
