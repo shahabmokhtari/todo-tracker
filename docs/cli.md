@@ -156,7 +156,7 @@ Log progress ("did X, next Y"); - reads the text from stdin.
 ot note <task> <text…|-> [--url https://… [--title page]] | ot note <task> --edit <note|last> <text…|->
 ```
 
---url: the web page the note is about. --edit corrects a note (its id from ot show --json, or last).  
+--url: the web page the note is about. --edit corrects a note (its id from ot show --json, or last); with --as, only a note that agent wrote.  
 
 ### ot snooze
 

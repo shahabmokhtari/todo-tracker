@@ -50,7 +50,7 @@ public sealed partial class TodoTools
             return b.Get(id);
         });
 
-    [McpServerTool(Name = "update_note"), Description("Correct a progress note on a task (its id is in get_task's notes). The note keeps its time and author; the change is versioned.")]
+    [McpServerTool(Name = "update_note"), Description("Correct a progress note you wrote on a task (its id is in get_task's notes). Notes by the user or another agent are theirs: add a new note instead. The note keeps its time and author; the change is versioned.")]
     public Task<NoteDto> UpdateNote(McpServer server, [Description("The task's id (a full id, from get_dashboard, search_tasks or list_tasks).")] string taskId, [Description("The note's id, from get_task.")] string noteId, [Description("The note's new text.")] string text) =>
         Guard(() => Store.UpdateAsync(b =>
         {

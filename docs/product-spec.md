@@ -514,7 +514,7 @@ the docs explain the options and risks. The server sends the same short instruct
 | `list_groups`, `create_group`, `update_group` | Groups (tabs): list, make one (only when asked: an unknown group name is an error that says how to make it, never a new group), rename and recolor. Deleting a group stays in the apps |
 | `capture_task` | A task from quick-add words (`!!`, `due:fri`, `#tag`, `@tomorrow`), parsed as everywhere else |
 | `dismiss_reminder`, `clear_snooze` | Dismiss one reminder; bring a deferred task back to Do now |
-| `update_note`, `update_time_entry` | Correct a note or logged time (removing either stays in the apps) |
+| `update_note`, `update_time_entry` | Correct a note it wrote, or logged time (removing either stays in the apps; someone else's note gets a new one) |
 | `arrange_now`, `reorder_task` | The whole Do now order; a task next to a sibling |
 | `focus_timer` | Start (on a task), pause, resume, skip, reset, next |
 | `get_plan` | The Plan view's data: blocks, deadlines, unplanned and later tasks, energy, and its settings (read only) |

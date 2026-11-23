@@ -26,7 +26,7 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | Give the user a link that opens the task in the app | the task's `link` (`onething://task/<id>`) | `ot open <task>` |
 | Capture a task or a subtask | `create_task` (`parentId` for a subtask), or `capture_task` with the user's quick-add words | `ot add <title> [--under <task>]` |
 | Break work into ordered steps (a rollout) | `add_steps` | `ot steps <task> <step>… --delay 24` |
-| Log progress ("did X, next Y"), attach a log or plan; correct a note | `add_note`, `attach_text`, `update_note` | `ot note <task> <text> [--url …]`, `ot attach <task> <file>`, `ot note <task> --edit last <text>` |
+| Log progress ("did X, next Y"), attach a log or plan; correct a note you wrote (someone else's: add a new one) | `add_note`, `attach_text`, `update_note` | `ot note <task> <text> [--url …]`, `ot attach <task> <file>`, `ot note <task> --edit last <text>` |
 | Read an attachment | `read_attachment` | `ot attachment <task> <file name> [--to -]` |
 | Not now: defer and remind later | `schedule_next_action` (`inMinutes`, `at`, or `when`: "next week", "fri 14:00") | `ot snooze <task> 2h` / `ot snooze <task> next week` (`ot snooze <task> clear` brings it back) |
 | Back to Do now after all | `clear_snooze` | `ot snooze <task> clear` |

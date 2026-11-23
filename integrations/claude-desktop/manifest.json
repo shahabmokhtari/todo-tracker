@@ -79,7 +79,7 @@
     { "name": "capture_task", "description": "Capture a task from quick-add words (!!, due:, #tag, @tomorrow)" },
     { "name": "dismiss_reminder", "description": "Dismiss a reminder" },
     { "name": "clear_snooze", "description": "Bring a deferred task back to Do now" },
-    { "name": "update_note", "description": "Correct a progress note" },
+    { "name": "update_note", "description": "Correct a progress note it wrote" },
     { "name": "arrange_now", "description": "Set the order of Do now" },
     { "name": "reorder_task", "description": "Move a task next to a sibling" },
     { "name": "update_time_entry", "description": "Correct logged time" },

@@ -128,6 +128,19 @@ public sealed class McpMoreToolsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_agent_can_not_rewrite_the_users_note()
+    {
+        var id = await NewTask("Ship release");
+        var yours = await _server.Store.UpdateAsync(b => b.AddNote(Guid.Parse(id), "Waiting for legal", Actor.User, ServerFixture.T0).Id);
+
+        var refused = await _mcp.CallToolAsync("update_note", new Dictionary<string, object?> { ["taskId"] = id, ["noteId"] = yours.ToString(), ["text"] = "Legal said yes" });
+
+        Assert.True(refused.IsError);
+        Assert.Contains("add a new note instead", string.Concat(refused.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        Assert.Equal("Waiting for legal", await _server.Store.ReadAsync(b => b.Get(Guid.Parse(id)).Notes.Single().Text));
+    }
+
+    [Fact]
     public async Task Do_now_is_arranged_and_subtasks_reordered()
     {
         var a = await NewTask("Alpha");

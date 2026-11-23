@@ -322,9 +322,38 @@ public class TaskOrganizationTests
         var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
         var note = _board.AddNote(task.Id, "deployed", Actor.User, T0);
 
-        _board.UpdateNote(task.Id, note.Id, "deployed (fixed typo)", Actor.Agent("copilot"), T0.AddHours(2));
+        _board.UpdateNote(task.Id, note.Id, "deployed (fixed typo)", Actor.User, T0.AddHours(2));
 
-        Assert.Contains(_board.Activity, a => a.Kind == ActivityKind.Updated && a.Actor.Kind == ActorKind.Agent);
+        Assert.Contains(_board.Activity, a => a.Kind == ActivityKind.Updated && a.Actor == Actor.User);
+    }
+
+    [Fact]
+    public void An_agent_corrects_only_the_notes_it_wrote()
+    {
+        var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
+        var yours = _board.AddNote(task.Id, "deployed", Actor.User, T0);
+        var claudes = _board.AddNote(task.Id, "ring 0 is green", Actor.Agent("claude"), T0);
+
+        var refused = Assert.Throws<UnauthorizedAccessException>(() => _board.UpdateNote(task.Id, yours.Id, "not deployed", Actor.Agent("claude"), T0.AddSeconds(5)));
+        Assert.Throws<UnauthorizedAccessException>(() => _board.UpdateNote(task.Id, claudes.Id, "ring 0 is red", Actor.Agent("copilot"), T0.AddSeconds(5)));
+        _board.UpdateNote(task.Id, claudes.Id, "ring 0 and 1 are green", Actor.Agent("claude"), T0.AddSeconds(5));
+
+        Assert.Contains("add a new note instead", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(["deployed", "ring 0 and 1 are green"], task.Notes.Select(n => n.Text));
+        Assert.DoesNotContain(_board.Activity, a => a.Kind == ActivityKind.Updated);
+    }
+
+    [Fact]
+    public void You_edit_any_note_and_the_timeline_says_you_changed_someone_elses_at_once()
+    {
+        var task = _board.AddTask(new NewTask("Ship"), Actor.User, T0);
+        var claudes = _board.AddNote(task.Id, "ring 0 is green", Actor.Agent("claude"), T0);
+
+        _board.UpdateNote(task.Id, claudes.Id, "ring 0 is green (checked)", Actor.User, T0.AddSeconds(5));
+
+        var edit = Assert.Single(_board.Activity, a => a.Kind == ActivityKind.Updated);
+        Assert.Equal(Actor.User, edit.Actor);
+        Assert.Equal(Actor.Agent("claude"), Assert.Single(task.Notes).Author);
     }
 
     [Fact]

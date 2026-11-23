@@ -52,6 +52,23 @@ public sealed class CliEverythingTests : IDisposable
     }
 
     [Fact]
+    public async Task An_agent_corrects_only_its_own_notes()
+    {
+        var id = await Add("Ship release");
+        await _tt.Ok("note", id, "Waiting for legal");
+
+        var refused = await _tt.Run("note", id, "--edit", "last", "Legal said yes", "--as", "bot");
+        _tt.Time.Advance(TimeSpan.FromMinutes(1));
+        await _tt.Ok("note", id, "Legal said yes", "--as", "bot");
+        var own = await _tt.Json("note", id, "--edit", "last", "Legal said yes, in writing", "--as", "bot");
+
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Contains("add a new note instead", refused.Error, StringComparison.Ordinal);
+        Assert.Equal("Legal said yes, in writing", own.Str("text"));
+        Assert.Equal(["Legal said yes, in writing", "Waiting for legal"], (await _tt.Json("show", id))!["notes"]!.AsArray().Select(n => n.Str("text")).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task A_note_can_carry_a_link_and_be_corrected()
     {
         var id = await Add("Ship release");

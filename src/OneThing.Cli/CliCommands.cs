@@ -27,7 +27,7 @@ internal static partial class CliCommands
         new CliCommand("reopen", "ot reopen <task>", "Undo done", null, Reopen),
         new CliCommand("first", "ot first <task> | ot first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
         new CliCommand("note", "ot note <task> <text…|-> [--url https://… [--title page]] | ot note <task> --edit <note|last> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin",
-            "--url: the web page the note is about. --edit corrects a note (its id from ot show --json, or last).", Note),
+            "--url: the web page the note is about. --edit corrects a note (its id from ot show --json, or last); with --as, only a note that agent wrote.", Note),
         new CliCommand("snooze", "ot snooze <task> <when | after <task> | clear>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)",
             "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>.\nclear brings it back to Do now.", Snooze),
         new CliCommand("remind", "ot remind <task> <when…> [--message text] | ot remind <task> --dismiss <reminder|all>", "Add a reminder without deferring the task, or dismiss one",

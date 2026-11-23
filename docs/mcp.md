@@ -66,7 +66,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`capture_task`](#capture_task) | Capture a task the way the user would type it in quick add: "Renew passport !! due:7d #admin @tomorrow" (! high, !! critical, !low; @2h or @tomorrow defers it; due:3d or due:2026-02-01; #tag). |
 | [`dismiss_reminder`](#dismiss_reminder) | Dismiss one of a task's reminders (its id is in get_task's reminders): it won't go off. |
 | [`clear_snooze`](#clear_snooze) | Bring a deferred (snoozed or waiting) task back to Do now: the opposite of schedule_next_action and wait_for_task. |
-| [`update_note`](#update_note) | Correct a progress note on a task (its id is in get_task's notes). |
+| [`update_note`](#update_note) | Correct a progress note you wrote on a task (its id is in get_task's notes). |
 | [`arrange_now`](#arrange_now) | Set the whole order of Do now (the first becomes the focus), as the user arranged it. |
 | [`reorder_task`](#reorder_task) | Move a task next to a sibling (a subtask under the same parent, or a task in the same board column): right before beforeTaskId, or right after afterTaskId. |
 | [`update_time_entry`](#update_time_entry) | Correct time logged on a task (an entry's id is in get_task's timeEntries): when it started and how long (at most 24 hours). |
@@ -467,7 +467,7 @@ Bring a deferred (snoozed or waiting) task back to Do now: the opposite of sched
 
 ### `update_note`
 
-Correct a progress note on a task (its id is in get_task's notes). The note keeps its time and author; the change is versioned.
+Correct a progress note you wrote on a task (its id is in get_task's notes). Notes by the user or another agent are theirs: add a new note instead. The note keeps its time and author; the change is versioned.
 
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
