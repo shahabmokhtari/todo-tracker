@@ -145,6 +145,29 @@ public sealed class CliEverythingTests : IDisposable
     }
 
     [Fact]
+    public async Task Focus_lengths_are_shown_and_changed_leaving_the_rest_and_say_who_changed_them()
+    {
+        var before = await _tt.Json("focus", "lengths");
+        Assert.Equal((25, 5, 15, 4), Lengths(before));
+        Assert.Contains("25 min focus", (await _tt.Ok("focus", "lengths")), StringComparison.Ordinal);
+
+        var set = await _tt.Json("focus", "lengths", "--focus", "50", "--long-break", "30", "--as", "claude");
+        Assert.Equal((50, 5, 30, 4), Lengths(set));
+        Assert.Equal((50, 10, 30, 3), Lengths(await _tt.Json("focus", "lengths", "--break", "10", "--sessions", "3")));
+        Assert.Equal(50 * 60, (await _tt.Json("focus", "start"))["remainingSeconds"]!.GetValue<int>());
+        var timeline = await _tt.Json("timeline");
+        Assert.Contains(timeline.AsArray(), e => e.Str("summary").StartsWith("Focus timer: 50 min focus", StringComparison.Ordinal) && e.Str("actorKind") == "agent");
+
+        var refused = await _tt.Run("focus", "lengths", "--focus", "500");
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Contains("Focus is 1 to 180 minutes", refused.Error, StringComparison.Ordinal);
+        Assert.Equal(2, (await _tt.Run("focus", "lengths", "--focus", "lots")).ExitCode);
+        Assert.Equal(50, (await _tt.Json("focus", "lengths"))["focusMinutes"]!.GetValue<int>());
+
+        static (int, int, int, int) Lengths(JsonNode n) => (n["focusMinutes"]!.GetValue<int>(), n["shortBreakMinutes"]!.GetValue<int>(), n["longBreakMinutes"]!.GetValue<int>(), n["focusesBeforeLongBreak"]!.GetValue<int>());
+    }
+
+    [Fact]
     public async Task Plan_puts_a_block_on_the_plan_and_takes_it_off()
     {
         var id = await Add("Deep work");

@@ -182,6 +182,21 @@ public sealed class McpMoreToolsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_focus_timers_lengths_are_read_and_changed_leaving_the_rest()
+    {
+        var before = await Call("set_focus_lengths", []);
+        Assert.Equal(25, before.GetProperty("focusMinutes").GetInt32());
+
+        var set = await Call("set_focus_lengths", new() { ["focusMinutes"] = 50, ["focusesBeforeLongBreak"] = 3 });
+
+        Assert.Equal((50, 5, 15, 3), (set.GetProperty("focusMinutes").GetInt32(), set.GetProperty("shortBreakMinutes").GetInt32(), set.GetProperty("longBreakMinutes").GetInt32(), set.GetProperty("focusesBeforeLongBreak").GetInt32()));
+        Assert.Equal(50 * 60, (await Call("focus_timer", new() { ["action"] = "start" })).GetProperty("remainingSeconds").GetInt32());
+        var entry = (await _server.Client().GetJson("/api/timeline?limit=5")).AsArray().First(e => e!["summary"]!.GetValue<string>().StartsWith("Focus timer:", StringComparison.Ordinal))!;
+        Assert.Equal("agent", entry["actorKind"]!.GetValue<string>());
+        Assert.Contains("Focus is 1 to 180 minutes", await Fails("set_focus_lengths", new() { ["shortBreakMinutes"] = 0 }), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_plan_shows_planned_blocks_and_its_settings()
     {
         var id = await NewTask("Deep work");

@@ -146,6 +146,20 @@ public sealed partial class TodoTools
             return Wire.Pomodoro(b, now);
         }));
 
+    [McpServerTool(Name = "set_focus_lengths"), Description("How long the focus timer's sessions and breaks last, in minutes, and how many sessions come before a long break (25, 5, 15 and 4 unless set). Only the lengths given change; with none it just returns them. A new length counts from the next session. They're also in get_dashboard (pomodoro).")]
+    public Task<FocusLengthsDto> SetFocusLengths(
+        McpServer server,
+        [Description("A focus session, 1 to 180 minutes; omit to leave it.")] int? focusMinutes = null,
+        [Description("A short break, 1 to 60 minutes; omit to leave it.")] int? shortBreakMinutes = null,
+        [Description("A long break, 1 to 120 minutes; omit to leave it.")] int? longBreakMinutes = null,
+        [Description("Focus sessions before a long break, 1 to 12; omit to leave it.")] int? focusesBeforeLongBreak = null)
+    {
+        var request = new FocusLengthsRequest(focusMinutes, shortBreakMinutes, longBreakMinutes, focusesBeforeLongBreak);
+        return request == new FocusLengthsRequest()
+            ? Store.ReadAsync(ApiEndpoints.FocusLengths)
+            : Guard(() => Store.UpdateAsync(b => ApiEndpoints.SetFocusLengths(b, request, ActorOf(server), Time.GetUtcNow())));
+    }
+
     [McpServerTool(Name = "get_plan", ReadOnly = true), Description("The plan: blocks of time planned on tasks in the days shown, deadlines in them, the tasks to do that aren't planned yet (and those put off), energy per day, and the Plan view's settings (work hours, work days). Use plan_task to plan or unplan a task.")]
     public Task<PlanDto> GetPlan(
         [Description("First day, yyyy-MM-dd in the user's time zone (default: today).")] string? from = null,

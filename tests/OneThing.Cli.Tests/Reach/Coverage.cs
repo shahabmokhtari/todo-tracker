@@ -72,6 +72,7 @@ internal static class Coverage
         new("Remove logged time", ["DELETE /api/items/{id}/time/{entryId}"], [], [], Delete),
         new("Where the time went", ["GET /api/reports"], ["ot time"], ["get_time_report"]),
         new("The focus (Pomodoro) timer", ["POST /api/pomodoro/{action}"], ["ot focus"], ["focus_timer"]),
+        new("The focus timer's lengths (focus, break, long break, sessions before it)", ["GET /api/pomodoro/settings", "PUT /api/pomodoro/settings"], ["ot focus lengths"], ["set_focus_lengths", "get_dashboard"]),
         new("The plan", ["GET /api/plan", "GET /api/plan/settings"], ["ot plan", "ot plan settings"], ["get_plan"]),
         new("Plan or unplan a task", ["POST /api/items/{id}/plan"], ["ot plan <task>"], ["plan_task"]),
         new("How the Plan view looks", ["PUT /api/plan/settings"], ["ot plan settings --view"], [], "How the Plan view looks (work hours, work days) is set in the app or with ot plan settings, also with --as (the API lets anything with the token set it); no MCP tool, get_plan reads them."),

@@ -15,7 +15,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 > - Log progress with add_note ("did X, next Y"); defer with schedule_next_action (or wait_for_task) instead of leaving stale tasks in Now; clear_snooze brings one back.
 > - Groups are tabs such as Work and Personal (list_groups); make one with create_group only when the user asks (an unknown group name is an error, never a new group). Tags are free-form; labels are a curated colored set (list_labels).
 > - Never delete (there is no tool for it): complete_task, archive_task or move_task instead. Every change is versioned (task_history, board_history, restore_task_version). Settings and extras are the user's, in the app.
-> - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time (focus_timer runs a Pomodoro session); get_time_report says where the time went. Finished tasks can be put away with archive_task.
+> - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time (focus_timer runs a Pomodoro session, set_focus_lengths sets how long); get_time_report says where the time went. Finished tasks can be put away with archive_task.
 > - Every task has a link (onething://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
 > - Hooks (add_hook) run commands when things happen; one you add waits until the user allows it: tell them so.
 > - Tasks are markdown files in a folder the user may also open in Obsidian; vault_info explains the format.
@@ -71,6 +71,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`reorder_task`](#reorder_task) | Move a task next to a sibling (a subtask under the same parent, or a task in the same board column): right before beforeTaskId, or right after afterTaskId. |
 | [`update_time_entry`](#update_time_entry) | Correct time logged on a task (an entry's id is in get_task's timeEntries): when it started and how long (at most 24 hours). |
 | [`focus_timer`](#focus_timer) | The focus (Pomodoro) timer: start a focus session (on a task, timed as focus time on it), pause, resume, skip to the next phase, reset, or next (start the next session). |
+| [`set_focus_lengths`](#set_focus_lengths) | How long the focus timer's sessions and breaks last, in minutes, and how many sessions come before a long break (25, 5, 15 and 4 unless set). |
 | [`get_plan`](#get_plan) | The plan: blocks of time planned on tasks in the days shown, deadlines in them, the tasks to do that aren't planned yet (and those put off), energy per day, and the Plan view's settings (work hours, work days). |
 | [`create_label`](#create_label) | Add a label to the user's curated set (name and color), e.g. 'Deep work'. |
 | [`update_label`](#update_label) | Rename a label or change its color (every task with it follows). |
@@ -512,6 +513,17 @@ The focus (Pomodoro) timer: start a focus session (on a task, timed as focus tim
 | --- | --- | --- | --- |
 | `action` | text | required | start, pause, resume, skip, reset or next. |
 | `taskId` | text | optional | For start and next: the task to focus on (a full id). Omit to focus on nothing in particular (next: the last session's task, else today's focus). |
+
+### `set_focus_lengths`
+
+How long the focus timer's sessions and breaks last, in minutes, and how many sessions come before a long break (25, 5, 15 and 4 unless set). Only the lengths given change; with none it just returns them. A new length counts from the next session. They're also in get_dashboard (pomodoro).
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `focusMinutes` | integer | optional | A focus session, 1 to 180 minutes; omit to leave it. |
+| `shortBreakMinutes` | integer | optional | A short break, 1 to 60 minutes; omit to leave it. |
+| `longBreakMinutes` | integer | optional | A long break, 1 to 120 minutes; omit to leave it. |
+| `focusesBeforeLongBreak` | integer | optional | Focus sessions before a long break, 1 to 12; omit to leave it. |
 
 ### `get_plan`
 

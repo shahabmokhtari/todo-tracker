@@ -472,13 +472,7 @@ internal static class ApiEndpoints
         api.MapGet("/pomodoro/settings", (IBoardStore store) => store.ReadAsync(FocusLengths));
 
         api.MapPut("/pomodoro/settings", (FocusLengthsRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
-            store.UpdateAsync(b =>
-            {
-                var s = b.Pomodoro.Settings;
-                b.SetFocusLengths(request.FocusMinutes ?? s.FocusMinutes, request.ShortBreakMinutes ?? s.ShortBreakMinutes, request.LongBreakMinutes ?? s.LongBreakMinutes,
-                    request.FocusesBeforeLongBreak ?? s.FocusesBeforeLongBreak, Security.ActorOf(http), time.GetUtcNow());
-                return FocusLengths(b);
-            }));
+            store.UpdateAsync(b => SetFocusLengths(b, request, Security.ActorOf(http), time.GetUtcNow())));
 
         api.MapPost("/pomodoro/{action}", (string action, FocusRequest? request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
@@ -563,10 +557,19 @@ internal static class ApiEndpoints
         }).OwnerOnly("Only you can choose where reminders are posted: in Settings of the One Thing app.");
     }
 
-    private static FocusLengthsDto FocusLengths(TaskBoard board)
+    internal static FocusLengthsDto FocusLengths(TaskBoard board)
     {
         var s = board.Pomodoro.Settings;
         return new FocusLengthsDto(s.FocusMinutes, s.ShortBreakMinutes, s.LongBreakMinutes, s.FocusesBeforeLongBreak);
+    }
+
+    /// <summary>Changes the focus timer's lengths given (the rest stay), for the REST API, ot and MCP alike.</summary>
+    internal static FocusLengthsDto SetFocusLengths(TaskBoard board, FocusLengthsRequest request, Actor actor, DateTimeOffset now)
+    {
+        var s = board.Pomodoro.Settings;
+        board.SetFocusLengths(request.FocusMinutes ?? s.FocusMinutes, request.ShortBreakMinutes ?? s.ShortBreakMinutes, request.LongBreakMinutes ?? s.LongBreakMinutes,
+            request.FocusesBeforeLongBreak ?? s.FocusesBeforeLongBreak, actor, now);
+        return FocusLengths(board);
     }
 
     internal static ConnectionDto Connection(ApiToken token, OneThingServerOptions options)

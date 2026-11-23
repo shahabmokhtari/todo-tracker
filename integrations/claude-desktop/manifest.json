@@ -84,6 +84,7 @@
     { "name": "reorder_task", "description": "Move a task next to a sibling" },
     { "name": "update_time_entry", "description": "Correct logged time" },
     { "name": "focus_timer", "description": "Start, pause, resume, skip or reset the focus timer" },
+    { "name": "set_focus_lengths", "description": "How long focus sessions and breaks last" },
     { "name": "get_plan", "description": "The plan: planned blocks, deadlines, unplanned tasks" },
     { "name": "create_label", "description": "Add a curated label" },
     { "name": "update_label", "description": "Rename a label or change its color" },

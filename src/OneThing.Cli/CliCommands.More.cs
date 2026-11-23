@@ -182,8 +182,14 @@ internal static partial class CliCommands
 
     private static async Task Focus(CliSession s, CliArgs a)
     {
-        a.Allow();
         var verb = a.Words.Count > 0 ? a.Words[0].ToLowerInvariant() : "status";
+        if (verb == "lengths")
+        {
+            await FocusLengths(s, a).ConfigureAwait(false);
+            return;
+        }
+
+        a.Allow();
         var task = a.Words.Count > 1 ? a.WordsFrom(1, "which task") : null;
         if (task is not null && verb is not ("start" or "next"))
         {
@@ -231,6 +237,34 @@ internal static partial class CliCommands
         }
 
         await s.Print(focus, (o, f) => o.Focus(f)).ConfigureAwait(false);
+    }
+
+    /// <summary>ot focus lengths [--focus m] [--break m] [--long-break m] [--sessions n]: shows them, or changes those given.</summary>
+    private static async Task FocusLengths(CliSession s, CliArgs a)
+    {
+        a.Allow("focus", "break", "long-break", "sessions");
+        if (a.Words.Count > 1)
+        {
+            throw new CliUsageException("ot focus lengths takes --focus, --break, --long-break and --sessions (minutes; sessions before a long break).");
+        }
+
+        var request = new FocusLengthsRequest(Whole(a, "focus"), Whole(a, "break"), Whole(a, "long-break"), Whole(a, "sessions"));
+        FocusLengthsDto lengths;
+        if (request == new FocusLengthsRequest())
+        {
+            lengths = await s.Read(ApiEndpoints.FocusLengths).ConfigureAwait(false);
+        }
+        else
+        {
+            lengths = await s.Store.UpdateAsync(b => ApiEndpoints.SetFocusLengths(b, request, s.Actor, s.Now)).ConfigureAwait(false);
+            await s.SaveVersion().ConfigureAwait(false);
+        }
+
+        await s.Print(lengths, (o, l) => o.FocusLengths(l)).ConfigureAwait(false);
+
+        static int? Whole(CliArgs a, string name) => a.Value(name) is not { } text ? null
+            : int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n
+            : throw new CliUsageException($"--{name} is a whole number, like --{name} {name switch { "focus" => "25", "break" => "5", "long-break" => "15", _ => "4" }}.");
     }
 
     // ---- The plan -----------------------------------------------------------------------------------------------

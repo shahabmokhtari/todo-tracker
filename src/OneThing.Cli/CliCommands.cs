@@ -68,8 +68,9 @@ internal static partial class CliCommands
         new CliCommand("log", "ot log <task> <duration> [--at when] | ot log <task> <duration> --edit <entry|last> [--at when]", "Record time already spent on a task, or correct an entry",
             "duration: 45m, 1h30m, 1.5h or minutes (at most 24 hours). --at: when it started (default: it ended now). An entry's id is in ot show --json.\n" +
             "A time entry is removed only in the app; --edit corrects one.", Log),
-        new CliCommand("focus", "ot focus [start [<task>] | pause | resume | skip | reset | next [<task>]]", "The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset",
-            "start without a task focuses on nothing in particular; next starts the next session (on the last session's task, or today's focus).", Focus),
+        new CliCommand("focus", "ot focus [start [<task>] | pause | resume | skip | reset | next [<task>] | lengths [--focus m] [--break m] [--long-break m] [--sessions n]]", "The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset; its lengths",
+            "start without a task focuses on nothing in particular; next starts the next session (on the last session's task, or today's focus).\n" +
+            "lengths shows how long focus, a break and a long break last (minutes) and how many sessions come before a long break; with options it changes those and leaves the rest (focus 1-180, break 1-60, long break 1-120, sessions 1-12). A new length counts from the next session.", Focus),
         new CliCommand("plan", "ot plan [--from yyyy-mm-dd] [--days n] [-g group] | ot plan <task> <when…> [--minutes n] | ot plan <task> off | ot plan settings [options]", "The plan: blocks of time on tasks",
             "when: 2026-01-05T14:00, tomorrow 9:00, fri 14:30. --minutes: 5 to 720 (default what it had, else 30).\n" +
             "settings [-g group] [--view day|week] [--hours work|full] [--work-hours 9:00-17:00] [--work-days 1-5] [--week-start mon|sun]: how the Plan view looks (days 1 = Monday … 7 = Sunday).", Plan),

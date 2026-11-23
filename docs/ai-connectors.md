@@ -212,6 +212,7 @@ the server's endpoints.
 | Remove logged time | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
 | Where the time went | `ot time` | `get_time_report` |  |
 | The focus (Pomodoro) timer | `ot focus` | `focus_timer` |  |
+| The focus timer's lengths (focus, break, long break, sessions before it) | `ot focus lengths` | `set_focus_lengths`, `get_dashboard` |  |
 | The plan | `ot plan`, `ot plan settings` | `get_plan` |  |
 | Plan or unplan a task | `ot plan <task>` | `plan_task` |  |
 | How the Plan view looks | `ot plan settings --view` | — | How the Plan view looks (work hours, work days) is set in the app or with ot plan settings, also with --as (the API lets anything with the token set it); no MCP tool, get_plan reads them. |

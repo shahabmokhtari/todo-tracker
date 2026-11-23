@@ -477,17 +477,17 @@ own server, signed in as you: Windows' app window, the Mac's One Thing window). 
 | Feature | Web | Windows | Mac | iPhone / iPad | Android | CLI / MCP |
 | --- | --- | --- | --- | --- | --- | --- |
 | Today, Board, Tasks, Done, Search | Native | Native (sidebar) + Window | Native | Native | Native | Native (`ot`, tools) |
-| Reports, Plan | Native | Window | Native | Native | Native | Data (`ot time`, `/api/reports`, `/api/plan`) |
-| Task details: fields, tags, labels, icon, color, Board column, Move… | Native | Window | Native | Native | Native | Native (`ot edit`, `ot move`, tools) |
-| Attachments, rich HTML version, file-version history | Native | Window | Window | — (no server; files stay in the tasks folder) | — (same) | History and rich: tools |
-| Appearance, energy in a day | Native | Native + Window | Native | Native | Native | Energy: native |
-| Focus timer lengths | Native | Window | Native | Native | Native | `/api/pomodoro/settings` |
-| Labels: rename, recolor, remove | Native | Window | Native | Native | Native | `/api/labels` |
-| Where your tasks are, files that need fixing | Native (footer, notice) | Native + Window | Native (Settings, Today) | Native (Settings) | Native (Settings) | `ot vault` |
-| Sync settings | Native (panel) | Native + Window | Window | Native (own sync) | Native (own sync) | — (the app's) |
-| Connected apps (Notion, Microsoft To Do, GitHub Issues) | Native | Window | Window | — (run on a computer's server) | — (same) | — |
-| Hooks, and approving an agent's hook | Native | Window + native notification | Window + native prompt | — (no server: no hooks) | — (same) | `ot hooks` |
-| Extras (plugins on or off) | Native | Window | Window; the Mac follows them | — (no extras: everything on) | — (same) | — |
+| Reports, Plan | Native | Window | Native | Native | Native | Native (`ot time`, `ot plan`; `get_time_report`, `get_plan`, `plan_task`) |
+| Task details: fields, tags, labels, icon, color, Board column, Move… | Native | Window | Native | Native | Native | Native (`ot edit`, `ot tag`, `ot label`, `ot stage`, `ot move`; `update_task`, `move_card`, `move_task`) |
+| Attachments, rich HTML version, file-version history | Native | Window | Window | — (no server; files stay in the tasks folder) | — (same) | Native (`ot attach`, `ot attachment`, `ot rich`, `ot history`, `ot restore`; tools), removing an attachment is the person's |
+| Appearance, energy in a day | Native | Native + Window | Native | Native | Native | Native (`ot settings theme`, `ot energy`; `set_daily_energy`), appearance not for agents |
+| Focus timer lengths | Native | Window | Native | Native | Native | Native (`ot focus lengths`; `set_focus_lengths`) |
+| Labels: rename, recolor, remove | Native | Window | Native | Native | Native | Native (`ot labels`; `create_label`, `update_label`), removing is the person's |
+| Where your tasks are, files that need fixing | Native (footer, notice) | Native + Window | Native (Settings, Today) | Native (Settings) | Native (Settings) | Native (`ot vault`; `vault_info`) |
+| Sync settings | Native (panel) | Native + Window | Window | Native (own sync) | Native (own sync) | Status and sync now: `ot sync` (setup is the app's) |
+| Connected apps (Notion, Microsoft To Do, GitHub Issues) | Native | Window | Window | — (run on a computer's server) | — (same) | Status and sync now: `ot connectors` (setup is the app's) |
+| Hooks, and approving an agent's hook | Native | Window + native notification | Window + native prompt | — (no server: no hooks) | — (same) | Native (`ot hooks`; approving not with `--as`), tools add hooks that wait for approval |
+| Extras (plugins on or off) | Native | Window | Window; the Mac follows them | — (no extras: everything on) | — (same) | `ot plugins` (switching not with `--as`) |
 | Connect AI apps, MCP | Native | Window | Window | — (agents reach a computer's server) | — (same) | Native |
 | Ask AI | Native | Window + sidebar box | Window (File › Ask AI…) | — (needs a computer's agents) | — (same) | — |
 | Browser extension setup | Native | Window | Window | — (desktop browsers) | — (same) | — |
@@ -550,6 +550,7 @@ the docs explain the options and risks. The server sends the same short instruct
 | `update_note`, `update_time_entry` | Correct a note it wrote, or logged time (removing either stays in the apps; someone else's note gets a new one) |
 | `arrange_now`, `reorder_task` | The whole Do now order; a task next to a sibling |
 | `focus_timer` | Start (on a task), pause, resume, skip, reset, next |
+| `set_focus_lengths` | The focus timer's lengths: focus, break, long break, sessions before it (only those given change; none: reads them) |
 | `get_plan` | The Plan view's data: blocks, deadlines, unplanned and later tasks, energy, and its settings (read only) |
 | `create_label`, `update_label`, `list_tags` | Curated labels (deleting one stays in the apps); the tags in use |
 | `board_history`, `get_task_version` | Versions of the whole folder; a task's file in a version |

@@ -60,7 +60,7 @@ links them into `~/.local/bin`), in `~/.local/bin` with the Linux install, or `d
 | [`ot unarchive`](#ot-unarchive) | Bring an archived task back to the done list |
 | [`ot time`](#ot-time) | Where the time went: tracked per task, focus sessions, tasks done |
 | [`ot log`](#ot-log) | Record time already spent on a task, or correct an entry |
-| [`ot focus`](#ot-focus) | The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset |
+| [`ot focus`](#ot-focus) | The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset; its lengths |
 | [`ot plan`](#ot-plan) | The plan: blocks of time on tasks |
 | [`ot hooks`](#ot-hooks) | Run your own scripts or webhooks when something happens (hooks.json) |
 | [`ot rich`](#ot-rich) | A task's rich HTML version (tables, colors): print it, save one from a file or stdin, or remove it |
@@ -412,13 +412,14 @@ A time entry is removed only in the app; --edit corrects one.
 
 ### ot focus
 
-The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset.
+The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset; its lengths.
 
 ```
-ot focus [start [<task>] | pause | resume | skip | reset | next [<task>]]
+ot focus [start [<task>] | pause | resume | skip | reset | next [<task>] | lengths [--focus m] [--break m] [--long-break m] [--sessions n]]
 ```
 
 start without a task focuses on nothing in particular; next starts the next session (on the last session's task, or today's focus).  
+lengths shows how long focus, a break and a long break last (minutes) and how many sessions come before a long break; with options it changes those and leaves the rest (focus 1-180, break 1-60, long break 1-120, sessions 1-12). A new length counts from the next session.  
 
 ### ot plan
 

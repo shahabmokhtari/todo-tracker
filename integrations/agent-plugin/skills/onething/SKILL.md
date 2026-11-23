@@ -43,6 +43,7 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | Board columns (inbox, next, doing) | `move_card` | `ot stage <task> doing` |
 | Time work; correct logged time | `start_timer`, `stop_timer`, `log_time`, `update_time_entry` | `ot start <task>`, `ot stop`, `ot log <task> 45m` |
 | A focus (Pomodoro) session | `focus_timer` (state: `get_dashboard`'s pomodoro) | `ot focus start <task>`, `ot focus pause`, `ot focus` |
+| How long focus sessions and breaks last (only the ones given change) | `set_focus_lengths` (none given: just reads them) | `ot focus lengths`, `ot focus lengths --focus 50 --break 10` |
 | Where did the time go | `get_time_report`, `get_report` (timeline) | `ot time --days 7`, `ot timeline [<task>]` |
 | Put finished work away | `archive_task`, `unarchive_task` | `ot archive <task>`, `ot archive --done-before 14`, `ot unarchive <task>` |
 | Undo a change (every change is a version) | `task_history`, `board_history`, `get_task_version`, `restore_task_version` | `ot history [<task>]`, `ot history <task> --text <version>`, `ot restore <task> <version>` |

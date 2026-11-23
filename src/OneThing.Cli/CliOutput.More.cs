@@ -65,6 +65,10 @@ internal sealed partial class CliOutput
         Writer.WriteLine($"{phase}{on}: {((int)left.TotalMinutes).ToString(CultureInfo.InvariantCulture)}:{left.Seconds.ToString("00", CultureInfo.InvariantCulture)} left{paused} · {f.CompletedFocusCount.ToString(CultureInfo.InvariantCulture)} focus session(s) done");
     }
 
+    public void FocusLengths(FocusLengthsDto l) =>
+        Writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"Focus timer: {l.FocusMinutes} min focus, {l.ShortBreakMinutes} min break, {l.LongBreakMinutes} min long break after {l.FocusesBeforeLongBreak} sessions"));
+
     public void Plan(PlanDto p)
     {
         Writer.WriteLine($"Plan from {p.From} ({p.Days.ToString(CultureInfo.InvariantCulture)} day(s))");
