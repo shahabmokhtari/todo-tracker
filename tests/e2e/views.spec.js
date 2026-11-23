@@ -817,19 +817,29 @@ test('Hooks: add and change one in Settings, see exactly what an agent asks to r
   await expect(pending).toContainText('ot hooks approve');
   await expect(pending.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 
-  // Change it: the form keeps what it doesn't show. Switching off and removing is only for the hooks it added itself
-  // (an agent's, like the user's own, aren't its to take away).
+  // Changing, switching off and removing are only for the hooks this window added itself: the agent's hook isn't its
+  // to change (the toast says whose it is), and stays as it was.
   await pending.getByRole('button', { name: 'Change Agent hook' }).click();
   await hooks.getByRole('textbox', { name: 'Name' }).fill('Agent hook renamed');
   await hooks.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('#toast')).toContainText('This one was added by claude');
+  await page.evaluate(() => { location.hash = '#/today'; });
+  await page.evaluate(() => { location.hash = '#/settings'; });
+  await expect(hooks.locator('.hook-row', { hasText: 'Agent hook renamed' })).toHaveCount(0);
+  await expect(pending).toContainText('needs approval');
+
+  // Its own hook it can change: it still waits for approval.
+  await mine.getByRole('button', { name: 'Change Log what got done' }).click();
+  await hooks.getByRole('textbox', { name: 'Name' }).fill('Log what got done today');
+  await hooks.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('#toast')).toContainText('Hook changed');
-  const renamed = hooks.locator('.hook-row', { hasText: 'Agent hook renamed' });
+  const renamed = hooks.locator('.hook-row', { hasText: 'Log what got done today' });
   await expect(renamed).toContainText('needs approval');
-  await mine.getByRole('checkbox').uncheck();
-  await expect(mine).toContainText('needs approval');
-  await mine.getByRole('button', { name: 'Remove Log what got done' }).click();
+  await renamed.getByRole('checkbox').uncheck();
+  await expect(renamed).toContainText('needs approval');
+  await renamed.getByRole('button', { name: 'Remove Log what got done today' }).click();
   await expect(hooks.locator('.hook-row', { hasText: 'Log what got done' })).toHaveCount(0);
-  await expect(renamed).toHaveCount(1);
+  await expect(pending).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

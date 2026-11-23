@@ -265,6 +265,25 @@ public sealed class HookTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Refused_a_hook_another_agent_added_the_caller_hears_who_added_it_and_the_owner_still_changes_it()
+    {
+        using var app = AppClient();
+        using var claude = _server.Client(actor: "agent:claude");
+        using var copilot = _server.Client(actor: "agent:copilot");
+        var its = (await claude.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["id"]!.GetValue<string>();
+        var renamed = new { hook = new { type = "command", powershell = "exit 0", bash = "exit 0", name = "renamed" } };
+
+        var refused = await copilot.PutAsJsonAsync($"/api/hooks/{its}", renamed);
+        var said = await refused.Content.ReadAsStringAsync();
+        var changed = await (await app.PutAsJsonAsync($"/api/hooks/{its}", renamed)).Json();
+
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Contains("This one was added by claude", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("the user's", said, StringComparison.Ordinal);
+        Assert.Equal("renamed", changed["hook"]!["name"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Recent_runs_and_secret_addresses_are_hidden_from_anything_but_the_owners_session()
     {
         using var app = AppClient();

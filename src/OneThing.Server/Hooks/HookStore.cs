@@ -278,7 +278,10 @@ public sealed class HookStore
     {
         if (!author.Trusted && (hook.CreatedBy is null || !string.Equals(hook.CreatedBy, author.Name, StringComparison.Ordinal)))
         {
-            throw new UnauthorizedAccessException($"An agent can only {what} hooks it added. This one is the user's: only they can, in Settings › Hooks of the One Thing app or with ot hooks.");
+            // Say whose it is: the user's own, or another agent's (or app's), which the user can still change.
+            throw new UnauthorizedAccessException(hook.CreatedBy is null
+                ? $"An agent can only {what} hooks it added. This one is the user's: only they can, in Settings › Hooks of the One Thing app or with ot hooks."
+                : $"An agent can only {what} hooks it added. This one was added by {hook.CreatedBy}: ask the user to do it in Settings › Hooks of the One Thing app or with ot hooks.");
         }
     }
 
