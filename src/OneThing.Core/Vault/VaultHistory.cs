@@ -213,18 +213,19 @@ public sealed partial class VaultHistory : IDisposable
 
     /// <summary>
     /// Folders in the vault that are git repositories of their own (they have a <c>.git</c>): git would keep only a
-    /// pointer to them, not their tasks, so they're left out of history, and said here.
+    /// pointer to them, not their tasks, so they're left out of history, and said here. Looked up as it's asked for, so
+    /// a process that hasn't saved a version yet (ot history) says them too.
     /// </summary>
-    public IReadOnlyList<string> Skipped { get; private set; } = [];
+    public IReadOnlyList<string> Skipped => NestedRepositories();
 
-    /// <summary>
-    /// "git add" of everything history keeps. A <c>.gitignore</c> in the vault (synced from somewhere, or a folder of
-    /// notes that is also a repository) must not drop tasks from history: ignore files are passed over (<c>--force</c>)
-    /// and what history leaves out is said here, as pathspecs.
-    /// </summary>
-    private string[] AddArgs()
+    private List<string> NestedRepositories()
     {
         var nested = new List<string>();
+        if (!Directory.Exists(_store.RootPath))
+        {
+            return nested;
+        }
+
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = 0 };
         foreach (var entry in Directory.EnumerateFileSystemEntries(_store.RootPath, ".git", options))
         {
@@ -235,7 +236,17 @@ public sealed partial class VaultHistory : IDisposable
             }
         }
 
-        Skipped = nested;
+        return nested;
+    }
+
+    /// <summary>
+    /// "git add" of everything history keeps. A <c>.gitignore</c> in the vault (synced from somewhere, or a folder of
+    /// notes that is also a repository) must not drop tasks from history: ignore files are passed over (<c>--force</c>)
+    /// and what history leaves out is said here, as pathspecs.
+    /// </summary>
+    private string[] AddArgs()
+    {
+        var nested = NestedRepositories();
         return
         [
             "add", "--all", "--force", "--", ".",

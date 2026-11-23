@@ -38,4 +38,8 @@ fi
 
 echo "Installed. Start it from your app menu, or run: onething-tray"
 echo "In a terminal: ot (or onething) shows what to do now; ot help lists the commands."
+case ":$PATH:" in
+  *":$bin:"*) ;;
+  *) echo "$bin isn't on your PATH yet: add it for ot, e.g. echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.profile (then log in again)." ;;
+esac
 echo "On GNOME, tray icons need the AppIndicator extension (gnome-shell-extension-appindicator)."

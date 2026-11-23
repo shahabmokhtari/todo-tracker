@@ -87,6 +87,7 @@ public sealed class SettingsStore
 
         lock (_lock)
         {
+            Reread();
             _current = _current with { TeamsWebhookUrl = clean };
             Save();
             return _current;
@@ -110,6 +111,7 @@ public sealed class SettingsStore
         ServerSettings saved;
         lock (_lock)
         {
+            Reread();
             _current = _current with { Theme = clean };
             Save();
             saved = _current;
@@ -130,6 +132,7 @@ public sealed class SettingsStore
 
         lock (_lock)
         {
+            Reread();
             _current = _current with { VaultPath = clean is null ? null : System.IO.Path.GetFullPath(clean) };
             Save();
             return _current;
@@ -149,6 +152,7 @@ public sealed class SettingsStore
     {
         lock (_lock)
         {
+            Reread();
             _current = _current with { ActiveStorage = storage };
             Save();
         }
@@ -164,6 +168,7 @@ public sealed class SettingsStore
 
         lock (_lock)
         {
+            Reread();
             _current = _current with { Storage = storage };
             Save();
             return _current;
@@ -179,12 +184,31 @@ public sealed class SettingsStore
         var clean = settings.Validated();
         lock (_lock)
         {
+            Reread();
             var all = new Dictionary<string, PlanSettings>(_current.Plan ?? new Dictionary<string, PlanSettings>(), StringComparer.Ordinal) { [key] = clean };
             _current = _current with { Plan = all };
             Save();
         }
 
         return clean;
+    }
+
+    /// <summary>
+    /// What's in the file now, before a change: another process (the app, or ot) may have changed another setting
+    /// since this one read it, and saving must not undo that. Unreadable: what this one had.
+    /// </summary>
+    private void Reread()
+    {
+        try
+        {
+            if (File.Exists(_path) && JsonSerializer.Deserialize<ServerSettings>(File.ReadAllText(_path), JsonSerializerOptions.Web) is { } onDisk)
+            {
+                _current = onDisk;
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     private void Save()

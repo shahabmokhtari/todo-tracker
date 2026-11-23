@@ -199,8 +199,11 @@ jobs:
       - name: Self-contained onething (and ot) and Claude Desktop extensions
         run: |
           for rid in win-x64 win-arm64 osx-arm64 osx-x64 linux-x64; do
+            # Not compressed on macOS: a compressed onething crashed about one run in ten on Apple silicon
+            # (AccessViolationException while reading git's output); uncompressed it never did (build/mac-cli.sh).
+            case $rid in osx-*) compress=false ;; *) compress=true ;; esac
             dotnet publish src/OneThing.Cli --configuration Release --runtime $rid --self-contained \
-              -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
+              -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=$compress -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
               --output publish/$rid
             python3 build/package-mcpb.py $rid publish/$rid staging/$rid
             npx --yes @anthropic-ai/mcpb@2.1.2 pack staging/$rid artifacts/onething-$rid.mcpb
@@ -322,13 +325,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - name: Put the sync server in the Mac app (the tasks folder, synced with the other computers)
+      - name: Put the sync server and the command line in the Mac app (the tasks folder, synced with the other computers)
         run: |
           dotnet publish src/OneThing.Web --configuration Release --runtime osx-arm64 --self-contained -p:PublishSingleFile=true --output artifacts/mac-server
           app=apple/DerivedData/Build/Products/Release/OneThing.app
           mkdir -p "$app/Contents/Resources/Server"
           cp -R artifacts/mac-server/. "$app/Contents/Resources/Server/"
           rm -f "$app/Contents/Resources/Server/"*.pdb
+          # The command line (onething and ot), next to the server: Connect an AI app shows its full path.
+          . build/mac-cli.sh
+          put_cli_in_mac_app "$PWD" "$app" osx-arm64 "$RUNNER_TEMP"
           # Changed after the build: sign it again (ad hoc), inside out and each part with its own entitlements, so
           # the widgets keep their sandbox and App Group (--deep would sign them with none and they wouldn't load).
           # The entitlements files say $(TeamIdentifierPrefix)group…: use the App Group the build put in Info.plist.
@@ -344,6 +350,15 @@ jobs:
           signed=$(codesign -d --entitlements - "$appex" 2>/dev/null)
           case "$signed" in *com.apple.security.app-sandbox*) ;; *) echo 'The widgets lost their sandbox'; exit 1 ;; esac
           case "$signed" in *"$group"*) ;; *) echo 'The widgets lost their App Group'; exit 1 ;; esac
+      - name: The command line ships in the Mac app by both names
+        run: |
+          cli=apple/DerivedData/Build/Products/Release/OneThing.app/Contents/Resources/Server/cli
+          data=$(mktemp -d)
+          mkdir -p "$data/vault"
+          for name in onething ot; do
+            "$cli/$name" --version
+            env -u ONETHING_VAULT ONETHING_CLOUD=off "$cli/$name" groups --data "$data" --vault "$data/vault"
+          done
       - name: The bundled server starts and stops with the app that started it
         run: |
           server=apple/DerivedData/Build/Products/Release/OneThing.app/Contents/Resources/Server/OneThing.Web

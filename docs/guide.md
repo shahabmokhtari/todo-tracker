@@ -394,6 +394,9 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
   When an AI agent adds a hook, the Mac asks you: it shows everything the hook would run; **Allow** and **Don't
   allow** need a click, and Return or Escape means **Later**. In the background its Dock icon asks for your attention
   instead of jumping in front.
+* **Command line tool** (Mac: Settings, or **One Thing › Install Command Line Tool…**): says whether `ot` and
+  `onething` work in Terminal and which file they run, and **Install** links both into `~/.local/bin` (it asks before
+  replacing a file that isn't One Thing's, and keeps it). See [ai-connectors.md](ai-connectors.md#get-ot).
 * **Task details** also have the task's **Board** column, **Move…** (another group, under another task, or on its
   own), and **Look, tags and labels**: an icon, its own color, tags, and labels to switch on or add. Attachments, the
   rich version and version history are on the computers (on a Mac, in the One Thing window).

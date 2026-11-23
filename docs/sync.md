@@ -25,6 +25,9 @@ turn sync off.
   between.
 * It syncs when the app starts, a few seconds after you change something, and every minute (to pick up the other
   computers' changes). Nothing is read or written when neither side changed.
+* `ot sync` shows how it's going (where, last synced, the other computers, clashes to settle in the app); `ot sync
+  now` syncs while the app isn't running (while it runs, it syncs by itself and ot says so). Setting sync up is in the
+  app.
 * The tasks folder itself is never moved. If it already is inside OneDrive (say, in OneDrive's Documents), OneDrive is
   not used for sync: OneDrive already copies the folder as it is, and both at once would copy every change twice. Move
   the tasks folder out of OneDrive (**⋯ › Tasks folder › Choose another folder…**) to sync with merging instead.

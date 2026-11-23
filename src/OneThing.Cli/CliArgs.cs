@@ -9,10 +9,10 @@ public sealed class CliUsageException(string message) : Exception(message);
 /// </summary>
 internal sealed class CliArgs
 {
-    public static readonly HashSet<string> FlagNames = ["json", "all", "top", "help", "version", "no-history"];
+    public static readonly HashSet<string> FlagNames = ["json", "all", "top", "help", "version", "no-history", "force"];
 
     public static readonly HashSet<string> ValueNames =
-        ["vault", "data", "as", "group", "under", "details", "tag", "label", "due", "snooze", "delay", "title", "priority", "index", "days", "done-before", "powershell", "bash", "url", "name", "timeout", "actor", "event", "energy", "show", "depth"];
+        ["vault", "data", "as", "group", "under", "details", "tag", "label", "due", "snooze", "delay", "title", "priority", "index", "days", "done-before", "powershell", "bash", "url", "name", "timeout", "actor", "event", "energy", "color", "limit", "message", "dismiss", "edit", "at", "minutes", "from", "view", "hours", "work-hours", "work-days", "week-start", "repeat", "icon", "sequential", "step-delay", "before", "after", "text", "to", "focus", "break", "long-break", "sessions", "show", "depth"];
 
     public static readonly HashSet<string> GlobalNames = ["vault", "data", "as", "json", "help", "no-history"];
 

@@ -517,17 +517,17 @@ own server, signed in as you: Windows' app window, the Mac's One Thing window). 
 | Feature | Web | Windows | Mac | iPhone / iPad | Android | CLI / MCP |
 | --- | --- | --- | --- | --- | --- | --- |
 | Today, Board, Tasks, Done, Search | Native | Native (sidebar) + Window | Native | Native | Native | Native (`ot`, tools) |
-| Reports, Plan | Native | Window | Native | Native | Native | Data (`ot time`, `/api/reports`, `/api/plan`) |
-| Task details: fields, tags, labels, icon, color, Board column, Move… | Native | Window | Native | Native | Native | Native (`ot edit`, `ot move`, tools) |
-| Attachments, rich HTML version, file-version history | Native | Window | Window | — (no server; files stay in the tasks folder) | — (same) | History and rich: tools |
-| Appearance, energy in a day | Native | Native + Window | Native | Native | Native | Energy: native |
-| Focus timer lengths | Native | Window | Native | Native | Native | `/api/pomodoro/settings` |
-| Labels: rename, recolor, remove | Native | Window | Native | Native | Native | `/api/labels` |
-| Where your tasks are, files that need fixing | Native (footer, notice) | Native + Window | Native (Settings, Today) | Native (Settings) | Native (Settings) | `ot vault` |
-| Sync settings | Native (panel) | Native + Window | Window | Native (own sync) | Native (own sync) | — (the app's) |
-| Connected apps (Notion, Microsoft To Do, GitHub Issues) | Native | Window | Window | — (run on a computer's server) | — (same) | — |
-| Hooks, and approving an agent's hook | Native | Window + native notification | Window + native prompt | — (no server: no hooks) | — (same) | `ot hooks` |
-| Extras (plugins on or off) | Native | Window | Window; the Mac follows them | — (no extras: everything on) | — (same) | — |
+| Reports, Plan | Native | Window | Native | Native | Native | Native (`ot time`, `ot plan`; `get_time_report`, `get_plan`, `plan_task`) |
+| Task details: fields, tags, labels, icon, color, Board column, Move… | Native | Window | Native | Native | Native | Native (`ot edit`, `ot tag`, `ot label`, `ot stage`, `ot move`; `update_task`, `move_card`, `move_task`) |
+| Attachments, rich HTML version, file-version history | Native | Window | Window | — (no server; files stay in the tasks folder) | — (same) | Native (`ot attach`, `ot attachment`, `ot rich`, `ot history`, `ot restore`; tools), removing an attachment is the person's |
+| Appearance, energy in a day | Native | Native + Window | Native | Native | Native | Native (`ot settings theme`, `ot energy`; `set_daily_energy`), appearance not for agents |
+| Focus timer lengths | Native | Window | Native | Native | Native | Native (`ot focus lengths`; `set_focus_lengths`) |
+| Labels: rename, recolor, remove | Native | Window | Native | Native | Native | Native (`ot labels`; `create_label`, `update_label`), removing is the person's |
+| Where your tasks are, files that need fixing | Native (footer, notice) | Native + Window | Native (Settings, Today) | Native (Settings) | Native (Settings) | Native (`ot vault`; `vault_info`) |
+| Sync settings | Native (panel) | Native + Window | Window | Native (own sync) | Native (own sync) | Status and sync now: `ot sync` (setup is the app's) |
+| Connected apps (Notion, Microsoft To Do, GitHub Issues) | Native | Window | Window | — (run on a computer's server) | — (same) | Status and sync now: `ot connectors` (setup is the app's) |
+| Hooks, and approving an agent's hook | Native | Window + native notification | Window + native prompt | — (no server: no hooks) | — (same) | Native (`ot hooks`; approving not with `--as`), tools add hooks that wait for approval |
+| Extras (plugins on or off) | Native | Window | Window; the Mac follows them | — (no extras: everything on) | — (same) | `ot plugins` (switching not with `--as`) |
 | Connect AI apps, MCP | Native | Window | Window | — (agents reach a computer's server) | — (same) | Native |
 | Ask AI | Native | Window + sidebar box | Window (File › Ask AI…) | — (needs a computer's agents) | — (same) | — |
 | Browser extension setup | Native | Window | Window | — (desktop browsers) | — (same) | — |
@@ -542,10 +542,23 @@ own server, signed in as you: Windows' app window, the Mac's One Thing window). 
 AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-connectors.md)):
 
 * **`onething mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
-  on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, as a
+  on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, inside the
+  Mac app (`Contents/Resources/Server/cli`, `ot` a link to `onething`; *Install Command Line Tool…* in the app menu and
+  Settings › Command line tool link both into `~/.local/bin`, asking before replacing anything that isn't One Thing's,
+  and showing a link into a moved app as broken, with Repair; `CommandLineTool` in OneThingKit; on Windows the
+  sidebar's *Add ot to your PATH* appends the `cli` folder to the user's own PATH, keeping its registry kind:
+  `UserPath`, `CliOnPath`; the Linux install links both into `~/.local/bin` and says when that isn't on the PATH), as a
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
 * **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
+  Everything the app does has a command (the coverage table in [`docs/ai-connectors.md`](ai-connectors.md#what-ot-and-mcp-cover);
+  a test fails when a REST endpoint has neither a command nor a reason not to), except deleting (tasks, groups,
+  labels, attachments, time entries): a shell agent can run `ot` without `--as`, so `ot` can't tell it from the
+  person, and deletes stay in the apps. Owner-only changes that aren't deletes (`ot plugins on|off`, `ot settings
+  teams`, `ot hooks reject`, `ot vault use`) are refused with `--as`/`ONETHING_AGENT`. `ot sync [now]` and `ot connectors [sync
+  <id>]` run the app's own sync and connector services in-process (status, and a sync while the app isn't running:
+  they take the app's instance lock, so the two never sync one folder at once); setting them up, signing in, pairing
+  the browser extension, Ask AI and feedback stay with the person at the app.
 * **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
 * **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
   subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test
@@ -572,6 +585,18 @@ the docs explain the options and risks. The server sends the same short instruct
 | `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon, color and repeat rule; completing a repeating task moves it on, reopening undoes that) |
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
 | `move_task`, `move_card`, `list_labels` | Reorganize the hierarchy; board columns; curated labels |
+| `list_groups`, `create_group`, `update_group` | Groups (tabs): list, make one (only when asked: an unknown group name is an error that says how to make it, never a new group), rename and recolor. Deleting a group stays in the apps |
+| `capture_task` | A task from quick-add words (`!!`, `due:fri`, `#tag`, `@tomorrow`), parsed as everywhere else |
+| `dismiss_reminder`, `clear_snooze` | Dismiss one reminder; bring a deferred task back to Do now |
+| `update_note`, `update_time_entry` | Correct a note it wrote, or logged time (removing either stays in the apps; someone else's note gets a new one) |
+| `arrange_now`, `reorder_task` | The whole Do now order; a task next to a sibling |
+| `focus_timer` | Start (on a task), pause, resume, skip, reset, next |
+| `set_focus_lengths` | The focus timer's lengths: focus, break, long break, sessions before it (only those given change; none: reads them) |
+| `get_plan` | The Plan view's data: blocks, deadlines, unplanned and later tasks, energy, and its settings (read only) |
+| `create_label`, `update_label`, `list_tags` | Curated labels (deleting one stays in the apps); the tags in use |
+| `board_history`, `get_task_version` | Versions of the whole folder; a task's file in a version |
+| `export_board`, `read_attachment` | The whole board as JSON; a text attachment's contents |
+| `update_hook` | Change a hook the agent added (it waits for approval again) |
 | `archive_task`, `unarchive_task` | Put finished tasks away, and back |
 | `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time tracking and where the time went |
 | `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks (an agent's wait for approval; it can switch off or remove only its own) |

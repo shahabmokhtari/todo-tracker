@@ -6,9 +6,12 @@ using OneThing.Server;
 namespace OneThing.Cli;
 
 /// <summary>Short, scannable text output. Ids are printed first (8 characters) so they are easy to copy.</summary>
-internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
+internal sealed partial class CliOutput(TextWriter output, TimeZoneInfo zone)
 {
     public void Line(string text) => output.WriteLine(text);
+
+    /// <summary>Where it writes (for the other part of this class).</summary>
+    private TextWriter Writer => output;
 
     public void Dashboard(DashboardDto d)
     {
@@ -226,7 +229,7 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
     {
         foreach (var g in groups)
         {
-            output.WriteLine($"  {g.Name}  ({g.Now.ToString(CultureInfo.InvariantCulture)} now, {g.Waiting.ToString(CultureInfo.InvariantCulture)} waiting)");
+            output.WriteLine($"  {g.Name}  ({g.Now.ToString(CultureInfo.InvariantCulture)} now, {g.Waiting.ToString(CultureInfo.InvariantCulture)} waiting){(g.Color is { } c ? "  " + c : string.Empty)}");
         }
     }
 

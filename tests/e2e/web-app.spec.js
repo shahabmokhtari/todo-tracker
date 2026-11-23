@@ -20,6 +20,16 @@ async function open(page, request, where = '/', { asOwner = false } = {}) {
   const launch = await (await request.post('/api/launch', { headers: asOwner ? ownerHeaders() : auth, data: { return: where } })).json();
   await page.goto(launch.url);
   await expect(page.locator('#board')).toBeVisible();
+  // The extras' buttons come after the board draws again for the extras: a menu opened or a button focused before
+  // that redraw would be replaced under the test.
+  await expect(page.locator('#plugin-buttons button').first()).toBeVisible();
+}
+
+// Shows a group's tab and waits for its board (until then the board on screen is the last one, soon replaced).
+async function showGroup(page, name) {
+  const tab = page.locator('#tabs .tab', { hasText: name });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-current', 'true');
 }
 
 const add = async (request, title, groupId = group.id) =>
@@ -136,7 +146,7 @@ test('Task details: the keyboard goes in, stays in, and comes back when it close
   const errors = watchErrors(page);
   await add(request, 'Keyboard round trip');
   await open(page, request);
-  await page.locator('#tabs .tab', { hasText: group.name }).click();
+  await showGroup(page, group.name);
   const opener = page.locator('#board').getByRole('button', { name: 'Keyboard round trip' }).first();
   await opener.focus();
   await page.keyboard.press('Enter');
@@ -169,7 +179,7 @@ test('Details opened from a row’s ⋯ give the keyboard back to ⋯ when they 
   const errors = watchErrors(page);
   await add(request, 'Menu round trip');
   await open(page, request);
-  await page.locator('#tabs .tab', { hasText: group.name }).click();
+  await showGroup(page, group.name);
   const row = page.locator('#sec-now .item', { hasText: 'Menu round trip' });
   const more = row.getByRole('button', { name: 'More' });
   await row.hover();

@@ -159,7 +159,8 @@ under the files that need fixing, never written over).
   listed keeps its tasks as last read, and sync waits, so your other devices keep them too.
 * **Copies get their own identity.** A duplicated task file gets new ids; the original keeps its own.
 * **Several processes, one vault.** The app, the CLI, and MCP servers coordinate with a lock in local app data (not in
-  the synced folder). Changes from other devices arrive through your sync service and are picked up like any edit.
+  the synced folder). A data folder of its own (`--data`, `ONETHING_DATA`) with the tasks inside it keeps their lock
+  and history in `<data>/locks` instead. Changes from other devices arrive through your sync service and are picked up like any edit.
 * **History.** Every change, in the app or outside it, is kept as a version in a private git repository on this device
   (in local app data, never in the synced folder, and separate from any repository you have; attachments aren't
   versioned). Any task can be viewed or restored from its history; a

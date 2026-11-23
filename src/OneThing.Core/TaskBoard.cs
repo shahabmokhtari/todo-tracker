@@ -224,11 +224,20 @@ public sealed partial class TaskBoard
     }
 
     /// <summary>Notes are autosaved while typed: the first save adds the note, later ones update it in place.
-    /// Edits within 10 minutes of writing it are part of writing it (no extra timeline entries).</summary>
+    /// Edits by its writer within 10 minutes of writing it are part of writing it (no extra timeline entries); an edit
+    /// by anyone else is always on the timeline. You may edit any note; an agent (or a connector) only the ones it
+    /// wrote itself.</summary>
     public Note UpdateNote(Guid id, Guid noteId, string text, Actor actor, DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(actor);
         var item = Get(id);
         var note = item.NoteList.Find(n => n.Id == noteId) ?? throw new TaskNotFoundException($"Note {noteId} was not found.");
+        var someoneElses = note.Author != actor;
+        if (someoneElses && actor.Kind is not (ActorKind.User or ActorKind.Vault))
+        {
+            throw new UnauthorizedAccessException("You can only change notes you wrote yourself. This one isn't yours: add a new note instead.");
+        }
+
         var clean = RequireText(text, nameof(text), MaxTextLength, "A note cannot be empty.");
         if (clean == note.Text)
         {
@@ -236,7 +245,7 @@ public sealed partial class TaskBoard
         }
 
         note.Text = clean;
-        if (now - note.At > TimeSpan.FromMinutes(10))
+        if (someoneElses || now - note.At > TimeSpan.FromMinutes(10))
         {
             Log(now, id, ActivityKind.Updated, $"Edited a note on \"{item.Title}\"", actor);
         }

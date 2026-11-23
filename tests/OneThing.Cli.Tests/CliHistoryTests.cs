@@ -33,4 +33,35 @@ public sealed class CliHistoryTests : IDisposable
         Assert.Equal(1, result.ExitCode);
         Assert.NotEmpty(result.Error);
     }
+
+    [Fact]
+    public async Task The_whole_folders_history_and_a_versions_text_are_shown()
+    {
+        var id = (await _tt.Json("add", "Draft plan")).Id().ToString();
+        await _tt.Ok("edit", id, "--title", "Final plan");
+
+        var board = (await _tt.Json("history"))!["versions"]!.AsArray();
+        Assert.True(board.Count >= 2, $"{board.Count} versions");
+        var first = (await _tt.Json("history", id)).AsArray()[^1].Str("id");
+
+        var text = await _tt.Ok("history", id, "--text", first);
+
+        Assert.Contains("Draft plan", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("Final plan", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Folders_left_out_of_history_are_in_the_json_too()
+    {
+        await _tt.Json("add", "Ship");
+        Directory.CreateDirectory(Path.Combine(_tt.VaultDirectory, "Work", "Project", ".git"));
+        await File.WriteAllTextAsync(Path.Combine(_tt.VaultDirectory, "Work", "Project", "Plan.md"), "# Plan\n", TestContext.Current.CancellationToken);
+        await _tt.Json("add", "Ship again");
+
+        var history = await _tt.Json("history");
+
+        Assert.NotEmpty(history!["versions"]!.AsArray());
+        Assert.Equal(["Work/Project"], history["notInHistory"].Strings());
+        Assert.Contains("Not in history (a git repository of its own): Work/Project", await _tt.Ok("history"), StringComparison.Ordinal);
+    }
 }

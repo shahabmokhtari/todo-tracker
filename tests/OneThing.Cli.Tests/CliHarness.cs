@@ -13,6 +13,14 @@ public sealed class CliHarness : IDisposable
 {
     public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
 
+    // ot sync and ot connectors run the app's sync here: never through this computer's real OneDrive or iCloud Drive,
+    // and never into the folder ONETHING_VAULT names.
+    static CliHarness()
+    {
+        Environment.SetEnvironmentVariable("ONETHING_CLOUD", "off");
+        Environment.SetEnvironmentVariable("ONETHING_VAULT", null);
+    }
+
     public CliHarness(bool history = false)
     {
         DataDirectory = Path.Combine(Path.GetTempPath(), "onething-cli-" + Guid.NewGuid().ToString("N"));
@@ -34,6 +42,9 @@ public sealed class CliHarness : IDisposable
 
     public string Git { get; init; } = "git";
 
+    /// <summary>Bytes written to stdout as they are (an attachment with <c>--to -</c>), since the last run.</summary>
+    public MemoryStream RawOutput { get; private set; } = new();
+
     /// <summary>Links <c>ot open</c> asked the system to open.</summary>
     public List<string> OpenedLinks { get; } = [];
 
@@ -44,6 +55,7 @@ public sealed class CliHarness : IDisposable
         using var output = new StringWriter();
         using var error = new StringWriter();
         using var reader = new StringReader(input);
+        RawOutput = new MemoryStream();
         var context = new CliContext
         {
             Out = output,
@@ -59,6 +71,7 @@ public sealed class CliHarness : IDisposable
             Git = Git,
             Agent = null,
             OpenLink = OpenedLinks.Add,
+            RawOut = () => RawOutput,
         };
         var code = await CliApp.RunAsync(args, context);
         return new CliResult(code, output.ToString(), error.ToString());

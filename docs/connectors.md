@@ -168,7 +168,9 @@ isn't brought back. The tasks folder can't be one that holds One Thing's data fo
 
 It signs in with the GitHub CLI (or `GH_TOKEN`/`GITHUB_TOKEN`), and finds `gh` where installers put it even when the
 app is started from the Dock, Finder or a desktop launcher (Homebrew, `/usr/local/bin`, Snap, `~/.local/bin`,
-`Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away.
+`Program Files\GitHub CLI`). It syncs every 10 minutes; **Sync now** syncs a group right away. Without the app running,
+`ot connectors sync github <group>` does the same (`ot connectors` shows every connector; `ot connectors sync notion`
+or `mstodo` syncs one); while the app runs, ot leaves it to the app.
 
 ## Loop
 

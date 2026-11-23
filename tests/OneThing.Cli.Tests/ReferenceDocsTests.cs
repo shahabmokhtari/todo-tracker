@@ -131,8 +131,9 @@ public sealed class ReferenceDocsTests
         Line();
         Line("`ot` reads and changes your tasks (the markdown files in your tasks folder) from a terminal or a script, without");
         Line("the app running, and `onething mcp` is the MCP server for AI apps. `ot` is the short name of `onething`: both work.");
-        Line("They're in the `cli` folder next to the app on Windows, in `~/.local/bin` with the Linux install, or");
-        Line("`dotnet tool install -g OneThing.Cli` (as `onething`) ([ai-connectors.md](ai-connectors.md#get-ot)).");
+        Line("They're in the `cli` folder next to the app on Windows, inside the Mac app (One Thing › Install Command Line Tool…");
+        Line("links them into `~/.local/bin`), in `~/.local/bin` with the Linux install, or `dotnet tool install -g OneThing.Cli`");
+        Line("(as `onething`) ([ai-connectors.md](ai-connectors.md#get-ot)).");
         Line();
         Line("`<task>` is an id (or its first 6+ characters, as `ot` prints them) or words from the title. Exit codes: `0` done,");
         Line("`1` couldn't (the reason is on stderr), `2` wrong usage.");

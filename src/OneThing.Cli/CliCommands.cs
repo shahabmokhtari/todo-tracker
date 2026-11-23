@@ -9,15 +9,16 @@ namespace OneThing.Cli;
 internal sealed record CliCommand(string Name, string Usage, string Summary, string? Details, Func<CliSession, CliArgs, Task> Run);
 
 /// <summary>Every <c>ot</c> command, its help, and what it does.</summary>
-internal static class CliCommands
+internal static partial class CliCommands
 {
     public static readonly IReadOnlyDictionary<string, CliCommand> All = new[]
     {
         new CliCommand("now", "ot [now] [filter] [-g group]", "What to do now, and what is waiting", "filter uses the list syntax, e.g. ot now #release", Now),
-        new CliCommand("add", "ot add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3]", "Add a task",
+        new CliCommand("add", "ot add <title…> [-g group] [--under task] [--details text] [--tag t]… [--label l]… [--due when] [--snooze when] [--energy 1|2|3] [--repeat rule] [--icon emoji] [--color #rrggbb]", "Add a task",
             "Quick words in the title: ! high, !! critical, !low, @2h or @tomorrow (defer), due:3d or due:2026-02-01, #tag.\n" +
             "Quote the title: shells treat # ! @ specially. Example: ot add 'Renew passport !! due:7d #admin'\n" +
-            "Or use options: ot add Renew passport --due 7d --tag admin", Add),
+            "Or use options: ot add Renew passport --due 7d --tag admin\n" +
+            "-g takes a group that exists (ot groups); ot group add makes a new one.", Add),
         new CliCommand("list", "ot list [filter] [-g group] [--all]", "Find tasks",
             "Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.", List),
         new CliCommand("tree", "ot tree [-g group] [--under task] [--show todo|now|waiting|all] [--depth n]", "The task tree as Tasks shows it, with each parent's progress",
@@ -29,34 +30,75 @@ internal static class CliCommands
         new CliCommand("done", "ot done <task> | ot done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as ot prints them); words are one task's title.", Done),
         new CliCommand("reopen", "ot reopen <task>", "Undo done", null, Reopen),
         new CliCommand("first", "ot first <task> | ot first <id> <id>…", "Put tasks at the top of Do now (the first becomes the focus)", null, First),
-        new CliCommand("note", "ot note <task> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin", null, Note),
-        new CliCommand("snooze", "ot snooze <task> <when | after <task>>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)", "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>", Snooze),
-        new CliCommand("edit", "ot edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none]", "Change a task",
-            "--energy: how much energy it takes per hour, 1 (light) to 3 (draining).", Edit),
+        new CliCommand("note", "ot note <task> <text…|-> [--url https://… [--title page]] | ot note <task> --edit <note|last> <text…|->", "Log progress (\"did X, next Y\"); - reads the text from stdin",
+            "--url: the web page the note is about. --edit corrects a note (its id from ot show --json, or last); with --as, only a note that agent wrote.", Note),
+        new CliCommand("snooze", "ot snooze <task> <when | after <task> | clear>", "Defer a task until later, or until another task is done (it moves to Waiting and reminds you)",
+            "when: 45m, 2h, 3d, tomorrow, next week, fri 14:30, weekend, 2026-02-01, 2026-02-01T14:30 — or: after <other task>.\nclear brings it back to Do now.", Snooze),
+        new CliCommand("remind", "ot remind <task> <when…> [--message text] | ot remind <task> --dismiss <reminder|all>", "Add a reminder without deferring the task, or dismiss one",
+            "when: the same words as ot snooze (2h, tomorrow 9:00, fri 14:30). A reminder's id is in ot show --json.", Remind),
+        new CliCommand("edit", "ot edit <task> [--title t] [--details d] [--priority low|normal|high|critical] [--due when|none] [--energy 1|2|3|none] [--repeat rule|none] [--icon emoji|none] [--color #rrggbb|none] [--sequential on|off] [--step-delay hours|none]", "Change a task",
+            "--energy: how much energy it takes per hour, 1 (light) to 3 (draining).\n" +
+            "--repeat: every weekday, every 2 weeks on Monday, Thursday, every month on the last Friday (+ when done, until 2026-12-31, for 5 times).\n" +
+            "--sequential on: its subtasks are steps, one at a time; --step-delay: hours between finishing one step and the next coming up.", Edit),
         new CliCommand("energy", "ot energy [per-day | default]", "Energy today: what you have in a day and what today's plan takes",
             "A day's plan takes the hours of its blocks times each task's energy (1 to 3 an hour; none counts as 1). ot energy 8 sets 8 a day; ot energy default goes back to 10.", EnergyCommand),
         new CliCommand("tag", "ot tag <task> [+]tag… -tag…", "Add or remove tags", null, (s, a) => Tags(s, a, labels: false)),
         new CliCommand("label", "ot label <task> [+]label… -label…", "Add or remove labels (quote names with spaces)", null, (s, a) => Tags(s, a, labels: true)),
-        new CliCommand("move", "ot move <task> (--under task | --top | -g group) [--index n]", "Put a task under another, at the top level, or in another group", null, Move),
+        new CliCommand("move", "ot move <task> (--under task | --top | -g group) [--index n] | ot move <task> (--before task | --after task)", "Put a task under another, at the top level, or in another group; or next to a sibling",
+            "--before and --after reorder a task among its siblings (subtasks under one parent, or tasks in a column).", Move),
+        new CliCommand("order", "ot order <task> <task>…", "Arrange Do now in this order (the first is the focus)", "Ids as ot prints them. ot first puts some at the top and leaves the rest as they are.", Order),
         new CliCommand("steps", "ot steps <task> <step>… [--delay hours]", "Add ordered steps; finishing one unlocks the next after the delay", null, Steps),
         new CliCommand("attach", "ot attach <task> <file>", "Copy a file into the tasks folder and link it", null, Attach),
-        new CliCommand("history", "ot history <task>", "Saved versions of a task, newest first", null, History),
+        new CliCommand("history", "ot history [<task> [--text version]] [--limit n]", "Saved versions, newest first: of the whole tasks folder, or of one task (--text prints that version)",
+            "Every change is saved as a version (it needs git). ot restore puts a task back.", History),
         new CliCommand("restore", "ot restore <task> <version>", "Put a task back the way it was in a version", null, Restore),
-        new CliCommand("groups", "ot groups", "Groups (tabs) with counts", null, Groups),
-        new CliCommand("labels", "ot labels", "The curated labels", null, Labels),
+        new CliCommand("groups", "ot groups", "Groups (tabs) with counts", "ot group adds, renames and recolors them.", GroupCommand),
+        new CliCommand("group", "ot group (add <name> [--color #rrggbb] | rename <group> <new name> | color <group> <#rrggbb | none>)", "Make a group (tab), rename it or change its color",
+            "Quote a group name with spaces when it comes before more words: ot group rename \"Side projects\" Hobbies.\n" +
+            "Groups are deleted only in the app (its tasks move to another group there).", GroupCommand),
+        new CliCommand("timeline", "ot timeline [<task>] [--limit n]", "What happened, newest first: on one task (with its subtasks) or the whole board",
+            "Each entry says who did it: you, an agent (by name), a connector or the tasks folder.", Timeline),
+        new CliCommand("labels", "ot labels [add <name> [--color #rrggbb] | rename <label> <new name> | color <label> <#rrggbb>]", "The curated labels: list, add, rename, recolor",
+            "ot label <task> +name puts one on a task. Labels are deleted only in the app.", Labels),
+        new CliCommand("tags", "ot tags", "The tags on open tasks, most used first", "ot tag <task> +x -y changes a task's tags.", TagList),
         new CliCommand("vault", "ot vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", "use is for you, the person at the computer (not for AI agents); the app switches at its next start.", Vault),
         new CliCommand("mcp", "onething mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
         new CliCommand("start", "ot start <task>", "Start timing a task (any other timer stops)", "The task's card moves to Doing. ot stop stops it.", Start),
         new CliCommand("stop", "ot stop", "Stop the timer", null, Stop),
         new CliCommand("stage", "ot stage <task> <inbox|next|doing>", "Move a task to a board column", "Finish a task (ot done) to move it to Done.", Stage),
-        new CliCommand("archive", "ot archive <task> | ot archive --done-before <days>", "Put finished tasks away (ot list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.", Archive),
+        new CliCommand("archive", "ot archive <task> | ot archive --done-before <days>", "Put finished tasks away (ot list is:archived finds them)", "--done-before 14 archives everything finished at least 14 days ago.\nThere's no ot delete: archived tasks are kept (ot unarchive brings one back); deleting is in the app, for you.", Archive),
+        new CliCommand("unarchive", "ot unarchive <task>", "Bring an archived task back to the done list", null, Unarchive),
         new CliCommand("time", "ot time [--days n] [-g group]", "Where the time went: tracked per task, focus sessions, tasks done", "Default: the last 28 days. --json prints the full report (per day, group, hour).", Time),
-        new CliCommand("hooks", "ot hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
+        new CliCommand("log", "ot log <task> <duration> [--at when] | ot log <task> <duration> --edit <entry|last> [--at when]", "Record time already spent on a task, or correct an entry",
+            "duration: 45m, 1h30m, 1.5h or minutes (at most 24 hours). --at: when it started (default: it ended now). An entry's id is in ot show --json.\n" +
+            "A time entry is removed only in the app; --edit corrects one.", Log),
+        new CliCommand("focus", "ot focus [start [<task>] | pause | resume | skip | reset | next [<task>] | lengths [--focus m] [--break m] [--long-break m] [--sessions n]]", "The focus (Pomodoro) timer: what it's doing, or start, pause, resume, skip, reset; its lengths",
+            "start without a task focuses on nothing in particular; next starts the next session (on the last session's task, or today's focus).\n" +
+            "lengths shows how long focus, a break and a long break last (minutes) and how many sessions come before a long break; with options it changes those and leaves the rest (focus 1-180, break 1-60, long break 1-120, sessions 1-12). A new length counts from the next session.", Focus),
+        new CliCommand("plan", "ot plan [--from yyyy-mm-dd] [--days n] [-g group] | ot plan <task> <when…> [--minutes n] | ot plan <task> off | ot plan settings [options]", "The plan: blocks of time on tasks",
+            "when: 2026-01-05T14:00, tomorrow 9:00, fri 14:30. --minutes: 5 to 720 (default what it had, else 30).\n" +
+            "settings [-g group] [--view day|week] [--hours work|full] [--work-hours 9:00-17:00] [--work-days 1-5] [--week-start mon|sun]: how the Plan view looks (days 1 = Monday … 7 = Sunday).", Plan),
+        new CliCommand("hooks", "ot hooks [list | add <event> | edit <id> | enable <id> | disable <id> | approve <id> <version> | reject <id> <version> | remove <id> | test [event] | path]", "Run your own scripts or webhooks when something happens (hooks.json)",
             "add <event> (--powershell script | --bash script | --url https://…) [--name n] [--timeout seconds] [-g group]… [--tag t]… [--label l]… [--actor user|agent|…]…\n" +
             "edit <id> [--event e] and any of the add options (only what you give changes).\n" +
             "<event>: taskCompleted, taskCreated, reminderDue, noteAdded, focusEnded… or * for every event (see docs/hooks.md).\n" +
             "A command gets the event as JSON on stdin. A hook an AI agent adds or changes (--as or ONETHING_AGENT) waits for your approval:\n" +
-            "approving is for you, the person at the computer: ot hooks approve <id> <version> (ot hooks list shows both), or Settings › Hooks in the app. test runs the hooks for an event now, with an example task.", Hooks),
+            "approving is for you, the person at the computer: ot hooks approve <id> <version> (ot hooks list shows both), or Settings › Hooks in the app; reject turns it down.\n" +
+            "test runs the hooks for an event now, with an example task.", Hooks),
+        new CliCommand("rich", "ot rich <task> [<file.html> | - | none]", "A task's rich HTML version (tables, colors): print it, save one from a file or stdin, or remove it",
+            "Only top-level tasks have one. Scripts in it never run. Only none removes it: empty input or an empty file is refused.", Rich),
+        new CliCommand("attachment", "ot attachment <task> <file name or id> [--to path | --to -]", "Save a copy of a task's attachment (default: here, by its name; - writes it to stdout as it is)",
+            "ot attach adds one. Attachments are removed only in the app.", AttachmentSave),
+        new CliCommand("export", "ot export [--to file [--force]]", "The whole board as JSON (the format every app reads)",
+            "--to never replaces a file unless --force, and never writes into the tasks folder.", Export),
+        new CliCommand("settings", "ot settings [theme system|light|dark | teams <https://…|off>]", "The app's settings: the theme, and where reminders are posted (Teams)",
+            "teams is for you, the person at the computer (not for AI agents). A running app keeps the settings it read until it starts again or you change one in it.", SettingsCommand),
+        new CliCommand("sync", "ot sync [now]", "How syncing with your other computers is going; now syncs (while the app isn't running)",
+            "Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so. Syncing now is yours: ot sync now refuses --as (the status doesn't).", Sync),
+        new CliCommand("connectors", "ot connectors [sync <id> | sync github <group>]", "Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the app isn't running)",
+            "Signing in and choosing what to connect are in the app: Settings › Connected apps. Syncing now is yours (it starts one that isn't syncing yet, like Start syncing in the app): ot connectors sync refuses --as (the status doesn't).", Connectors),
+        new CliCommand("plugins", "ot plugins [on <id> | off <id>]", "The extras (plugins) and whether each is on; switch one on or off",
+            "Switching is for you, the person at the computer (not for AI agents); it applies when the app starts again.", Plugins),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);
 
     public static string Help(string? topic)
@@ -105,13 +147,13 @@ internal static class CliCommands
     {
         a.Allow("group");
         var filter = a.Words.Count > 0 ? string.Join(' ', a.Words) : null;
-        var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, TodoTools.ResolveGroup(b, a.Value("group")), 5, s.Links, filter)).ConfigureAwait(false);
+        var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, Group(b, a.Value("group")), 5, s.Links, filter)).ConfigureAwait(false);
         await s.Print(dashboard, (o, d) => o.Dashboard(d)).ConfigureAwait(false);
     }
 
     private static async Task Add(CliSession s, CliArgs a)
     {
-        a.Allow("group", "under", "details", "tag", "label", "due", "snooze", "energy");
+        a.Allow("group", "under", "details", "tag", "label", "due", "snooze", "energy", "repeat", "icon", "color");
         var text = a.WordsFrom(0, "what to add");
         var item = await s.Change((b, now) =>
         {
@@ -121,13 +163,16 @@ internal static class CliCommands
                 new NewTask(capture.Title)
                 {
                     ParentId = parent?.Id,
-                    GroupId = TodoTools.ResolveGroup(b, a.Value("group")),
+                    GroupId = Group(b, a.Value("group")),
                     Priority = capture.Priority,
                     Details = a.Value("details"),
                     Deadline = a.Value("due") is { } due ? CliTime.Deadline(due, now, s.Zone) : capture.Deadline,
                     Tags = [.. capture.Tags, .. a.Values("tag")],
                     Labels = a.Values("label").Count > 0 ? a.Values("label") : null,
                     Energy = a.Value("energy") is { } level ? EnergyLevel(level) : null,
+                    Repeat = a.Value("repeat"),
+                    Icon = a.Value("icon"),
+                    Color = Color(a.Value("color")),
                 },
                 s.Actor,
                 now);
@@ -340,7 +385,7 @@ internal static class CliCommands
         var report = await s.Read(b =>
         {
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(s.Now, s.Zone).DateTime);
-            return TimeReport.Build(b, today.AddDays(-(Math.Max(1, days) - 1)), today, s.Zone, s.Now, TodoTools.ResolveGroup(b, a.Value("group")));
+            return TimeReport.Build(b, today.AddDays(-(Math.Max(1, days) - 1)), today, s.Zone, s.Now, Group(b, a.Value("group")));
         }).ConfigureAwait(false);
         await s.Print(report, (o, r) =>
         {
@@ -356,7 +401,12 @@ internal static class CliCommands
 
     private static async Task Note(CliSession s, CliArgs a)
     {
-        a.Allow();
+        a.Allow("url", "title", "edit");
+        if (a.Has("title") && !a.Has("url"))
+        {
+            throw new CliUsageException("--title is the title of the page in --url.");
+        }
+
         var reference = a.Word(0, "which task");
         var fromInput = a.Words.Count == 2 && a.Words[1] == "-";
         if (fromInput && ReferenceEquals(s.Context.In, Console.In) && !Console.IsInputRedirected)
@@ -371,10 +421,12 @@ internal static class CliCommands
         await s.Change((b, now) =>
         {
             var item = TaskResolver.Resolve(b, reference);
-            note = Wire.Note(item, b.AddNote(item.Id, text, s.Actor, now));
+            note = a.Value("edit") is { } which
+                ? Wire.Note(item, b.UpdateNote(item.Id, Pick(item.Notes, n => n.Id, n => n.At, which, "note").Id, text, s.Actor, now))
+                : Wire.Note(item, b.AddNote(item.Id, text, s.Actor, now, a.Value("url"), a.Value("title")));
             return item;
         }).ConfigureAwait(false);
-        await s.Print(note!, (o, n) => o.Line($"Noted on {TaskResolver.ShortId(n.ItemId)} \"{n.ItemTitle}\"")).ConfigureAwait(false);
+        await s.Print(note!, (o, n) => o.Line($"{(a.Has("edit") ? "Changed the note" : "Noted")} on {TaskResolver.ShortId(n.ItemId)} \"{n.ItemTitle}\"")).ConfigureAwait(false);
     }
 
     private static async Task Snooze(CliSession s, CliArgs a)
@@ -385,7 +437,11 @@ internal static class CliCommands
         var item = await s.Change((b, now) =>
         {
             var found = TaskResolver.Resolve(b, reference, i => !i.IsDone);
-            if (when.StartsWith("after ", StringComparison.OrdinalIgnoreCase))
+            if (when.Equals("clear", StringComparison.OrdinalIgnoreCase))
+            {
+                b.ClearNextAction(found.Id, s.Actor, now);
+            }
+            else if (when.StartsWith("after ", StringComparison.OrdinalIgnoreCase))
             {
                 var first = TaskResolver.Resolve(b, when["after ".Length..].Trim(), i => !i.IsDone && i.Id != found.Id);
                 b.WaitFor(found.Id, first.Id, s.Actor, now);
@@ -397,17 +453,22 @@ internal static class CliCommands
 
             return found;
         }).ConfigureAwait(false);
-        await s.Print(item, (o, i) => o.Changed("Snoozed", i)).ConfigureAwait(false);
+        await s.Print(item, (o, i) => o.Changed(when.Equals("clear", StringComparison.OrdinalIgnoreCase) ? "Back in Do now:" : "Snoozed", i)).ConfigureAwait(false);
     }
 
     private static async Task Edit(CliSession s, CliArgs a)
     {
-        a.Allow("title", "details", "priority", "due", "energy");
+        string[] fields = ["title", "details", "priority", "due", "energy", "repeat", "icon", "color", "sequential", "step-delay"];
+        a.Allow(fields);
         var reference = a.WordsFrom(0, "which task");
-        if (!a.Has("title") && !a.Has("details") && !a.Has("priority") && !a.Has("due") && !a.Has("energy"))
+        if (!fields.Any(a.Has))
         {
-            throw new CliUsageException("Say what to change: --title, --details, --priority, --due, or --energy.");
+            throw new CliUsageException("Say what to change: --title, --details, --priority, --due, --energy, --repeat, --icon, --color, --sequential or --step-delay.");
         }
+
+        static bool None(string? text) => text is not null && text.Trim().Equals("none", StringComparison.OrdinalIgnoreCase);
+        var stepDelay = a.Value("step-delay");
+        TimeSpan? delay = stepDelay is null || None(stepDelay) ? null : StepDelay(stepDelay);
 
         var energy = a.Value("energy");
         var noEnergy = energy is not null && energy.Equals("none", StringComparison.OrdinalIgnoreCase);
@@ -428,6 +489,15 @@ internal static class CliCommands
                     ClearDeadline = clear,
                     Energy = energy is not null && !noEnergy ? EnergyLevel(energy) : null,
                     ClearEnergy = noEnergy,
+                    Repeat = None(a.Value("repeat")) ? null : a.Value("repeat"),
+                    ClearRepeat = None(a.Value("repeat")),
+                    Icon = None(a.Value("icon")) ? null : a.Value("icon"),
+                    ClearIcon = None(a.Value("icon")),
+                    Color = Color(a.Value("color")),
+                    ClearColor = None(a.Value("color")),
+                    Sequential = a.Value("sequential") is { } on ? OnOff(on, "--sequential") : null,
+                    StepDelay = delay,
+                    ClearStepDelay = None(stepDelay),
                 },
                 s.Actor,
                 now);
@@ -501,11 +571,36 @@ internal static class CliCommands
 
     private static async Task Move(CliSession s, CliArgs a)
     {
-        a.Allow("under", "top", "group", "index");
+        a.Allow("under", "top", "group", "index", "before", "after");
         var reference = a.WordsFrom(0, "which task");
+        if (a.Has("before") || a.Has("after"))
+        {
+            if (a.Has("under") || a.Has("top") || a.Has("group") || a.Has("index") || (a.Has("before") && a.Has("after")))
+            {
+                throw new CliUsageException("--before or --after alone: it reorders the task among its siblings.");
+            }
+
+            var reordered = await s.Change((b, now) =>
+            {
+                var found = TaskResolver.Resolve(b, reference);
+                if (a.Value("before") is { } next)
+                {
+                    b.Reorder(found.Id, TaskResolver.Resolve(b, next, i => i.Id != found.Id).Id, s.Actor, now);
+                }
+                else
+                {
+                    b.ReorderAfter(found.Id, TaskResolver.Resolve(b, a.Value("after")!, i => i.Id != found.Id).Id, s.Actor, now);
+                }
+
+                return found;
+            }).ConfigureAwait(false);
+            await s.Print(reordered, (o, i) => o.Changed("Moved", i)).ConfigureAwait(false);
+            return;
+        }
+
         if (!a.Has("under") && !a.Has("top") && !a.Has("group"))
         {
-            throw new CliUsageException("Say where: --under <task>, --top, or --group <group>.");
+            throw new CliUsageException("Say where: --under <task>, --top, --group <group>, --before <task> or --after <task>.");
         }
 
         int? index = a.Value("index") is { } text
@@ -514,7 +609,7 @@ internal static class CliCommands
         var item = await s.Change((b, now) =>
         {
             var found = TaskResolver.Resolve(b, reference);
-            var group = TodoTools.ResolveGroup(b, a.Value("group"));
+            var group = Group(b, a.Value("group"));
             if (a.Value("under") is { } under)
             {
                 b.Move(found.Id, TaskResolver.Resolve(b, under, i => !i.IsDone).Id, index, null, s.Actor, now);
@@ -536,16 +631,17 @@ internal static class CliCommands
     /// <summary>The longest wait between steps: a year.</summary>
     private const double MaxStepDelayHours = 24 * 366;
 
+    private static TimeSpan StepDelay(string text, string option = "--step-delay") =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) && hours >= 0 && hours <= MaxStepDelayHours
+            ? TimeSpan.FromHours(hours)
+            : throw new CliUsageException($"{option} is in hours, from 0 to {MaxStepDelayHours.ToString(CultureInfo.InvariantCulture)} (a year), e.g. 24.");
+
     private static async Task Steps(CliSession s, CliArgs a)
     {
         a.Allow("delay");
         var reference = a.Word(0, "which task");
         _ = a.Word(1, "the steps");
-        TimeSpan? delay = a.Value("delay") is { } text
-            ? double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var hours) && hours >= 0 && hours <= MaxStepDelayHours
-                ? TimeSpan.FromHours(hours)
-                : throw new CliUsageException($"--delay is in hours, from 0 to {MaxStepDelayHours.ToString(CultureInfo.InvariantCulture)} (a year), e.g. 24.")
-            : null;
+        TimeSpan? delay = a.Value("delay") is { } text ? StepDelay(text, "--delay") : null;
         var item = await s.Change((b, now) =>
         {
             var parent = TaskResolver.Resolve(b, reference, i => !i.IsDone);
@@ -580,14 +676,44 @@ internal static class CliCommands
 
     private static async Task History(CliSession s, CliArgs a)
     {
-        a.Allow();
+        a.Allow("text", "limit");
         if (a.Has("no-history"))
         {
             throw new CliUsageException("History is off for this command (--no-history); run it without that option.");
         }
 
+        if (a.Words.Count == 0)
+        {
+            if (a.Has("text"))
+            {
+                throw new CliUsageException("--text needs a task: ot history <task> --text <version>.");
+            }
+
+            // The whole tasks folder: every saved version, and folders that are git repositories of their own.
+            await s.Read(_ => 0).ConfigureAwait(false);
+            var log = await s.History.Required.LogAsync(null, Limit(a, 100)).ConfigureAwait(false);
+            var skipped = s.History.Required.Skipped;
+            await s.Print(new { versions = log, notInHistory = skipped }, (o, v) =>
+            {
+                o.Versions(v.versions);
+                foreach (var folder in v.notInHistory)
+                {
+                    o.Line($"Not in history (a git repository of its own): {folder}");
+                }
+            }).ConfigureAwait(false);
+            return;
+        }
+
         var reference = a.WordsFrom(0, "which task");
         var id = await s.Read(b => TaskResolver.Resolve(b, reference).Id).ConfigureAwait(false);
+        if (a.Value("text") is { } version)
+        {
+            var text = await s.History.Required.TaskVersionAsync(id, version).ConfigureAwait(false)
+                ?? throw new ArgumentException("This task didn't exist in that version.");
+            await s.Print(new { version, text }, (o, v) => o.Raw(v.text)).ConfigureAwait(false);
+            return;
+        }
+
         var versions = await s.History.Required.TaskHistoryAsync(id).ConfigureAwait(false);
         await s.Print(versions, (o, v) => o.Versions(v)).ConfigureAwait(false);
     }
@@ -604,18 +730,42 @@ internal static class CliCommands
         await s.Print(item, (o, i) => o.Changed("Restored", i)).ConfigureAwait(false);
     }
 
-    private static async Task Groups(CliSession s, CliArgs a)
-    {
-        a.Allow();
-        var groups = await s.Read(b => Wire.Dashboard(b, s.Now, null, 0).Groups).ConfigureAwait(false);
-        await s.Print(groups, (o, g) => o.Groups(g)).ConfigureAwait(false);
-    }
-
     private static async Task Labels(CliSession s, CliArgs a)
     {
-        a.Allow();
+        var verb = a.Words.Count > 0 ? a.Words[0].ToLowerInvariant() : "list";
+        if (verb == "add")
+        {
+            a.Allow("color");
+        }
+        else
+        {
+            a.Allow();
+        }
+
+        Func<TaskBoard, DateTimeOffset, object?>? change = verb switch
+        {
+            "list" => null,
+            "add" => (b, now) => b.DefineLabel(a.WordsFrom(1, "the label's name"), Color(a.Value("color")), s.Actor, now),
+            "rename" => (b, now) => RenameLabel(b, a.Word(1, "which label"), a.WordsFrom(2, "the new name"), null, s.Actor, now),
+            "color" or "colour" => (b, now) => RenameLabel(b, a.Word(1, "which label"), null, a.Word(2, "the color (#rrggbb)"), s.Actor, now),
+            "delete" or "remove" => throw new CliUsageException("Labels are deleted only in the app, by you. ot label <task> -name takes one off a task."),
+            _ => throw new CliUsageException("ot labels takes add, rename or color. See ot help labels."),
+        };
+        if (change is not null)
+        {
+            await s.Store.UpdateAsync(b => change(b, s.Now)).ConfigureAwait(false);
+            await s.SaveVersion().ConfigureAwait(false);
+        }
+
         var labels = await s.Read(Wire.Labels).ConfigureAwait(false);
         await s.Print(labels, (o, l) => o.Labels(l)).ConfigureAwait(false);
+    }
+
+    private static object? RenameLabel(TaskBoard b, string name, string? newName, string? color, Actor actor, DateTimeOffset now)
+    {
+        var current = b.FindLabel(name) ?? throw new ArgumentException($"There's no label \"{name}\". Labels: {string.Join(", ", b.Labels.Select(l => l.Name))}.");
+        b.UpdateLabel(current.Name, newName ?? current.Name, color ?? current.Color, actor, now);
+        return null;
     }
 
     private static async Task Vault(CliSession s, CliArgs a)
@@ -700,6 +850,17 @@ internal static class CliCommands
                 var approved = store.Approve(pending.Id, a.Words[2], author);
                 await s.Print(approved, (o, h) => o.Line($"Hook {h.Id} is {h.State}.")).ConfigureAwait(false);
                 break;
+            case "reject":
+                // "Don't allow": only the person at the computer, and only the version they looked at.
+                OwnerOnly(s, "Only you can turn down a hook: run ot hooks reject without --as (or ONETHING_AGENT), or in Settings › Hooks of the One Thing app.");
+                var waiting = store.Get(Id());
+                if (!store.Reject(waiting.Id, a.Word(2, "which version you looked at (ot hooks list shows it)")))
+                {
+                    throw new InvalidOperationException("This hook was allowed or changed meanwhile: it was kept. Look at it again: ot hooks list.");
+                }
+
+                await s.Print(new { rejected = waiting.Id }, (o, _) => o.Line($"Turned down hook {waiting.Id}: it's gone.")).ConfigureAwait(false);
+                break;
             case "remove" or "delete":
                 var id = Id();
                 store.Remove(id, author);
@@ -710,7 +871,7 @@ internal static class CliCommands
                 await s.Print(runs, (o, r) => o.HookRuns(r)).ConfigureAwait(false);
                 break;
             default:
-                throw new CliUsageException("ot hooks takes list, add, edit, enable, disable, approve, remove, test or path.");
+                throw new CliUsageException("ot hooks takes list, add, edit, enable, disable, approve, reject, remove, test or path.");
         }
     }
 

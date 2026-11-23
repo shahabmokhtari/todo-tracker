@@ -76,29 +76,7 @@ internal static class PlanEndpoints
         // What's planned in the days shown (from a local date, in the user's time zone), deadlines in them, and the
         // tasks to do that aren't planned yet.
         api.MapGet("/plan", (string? from, int? days, Guid? group, IBoardStore store, TimeProvider time, OneThingServerOptions options, SettingsStore settings) =>
-        {
-            var zone = options.TimeZone;
-            var now = time.GetUtcNow();
-            var first = from is null ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime)
-                : DateOnly.TryParseExact(from, "yyyy-MM-dd", out var d) ? d : throw new ArgumentException("from is a date like 2026-01-05.", nameof(from));
-            var count = Math.Clamp(days ?? 7, 1, PlanDays.MaxDays);
-            return store.ReadAsync(b =>
-            {
-                var plan = PlanDays.Build(b, first, count, zone, now, group);
-                PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
-                    e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title, e.Item.Energy);
-                static string Day(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-                return new PlanDto(
-                    Day(first),
-                    count,
-                    settings.PlanFor(Key(group)),
-                    [.. plan.Blocks.Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))],
-                    [.. plan.Deadlines.Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))],
-                    [.. plan.Unplanned.Select(Task)],
-                    [.. plan.Later.Select(Task)],
-                    new PlanEnergyDto(b.DailyEnergy, plan.Energy.ToDictionary(e => Day(e.Key), e => e.Value)));
-            });
-        });
+            store.ReadAsync(b => Build(b, from, days, group, time.GetUtcNow(), options.TimeZone, settings)));
 
         api.MapGet("/plan/settings", (Guid? group, SettingsStore settings) => settings.PlanFor(Key(group)));
 
@@ -123,5 +101,31 @@ internal static class PlanEndpoints
             }));
     }
 
-    private static string Key(Guid? group) => group?.ToString() ?? "all";
+    /// <summary>
+    /// The plan for the days shown (from a local date, yyyy-MM-dd, in the user's time zone; default today), deadlines
+    /// in them, and the tasks to do that aren't planned yet: what <c>GET /api/plan</c>, <c>ot plan</c> and
+    /// <c>get_plan</c> show.
+    /// </summary>
+    internal static PlanDto Build(TaskBoard b, string? from, int? days, Guid? group, DateTimeOffset now, TimeZoneInfo zone, SettingsStore settings)
+    {
+        var first = from is null ? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime)
+            : DateOnly.TryParseExact(from, "yyyy-MM-dd", out var d) ? d : throw new ArgumentException("from is a date like 2026-01-05.", nameof(from));
+        var count = Math.Clamp(days ?? 7, 1, PlanDays.MaxDays);
+        var plan = PlanDays.Build(b, first, count, zone, now, group);
+        PlanTaskDto Task(AgendaEntry e) => new(e.Item.Id, e.Item.Title, e.Breadcrumb, e.Item.Icon, b.AccentOf(e.Item), Wire.Of(e.EffectivePriority), (int)e.Item.PlannedLength.TotalMinutes,
+            e.Item.Repeat?.ToString(), e.WakeAt, e.WaitingFor?.Title, e.Item.Energy);
+        static string Day(DateOnly d) => d.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        return new PlanDto(
+            Day(first),
+            count,
+            settings.PlanFor(Key(group)),
+            [.. plan.Blocks.Select(i => new PlanBlockDto(i.Id, i.Title, i.Path, i.Icon, b.AccentOf(i), Wire.Of(i.Priority), i.PlannedAt!.Value, (int)i.PlannedLength.TotalMinutes, i.IsDone, i.GroupId, i.Repeat?.ToString(), i.Energy))],
+            [.. plan.Deadlines.Select(i => new PlanDeadlineDto(i.Id, i.Title, i.Deadline!.Value, i.IsDone))],
+            [.. plan.Unplanned.Select(Task)],
+            [.. plan.Later.Select(Task)],
+            new PlanEnergyDto(b.DailyEnergy, plan.Energy.ToDictionary(e => Day(e.Key), e => e.Value)));
+    }
+
+    /// <summary>Plan settings are kept per group ("all": every group).</summary>
+    internal static string Key(Guid? group) => group?.ToString() ?? "all";
 }

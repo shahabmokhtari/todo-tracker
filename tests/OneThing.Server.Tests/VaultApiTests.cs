@@ -39,6 +39,22 @@ public sealed class VaultApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_agent_edits_only_its_own_notes_and_your_edit_of_its_note_is_on_the_timeline()
+    {
+        using var agent = _server.Client(actor: "agent:claude");
+        var item = await _client.PostJson("/api/items", new { title = "Ship" });
+        var yours = await _client.PostJson($"/api/items/{item.Id()}/notes", new { text = "deployed" });
+        var its = await agent.PostJson($"/api/items/{item.Id()}/notes", new { text = "ring 0 green" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await agent.PatchAsJsonAsync($"/api/items/{item.Id()}/notes/{yours.Id()}", new { text = "not deployed" })).StatusCode);
+        Assert.Equal("ring 0 and 1 green", (await (await agent.PatchAsJsonAsync($"/api/items/{item.Id()}/notes/{its.Id()}", new { text = "ring 0 and 1 green" })).Json())["text"]!.GetValue<string>());
+        await (await _client.PatchAsJsonAsync($"/api/items/{item.Id()}/notes/{its.Id()}", new { text = "ring 0 and 1 green (checked)" })).Json();
+
+        var timeline = (await _client.GetJson($"/api/items/{item.Id()}/timeline")).AsArray();
+        Assert.Single(timeline, t => t!["kind"]!.GetValue<string>() == "updated" && t["summary"]!.GetValue<string>().StartsWith("Edited a note", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Tasks_are_stored_as_markdown_in_the_vault()
     {
         var item = await _client.PostJson("/api/items", new { title = "Durable", tags = new[] { "release" }, labels = new[] { "Deep work" } });

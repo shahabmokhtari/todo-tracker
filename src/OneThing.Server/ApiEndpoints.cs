@@ -472,13 +472,7 @@ internal static class ApiEndpoints
         api.MapGet("/pomodoro/settings", (IBoardStore store) => store.ReadAsync(FocusLengths));
 
         api.MapPut("/pomodoro/settings", (FocusLengthsRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
-            store.UpdateAsync(b =>
-            {
-                var s = b.Pomodoro.Settings;
-                b.SetFocusLengths(request.FocusMinutes ?? s.FocusMinutes, request.ShortBreakMinutes ?? s.ShortBreakMinutes, request.LongBreakMinutes ?? s.LongBreakMinutes,
-                    request.FocusesBeforeLongBreak ?? s.FocusesBeforeLongBreak, Security.ActorOf(http), time.GetUtcNow());
-                return FocusLengths(b);
-            }));
+            store.UpdateAsync(b => SetFocusLengths(b, request, Security.ActorOf(http), time.GetUtcNow())));
 
         api.MapPost("/pomodoro/{action}", (string action, FocusRequest? request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
@@ -563,10 +557,19 @@ internal static class ApiEndpoints
         }).OwnerOnly("Only you can choose where reminders are posted: in Settings of the One Thing app.");
     }
 
-    private static FocusLengthsDto FocusLengths(TaskBoard board)
+    internal static FocusLengthsDto FocusLengths(TaskBoard board)
     {
         var s = board.Pomodoro.Settings;
         return new FocusLengthsDto(s.FocusMinutes, s.ShortBreakMinutes, s.LongBreakMinutes, s.FocusesBeforeLongBreak);
+    }
+
+    /// <summary>Changes the focus timer's lengths given (the rest stay), for the REST API, ot and MCP alike.</summary>
+    internal static FocusLengthsDto SetFocusLengths(TaskBoard board, FocusLengthsRequest request, Actor actor, DateTimeOffset now)
+    {
+        var s = board.Pomodoro.Settings;
+        board.SetFocusLengths(request.FocusMinutes ?? s.FocusMinutes, request.ShortBreakMinutes ?? s.ShortBreakMinutes, request.LongBreakMinutes ?? s.LongBreakMinutes,
+            request.FocusesBeforeLongBreak ?? s.FocusesBeforeLongBreak, actor, now);
+        return FocusLengths(board);
     }
 
     internal static ConnectionDto Connection(ApiToken token, OneThingServerOptions options)
@@ -617,18 +620,21 @@ internal static class ApiEndpoints
         return parsed.Apply(board).Where(i => parsed.HasState || !i.IsDone).Take(200).Select(i => Wire.SearchHit(i, now, board, links)).ToList();
     }
 
+    /// <summary>The tags in use on open tasks (for the filter, <c>ot tags</c>, <c>list_tags</c>), most used first.</summary>
+    internal static List<TagDto> Tags(TaskBoard board) => board.AllItems()
+        .Where(i => !i.IsDone && !i.IsArchived)
+        .SelectMany(i => i.Tags)
+        .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+        .Select(g => new TagDto(g.First(), g.Count()))
+        .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
     private static void MapLabels(RouteGroupBuilder api)
     {
         api.MapGet("/labels", (IBoardStore store) => store.ReadAsync(Wire.Labels));
 
         // The tags in use on open tasks (for the filter), most used first.
-        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(b => b.AllItems()
-            .Where(i => !i.IsDone && !i.IsArchived)
-            .SelectMany(i => i.Tags)
-            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new TagDto(g.First(), g.Count()))
-            .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList()));
+        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(Tags));
 
         api.MapPost("/labels", (LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>

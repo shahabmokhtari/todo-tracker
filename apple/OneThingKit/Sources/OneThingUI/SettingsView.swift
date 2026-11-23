@@ -99,6 +99,8 @@ public struct SettingsView: View {
 
             labelsSection
 
+            CommandLineToolSection()
+
             if model.isOn(ExtraSwitches.feedback) {
             Section {
                 Button("Send feedback…") { sendingFeedback = true }
