@@ -205,10 +205,23 @@ public enum Outline {
         return parts
     }
 
-    /// The zoom to use: the asked task when it's shown and has subtasks; else its nearest parent that is; else nil (the
-    /// top). A task that's gone (deleted, archived, in another group than the one picked) has none.
+    /// The zoom drawn: the one to remember (`rememberedZoom`), or, while a search leaves it out, its nearest parent the
+    /// search keeps (for now); else nil (the top). The Show choice never moves it: it only narrows what's under it.
     public static func resolveZoom(_ board: TaskBoard, _ options: OutlineOptions, now: Date) -> UUID? {
         resolveZoom(Shown(board, options, now))?.id
+    }
+
+    /// The zoom to keep (what this device remembers): the asked task, unless it's really gone. Deleted, archived or in
+    /// another group than the one picked: nil (the top); without subtasks: its parent. Neither the search nor the Show
+    /// choice changes it (they narrow for now).
+    public static func rememberedZoom(_ board: TaskBoard, _ options: OutlineOptions) -> UUID? {
+        lasting(board, options)?.id
+    }
+
+    /// The zoom one level up (Back, Escape): the zoomed task's parent (the part of the path before it); nil from the
+    /// first level (out to the tree).
+    public static func zoomUp(_ board: TaskBoard, _ options: OutlineOptions, now: Date) -> UUID? {
+        resolveZoom(Shown(board, options, now))?.parent?.id
     }
 
     /// "Open to" a level: which tasks are open and which groups closed afterwards. It changes only what's in view (under
@@ -254,15 +267,61 @@ public enum Outline {
         return shown == title && parentShownTitle != parentTitle ? trim(title, parentShownTitle) : shown
     }
 
+    // Compared as UTF-16, the way C# does (OrdinalIgnoreCase): no normalization (é written as e and an accent isn't é),
+    // no locale. Swift's own String comparison would treat those as equal.
     private static func trim(_ title: String, _ parentTitle: String?) -> String {
-        guard let parentTitle, !parentTitle.isEmpty,
-              let match = title.range(of: parentTitle, options: [.caseInsensitive, .anchored]) else { return title }
-        let after = title[match.upperBound...]
-        for separator in separators where after.hasPrefix(separator) {
-            let rest = after.dropFirst(separator.count).drop { $0.isWhitespace }
-            return rest.isEmpty ? title : String(rest)
+        guard let parentTitle, !parentTitle.isEmpty else { return title }
+        let text = Array(title.utf16), prefix = Array(parentTitle.utf16)
+        guard startsIgnoringCase(text, prefix) else { return title }
+        let after = text[prefix.count...]
+        for separator in separators {
+            let mark = Array(separator.utf16)
+            guard after.starts(with: mark) else { continue }
+            let rest = after.dropFirst(mark.count).drop(while: isSpace)
+            return rest.isEmpty ? title : String(decoding: rest, as: UTF16.self)
         }
         return title
+    }
+
+    /// Whether `text` starts with `prefix`, case aside, as C#'s StartsWith with OrdinalIgnoreCase: one code point at a
+    /// time, each upper-cased on its own.
+    static func startsIgnoringCase(_ text: [UInt16], _ prefix: [UInt16]) -> Bool {
+        guard text.count >= prefix.count else { return false }
+        var i = 0
+        while i < prefix.count {
+            let (a, aSize) = codePoint(text, i), (b, bSize) = codePoint(prefix, i)
+            if aSize != bSize || (a != b && upper(a) != upper(b)) { return false }
+            i += bSize
+        }
+        return true
+    }
+
+    private static func codePoint(_ units: [UInt16], _ i: Int) -> (UInt32, Int) {
+        let unit = units[i]
+        if UTF16.isLeadSurrogate(unit), i + 1 < units.count, UTF16.isTrailSurrogate(units[i + 1]) {
+            return (0x10000 + ((UInt32(unit) - 0xD800) << 10) + (UInt32(units[i + 1]) - 0xDC00), 2)
+        }
+        return (UInt32(unit), 1)
+    }
+
+    /// A letter in upper case as C# compares: the simple mapping (one that would make it longer, like ß, leaves it as
+    /// it is), no locale (ı and ſ stay as they are), the Greek letters with iota below to their capitals.
+    private static func upper(_ cp: UInt32) -> UInt32 {
+        if cp == 0x131 || cp == 0x17F { return cp }
+        if (0x1F80...0x1FAF).contains(cp) && cp & 0xF < 8 { return cp + 8 }
+        if cp == 0x1FB3 || cp == 0x1FC3 || cp == 0x1FF3 { return cp + 9 }
+        guard let scalar = Unicode.Scalar(cp) else { return cp }
+        let mapped = scalar.properties.uppercaseMapping.unicodeScalars
+        guard mapped.count == 1, let one = mapped.first, (one.value > 0xFFFF) == (cp > 0xFFFF) else { return cp }
+        return one.value
+    }
+
+    /// Leading spaces as C#'s char.IsWhiteSpace has them.
+    private static func isSpace(_ unit: UInt16) -> Bool {
+        switch unit {
+        case 0x9...0xD, 0x20, 0x85, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000: return true
+        default: return false
+        }
     }
 
     /// Finished leaves and all leaves under the task (not counting the task itself).
@@ -296,12 +355,17 @@ public enum Outline {
         return (done, total)
     }
 
+    private static func lasting(_ board: TaskBoard, _ options: OutlineOptions) -> WorkItem? {
+        guard let id = options.zoomId, let item = board.find(id), !item.isArchived else { return nil }
+        if let group = options.groupId, item.groupId != group { return nil }
+        // A parent always has subtasks.
+        return item.children.isEmpty ? item.parent : item
+    }
+
     private static func resolveZoom(_ shown: Shown) -> WorkItem? {
-        guard let id = shown.options.zoomId, let item = shown.board.find(id), !item.isArchived else { return nil }
-        if let group = shown.options.groupId, item.groupId != group { return nil }
-        var at: WorkItem? = item
+        var at = lasting(shown.board, shown.options)
         while let task = at {
-            if !task.children.isEmpty && shown.kept(task) { return task }
+            if shown.inQuery(task) { return task }
             at = task.parent
         }
         return nil

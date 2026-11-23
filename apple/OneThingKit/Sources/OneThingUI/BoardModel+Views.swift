@@ -125,19 +125,16 @@ extension BoardModel {
         Outline.kept(board, OutlineOptions(groupId: selectedGroupId, show: show, query: searchText), now: now)
     }
 
-    /// The tasks next to `id` in Tasks: its parent's subtasks, or the top-level tasks of its group on screen, those the
-    /// Show choice and the search keep (under All groups each group is a tree of its own).
-    private func outlineSiblings(_ id: UUID, _ show: OutlineShow) -> (roots: [WorkItem], isShown: (WorkItem) -> Bool) {
-        let group = board.find(id)?.groupId
-        return (visibleRoots.filter { $0.groupId == group }, inOutline(show))
+    /// How Tasks is looked at, for its moves: the group picked, the Show choice and the search.
+    private func outlineOptions(_ show: OutlineShow) -> OutlineOptions {
+        OutlineOptions(groupId: selectedGroupId, show: show, query: searchText)
     }
 
     /// Tab: under the task above it on screen.
     public func indent(_ id: UUID, show: OutlineShow = .all) {
         perform { [weak self] in
             guard let self else { return nil }
-            let on = self.outlineSiblings(id, show)
-            return OutlineMoves.indent(self.board, id, roots: on.roots, isShown: on.isShown).map { PlannedMove($0, nil) }
+            return OutlineMoves.indent(self.board, id, options: self.outlineOptions(show), now: self.now).map { PlannedMove($0, nil) }
         }
     }
 
@@ -150,8 +147,7 @@ extension BoardModel {
     }
 
     public func canIndent(_ id: UUID, show: OutlineShow = .all) -> Bool {
-        let on = outlineSiblings(id, show)
-        return OutlineMoves.indent(board, id, roots: on.roots, isShown: on.isShown) != nil
+        OutlineMoves.indent(board, id, options: outlineOptions(show), now: now) != nil
     }
 
     public func canOutdent(_ id: UUID) -> Bool { OutlineMoves.outdent(board, id) != nil }
@@ -160,8 +156,7 @@ extension BoardModel {
     public func step(_ id: UUID, by delta: Int, show: OutlineShow = .all) {
         perform { [weak self] in
             guard let self else { return nil }
-            let on = self.outlineSiblings(id, show)
-            return OutlineMoves.step(self.board, id, by: delta, roots: on.roots, isShown: on.isShown).map { PlannedMove($0, nil) }
+            return OutlineMoves.step(self.board, id, by: delta, options: self.outlineOptions(show), now: self.now).map { PlannedMove($0, nil) }
         }
     }
 

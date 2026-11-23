@@ -271,9 +271,37 @@ public enum OutlineMoves {
     }
 
     /// A task dropped on a group's row in Tasks: to the top of that group, at its top level (outlinemodel.js
-    /// groupDropRequests).
+    /// groupDropRequests). Nil when it's already that group's first task (nothing would change).
     public static func toTopOfGroup(_ board: TaskBoard, _ id: UUID, groupId: UUID) -> [BoardMove]? {
-        board.find(id) == nil ? nil : [.move(id, parentId: nil, groupId: groupId, index: 0)]
+        guard let item = board.find(id) else { return nil }
+        if item.parent == nil, item.groupId == groupId, board.items.first(where: { $0.groupId == groupId && $0.archivedAt == nil }) === item { return nil }
+        return [.move(id, parentId: nil, groupId: groupId, index: 0)]
+    }
+
+    // In the Tasks tree, with how it's looked at (`options`): the siblings on screen are those the Show choice and the
+    // search keep, and at the top level only the task's own group's (under All groups each group is a tree of its own).
+
+    private static func onScreen(_ board: TaskBoard, _ id: UUID, _ options: OutlineOptions, _ now: Date) -> (roots: [WorkItem], isShown: (WorkItem) -> Bool) {
+        let group = board.find(id)?.groupId
+        return (board.items.filter { $0.archivedAt == nil && $0.groupId == group }, Outline.kept(board, options, now: now))
+    }
+
+    /// Tab in Tasks: under the task above it on screen, last.
+    public static func indent(_ board: TaskBoard, _ id: UUID, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        let on = onScreen(board, id, options, now)
+        return indent(board, id, roots: on.roots, isShown: on.isShown)
+    }
+
+    /// Option-up or down in Tasks: past the task above or below on screen.
+    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        let on = onScreen(board, id, options, now)
+        return step(board, id, by: delta, roots: on.roots, isShown: on.isShown)
+    }
+
+    /// Shift-Tab in Tasks: out one level, except at the top of the zoom (it would leave the view; its row says so).
+    public static func outdent(_ board: TaskBoard, _ id: UUID, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        if let zoom = Outline.resolveZoom(board, options, now: now), board.find(id)?.parent?.id == zoom { return nil }
+        return outdent(board, id)
     }
 
     /// A task to another group (from the sidebar): a top-level one changes group; a subtask becomes a task there, last.

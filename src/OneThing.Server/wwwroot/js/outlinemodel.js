@@ -16,12 +16,42 @@ export function shownTitle(title, parentTitle, parentShown = null) {
 }
 
 function trimmed(title, parentTitle) {
-  if (!parentTitle || title.length < parentTitle.length || title.slice(0, parentTitle.length).toLowerCase() !== parentTitle.toLowerCase()) return title;
+  if (!parentTitle || !startsIgnoringCase(title, parentTitle)) return title;
   const after = title.slice(parentTitle.length);
   const sep = SEPARATORS.find((s) => after.startsWith(s));
   if (!sep) return title;
-  const rest = after.slice(sep.length).trimStart();
+  const rest = after.slice(sep.length).replace(SPACES, '');
   return rest ? rest : title;
+}
+
+// Leading spaces as C#'s char.IsWhiteSpace has them (not trimStart's: U+FEFF isn't one, U+0085 is).
+const SPACES = /^[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/;
+
+/**
+ * A letter in upper case the way C#'s OrdinalIgnoreCase compares (the same everywhere): one code point at a time, by
+ * the simple mapping (one that would make it longer, like ß, leaves it as it is), no locale (ı and ſ stay as they
+ * are), the Greek letters with iota below to their capitals.
+ */
+function upperOf(cp) {
+  if (cp === 0x131 || cp === 0x17f) return cp;
+  if (cp >= 0x1f80 && cp <= 0x1faf && (cp & 0xf) < 8) return cp + 8;
+  if (cp === 0x1fb3 || cp === 0x1fc3 || cp === 0x1ff3) return cp + 9;
+  const one = String.fromCodePoint(cp);
+  const upper = one.toUpperCase();
+  return upper.length === one.length && String.fromCodePoint(upper.codePointAt(0)) === upper ? upper.codePointAt(0) : cp;
+}
+
+/** Whether `text` starts with `prefix`, case aside (C#'s StartsWith with OrdinalIgnoreCase: no normalization). */
+export function startsIgnoringCase(text, prefix) {
+  if (text.length < prefix.length) return false;
+  for (let i = 0; i < prefix.length;) {
+    const a = text.codePointAt(i);
+    const b = prefix.codePointAt(i);
+    const size = b > 0xffff ? 2 : 1;
+    if ((a > 0xffff ? 2 : 1) !== size || (a !== b && upperOf(a) !== upperOf(b))) return false;
+    i += size;
+  }
+  return true;
 }
 
 /** The Show choices, in the order the menu lists them. */
@@ -63,30 +93,51 @@ function leaves(node) {
   return { done: node.doneCount ?? 0, total: node.totalCount ?? 0 };
 }
 
+/** Not in the tree (a search left it out, or it's gone): its nearest parent still there, from the path last seen. */
+function trailOf(map, options) {
+  const found = [...(options.trail ?? [])].reverse().find((id) => map.has(id));
+  return found ? map.get(found) : null;
+}
+
+/** The zoom asked, if it can be zoomed into: the task (its parent when it has no subtasks), in the group picked. */
+function zoomable(at, options) {
+  if (!at || (options.groupId && at.node.groupId !== options.groupId)) return null;
+  return (at.node.children ?? []).length ? at.node : at.parent;
+}
+
 function zoomOf(shown, options) {
   if (!options.zoomId) return null;
-  const { map, kept } = shown;
-  let at = map.get(options.zoomId);
-  if (!at) {
-    // Not in the tree (a search left it out, or it's gone): its nearest parent still there, from the path last seen.
-    const trail = [...(options.trail ?? [])].reverse();
-    const found = trail.find((id) => map.has(id));
-    if (!found) return null;
-    at = map.get(found);
-  }
-  if (options.groupId && at.node.groupId !== options.groupId) return null;
-  for (let node = at.node; node; node = map.get(node.id).parent) {
-    if ((node.children ?? []).length && kept(node)) return node;
-  }
-  return null;
+  return zoomable(shown.map.get(options.zoomId) ?? trailOf(shown.map, options), options);
 }
 
 /**
- * The zoom to use: the asked task when it's shown and has subtasks; else its nearest parent that is; else null (the
- * top). `options.trail` (the zoom's parents, outermost first) finds a parent when the task itself isn't in the tree.
+ * The zoom drawn: the asked task (its parent when it has no subtasks); while a search leaves it out, its nearest parent
+ * the search keeps (for now); null (the top) when it's gone or in another group than the one picked. The Show choice
+ * never moves it: it only narrows what's under it. `options.trail` (the zoom's parents, outermost first) finds a parent
+ * when the task itself isn't in the tree.
  */
 export function resolveZoom(roots, options) {
   return zoomOf(shownOf(roots, options), options)?.id ?? null;
+}
+
+/**
+ * The zoom to keep (the address): the asked task unless it's really gone (deleted, archived, in another group than the
+ * one picked: its nearest parent still there, else null; without subtasks: its parent). While searching, a task the
+ * search leaves out is kept as it is (for when the search is cleared).
+ */
+export function rememberedZoom(roots, options) {
+  if (!options.zoomId) return null;
+  const map = index(roots);
+  const at = map.get(options.zoomId);
+  if (!at && searching(options)) return options.zoomId;
+  return zoomable(at ?? trailOf(map, options), options)?.id ?? null;
+}
+
+/** The zoom one level up (Escape): the zoomed task's parent, the part of the path before it; null from the first level. */
+export function zoomUp(roots, options) {
+  const shown = shownOf(roots, options);
+  const zoom = zoomOf(shown, options);
+  return zoom ? shown.map.get(zoom.id).parent?.id ?? null : null;
 }
 
 /**
@@ -191,11 +242,25 @@ export function newTaskPlace(roots, groups, options) {
   return { parentId: zoom?.id ?? null, groupId: zoom?.groupId ?? options.groupId ?? groups[0]?.id ?? null };
 }
 
-/** Dropping a task on a group row: to the top of that group, at its top level (null for a task not in the tree). */
+/**
+ * Dropping a task on a group row: to the top of that group, at its top level. Null for a task not in the tree, and for
+ * the group's first task dropped on its own group (nothing would change).
+ */
 export function groupDropRequests(map, draggedId, groupId) {
   const dragged = map.get(draggedId);
   if (!dragged) return null;
+  if (!dragged.parent && dragged.node.groupId === groupId && dragged.siblings.find((n) => n.groupId === groupId) === dragged.node) return null;
   return [{ method: 'POST', url: `/api/items/${draggedId}/move`, body: { toTopLevel: true, groupId, index: 0 } }];
+}
+
+/**
+ * Which siblings are on screen next to a task, for moving it among them: those the Show choice keeps (a search already
+ * narrowed the tree), and at the top level only its own group's (under All groups each group is a tree of its own).
+ */
+export function besidesOf(roots, options, id) {
+  const kept = keptOf(roots, options);
+  const group = index(roots).get(id)?.node.groupId;
+  return (n) => kept(n) && n.groupId === group;
 }
 
 

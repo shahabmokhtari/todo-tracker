@@ -142,20 +142,56 @@ public sealed class OutlineTests
     }
 
     [Fact]
-    public void A_zoom_on_a_task_that_is_no_longer_shown_goes_out_to_its_nearest_shown_parent()
+    public void Show_narrows_a_zoom_but_never_moves_it()
+    {
+        var trip = Add("Trip", group: Personal);
+        var packing = Add("Packing", trip);
+        Add("Sunscreen", packing);
+        Add("Flights", trip);
+        _board.Complete(packing.Id, Actor.User, T0);
+
+        foreach (var show in Enum.GetValues<OutlineShow>())
+        {
+            var options = new OutlineOptions { ZoomId = packing.Id, Show = show };
+            Assert.Equal(packing.Id, Outline.ResolveZoom(_board, options, T0));
+            Assert.Equal(packing.Id, Outline.RememberedZoom(_board, options));
+            Assert.Equal("Packing", Outline.Path(_board, options, T0)[^1].Title);
+        }
+
+        Assert.Empty(Rows(new OutlineOptions { ZoomId = packing.Id }));
+        Assert.Equal(["Sunscreen"], Rows(new OutlineOptions { ZoomId = packing.Id, Show = OutlineShow.All }).Select(r => r.Title));
+    }
+
+    [Fact]
+    public void A_zoom_is_given_up_for_good_only_when_the_task_is_really_gone()
     {
         var trip = Add("Trip", group: Personal);
         var packing = Add("Packing", trip);
         var sunscreen = Add("Sunscreen", packing);
-        Add("Flights", trip);
-        _board.Complete(packing.Id, Actor.User, T0);
+        var flights = Add("Flights", trip);
 
-        Assert.Equal(trip.Id, Outline.ResolveZoom(_board, new OutlineOptions { ZoomId = packing.Id }, T0));
-        Assert.Equal(packing.Id, Outline.ResolveZoom(_board, new OutlineOptions { ZoomId = packing.Id, Show = OutlineShow.All }, T0));
-        Assert.Null(Outline.ResolveZoom(_board, new OutlineOptions { ZoomId = trip.Id, GroupId = Work }, T0));
-        Assert.Null(Outline.ResolveZoom(_board, new OutlineOptions { ZoomId = Guid.NewGuid() }, T0));
+        Assert.Null(Outline.RememberedZoom(_board, new OutlineOptions { ZoomId = trip.Id, GroupId = Work }));
+        Assert.Null(Outline.RememberedZoom(_board, new OutlineOptions { ZoomId = Guid.NewGuid() }));
         // A task without subtasks can't be zoomed: its parent is.
-        Assert.Equal(packing.Id, Outline.ResolveZoom(_board, new OutlineOptions { ZoomId = sunscreen.Id, Show = OutlineShow.All }, T0));
+        Assert.Equal(packing.Id, Outline.RememberedZoom(_board, new OutlineOptions { ZoomId = sunscreen.Id }));
+        Assert.Equal(trip.Id, Outline.RememberedZoom(_board, new OutlineOptions { ZoomId = flights.Id }));
+
+        // A search only narrows for now: the zoom drawn is its nearest parent the search keeps, the one kept stays.
+        var searching = new OutlineOptions { ZoomId = packing.Id, Query = "flights" };
+        Assert.Equal(trip.Id, Outline.ResolveZoom(_board, searching, T0));
+        Assert.Equal(packing.Id, Outline.RememberedZoom(_board, searching));
+    }
+
+    [Fact]
+    public void Going_back_out_of_a_zoom_goes_up_one_level_then_out_to_the_tree()
+    {
+        var trip = Add("Trip", group: Personal);
+        var packing = Add("Packing", trip);
+        Add("Sunscreen", packing);
+
+        Assert.Equal(trip.Id, Outline.ZoomUp(_board, new OutlineOptions { ZoomId = packing.Id }, T0));
+        Assert.Null(Outline.ZoomUp(_board, new OutlineOptions { ZoomId = trip.Id }, T0));
+        Assert.Null(Outline.ZoomUp(_board, new OutlineOptions(), T0));
     }
 
     [Fact]
@@ -189,6 +225,17 @@ public sealed class OutlineTests
     [InlineData("Launcher: other", "Launch", "Launcher: other")]
     [InlineData("Launch-pad", "Launch", "Launch-pad")]
     [InlineData("Launch: copy", null, "Launch: copy")]
+    // One comparison everywhere: each UTF-16 unit upper-cased on its own, no normalization, no locale.
+    [InlineData("İstanbul: the trip", "istanbul", "İstanbul: the trip")]
+    [InlineData("istanbul: the trip", "İstanbul", "istanbul: the trip")]
+    [InlineData("ıstanbul: the trip", "ISTANBUL", "ıstanbul: the trip")]
+    [InlineData("Launch:\ufeffcopy", "Launch", "\ufeffcopy")]
+    [InlineData("Launch:\u0085copy", "Launch", "copy")]
+    [InlineData("écrire: le texte", "écrire", "écrire: le texte")]
+    [InlineData("écrire: le texte", "écrire", "écrire: le texte")]
+    [InlineData("Kelvin: the scale", "kelvin", "Kelvin: the scale")]
+    [InlineData("kelvin: the scale", "Kelvin", "kelvin: the scale")]
+    [InlineData("Straße: the map", "STRASSE", "Straße: the map")]
     public void A_subtask_does_not_repeat_its_parents_name(string title, string? parent, string shown) =>
         Assert.Equal(shown, Outline.ShownTitle(title, parent));
 

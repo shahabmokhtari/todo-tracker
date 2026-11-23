@@ -9,11 +9,18 @@
     "titles": "{ title, parent, parentShown, shown }: shownTitle(title, parentTitle, parentShownTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty; when that leaves it as it was and the parent is shown shorter (parentShown, null: not), the same against that. In rows, a task's parentShown is its parent's row title (at the top of a zoom: the zoomed task's title in the path)",
     "cases[].options": "{ group: name|null (null: all groups), zoom: key|null (a key that isn't a task: a task that's gone), show: todo|now|waiting|all, query: search text|null, expanded: [keys] (open tasks), closedGroups: [names] }",
     "cases[].keep": "with a query: the tasks the search keeps (matches, their parents and their subtasks; what /api/tree?q= returns), in the order of `tasks`",
-    "cases[].zoom": "resolveZoom: the zoom used (key) or null (the top). The asked task when it's shown and has subtasks, else its nearest parent that is; null for one that's gone, archived or in another group than the one picked",
+    "cases[].zoom": "resolveZoom: the zoom drawn (key) or null (the top): the remembered one, or while a search leaves it out its nearest parent the search keeps (for now). The Show choice never moves it (it only narrows what's under it)",
+    "cases[].remembered": "rememberedZoom: the zoom a device keeps (key) or null. The asked task unless it's really gone: deleted, archived or in another group than the one picked: null; without subtasks: its parent. A search or a Show choice doesn't change it",
+    "cases[].zoomUp": "zoomUp: where Back or Escape goes from the zoom drawn: its parent (the task part of the path before it), or null (out to the tree; also when not zoomed)",
     "cases[].rows": "rows(board, options, now), in order: { kind: group|task, id: key or group name, depth, title (as shown), fullTitle, hasChildren (rows under it are shown when open), expanded, done, total (leaves under it; 0 for a task without subtasks; a group adds up its top-level tasks, a task without subtasks counting as one), left (total - done), state (actionable|waiting|locked|container|done; null for groups), outdent (it can move out one level: not top level, not at the top of a zoom) }",
     "cases[].path": "path(board, options): [] unless zoomed; else { kind: all|group|task, id, title, done, total }: All groups, the group, each parent, the zoomed task (a task part's title as shown under the part before it)",
     "cases[].newTask": "where New task adds: { parent: the zoom (key) or null, group: the zoom's group, else the group picked, else the first group }",
-    "cases[].openTo": "openTo(board, options, level) for each level (groups, tasks, subtasks, all): the sets afterwards (order doesn't matter; listed in the order of tasks and groups) and the rows they give"
+    "cases[].openTo": "openTo(board, options, level) for each level (groups, tasks, subtasks, all): the sets afterwards (order doesn't matter; listed in the order of tasks and groups) and the rows they give",
+    "tree": "the board before a move: each group's name, then its top-level tasks (archived ones too) and their subtasks, two spaces per level (keys)",
+    "moves[].options": "as cases[].options, without expanded and closedGroups (the moves don't depend on what's open)",
+    "moves[].keep": "with a query: what the search keeps, as cases[].keep",
+    "moves[].move": "{ do: indent|outdent|up|down|drop|dropOnGroup|newTask, task, target?, zone?: before|inside|after, group? }. indent: under the sibling above it on screen, last; outdent: right after its parent (not at the top of a zoom: its row says outdent false); up/down: past the sibling above/below on screen. On screen: kept by the Show choice and the search; at the top level, only the task's own group's tasks. drop: before, inside (last) or after the target row (next to a task of another group: into that group); dropOnGroup: to the top of that group (nothing when it's already its first task); newTask: a task 'new' (title New) first at newTask's place",
+    "moves[].tree": "the board afterwards (as tree), or \"refused\" when the move can't be made or changes nothing"
   },
   "now": "2026-01-05T09:00:00Z",
   "snoozedUntil": "2026-01-06T09:00:00Z",
@@ -363,6 +370,102 @@
       "parent": "",
       "parentShown": null,
       "shown": "Launch: copy"
+    },
+    {
+      "title": "İstanbul: the trip",
+      "parent": "istanbul",
+      "parentShown": null,
+      "shown": "İstanbul: the trip"
+    },
+    {
+      "title": "istanbul: the trip",
+      "parent": "İstanbul",
+      "parentShown": null,
+      "shown": "istanbul: the trip"
+    },
+    {
+      "title": "écrire: le texte",
+      "parent": "écrire",
+      "parentShown": null,
+      "shown": "écrire: le texte"
+    },
+    {
+      "title": "écrire: le texte",
+      "parent": "écrire",
+      "parentShown": null,
+      "shown": "écrire: le texte"
+    },
+    {
+      "title": "Kelvin: the scale",
+      "parent": "kelvin",
+      "parentShown": null,
+      "shown": "Kelvin: the scale"
+    },
+    {
+      "title": "kelvin: the scale",
+      "parent": "Kelvin",
+      "parentShown": null,
+      "shown": "kelvin: the scale"
+    },
+    {
+      "title": "Straße: the map",
+      "parent": "STRASSE",
+      "parentShown": null,
+      "shown": "Straße: the map"
+    },
+    {
+      "title": "STRASSE: the map",
+      "parent": "Straße",
+      "parentShown": null,
+      "shown": "STRASSE: the map"
+    },
+    {
+      "title": "ıstanbul: the trip",
+      "parent": "ISTANBUL",
+      "parentShown": null,
+      "shown": "ıstanbul: the trip"
+    },
+    {
+      "title": "ſtar: the map",
+      "parent": "STAR",
+      "parentShown": null,
+      "shown": "ſtar: the map"
+    },
+    {
+      "title": "ᾀ: the letter",
+      "parent": "ᾈ",
+      "parentShown": null,
+      "shown": "the letter"
+    },
+    {
+      "title": "\uD801\uDC28: the letter",
+      "parent": "\uD801\uDC00",
+      "parentShown": null,
+      "shown": "the letter"
+    },
+    {
+      "title": "Launch:\u0085copy",
+      "parent": "Launch",
+      "parentShown": null,
+      "shown": "copy"
+    },
+    {
+      "title": "Launch:\uFEFFcopy",
+      "parent": "Launch",
+      "parentShown": null,
+      "shown": "\uFEFFcopy"
+    },
+    {
+      "title": "Launch:\u001Fcopy",
+      "parent": "Launch",
+      "parentShown": null,
+      "shown": "\u001Fcopy"
+    },
+    {
+      "title": "Launch:\u00A0\u3000copy",
+      "parent": "Launch",
+      "parentShown": null,
+      "shown": "copy"
     }
   ],
   "cases": [
@@ -377,6 +480,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -510,6 +615,8 @@
         ]
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -602,6 +709,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -819,6 +928,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -926,6 +1037,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1188,6 +1301,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1378,6 +1493,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1509,6 +1626,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1603,6 +1722,8 @@
         "hero"
       ],
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1685,6 +1806,8 @@
         "hotel"
       ],
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1751,6 +1874,8 @@
         "hotel"
       ],
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -1827,6 +1952,8 @@
       },
       "keep": [],
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [],
       "path": [],
       "newTask": {
@@ -1847,6 +1974,8 @@
         "closedGroups": []
       },
       "zoom": "launch",
+      "remembered": "launch",
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -1972,6 +2101,8 @@
         "closedGroups": []
       },
       "zoom": "copy",
+      "remembered": "copy",
+      "zoomUp": "launch",
       "rows": [
         {
           "kind": "task",
@@ -2062,6 +2193,8 @@
         "closedGroups": []
       },
       "zoom": "rollout",
+      "remembered": "rollout",
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -2121,7 +2254,7 @@
       }
     },
     {
-      "name": "Zoom on a finished task: out to its nearest parent that's shown",
+      "name": "Zoom on a finished task: it stays, with nothing To do shows under it",
       "options": {
         "group": null,
         "zoom": "packing",
@@ -2130,23 +2263,10 @@
         "expanded": [],
         "closedGroups": []
       },
-      "zoom": "trip",
-      "rows": [
-        {
-          "kind": "task",
-          "id": "flights",
-          "depth": 0,
-          "title": "Book flights",
-          "fullTitle": "Book flights",
-          "hasChildren": false,
-          "expanded": false,
-          "done": 0,
-          "total": 0,
-          "left": 0,
-          "state": "waiting",
-          "outdent": false
-        }
-      ],
+      "zoom": "packing",
+      "remembered": "packing",
+      "zoomUp": "trip",
+      "rows": [],
       "path": [
         {
           "kind": "all",
@@ -2168,10 +2288,17 @@
           "title": "Plan the trip",
           "done": 2,
           "total": 3
+        },
+        {
+          "kind": "task",
+          "id": "packing",
+          "title": "Packing list",
+          "done": 1,
+          "total": 1
         }
       ],
       "newTask": {
-        "parent": "trip",
+        "parent": "packing",
         "group": "Personal"
       }
     },
@@ -2186,6 +2313,8 @@
         "closedGroups": []
       },
       "zoom": "packing",
+      "remembered": "packing",
+      "zoomUp": "trip",
       "rows": [
         {
           "kind": "task",
@@ -2248,6 +2377,8 @@
         "closedGroups": []
       },
       "zoom": "copy",
+      "remembered": "copy",
+      "zoomUp": "launch",
       "rows": [
         {
           "kind": "task",
@@ -2338,6 +2469,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -2385,6 +2518,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -2530,6 +2665,8 @@
         "closedGroups": []
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -2651,7 +2788,7 @@
       }
     },
     {
-      "name": "Zoom on a task the Show choice hides, with no parent shown: the top",
+      "name": "Zoom on a branch where nothing can be done now: Can do now keeps the zoom and shows nothing under it",
       "options": {
         "group": null,
         "zoom": "trip",
@@ -2660,87 +2797,89 @@
         "expanded": [],
         "closedGroups": []
       },
-      "zoom": null,
-      "rows": [
+      "zoom": "trip",
+      "remembered": "trip",
+      "zoomUp": null,
+      "rows": [],
+      "path": [
         {
-          "kind": "group",
-          "id": "Work",
-          "depth": 0,
-          "title": "Work",
-          "fullTitle": "Work",
-          "hasChildren": true,
-          "expanded": true,
-          "done": 2,
-          "total": 11,
-          "left": 9,
-          "state": null,
-          "outdent": false
-        },
-        {
-          "kind": "task",
-          "id": "launch",
-          "depth": 1,
-          "title": "Launch the site",
-          "fullTitle": "Launch the site",
-          "hasChildren": true,
-          "expanded": false,
-          "done": 1,
-          "total": 6,
-          "left": 5,
-          "state": "container",
-          "outdent": false
-        },
-        {
-          "kind": "task",
-          "id": "rollout",
-          "depth": 1,
-          "title": "Roll out v2",
-          "fullTitle": "Roll out v2",
-          "hasChildren": true,
-          "expanded": false,
+          "kind": "all",
+          "id": null,
+          "title": "All groups",
           "done": 0,
-          "total": 3,
-          "left": 3,
-          "state": "container",
-          "outdent": false
+          "total": 0
         },
         {
           "kind": "group",
           "id": "Personal",
-          "depth": 0,
           "title": "Personal",
-          "fullTitle": "Personal",
-          "hasChildren": true,
-          "expanded": true,
-          "done": 2,
-          "total": 4,
-          "left": 2,
-          "state": null,
-          "outdent": false
+          "done": 0,
+          "total": 0
         },
         {
           "kind": "task",
-          "id": "passport",
-          "depth": 1,
-          "title": "Renew passport",
-          "fullTitle": "Renew passport",
-          "hasChildren": false,
-          "expanded": false,
-          "done": 0,
-          "total": 0,
-          "left": 0,
-          "state": "actionable",
-          "outdent": false
+          "id": "trip",
+          "title": "Plan the trip",
+          "done": 2,
+          "total": 3
         }
       ],
-      "path": [],
       "newTask": {
-        "parent": null,
+        "parent": "trip",
+        "group": "Personal"
+      }
+    },
+    {
+      "name": "Zoom on a branch where nothing waits: Waiting keeps the zoom and shows nothing under it",
+      "options": {
+        "group": null,
+        "zoom": "copy",
+        "show": "waiting",
+        "query": null,
+        "expanded": [],
+        "closedGroups": []
+      },
+      "zoom": "copy",
+      "remembered": "copy",
+      "zoomUp": "launch",
+      "rows": [],
+      "path": [
+        {
+          "kind": "all",
+          "id": null,
+          "title": "All groups",
+          "done": 0,
+          "total": 0
+        },
+        {
+          "kind": "group",
+          "id": "Work",
+          "title": "Work",
+          "done": 0,
+          "total": 0
+        },
+        {
+          "kind": "task",
+          "id": "launch",
+          "title": "Launch the site",
+          "done": 1,
+          "total": 6
+        },
+        {
+          "kind": "task",
+          "id": "copy",
+          "title": "Write the copy",
+          "done": 0,
+          "total": 3
+        }
+      ],
+      "newTask": {
+        "parent": "copy",
         "group": "Work"
       }
     },
     {
-      "name": "Zoom with a search that leaves it out: the top",
+      "name": "Zoom with a search that leaves it out: the top for now; the zoom is kept for when it's cleared",
       "options": {
         "group": null,
         "zoom": "trip",
@@ -2755,6 +2894,8 @@
         "hero"
       ],
       "zoom": null,
+      "remembered": "trip",
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -2820,6 +2961,67 @@
       }
     },
     {
+      "name": "Zoom with a search that keeps only its parent: the parent for now; the zoom is kept",
+      "options": {
+        "group": null,
+        "zoom": "packing",
+        "show": "todo",
+        "query": "flights",
+        "expanded": [],
+        "closedGroups": []
+      },
+      "keep": [
+        "trip",
+        "flights"
+      ],
+      "zoom": "trip",
+      "remembered": "packing",
+      "zoomUp": null,
+      "rows": [
+        {
+          "kind": "task",
+          "id": "flights",
+          "depth": 0,
+          "title": "Book flights",
+          "fullTitle": "Book flights",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "waiting",
+          "outdent": false
+        }
+      ],
+      "path": [
+        {
+          "kind": "all",
+          "id": null,
+          "title": "All groups",
+          "done": 0,
+          "total": 0
+        },
+        {
+          "kind": "group",
+          "id": "Personal",
+          "title": "Personal",
+          "done": 0,
+          "total": 0
+        },
+        {
+          "kind": "task",
+          "id": "trip",
+          "title": "Plan the trip",
+          "done": 2,
+          "total": 3
+        }
+      ],
+      "newTask": {
+        "parent": "trip",
+        "group": "Personal"
+      }
+    },
+    {
       "name": "Zoom with a search that keeps it: it stays, shown open on the way",
       "options": {
         "group": null,
@@ -2835,6 +3037,8 @@
         "hero"
       ],
       "zoom": "launch",
+      "remembered": "launch",
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -2909,6 +3113,8 @@
         ]
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "group",
@@ -3715,6 +3921,8 @@
         ]
       },
       "zoom": null,
+      "remembered": null,
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -4205,6 +4413,8 @@
         "closedGroups": []
       },
       "zoom": "launch",
+      "remembered": "launch",
+      "zoomUp": null,
       "rows": [
         {
           "kind": "task",
@@ -4568,6 +4778,982 @@
           ]
         }
       }
+    }
+  ],
+  "tree": [
+    "Work",
+    "  launch",
+    "    copy",
+    "      hero",
+    "      faq",
+    "      headline",
+    "    domain",
+    "    ship",
+    "    bare",
+    "  rollout",
+    "    ring0",
+    "    ring1",
+    "    ring2",
+    "  report",
+    "  call",
+    "Personal",
+    "  trip",
+    "    flights",
+    "    hotel",
+    "    packing",
+    "      sunscreen",
+    "  passport",
+    "  old",
+    "    oldstep",
+    "Errands"
+  ],
+  "moves": [
+    {
+      "name": "Indent: under the task above on screen, last; a finished one To do hides is stepped over",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "indent",
+        "task": "ship"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "      ship",
+        "    domain",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Indent with Everything: under the finished task above",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "all",
+        "query": null
+      },
+      "move": {
+        "do": "indent",
+        "task": "ship"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "      ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Indent with a search: only what the search keeps is next to it",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": "ship"
+      },
+      "move": {
+        "do": "indent",
+        "task": "ship"
+      },
+      "tree": "refused",
+      "keep": [
+        "launch",
+        "ship"
+      ]
+    },
+    {
+      "name": "Indent a group's first task under All groups: refused (another group's task isn't next to it)",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "indent",
+        "task": "trip"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Indent at the top level: under the task above in its own group",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "indent",
+        "task": "passport"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "    passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Outdent: out one level, right after its parent",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "outdent",
+        "task": "hero"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      faq",
+        "      headline",
+        "    hero",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Outdent to the top level: in its group, right after its parent",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "outdent",
+        "task": "copy"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  copy",
+        "    hero",
+        "    faq",
+        "    headline",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Outdent at the top of a zoom: refused (it would leave the view)",
+      "options": {
+        "group": null,
+        "zoom": "launch",
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "outdent",
+        "task": "copy"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Outdent deeper in a zoom: right after its parent",
+      "options": {
+        "group": null,
+        "zoom": "launch",
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "outdent",
+        "task": "hero"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      faq",
+        "      headline",
+        "    hero",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Outdent a top-level task: refused",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "outdent",
+        "task": "launch"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Up: past the task above on screen; a finished one To do hides is stepped over",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "up",
+        "task": "ship"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    ship",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Up from the top of its parent: refused",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "up",
+        "task": "copy"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Down at the end of a group under All groups: refused (the next group's task isn't next to it)",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "down",
+        "task": "call"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Up with Can do now: only what can be done now is next to it",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "now",
+        "query": null
+      },
+      "move": {
+        "do": "up",
+        "task": "passport"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Down with a group picked: past the next task",
+      "options": {
+        "group": "Work",
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "down",
+        "task": "launch"
+      },
+      "tree": [
+        "Work",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Down with Everything: past the finished task below",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "all",
+        "query": null
+      },
+      "move": {
+        "do": "down",
+        "task": "rollout"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  report",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop before a task of another group: into that group, before it",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "drop",
+        "task": "passport",
+        "target": "launch",
+        "zone": "before"
+      },
+      "tree": [
+        "Work",
+        "  passport",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop after another task's subtask: under that task, after it",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "drop",
+        "task": "ring0",
+        "target": "hero",
+        "zone": "after"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      ring0",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop before a sibling: only reordered",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "drop",
+        "task": "bare",
+        "target": "copy",
+        "zone": "before"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    bare",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop inside a task: last under it",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "drop",
+        "task": "passport",
+        "target": "rollout",
+        "zone": "inside"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "    passport",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop a task into its own subtask: refused",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "drop",
+        "task": "launch",
+        "target": "hero",
+        "zone": "inside"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "Drop on a group's row: to the top of that group",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "dropOnGroup",
+        "task": "hero",
+        "group": "Personal"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  hero",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop a subtask on its own group's row: to the top level, first",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "dropOnGroup",
+        "task": "copy",
+        "group": "Work"
+      },
+      "tree": [
+        "Work",
+        "  copy",
+        "    hero",
+        "    faq",
+        "    headline",
+        "  launch",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop a group's other task on its own group's row: to the top",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "dropOnGroup",
+        "task": "passport",
+        "group": "Personal"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  passport",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "Drop a group's first task on its own group's row: nothing to do",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "dropOnGroup",
+        "task": "trip",
+        "group": "Personal"
+      },
+      "tree": "refused"
+    },
+    {
+      "name": "New task under All groups: first in the first group",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "newTask"
+      },
+      "tree": [
+        "Work",
+        "  new",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "New task with a search that hides the first group: first in the first group all the same",
+      "options": {
+        "group": null,
+        "zoom": null,
+        "show": "todo",
+        "query": "passport"
+      },
+      "move": {
+        "do": "newTask"
+      },
+      "tree": [
+        "Work",
+        "  new",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ],
+      "keep": [
+        "passport"
+      ]
+    },
+    {
+      "name": "New task while zoomed: first inside the zoomed task",
+      "options": {
+        "group": null,
+        "zoom": "copy",
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "newTask"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      new",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
+    },
+    {
+      "name": "New task with a group picked: first in it",
+      "options": {
+        "group": "Personal",
+        "zoom": null,
+        "show": "todo",
+        "query": null
+      },
+      "move": {
+        "do": "newTask"
+      },
+      "tree": [
+        "Work",
+        "  launch",
+        "    copy",
+        "      hero",
+        "      faq",
+        "      headline",
+        "    domain",
+        "    ship",
+        "    bare",
+        "  rollout",
+        "    ring0",
+        "    ring1",
+        "    ring2",
+        "  report",
+        "  call",
+        "Personal",
+        "  new",
+        "  trip",
+        "    flights",
+        "    hotel",
+        "    packing",
+        "      sunscreen",
+        "  passport",
+        "  old",
+        "    oldstep",
+        "Errands"
+      ]
     }
   ]
 }

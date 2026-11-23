@@ -639,9 +639,7 @@ struct TasksOutlineView: View {
     }
 
     private func indent(_ id: UUID) {
-        let on = model.board.find(id)?.groupId
-        let roots = model.visibleRoots.filter { $0.groupId == on }
-        if let target = OutlineMoves.indent(model.board, id, roots: roots, isShown: model.inOutline(show))?.first, case let .move(_, parent?, _, _) = target {
+        if let target = OutlineMoves.indent(model.board, id, options: drawn.options, now: model.now)?.first, case let .move(_, parent?, _, _) = target {
             setExpanded(parent, true)
         }
         model.indent(id, show: show)

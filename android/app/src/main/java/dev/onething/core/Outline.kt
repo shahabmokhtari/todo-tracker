@@ -163,10 +163,20 @@ object Outline {
     }
 
     /**
-     * The zoom to use: the asked task when it's shown and has subtasks; else its nearest parent that is; else null (the
-     * top). A task that's gone (deleted, archived, in another group than the one picked) has none.
+     * The zoom drawn: the one to remember ([rememberedZoom]), or, while a search leaves it out, its nearest parent the
+     * search keeps (for now); else null (the top). The Show choice never moves it: it only narrows what's under it.
      */
     fun resolveZoom(board: TaskBoard, options: OutlineOptions, now: Instant): UUID? = resolveZoom(Shown(board, options, now))?.id
+
+    /**
+     * The zoom to keep (what this phone remembers): the asked task, unless it's really gone. Deleted, archived or in
+     * another group than the one picked: null (the top); without subtasks: its parent. Neither the search nor the Show
+     * choice changes it (they narrow for now).
+     */
+    fun rememberedZoom(board: TaskBoard, options: OutlineOptions): UUID? = lasting(board, options)?.id
+
+    /** The zoom one level up (Back): the zoomed task's parent (the part of the path before it); null from the first level. */
+    fun zoomUp(board: TaskBoard, options: OutlineOptions, now: Instant): UUID? = resolveZoom(Shown(board, options, now))?.parent?.id
 
     /**
      * "Open to" a level: which tasks are open and which groups closed afterwards. It changes only what's in view (under
@@ -230,11 +240,41 @@ object Outline {
     }
 
     private fun trim(title: String, parentTitle: String?): String {
-        if (parentTitle.isNullOrEmpty() || !title.startsWith(parentTitle, ignoreCase = true)) return title
+        if (parentTitle.isNullOrEmpty() || !startsIgnoringCase(title, parentTitle)) return title
         val after = title.substring(parentTitle.length)
         val separator = separators.firstOrNull { after.startsWith(it) } ?: return title
-        val rest = after.substring(separator.length).trimStart()
+        val rest = after.substring(separator.length).trimStart(::isSpace)
         return rest.ifEmpty { title }
+    }
+
+    /**
+     * Whether [text] starts with [prefix], case aside, as C#'s StartsWith with OrdinalIgnoreCase (the same in every
+     * app): one code point at a time, each upper-cased on its own by the simple mapping, no locale (ı and ſ stay as they
+     * are). Not Kotlin's ignoreCase, which also compares lower case (and so calls İ and i the same).
+     */
+    fun startsIgnoringCase(text: String, prefix: String): Boolean {
+        if (text.length < prefix.length) return false
+        var i = 0
+        while (i < prefix.length) {
+            val a = text.codePointAt(i)
+            val b = prefix.codePointAt(i)
+            val size = Character.charCount(b)
+            if (Character.charCount(a) != size || (a != b && upper(a) != upper(b))) return false
+            i += size
+        }
+        return true
+    }
+
+    private fun upper(cp: Int): Int {
+        if (cp == 0x131 || cp == 0x17F) return cp
+        val up = Character.toUpperCase(cp)
+        return if (Character.charCount(up) == Character.charCount(cp)) up else cp
+    }
+
+    /** Leading spaces as C#'s char.IsWhiteSpace has them (not Kotlin's, which also counts U+001C to U+001F). */
+    private fun isSpace(c: Char): Boolean = when (c.code) {
+        in 0x9..0xD, 0x20, 0x85, 0xA0, 0x1680, in 0x2000..0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000 -> true
+        else -> false
     }
 
     /** Parses todo, now, waiting or all (any case); null for anything else. */
@@ -278,13 +318,18 @@ object Outline {
         return done to total
     }
 
+    private fun lasting(board: TaskBoard, options: OutlineOptions): WorkItem? {
+        val id = options.zoomId ?: return null
+        val item = board.find(id)?.takeIf { !it.isArchived } ?: return null
+        if (options.groupId != null && item.groupId != options.groupId) return null
+        // A parent always has subtasks.
+        return if (item.children.isEmpty()) item.parent else item
+    }
+
     private fun resolveZoom(shown: Shown): WorkItem? {
-        val id = shown.options.zoomId ?: return null
-        val item = shown.board.find(id)?.takeIf { !it.isArchived } ?: return null
-        if (shown.options.groupId != null && item.groupId != shown.options.groupId) return null
-        var at: WorkItem? = item
+        var at = lasting(shown.board, shown.options)
         while (at != null) {
-            if (at.children.isNotEmpty() && shown.kept(at)) return at
+            if (shown.inQuery(at)) return at
             at = at.parent
         }
         return null

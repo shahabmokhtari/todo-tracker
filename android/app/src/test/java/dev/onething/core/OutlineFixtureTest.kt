@@ -110,6 +110,8 @@ class OutlineFixtureTest {
                 closedGroups = strings(o["closedGroups"]).map { groupIds[it]!! }.toSet(),
             )
             assertEquals("$name: zoom", c["zoom"], key(Outline.resolveZoom(board, options, now)))
+            assertEquals("$name: remembered zoom", c["remembered"], key(Outline.rememberedZoom(board, options)))
+            assertEquals("$name: zoom up", c["zoomUp"], key(Outline.zoomUp(board, options, now)))
             assertEquals("$name: rows", c["rows"], rowsOf(options))
             val path = JsonArray(
                 Outline.path(board, options, now).map { p ->
@@ -136,6 +138,78 @@ class OutlineFixtureTest {
                 assertEquals("$name: open to $level: closed groups", strings(w["closedGroups"]), board.groups.filter { it.id in open.closedGroups }.map { it.name })
                 assertEquals("$name: open to $level: rows", w["rows"], rowsOf(options.copy(expanded = open.expanded, closedGroups = open.closedGroups)))
             }
+        }
+    }
+
+    /** Each group's name, then its top-level tasks (archived ones too) and their subtasks, two spaces per level. */
+    private fun tree(board: TaskBoard, keys: Map<UUID, String>): JsonArray {
+        val lines = mutableListOf<String>()
+        fun walk(items: List<WorkItem>, depth: Int) {
+            for (item in items) {
+                lines.add("  ".repeat(depth) + (keys[item.id] ?: "?"))
+                walk(item.children, depth + 1)
+            }
+        }
+        for (group in board.groups) {
+            lines.add(group.name)
+            walk(board.items.filter { it.groupId == group.id }, 1)
+        }
+        return JsonArray(lines.map { JsonPrimitive(it) })
+    }
+
+    /** A move the way the Tasks screen plans it (BoardViewModel, TasksScreen), null when it doesn't make it. */
+    private fun plan(board: TaskBoard, ids: Map<String, UUID>, options: OutlineOptions, move: JsonObject): PlannedMove? {
+        val scope = BoardScope(board, options.groupId, options.query)
+        val keeps = Outline.keeps(board, options, now)
+        val task = move.text("task")?.let { ids[it]!! }
+        val groupOf = { name: String -> board.groups.first { it.name == name }.id }
+        return when (move.text("do")) {
+            "indent" -> scope.indent(task!!, keeps)
+            "outdent" -> {
+                // Only from a row that can move out here (not at the top of a zoom), as the ⋯ menu checks.
+                val open = Outline.openTo(board, options, OutlineLevel.ALL, now)
+                val row = Outline.rows(board, options.copy(expanded = open.expanded), now).firstOrNull { it.id == task }
+                if (row?.canOutdent == true) scope.outdent(task!!) else null
+            }
+            "up" -> scope.step(task!!, -1, keeps)
+            "down" -> scope.step(task!!, 1, keeps)
+            "drop" -> scope.drop(task!!, ids[move.text("target")]!!, OutlineMoves.Zone.valueOf(move.text("zone")!!.uppercase()))
+            "dropOnGroup" -> scope.dropOnGroup(task!!, groupOf(move.text("group")!!))
+            "newTask" -> {
+                // As TasksScreen's New task: added where it goes, first.
+                val place = Outline.newTaskPlace(board, options, now)
+                board.addInPlace("New", place.parentId, null, if (place.parentId == null) Stage.NEXT else null, place.groupId, UUID.randomUUID(), now = now, first = place.parentId == null)
+                PlannedMove(emptyList(), null)
+            }
+            else -> error("${move.text("do")}")
+        }
+    }
+
+    @Test
+    fun everyMoveEndsAtTheSameTreeAsTheOtherApps() {
+        val (start, startIds) = build()
+        assertEquals("the board the moves start from", fixture["tree"], tree(start, startIds.entries.associate { it.value to it.key }))
+        val moves = fixture["moves"]!!.jsonArray.map { it.jsonObject }
+        assertTrue("every move of the fixture", moves.size >= 25)
+        for (m in moves) {
+            val name = m.text("name")
+            val (board, ids) = build()
+            val o = m["options"]!!.jsonObject
+            val options = OutlineOptions(
+                groupId = o.text("group")?.let { g -> board.groups.first { it.name == g }.id },
+                zoomId = o.text("zoom")?.let { ids[it]!! },
+                show = Outline.parseShow(o.text("show"))!!,
+                query = o.text("query").orEmpty(),
+            )
+            val planned = plan(board, ids, options, m["move"]!!.jsonObject)
+            if (m.text("tree") == "refused") {
+                assertEquals("$name: refused", null, planned)
+                continue
+            }
+            board.applyPlanned(planned ?: error("$name: not planned"), now = now)
+            val keys = ids.entries.associate { it.value to it.key }.toMutableMap()
+            board.allItems.firstOrNull { it.title == "New" }?.let { keys[it.id] = "new" }
+            assertEquals("$name: tree", m["tree"], tree(board, keys))
         }
     }
 

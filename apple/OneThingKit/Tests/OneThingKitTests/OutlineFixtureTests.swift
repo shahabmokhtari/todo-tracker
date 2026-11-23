@@ -63,12 +63,22 @@ final class OutlineFixtureTests: XCTestCase {
         if let d = Fixtures.diff(got, want) { XCTFail("\(what): \(d)") }
     }
 
+    private struct Title: Decodable {
+        let title: String
+        let parent: String?
+        let parentShown: String?
+        let shown: String
+    }
+
+    private struct Titles: Decodable { let titles: [Title] }
+
     func testTitlesLeaveOutTheParentsNameTheWayTheFixtureSays() throws {
-        let titles = try Fixtures.json("outline.json")["titles"] as! [[String: Any]]
-        XCTAssertGreaterThanOrEqual(titles.count, 10)
+        // JSONDecoder, not JSONSerialization: that one drops a U+FEFF at the start of a string (one case starts with it).
+        let titles = try JSONDecoder().decode(Titles.self, from: Data(contentsOf: Fixtures.root.appendingPathComponent("outline.json"))).titles
+        XCTAssertGreaterThanOrEqual(titles.count, 30)
         for t in titles {
-            XCTAssertEqual(Outline.shownTitle(t["title"] as! String, parentTitle: t["parent"] as? String, parentShownTitle: t["parentShown"] as? String),
-                           t["shown"] as? String, "\(t)")
+            // Compared as UTF-16: Swift's == would call é and e + an accent the same.
+            XCTAssertEqual(Array(Outline.shownTitle(t.title, parentTitle: t.parent, parentShownTitle: t.parentShown).utf16), Array(t.shown.utf16), "\(t)")
         }
     }
 
@@ -83,6 +93,8 @@ final class OutlineFixtureTests: XCTestCase {
             let o = options(c["options"] as! [String: Any], b)
             let zoom = Outline.resolveZoom(b.board, o, now: now)
             XCTAssertEqual(zoom.flatMap { b.keys[$0] }, c["zoom"] as? String, "\(name): zoom")
+            XCTAssertEqual(Outline.rememberedZoom(b.board, o).flatMap { b.keys[$0] }, c["remembered"] as? String, "\(name): remembered zoom")
+            XCTAssertEqual(Outline.zoomUp(b.board, o, now: now).flatMap { b.keys[$0] }, c["zoomUp"] as? String, "\(name): zoom up")
             check(plain(Outline.rows(b.board, o, now: now), b), c["rows"], "\(name): rows")
             let path: [[String: Any]] = Outline.path(b.board, o, now: now).map { p in
                 ["kind": p.kind.rawValue, "id": p.id.flatMap { b.keys[$0] as Any } ?? NSNull(), "title": p.title, "done": p.done, "total": p.total]
@@ -102,6 +114,68 @@ final class OutlineFixtureTests: XCTestCase {
                 after.closedGroups = open.closedGroups
                 check(plain(Outline.rows(b.board, after, now: now), b), wanted["rows"], "\(name): open to \(level): rows")
             }
+        }
+    }
+
+    /// Each group's name, then its top-level tasks (archived ones too) and their subtasks, two spaces per level.
+    private func tree(_ board: TaskBoard, _ keys: [UUID: String]) -> [String] {
+        var lines: [String] = []
+        func walk(_ items: [WorkItem], _ depth: Int) {
+            for item in items {
+                lines.append(String(repeating: "  ", count: depth) + (keys[item.id] ?? "?"))
+                walk(item.children, depth + 1)
+            }
+        }
+        for group in board.groups {
+            lines.append(group.name)
+            walk(board.items.filter { $0.groupId == group.id }, 1)
+        }
+        return lines
+    }
+
+    /// A move the way Tasks plans it (BoardModel and TasksOutlineView call these), nil when it doesn't make it.
+    private func plan(_ move: [String: Any], _ o: OutlineOptions, _ b: Built, now: Date) throws -> [BoardMove]? {
+        let task = (move["task"] as? String).flatMap { b.ids[$0] }
+        switch move["do"] as! String {
+        case "indent": return OutlineMoves.indent(b.board, task!, options: o, now: now)
+        case "outdent": return OutlineMoves.outdent(b.board, task!, options: o, now: now)
+        case "up": return OutlineMoves.step(b.board, task!, by: -1, options: o, now: now)
+        case "down": return OutlineMoves.step(b.board, task!, by: 1, options: o, now: now)
+        case "drop":
+            let zone: OutlineMoves.Zone = ["before": .before, "inside": .inside, "after": .after][move["zone"] as! String]!
+            return OutlineMoves.drop(b.board, task!, on: b.ids[move["target"] as! String]!, zone)
+        case "dropOnGroup": return OutlineMoves.toTopOfGroup(b.board, task!, groupId: b.groupIds[move["group"] as! String]!)
+        case "newTask":
+            // As BoardModel.addTask: added, then put before the first task where it goes.
+            let place = Outline.newTaskPlace(b.board, o, now: now)
+            let first = place.parentId.flatMap { b.board.find($0)?.children.first?.id }
+                ?? b.board.items.first { $0.groupId == place.groupId && $0.archivedAt == nil }?.id
+            let item = try b.board.addTask(NewTask("New", parentId: place.parentId, groupId: place.parentId == nil ? place.groupId : nil), now: now)
+            return first.map { [.reorder(item.id, before: $0)] } ?? []
+        default: XCTFail("\(move)"); return nil
+        }
+    }
+
+    func testEveryMoveEndsAtTheSameTreeAsTheOtherApps() throws {
+        let fixture = try Fixtures.json("outline.json")
+        let now = try XCTUnwrap(BoardCodec.parseDate(fixture["now"] as! String))
+        let start = try build(fixture)
+        check(tree(start.board, start.keys), fixture["tree"], "the board the moves start from")
+        let moves = fixture["moves"] as! [[String: Any]]
+        XCTAssertGreaterThanOrEqual(moves.count, 25)
+        for m in moves {
+            let name = m["name"] as! String
+            let b = try build(fixture)
+            let planned = try plan(m["move"] as! [String: Any], options(m["options"] as! [String: Any], b), b, now: now)
+            if m["tree"] as? String == "refused" {
+                XCTAssertNil(planned, "\(name): refused")
+                continue
+            }
+            let steps = try XCTUnwrap(planned, "\(name): planned")
+            for step in steps { try b.board.apply(step, now: now) }
+            var keys = b.keys
+            if let new = b.board.allItems.first(where: { $0.title == "New" }) { keys[new.id] = "new" }
+            check(tree(b.board, keys), m["tree"], "\(name): tree")
         }
     }
 

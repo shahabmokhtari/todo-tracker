@@ -211,14 +211,38 @@ public static class Outline
     }
 
     /// <summary>
-    /// The zoom to use: the asked task when it's shown and has subtasks; else its nearest parent that is; else none
-    /// (the top). A task that's gone (deleted, archived, in another group than the one picked) has none.
+    /// The zoom drawn: the one to remember (<see cref="RememberedZoom"/>), or, while a search leaves it out, its nearest
+    /// parent the search keeps (for now); else none (the top). The Show choice never moves it: it only narrows what's
+    /// under it, as it does everywhere else.
     /// </summary>
     public static Guid? ResolveZoom(TaskBoard board, OutlineOptions options, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(board);
         ArgumentNullException.ThrowIfNull(options);
         return ResolveZoom(new Shown(board, options, now))?.Id;
+    }
+
+    /// <summary>
+    /// The zoom to keep (what a device remembers): the asked task, unless it's really gone. Deleted, archived or in
+    /// another group than the one picked: none (the top); without subtasks: its parent. Neither the search nor the
+    /// Show choice changes it (they narrow for now).
+    /// </summary>
+    public static Guid? RememberedZoom(TaskBoard board, OutlineOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(options);
+        return Lasting(board, options)?.Id;
+    }
+
+    /// <summary>
+    /// The zoom one level up (Back, Escape): the zoomed task's parent (the part of the path before it); none from the
+    /// first level (out to the tree).
+    /// </summary>
+    public static Guid? ZoomUp(TaskBoard board, OutlineOptions options, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        ArgumentNullException.ThrowIfNull(options);
+        return ResolveZoom(new Shown(board, options, now))?.Parent?.Id;
     }
 
     /// <summary>
@@ -353,21 +377,27 @@ public static class Outline
         return (done, total);
     }
 
+    private static WorkItem? Lasting(TaskBoard board, OutlineOptions options)
+    {
+        if (options.ZoomId is not { } id || board.Find(id) is not { } item || item.IsArchived)
+        {
+            return null;
+        }
+
+        if (options.GroupId is { } group && item.GroupId != group)
+        {
+            return null;
+        }
+
+        // A parent always has subtasks.
+        return item.Children.Count > 0 ? item : item.Parent;
+    }
+
     private static WorkItem? ResolveZoom(Shown shown)
     {
-        if (shown.Options.ZoomId is not { } id || shown.Board.Find(id) is not { } item || item.IsArchived)
+        for (var at = Lasting(shown.Board, shown.Options); at is not null; at = at.Parent)
         {
-            return null;
-        }
-
-        if (shown.Options.GroupId is { } group && item.GroupId != group)
-        {
-            return null;
-        }
-
-        for (WorkItem? at = item; at is not null; at = at.Parent)
-        {
-            if (at.Children.Count > 0 && shown.Kept(at))
+            if (shown.InQuery(at))
             {
                 return at;
             }

@@ -3,7 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { outlineRows, outlinePath, resolveZoom, openTo, newTaskPlace, shownTitle, initialShow, groupDropRequests, index } from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
+import {
+  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, shownTitle, initialShow, groupDropRequests, index,
+  besidesOf, indentRequests, outdentRequests, stepRequests, dropRequests,
+} from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
 
 const fixture = JSON.parse(fs.readFileSync(new URL('../fixtures/outline.json', import.meta.url), 'utf8'));
 const groups = fixture.groups.map((name) => ({ id: name, name }));
@@ -47,6 +50,8 @@ for (const c of fixture.cases) {
     const roots = treeFor(c.options, c.keep ? new Set(c.keep) : null);
     const options = optionsOf(c.options);
     assert.equal(resolveZoom(roots, options), c.zoom, 'zoom');
+    assert.equal(rememberedZoom(roots, options), c.remembered, 'remembered zoom');
+    assert.equal(zoomUp(roots, options), c.zoomUp, 'zoom up');
     assert.deepEqual(plain(outlineRows(roots, groups, options)), c.rows, 'rows');
     assert.deepEqual(outlinePath(roots, groups, options).map(({ node, ...p }) => p), c.path, 'path');
     assert.deepEqual(newTaskPlace(roots, groups, options), { parentId: c.newTask.parent, groupId: c.newTask.group }, 'new task');
@@ -66,6 +71,91 @@ test('someone who had "Show finished" on starts at Everything; a choice made sin
   assert.equal(initialShow('waiting', '1'), 'waiting');
   assert.equal(initialShow('nonsense', null), 'todo');
 });
+
+// ---- moves: planned the way outline.js does, made by a stand-in for the server (TaskBoard.Move, Reorder, ReorderAfter)
+
+/** The whole board (archived tasks too), changed the way the server changes it. */
+function serverBoard() {
+  const tasks = new Map(fixture.tasks.map((t) => [t.key, { key: t.key, group: t.group ?? null, parent: t.parent ?? null, children: [] }]));
+  const roots = [];
+  for (const t of tasks.values()) (t.parent ? tasks.get(t.parent).children : roots).push(t);
+  const listOf = (t) => (t.parent ? tasks.get(t.parent).children : roots);
+  const take = (t) => listOf(t).splice(listOf(t).indexOf(t), 1);
+  const make = ({ url, body }) => {
+    if (url === '/api/items') {
+      const t = { key: 'new', group: body.parentId ? null : body.groupId, parent: body.parentId ?? null, children: [] };
+      tasks.set('new', t);
+      listOf(t).push(t);
+      return 'new';
+    }
+    const [, id, what] = url.match(/^\/api\/items\/([^/]+)\/(move|reorder)$/);
+    const t = tasks.get(id);
+    if (what === 'move') {
+      take(t);
+      if (body.parentId) t.parent = body.parentId;
+      else { t.parent = null; t.group = body.groupId ?? t.group; }
+      const list = listOf(t);
+      list.splice(Math.min(body.index ?? list.length, list.length), 0, t);
+    } else {
+      const list = listOf(t);
+      take(t);
+      const at = list.indexOf(tasks.get(body.before ?? body.after));
+      list.splice(body.after ? at + 1 : at, 0, t);
+    }
+    return id;
+  };
+  const tree = () => fixture.groups.flatMap((g) => {
+    const lines = [g];
+    const walk = (list, depth) => list.forEach((t) => { lines.push(`${'  '.repeat(depth)}${t.key}`); walk(t.children, depth + 1); });
+    walk(roots.filter((r) => r.group === g), 1);
+    return lines;
+  });
+  return { make, tree };
+}
+
+/** The requests outline.js sends for a move (null: it doesn't make it). */
+function plan(roots, options, move) {
+  const map = index(roots);
+  const besides = (id) => besidesOf(roots, options, id);
+  switch (move.do) {
+    case 'indent': return indentRequests(map, move.task, besides(move.task));
+    case 'outdent': {
+      // Only from a row that can move out here (not at the top of a zoom): what the keys and the Move menu check.
+      const all = openTo(roots, groups, options, 'all');
+      const row = outlineRows(roots, groups, { ...options, ...all }).find((r) => r.id === move.task);
+      return row?.outdent ? outdentRequests(map, move.task, options.groupId) : null;
+    }
+    case 'up': return stepRequests(map, move.task, -1, besides(move.task));
+    case 'down': return stepRequests(map, move.task, 1, besides(move.task));
+    case 'drop': return dropRequests(map, move.task, move.target, move.zone, options.groupId);
+    case 'dropOnGroup': return groupDropRequests(map, move.task, move.group);
+    case 'newTask': {
+      // As outline.js's create(): added, then moved first where it goes.
+      const place = newTaskPlace(roots, groups, options);
+      const add = { method: 'POST', url: '/api/items', body: place.parentId ? { title: 'New', parentId: place.parentId } : { title: 'New', groupId: place.groupId } };
+      return [add, { method: 'POST', url: '/api/items/new/move', body: place.parentId ? { parentId: place.parentId, index: 0 } : { toTopLevel: true, groupId: place.groupId, index: 0 } }];
+    }
+    default: throw new Error(move.do);
+  }
+}
+
+test('the board the moves start from is the fixture\'s', () => assert.deepEqual(serverBoard().tree(), fixture.tree));
+
+for (const m of fixture.moves) {
+  test(`move: ${m.name}`, () => {
+    const o = { ...m.options, expanded: [], closedGroups: [] };
+    const roots = treeFor(o, m.keep ? new Set(m.keep) : null);
+    const requests = plan(roots, optionsOf(o), m.move);
+    if (m.tree === 'refused') {
+      assert.equal(requests, null);
+      return;
+    }
+    assert.ok(requests, 'planned');
+    const server = serverBoard();
+    requests.forEach(server.make);
+    assert.deepEqual(server.tree(), m.tree);
+  });
+}
 
 test('dropping a task on a group row moves it to the top of that group', () => {
   const map = index([{ id: 'a', children: [{ id: 'a1', children: [] }] }]);
