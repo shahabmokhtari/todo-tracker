@@ -37,7 +37,7 @@ data class OutlineMemory(
     fun options(groupId: UUID?, query: String): OutlineOptions = OutlineOptions(groupId, zoomId, shown, query, expanded, closedGroups)
 
     /** A task opened or closed. */
-    fun withOpen(id: UUID, open: Boolean): OutlineMemory = withExpanded(if (open) expanded + id else expanded - id)
+    fun withOpen(id: UUID, open: Boolean): OutlineMemory = withExpanded(if (open) expanded - id + id else expanded - id)
 
     /** Exactly these tasks open (kept short: the newest few hundred, like the other apps). */
     fun withExpanded(ids: Set<UUID>): OutlineMemory = copy(expanded = ids.toList().takeLast(MAX_OPEN).toSet())
@@ -85,6 +85,12 @@ data class OutlineMemory(
         val group = if (groupId != null && groupId != item.groupId) item.groupId else groupId
         val clearSearch = query.isNotBlank() && id !in Outline.searchKeeps(board, query)
         return TreeReveal(memory, group, clearSearch)
+    }
+
+    /** Without tasks and groups that are no longer on [board] (the open rows keep their order: newest last). */
+    fun keepingOnly(board: TaskBoard): OutlineMemory {
+        val groups = board.groups.map { it.id }.toSet()
+        return copy(expanded = expanded.filterTo(LinkedHashSet()) { board.find(it) != null }, closedGroups = closedGroups.filterTo(LinkedHashSet()) { it in groups })
     }
 
     /** Keeps what changed since [before] (all of it when null). The Show choice for the moment isn't kept. */

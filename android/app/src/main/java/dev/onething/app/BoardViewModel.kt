@@ -958,9 +958,11 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     private fun remember(next: OutlineMemory) {
         val before = outline
-        if (next == before) return
-        outline = next
-        next.write(remembered, before)
+        // Tasks and groups that are gone are forgotten (not while the board is still opening: it's empty then).
+        val kept = if (opened != null) next.keepingOnly(board) else next
+        if (kept == before) return
+        outline = kept
+        kept.write(remembered, before)
     }
 
     /** How the tree is looked at now: the group picked, the search, and what it remembers. */
@@ -972,8 +974,11 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** The path above a zoomed tree (empty when not zoomed). */
     fun outlinePath(options: OutlineOptions = outlineOptions): List<OutlinePathPart> = Outline.path(board, options, now)
 
-    /** The zoom the tree can show (the one asked, else its nearest parent shown, else none). */
+    /** The zoom the tree draws (the one kept; while a search leaves it out, its nearest parent the search keeps). */
     fun outlineZoom(options: OutlineOptions = outlineOptions): UUID? = Outline.resolveZoom(board, options, now)
+
+    /** The zoom to keep: the one asked unless the task is really gone (a search or a Show choice only narrow it). */
+    fun outlineRememberedZoom(options: OutlineOptions = outlineOptions): UUID? = Outline.rememberedZoom(board, options)
 
     /** Where New task adds: inside the zoom, else at the top of the group picked (all groups: the first). */
     fun outlineNewTaskPlace(): NewTaskPlace = Outline.newTaskPlace(board, outlineOptions, now)
@@ -996,6 +1001,14 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** A row the tree should select and scroll to once (leaving a zoom, Show in tree); the tree sets it back. */
     var outlineReveal: UUID? by mutableStateOf(null)
 
+    /** Back: up one level, to the zoomed task's parent (the task it came from picked); from the first level out. */
+    fun outlineBack() {
+        val from = outlineZoom() ?: return leaveOutlineZoom()
+        val up = Outline.zoomUp(board, outlineOptions, now) ?: return leaveOutlineZoom()
+        remember(outline.zoomedTo(up))
+        outlineReveal = from
+    }
+
     /** Out of the zoom to the whole tree, with the task that was zoomed into in sight and picked. */
     fun leaveOutlineZoom() {
         val from = outlineZoom() ?: outline.zoomId
@@ -1012,7 +1025,10 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
      */
     fun showInTree(id: UUID) {
         val reveal = outline.showingInTree(board, id, selectedGroup, query) ?: return
-        if (reveal.clearSearch) search("")
+        if (reveal.clearSearch) {
+            search("")
+            status = "Cleared the search to show the task."
+        }
         if (reveal.groupId != selectedGroup) reveal.groupId?.let { select(it) }
         remember(reveal.memory)
         outlineReveal = id

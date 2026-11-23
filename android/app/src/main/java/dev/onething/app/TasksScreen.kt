@@ -112,15 +112,17 @@ private const val START = 8
 fun TasksScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
     @Suppress("UNUSED_VARIABLE") val redraw = vm.version
     val asked = vm.outlineOptions
-    // A zoom that can't be shown any more (finished, moved, gone): out to its nearest parent that can. A search only
-    // narrows for now (the zoom is kept, for when it's cleared).
+    // A zoom on a task that's really gone (deleted, archived, moved out of the group picked, without subtasks) goes for
+    // good. A search or a Show choice only narrow it for now (the zoom and its path stay).
+    val remembered = vm.outlineRememberedZoom(asked)
+    if (remembered != asked.zoomId && vm.loaded) LaunchedEffect(remembered, asked.zoomId) { vm.zoomOutline(remembered) }
     val zoom = vm.outlineZoom(asked)
     val options = asked.copy(zoomId = zoom)
-    if (zoom != asked.zoomId && !asked.searching && vm.loaded) LaunchedEffect(zoom, asked.zoomId) { vm.zoomOutline(zoom) }
     val rows = vm.outlineRows(options)
     val path = vm.outlinePath(options)
     val allGroups = vm.selectedGroup == null && zoom == null
-    BackHandler(enabled = zoom != null) { vm.leaveOutlineZoom() }
+    // Back goes up one level, and from the first level out to the tree.
+    BackHandler(enabled = zoom != null) { vm.outlineBack() }
 
     var selectedText by rememberSaveable { mutableStateOf<String?>(null) }
     val selected = selectedText?.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -133,6 +135,15 @@ fun TasksScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
         val id = editingText?.let { UUID.fromString(it) } ?: return
         vm.rename(id, draft)
         editingText = null
+    }
+
+    // Zooming (in, up, out, Show in tree) while a title is being renamed: it's saved first, as leaving the box does.
+    var zoomSeen by remember { mutableStateOf(zoom) }
+    LaunchedEffect(zoom) {
+        if (zoomSeen != zoom) {
+            finishRename()
+            zoomSeen = zoom
+        }
     }
 
     fun startAdding(place: AddPlace) {
@@ -207,6 +218,7 @@ fun TasksScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
     LaunchedEffect(vm.outlineReveal, rows) {
         val id = vm.outlineReveal ?: return@LaunchedEffect
         vm.outlineReveal = null
+        finishRename()
         val at = entries.indexOfFirst { it is Entry.Line && it.row.id == id }
         if (at >= 0) {
             selectedText = id.toString()
@@ -275,9 +287,15 @@ fun TasksScreen(vm: BoardViewModel, open: (UUID) -> Unit) {
 
 private fun emptyText(vm: BoardViewModel, zoomed: Boolean): String = when {
     vm.query.isNotBlank() -> "Nothing here matches the search."
+    // Show narrows a zoom: what it leaves out there, and how to see it.
+    zoomed -> when (vm.outline.shown) {
+        OutlineShow.TODO -> "Nothing left to do here. Show › Everything shows what’s done."
+        OutlineShow.NOW -> "Nothing here can be done right now. Show › To do shows the rest."
+        OutlineShow.WAITING -> "Nothing here is waiting. Show › To do shows the rest."
+        OutlineShow.ALL -> "Nothing under this task."
+    } + " Back goes up."
     vm.outline.shown == OutlineShow.NOW -> "Nothing can be done right now."
     vm.outline.shown == OutlineShow.WAITING -> "Nothing is waiting."
-    zoomed -> "Nothing left under this task. Back goes out again."
     else -> "No tasks here yet. Tap + to add one."
 }
 

@@ -130,4 +130,25 @@ class OutlineMemoryTest {
         assertFalse(OutlineMemory().showingInTree(board, hero, null, "hero")!!.clearSearch)
         assertNull("a task that's gone", OutlineMemory().showingInTree(board, UUID.randomUUID(), null, ""))
     }
+
+    @Test
+    fun `open rows are kept in the order they were opened, the newest longest`() {
+        val ids = List(501) { UUID.randomUUID() }
+        val kept = ids.fold(OutlineMemory()) { m, id -> m.withOpen(id, true) }
+        assertEquals("the oldest goes, whatever its id", ids.drop(1), kept.expanded.toList())
+        val again = OutlineMemory().withOpen(launch, true).withOpen(copy, true).withOpen(launch, true)
+        assertEquals("opened again: the newest", listOf(copy, launch), again.expanded.toList())
+        val store = Store()
+        again.write(store)
+        assertEquals(listOf(copy, launch), OutlineMemory.read(store).expanded.toList())
+    }
+
+    @Test
+    fun `tasks and groups that are gone are forgotten`() {
+        val gone = UUID.randomUUID()
+        val memory = OutlineMemory().withOpen(launch, true).withOpen(gone, true).withGroupOpen(work, false).withGroupOpen(gone, false)
+        val kept = memory.keepingOnly(board)
+        assertEquals(setOf(launch), kept.expanded)
+        assertEquals(setOf(work), kept.closedGroups)
+    }
 }
