@@ -44,7 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import java.util.UUID
 
-/** Settings on this phone: sync, the theme, energy in a day, the focus timer's lengths, and what may notify you. */
+/** Settings on this phone: sync, the theme, energy in a day, the focus timer's lengths, labels, and what may notify you. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit, onFeedback: () -> Unit = {}) {
@@ -81,6 +81,8 @@ fun SettingsScreen(vm: BoardViewModel, onClose: () -> Unit, onFeedback: () -> Un
                     }
                     HorizontalDivider()
                     FocusLengths(vm)
+                    HorizontalDivider()
+                    Labels(vm)
                     HorizontalDivider()
                     Setting("Notifications", "Reminders, snoozes ending, and the end of a focus session or a break are told with a notification, even with the app closed.") {
                         val notifyOff = android.os.Build.VERSION.SDK_INT >= 33 &&
@@ -142,6 +144,68 @@ private fun FocusLengths(vm: BoardViewModel) {
             onClick = { vm.setFocusLengths(focus.toIntOrNull() ?: 0, short.toIntOrNull() ?: 0, long.toIntOrNull() ?: 0) },
             enabled = changed,
         ) { Text("Save") }
+    }
+}
+
+/**
+ * Labels: each one's color (a task without a color of its own shows its first label's), its name, and removing it
+ * (it comes off every task; the tasks stay). The web Settings' Labels section.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun Labels(vm: BoardViewModel) {
+    @Suppress("UNUSED_VARIABLE") val redraw = vm.version
+    val labels = vm.boardLabels
+    var removing by remember { mutableStateOf<String?>(null) }
+    var coloring by remember { mutableStateOf<String?>(null) }
+    Setting("Labels", "Each label has a color: a task without a color of its own shows its first label’s.") {
+        if (labels.isEmpty()) Text("No labels yet. Add one from a task’s details.", style = MaterialTheme.typography.bodyMedium)
+        labels.forEach { label ->
+            var name by rememberSaveable(label.name) { mutableStateOf(label.name) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                androidx.compose.foundation.layout.Box(
+                    Modifier.size(28.dp).background(parseColor(label.color) ?: MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                        .clickable { coloring = label.name }
+                        .semantics { contentDescription = "Color of ${label.name}" },
+                )
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it }, singleLine = true, label = { Text("Name") },
+                    keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (!vm.renameLabel(label.name, name)) name = label.name }),
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Name of ${label.name}" },
+                )
+                TextButton(onClick = { removing = label.name }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+    coloring?.let { which ->
+        AlertDialog(
+            onDismissRequest = { coloring = null },
+            title = { Text("Color of “$which”") },
+            text = {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    dev.onething.core.TaskBoard.LABEL_PALETTE.forEach { hex ->
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.size(36.dp).background(parseColor(hex) ?: Color.Gray, CircleShape)
+                                .border(if (vm.labelColor(which).equals(hex, ignoreCase = true)) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                .clickable { vm.recolorLabel(which, hex); coloring = null }
+                                .semantics { contentDescription = "Color $hex" },
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { coloring = null }) { Text("Close") } },
+        )
+    }
+    removing?.let { which ->
+        val n = vm.labelTaskCount(which)
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove the label “$which” from every task?") },
+            text = { Text(if (n == 0) "No task has it." else "$n task${if (n == 1) " has" else "s have"} it. The tasks stay; only the label comes off.") },
+            confirmButton = { TextButton(onClick = { vm.removeLabel(which); removing = null }) { Text("Remove from every task", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
     }
 }
 

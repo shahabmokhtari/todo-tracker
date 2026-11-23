@@ -22,6 +22,13 @@ import dev.onething.core.Stage
 import dev.onething.core.TimeReport
 import dev.onething.core.addInPlace
 import dev.onething.core.applyPlanned
+import dev.onething.core.applyMove
+import dev.onething.core.deleteLabel
+import dev.onething.core.setColor
+import dev.onething.core.setIcon
+import dev.onething.core.setLabels
+import dev.onething.core.setTags
+import dev.onething.core.updateLabel
 import dev.onething.core.plan
 import dev.onething.core.unplan
 import dev.onething.core.timeline
@@ -813,6 +820,75 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     /** A label's color (#rrggbb), or null. */
     fun labelColor(name: String): String? = board.findLabel(name)?.color
+
+    /** The board's labels (name and color), in the order they were made (read [version] to redraw). */
+    val boardLabels: List<dev.onething.core.LabelDefinition> get() = board.labels.toList()
+
+    /** How many tasks have the label (Settings says it before removing it). */
+    fun labelTaskCount(name: String): Int = board.allItems.count { item -> item.labels.any { it.equals(name, ignoreCase = true) } }
+
+    /** Renames a label: every task with it gets the new name. */
+    fun renameLabel(name: String, newName: String): Boolean {
+        val label = board.findLabel(name) ?: return false
+        val clean = newName.trim()
+        if (clean.isEmpty() || clean == label.name) return false
+        val color = label.color
+        return change("Renamed") { b, now -> b.updateLabel(name, clean, color, now = now) }
+    }
+
+    /** A label's color (tasks without a color of their own show it). */
+    fun recolorLabel(name: String, color: String): Boolean {
+        val label = board.findLabel(name) ?: return false
+        if (label.color.equals(color, ignoreCase = true)) return false
+        val current = label.name
+        return change("$current: new color") { b, now -> b.updateLabel(current, current, color, now = now) }
+    }
+
+    /** Takes a label off every task and out of the list (the tasks stay). */
+    fun removeLabel(name: String): Boolean = change("Removed the label “$name”") { b, now -> b.deleteLabel(name, now = now) }
+
+    /** Adds tags typed in a box ("#deep work, errands"): what's there stays. */
+    fun addTags(id: UUID, typed: String): Boolean {
+        val item = board.find(id) ?: return false
+        val new = typed.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+        if (new.isEmpty()) return false
+        val tags = item.tags + new
+        return change("Tags saved") { b, now -> b.setTags(id, tags, now = now) }
+    }
+
+    fun removeTag(id: UUID, tag: String): Boolean {
+        val item = board.find(id) ?: return false
+        val tags = item.tags.filter { !it.equals(tag, ignoreCase = true) }
+        return change(if (tags.isEmpty()) "No tags" else "Tags saved") { b, now -> b.setTags(id, tags, now = now) }
+    }
+
+    /** A label on or off a task (a new name makes a new label, with the next color). */
+    fun toggleLabel(id: UUID, name: String): Boolean {
+        val item = board.find(id) ?: return false
+        val has = item.labels.any { it.equals(name, ignoreCase = true) }
+        val next = if (has) item.labels.filter { !it.equals(name, ignoreCase = true) } else item.labels + name.trim()
+        return change(if (has) "Label off" else "Label on") { b, now -> b.setLabels(id, next, now = now) }
+    }
+
+    /** An emoji before the title (null or blank: none). */
+    fun setIcon(id: UUID, icon: String?): Boolean =
+        change(if (icon.isNullOrBlank()) "No icon" else "Icon set") { b, now -> b.setIcon(id, icon, now = now) }
+
+    /** The task's own color, #rrggbb (null: none; it shows its first label's). */
+    fun setColor(id: UUID, color: String?): Boolean =
+        change(if (color == null) "No color of its own" else "Color set") { b, now -> b.setColor(id, color, now = now) }
+
+    /** Where Move… can put a task in a group: on its own, or under any open task there (not itself or its subtasks). */
+    fun moveTargets(id: UUID, groupId: UUID, query: String = ""): List<dev.onething.core.MoveTarget> =
+        board.find(id)?.let { dev.onething.core.MoveTargets.options(board, it, groupId, query) } ?: emptyList()
+
+    /** Move…: on its own in [groupId], or under [parentId]. */
+    fun moveTo(id: UUID, groupId: UUID, parentId: UUID?): Boolean {
+        val item = board.find(id) ?: return false
+        val move = dev.onething.core.MoveTargets.move(item, groupId, parentId) ?: return false
+        val message = if (groupId == item.groupId || parentId != null) "Moved" else "Moved to ${groupName(groupId) ?: "the group"}"
+        return change(message) { b, now -> b.applyMove(move, now = now) }
+    }
 
     /** How much energy there is in a day (the Plan's days say what their blocks take against it). */
     val energyPerDay: Int get() = board.dailyEnergy

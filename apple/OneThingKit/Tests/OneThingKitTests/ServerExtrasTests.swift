@@ -57,6 +57,20 @@ final class ServerExtrasTests: XCTestCase {
                                      body: #"{"focusesBeforeLongBreak":3,"focusMinutes":50,"longBreakMinutes":30,"shortBreakMinutes":10}"#))
     }
 
+    /// Labels and a task's look, as the web app sends them (settings.js labelUrl, the details' PATCH).
+    func testLabelsAndATasksLookGoToTheServer() {
+        let item = UUID(uuidString: "8B0F2C1E-1111-4A6B-9C1D-000000000001")!
+        let path = "/api/items/8b0f2c1e-1111-4a6b-9c1d-000000000001"
+        XCTAssertEqual(ServerAPI.request(for: .updateLabel("Q3/Q4", name: "Later on", color: "#10b981")),
+                       ServerRequest(method: "PATCH", path: "/api/labels/Q3/Q4", body: ##"{"color":"#10b981","name":"Later on"}"##))
+        XCTAssertEqual(ServerAPI.request(for: .deleteLabel("Two words")), ServerRequest(method: "DELETE", path: "/api/labels/Two%20words"))
+        XCTAssertEqual(ServerAPI.request(for: .setTags(item, ["deep work"])), ServerRequest(method: "PATCH", path: path, body: #"{"tags":["deep work"]}"#))
+        XCTAssertEqual(ServerAPI.request(for: .setLabels(item, [])).body, #"{"labels":[]}"#, "none: every label off")
+        XCTAssertEqual(ServerAPI.request(for: .setIcon(item, "🚀")).body, #"{"icon":"🚀"}"#)
+        XCTAssertEqual(ServerAPI.request(for: .setIcon(item, nil)).body, #"{"icon":""}"#, "blank removes it")
+        XCTAssertEqual(ServerAPI.request(for: .setColor(item, nil)).body, #"{"color":""}"#)
+    }
+
     func testHookDecisionsNameTheVersionShown() {
         XCTAssertEqual(ServerAPI.approveHook("a1", version: "v1"), ServerRequest(method: "POST", path: "/api/hooks/a1/approve", body: #"{"version":"v1"}"#))
         XCTAssertEqual(ServerAPI.rejectHook("a/1", version: "v1").path, "/api/hooks/a%2F1/reject")

@@ -97,6 +97,8 @@ public struct SettingsView: View {
                 }
             }
 
+            labelsSection
+
             if model.isOn(ExtraSwitches.feedback) {
             Section {
                 Button("Send feedback…") { sendingFeedback = true }
@@ -181,6 +183,23 @@ public struct SettingsView: View {
     }
     #endif
 
+    /// Labels: each one's name and color (a task without a color of its own shows its first label's), and removing
+    /// one (it comes off every task; the tasks stay). The web Settings' Labels section.
+    private var labelsSection: some View {
+        Section {
+            if model.labels.isEmpty {
+                Text("No labels yet. Add one from a task’s details.").foregroundStyle(.secondary)
+            }
+            ForEach(model.labels, id: \.name) { label in
+                LabelSettingsRow(model: model, name: label.name, color: label.color)
+            }
+        } header: {
+            Text("Labels")
+        } footer: {
+            Text("Each label has a color: a task without a color of its own shows its first label’s.")
+        }
+    }
+
     private var energyChoices: [Int] {
         Array(Set([4, 6, 8, 10, 12, 14, 16, 20, model.board.dailyEnergy])).sorted()
     }
@@ -206,6 +225,57 @@ public struct SettingsView: View {
             settings[keyPath: key] = value
             model.setPomodoroSettings(settings)
         })
+    }
+}
+/// One label in Settings: its color, its name (renamed when you press Return or leave the box), and Remove.
+struct LabelSettingsRow: View {
+    @ObservedObject var model: BoardModel
+    let name: String
+    let color: String
+    @State private var typed = ""
+    @State private var removing = false
+    @FocusState private var editing: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Menu {
+                ForEach(Set(groupColors.map(\.hex) + [color.lowercased()]).sorted(), id: \.self) { hex in
+                    Button { model.recolorLabel(name, to: hex) } label: {
+                        let title = groupColors.first { $0.hex == hex }?.name ?? hex
+                        if hex == color.lowercased() { Label(title, systemImage: "checkmark") } else { Text(title) }
+                    }
+                }
+            } label: {
+                Circle().fill(Color(hex: color)).frame(width: 16, height: 16)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .accessibilityLabel("Color of \(name)")
+            TextField("Name", text: $typed)
+                .focused($editing)
+                .onSubmit(rename)
+                .onChange(of: editing) { _, now in if !now { rename() } }
+                .accessibilityLabel("Name of \(name)")
+            Spacer(minLength: 0)
+            Button(role: .destructive) { removing = true } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove \(name)")
+                .help("Remove this label")
+        }
+        .onAppear { typed = name }
+        .onChange(of: name) { _, new in typed = new }
+        .confirmationDialog("Remove the label “\(name)” from every task?", isPresented: $removing, titleVisibility: .visible) {
+            Button("Remove from every task", role: .destructive) { model.removeLabel(name) }
+        } message: {
+            let n = model.taskCount(withLabel: name)
+            Text(n == 0 ? "No task has it." : "\(n) task\(n == 1 ? " has" : "s have") it. The tasks stay; only the label comes off.")
+        }
+    }
+
+    private func rename() {
+        let clean = typed.trimmingCharacters(in: .whitespaces)
+        if clean.isEmpty { typed = name } else if clean != name { model.renameLabel(name, to: clean) }
     }
 }
 #endif

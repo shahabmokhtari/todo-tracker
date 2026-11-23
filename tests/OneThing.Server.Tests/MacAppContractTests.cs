@@ -67,6 +67,17 @@ public sealed class MacAppContractTests : IAsyncLifetime
         await Send(HttpMethod.Post, "/api/timer/start", $$"""{"itemId":"{{task}}"}""");
         await Send(HttpMethod.Post, "/api/timer/stop");
         await Send(HttpMethod.Put, "/api/settings/theme", """{"theme":"dark"}""");
+        // A task's look and labels from its details, and Settings › Labels (a name with "/" stays a path).
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"tags":["deep work"]}""");
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"labels":["Q3/Q4","Two words"]}""");
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"icon":"🚀"}""");
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"color":"#0ea5e9"}""");
+        await Send(HttpMethod.Patch, $"/api/items/{task}", """{"color":""}""");
+        await Send(HttpMethod.Patch, "/api/labels/Q3/Q4", """{"color":"#10b981","name":"Q4"}""");
+        await Send(HttpMethod.Delete, "/api/labels/Two%20words");
+        var looked = (await Send(HttpMethod.Get, $"/api/items/{task}"))!;
+        Assert.Equal(["Q4"], looked["labels"]!.AsArray().Select(l => l!["name"]!.GetValue<string>()));
+        Assert.Equal("🚀", looked["icon"]!.GetValue<string>());
         await Send(HttpMethod.Put, "/api/pomodoro/settings", """{"focusesBeforeLongBreak":3,"focusMinutes":50,"longBreakMinutes":30,"shortBreakMinutes":10}""");
         Assert.Equal(50, (await Send(HttpMethod.Get, "/api/pomodoro/settings"))!["focusMinutes"]!.GetValue<int>());
         // What it reads besides the board: the extras, hooks waiting for approval (it may approve), the tasks folder.
