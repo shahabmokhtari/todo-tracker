@@ -212,3 +212,10 @@ then publishes a GitHub Release with the apps attached:
 ```bash
 git tag v2.0.0 && git push origin v2.0.0
 ```
+
+The same run builds the Android App Bundle for Google Play (the `android-bundle` artifact), signed with the upload
+key, once these repository secrets exist: `ANDROID_UPLOAD_KEYSTORE_BASE64` (the `.jks` file, base64-encoded),
+`ANDROID_UPLOAD_KEYSTORE_PASSWORD`, `ANDROID_UPLOAD_KEY_ALIAS` and `ANDROID_UPLOAD_KEY_PASSWORD`. Without them it
+skips the bundle and says so. To build one on your own computer, set the same four values as
+`ONETHING_UPLOAD_STORE_FILE` (a path), `ONETHING_UPLOAD_STORE_PASSWORD`, `ONETHING_UPLOAD_KEY_ALIAS` and
+`ONETHING_UPLOAD_KEY_PASSWORD`, then `cd android && gradle bundleRelease`.

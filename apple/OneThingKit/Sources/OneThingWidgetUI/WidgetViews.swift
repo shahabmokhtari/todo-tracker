@@ -219,8 +219,9 @@ public struct TodayWidgetView<Done: View>: View {
     let rows: Int
     let done: (WidgetItem) -> Done
 
-    /// - Parameter rows: how many tasks fit (large: 6).
-    public init(content: WidgetContent, rows: Int = 6, @ViewBuilder done: @escaping (WidgetItem) -> Done) {
+    /// - Parameter rows: how many tasks fit (large: 5; with a sixth, iOS 27's taller Done buttons push the heading out
+    ///   of the widget, even on the biggest iPhone).
+    public init(content: WidgetContent, rows: Int = 5, @ViewBuilder done: @escaping (WidgetItem) -> Done) {
         self.content = content
         self.rows = rows
         self.done = done

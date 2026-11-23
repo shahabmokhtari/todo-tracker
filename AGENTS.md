@@ -44,7 +44,7 @@ The solution includes the Windows app, so on Linux and macOS build and test the 
 `for p in Core Server Desktop Cli Tray; do dotnet test --project tests/OneThing.$p.Tests; done`.
 
 - **Swift:** `cd apple/OneThingKit && swift test` (macOS only; CI runs it and builds both apps).
-- **Android:** `cd android && gradle testDebugUnitTest assembleDebug` (JDK 17, Gradle 8.11, SDK platform 35).
+- **Android:** `cd android && gradle testDebugUnitTest assembleDebug` (JDK 17, Gradle 8.11, SDK platform 36).
 - **Windows end to end:** `OneThing.exe --smoke-test --smoke-log smoke.log` boots the real app on a temporary board
   and checks that the API and the sidebar see the same data. The system tests drive the real sidebar with UI
   Automation (`-Exe <OneThing.exe>`; they take over the screen and keyboard for a while, so not while you work):

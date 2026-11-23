@@ -18,6 +18,59 @@ jobs:
     name: Build and test (CI)
     uses: ./.github/workflows/ci.yml
 
+  # The Android App Bundle for Google Play, signed with the upload key (Play App Signing re-signs it for the store).
+  # It is a workflow artifact (android-bundle) to upload in the Play Console, not part of the GitHub Release.
+  # Needs these repository secrets (Settings > Secrets and variables > Actions); without them this job only says so,
+  # and the release goes ahead as before:
+  #   ANDROID_UPLOAD_KEYSTORE_BASE64  the upload keystore (.jks), base64-encoded: base64 -i upload.jks | pbcopy
+  #   ANDROID_UPLOAD_KEYSTORE_PASSWORD  the keystore's password
+  #   ANDROID_UPLOAD_KEY_ALIAS          the upload key's alias in it
+  #   ANDROID_UPLOAD_KEY_PASSWORD       the upload key's password
+  android-bundle:
+    name: Android App Bundle (Google Play)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_UPLOAD_KEY: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 != '' && secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD != '' && secrets.ANDROID_UPLOAD_KEY_ALIAS != '' && secrets.ANDROID_UPLOAD_KEY_PASSWORD != '' }}
+    steps:
+      - name: No upload key yet
+        if: env.HAS_UPLOAD_KEY != 'true'
+        run: echo "::notice::No Android upload key in the repository secrets (ANDROID_UPLOAD_*), so no App Bundle this time."
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: env.HAS_UPLOAD_KEY == 'true'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          gradle-version: '8.11.1'
+      - name: Build the signed App Bundle
+        if: env.HAS_UPLOAD_KEY == 'true'
+        working-directory: android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ONETHING_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ONETHING_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ONETHING_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export ONETHING_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ONETHING_UPLOAD_STORE_FILE"
+          gradle --no-daemon bundleRelease
+          rm -f "$ONETHING_UPLOAD_STORE_FILE"
+          # Fails the job if the bundle came out unsigned (a wrong alias or password).
+          jarsigner -verify app/build/outputs/bundle/release/app-release.aab | grep -q 'jar verified'
+          mv app/build/outputs/bundle/release/app-release.aab "OneThing-${GITHUB_REF_NAME}.aab"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: env.HAS_UPLOAD_KEY == 'true'
+        with:
+          name: android-bundle
+          path: android/OneThing-${{ github.ref_name }}.aab
+
   publish:
     name: Publish the release
     needs: build

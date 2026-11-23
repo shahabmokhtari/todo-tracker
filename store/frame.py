@@ -7,7 +7,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 R = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'screenshots') + '/'
 # The captions from the screenshot plan; six words or fewer.
 CAP = {
-    'I1-today': 'One thing to do now', 'I5-board': 'See the bigger picture',
+    'I1-today': 'One thing to do now', 'I2-later': 'Later means later', 'I3-workstreams': 'One step at a time',
+    'I5-board': 'See the bigger picture', 'I6-widgets': 'Your one thing, at a glance',
     'P1-today': 'One thing now, the rest calm', 'P2-details': 'Every detail, right beside it',
     'P3-board': 'Drag work from Inbox to Done', 'P4-plan': 'Plan the week you can manage',
     'P5-reports': 'See where your time went',
