@@ -6,15 +6,19 @@ gradient, at the same size: these are the ones to upload).
 
 | Folder | Size | Shots |
 | --- | --- | --- |
-| `screenshots/iphone-6.9` | 1320 × 2868 | I1 Today, I5 Board |
+| `screenshots/iphone-6.9` | 1320 × 2868 | I1 Today, I2 Later, I3 Workstreams, I5 Board, I6 widgets |
 | `screenshots/ipad-13` | 2064 × 2752 | P1 Today, P2 details, P3 Board, P4 Plan, P5 Reports |
 | `screenshots/mac` | 2880 × 1800 | M1 Today, M2 details, M3 Board, M4 Plan, M5 Reports, M6 Today in dark |
 | `screenshots/android-phone` | 1080 × 2400 | A1 Today, A2 Later, A4 Board, A5 details |
 | `play-feature-graphic.png` | 1024 × 500 | The Play feature graphic (no alpha) |
 | `play-icon.png` | 512 × 512 | The Play store icon (32-bit PNG, full bleed: Play rounds it), from `build/icons.py` |
 
-Not captured yet (each needs a tap or a home screen): the iPhone's Later sheet, its scrolled Workstreams and widgets,
-Android's notification shade and widgets, the Mac menu bar glance and desktop widgets.
+Not captured yet: Android's notification shade and widgets, the Mac menu bar glance and desktop widgets (the Mac
+widgets would show the demo board through the App Group an installed One Thing shares, so they need a Mac without it).
+
+The iPhone's I2, I3 and I6 need a tap after launch: I2 is the **Later** menu on the focus card, I3 is Today scrolled
+until Workstreams shows, and I6 is the home screen in dark mode with the Today and Now widgets added from the widget
+gallery. For I6, start the app with `SIMCTL_CHILD_ONETHING_WIDGETS=1` as well, so the widgets show the demo board.
 
 ## Making them again
 
