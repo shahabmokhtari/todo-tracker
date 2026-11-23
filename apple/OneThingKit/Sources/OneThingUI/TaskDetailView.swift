@@ -285,6 +285,7 @@ struct TaskDetailContent: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+        ShowInTreeButton(item: item)
         if let parent = item.parent {
             NavigationLink(value: parent.id) {
                 LabeledContent("Part of", value: item.path.dropLast().joined(separator: " › "))

@@ -357,8 +357,10 @@ public struct AppShell: View {
         .sheet(isPresented: Binding(get: { shell.inspected != nil }, set: {
             if !$0 {
                 shell.closeDetails()
-                // No keyboard to act on it: the same row (or card) opens again with a tap.
-                shell.selectedTask = nil
+                // No keyboard to act on it: the same row (or card) opens again with a tap. Not the row Show in tree
+                // just picked (the sheet goes away after it's picked).
+                if shell.keepSelection == nil || shell.keepSelection != shell.selectedTask { shell.selectedTask = nil }
+                shell.keepSelection = nil
             }
         })) {
             if let id = shell.inspected { TaskDetailView(model: model, itemId: id) }

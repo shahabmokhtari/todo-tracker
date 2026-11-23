@@ -14,7 +14,14 @@ import dev.onething.core.Agenda
 import dev.onething.core.BoardColumn
 import dev.onething.core.BoardColumns
 import dev.onething.core.BoardScope
+import dev.onething.core.NewTaskPlace
+import dev.onething.core.Outline
+import dev.onething.core.OutlineLevel
 import dev.onething.core.OutlineMoves
+import dev.onething.core.OutlineOptions
+import dev.onething.core.OutlinePathPart
+import dev.onething.core.OutlineRow
+import dev.onething.core.OutlineShow
 import dev.onething.core.PlanDays
 import dev.onething.core.PlanSettings
 import dev.onething.core.PlannedMove
@@ -923,18 +930,21 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     /** A card one column left or right, or one place up or down. */
     fun moveCard(id: UUID, direction: BoardColumns.Direction) = perform { it.moveCard(id, direction, Instant.now()) }
 
-    /** Into the task above it on screen. */
-    fun indent(id: UUID, showDone: Boolean) = perform { it.indent(id, showDone) }
+    /** Into the task above it in the tree. */
+    fun indent(id: UUID) = perform { it.indent(id, outlineKeeps()) }
 
     /** Out one level, right after its parent. */
     fun outdent(id: UUID) = perform { it.outdent(id) }
 
-    fun canIndent(id: UUID, showDone: Boolean): Boolean = scope.indent(id, showDone) != null
+    fun canIndent(id: UUID): Boolean = scope.indent(id, outlineKeeps()) != null
 
     fun canOutdent(id: UUID): Boolean = scope.outdent(id) != null
 
-    /** Up (-1) or down (1) past the task above or below on screen. */
-    fun step(id: UUID, delta: Int, showDone: Boolean) = perform { it.step(id, delta, showDone) }
+    /** Up (-1) or down (1) past the task above or below in the tree. */
+    fun step(id: UUID, delta: Int) = perform { it.step(id, delta, outlineKeeps()) }
+
+    /** A task dropped on a group's row in the tree: to the top of that group. */
+    fun dropOnGroup(dragged: UUID, groupId: UUID): Boolean = perform { it.dropOnGroup(dragged, groupId) }
 
     /** A task dropped before, after or into another. False when it can't go there (into itself). */
     fun drop(dragged: UUID, target: UUID, zone: OutlineMoves.Zone): Boolean {
@@ -949,14 +959,14 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
     fun moveToGroupAnywhere(id: UUID, groupId: UUID) = perform { it.toGroup(id, groupId) }
 
     /**
-     * Adds a task where it was typed: under [parentId] (first, or right after [after]), or at the top level of the group
-     * on screen (in [stage], right after [after] when given). Its id, or null when it wasn't added.
+     * Adds a task where it was typed: under [parentId] (first, or right after [after]), or at the top level of [groupId]
+     * (the group on screen; in [stage], right after [after] when given, else last, or first when [first]). Its id, or
+     * null when it wasn't added.
      */
-    fun addTask(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null): UUID? {
+    fun addTask(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null, groupId: UUID? = selectedGroup, first: Boolean = false): UUID? {
         if (title.isBlank()) return null
         val id = UUID.randomUUID()
-        val group = selectedGroup
-        return if (change("Added") { b, now -> b.addInPlace(title, parentId, after, stage, group, id, Actor.USER, now) }) id else null
+        return if (change("Added") { b, now -> b.addInPlace(title, parentId, after, stage, groupId, id, Actor.USER, now, first) }) id else null
     }
 
     /** Renames a task (blank, or the same: nothing changes). */
@@ -1020,27 +1030,98 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
 
     // ---- What the views remember on this phone ----
 
-    /** The Tasks outline's open tasks. */
-    var outlineExpanded: Set<UUID> by mutableStateOf(
-        prefs.getString("outline.expanded", "").orEmpty().split(',').mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet(),
-    )
-        private set
+    // ---- The Tasks tree (docs/design/tasks-tree.md): what it remembers on this phone ----
 
-    /** The Tasks outline shows finished tasks too. */
-    var outlineShowDone: Boolean by mutableStateOf(prefs.getBoolean("outline.showDone", false))
-        private set
-
-    fun setExpanded(id: UUID, open: Boolean) = setExpanded(if (open) outlineExpanded + id else outlineExpanded - id)
-
-    fun setExpanded(ids: Set<UUID>) {
-        // Kept short (the newest few hundred), like the other apps.
-        outlineExpanded = ids.toList().takeLast(500).toSet()
-        prefs.edit().putString("outline.expanded", outlineExpanded.joinToString(",")).apply()
+    private val remembered = object : Remembered {
+        override fun text(key: String): String? = runCatching { prefs.getString(key, null) }.getOrNull()
+        override fun flag(key: String): Boolean? = if (prefs.contains(key)) runCatching { prefs.getBoolean(key, false) }.getOrNull() else null
+        override fun put(key: String, value: String?) {
+            prefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+        }
     }
 
-    fun chooseOutlineShowDone(on: Boolean) {
-        outlineShowDone = on
-        prefs.edit().putBoolean("outline.showDone", on).apply()
+    /** The tree's open tasks, closed groups, Show choice and zoom. */
+    var outline: OutlineMemory by mutableStateOf(OutlineMemory.read(remembered))
+        private set
+
+    private fun remember(next: OutlineMemory) {
+        val before = outline
+        // Tasks and groups that are gone are forgotten (not while the board is still opening: it's empty then).
+        val kept = if (opened != null) next.keepingOnly(board) else next
+        if (kept == before) return
+        outline = kept
+        kept.write(remembered, before)
+    }
+
+    /** How the tree is looked at now: the group picked, the search, and what it remembers. */
+    val outlineOptions: OutlineOptions get() = outline.options(selectedGroup, query)
+
+    /** The tree's rows (read [version] to redraw when the board changes). */
+    fun outlineRows(options: OutlineOptions = outlineOptions): List<OutlineRow> = Outline.rows(board, options, now)
+
+    /** The path above a zoomed tree (empty when not zoomed). */
+    fun outlinePath(options: OutlineOptions = outlineOptions): List<OutlinePathPart> = Outline.path(board, options, now)
+
+    /** The zoom the tree draws (the one kept; while a search leaves it out, its nearest parent the search keeps). */
+    fun outlineZoom(options: OutlineOptions = outlineOptions): UUID? = Outline.resolveZoom(board, options, now)
+
+    /** The zoom to keep: the one asked unless the task is really gone (a search or a Show choice only narrow it). */
+    fun outlineRememberedZoom(options: OutlineOptions = outlineOptions): UUID? = Outline.rememberedZoom(board, options)
+
+    /** Where New task adds: inside the zoom, else at the top of the group picked (all groups: the first). */
+    fun outlineNewTaskPlace(): NewTaskPlace = Outline.newTaskPlace(board, outlineOptions, now)
+
+    /** Whether a task is on screen in the tree (for Up, Down and Into the task above). */
+    fun outlineKeeps(): (WorkItem) -> Boolean = Outline.keeps(board, outlineOptions, now)
+
+    fun setExpanded(id: UUID, open: Boolean) = remember(outline.withOpen(id, open))
+
+    fun setGroupOpen(id: UUID, open: Boolean) = remember(outline.withGroupOpen(id, open))
+
+    fun chooseOutlineShow(show: OutlineShow) = remember(outline.choosing(show))
+
+    /** Open to Groups, Tasks, Subtasks or All. */
+    fun openOutlineTo(level: OutlineLevel) = remember(outline.openedTo(board, selectedGroup, query, level, now))
+
+    /** Into a task's branch (null: out). */
+    fun zoomOutline(id: UUID?) = remember(outline.zoomedTo(id))
+
+    /** A row the tree should select and scroll to once (leaving a zoom, Show in tree); the tree sets it back. */
+    var outlineReveal: UUID? by mutableStateOf(null)
+
+    /** Back: up one level, to the zoomed task's parent (the task it came from picked); from the first level out. */
+    fun outlineBack() {
+        val from = outlineZoom() ?: return leaveOutlineZoom()
+        val up = Outline.zoomUp(board, outlineOptions, now) ?: return leaveOutlineZoom()
+        remember(outline.zoomedTo(up))
+        outlineReveal = from
+    }
+
+    /** Out of the zoom to the whole tree, with the task that was zoomed into in sight and picked. */
+    fun leaveOutlineZoom() {
+        val from = outlineZoom() ?: outline.zoomId
+        remember(outline.leavingZoom(board))
+        outlineReveal = from
+    }
+
+    /** A view the app should go to (Show in tree: Tasks); AppShell goes there and sets it back. */
+    var requestedView: AppView? by mutableStateOf(null)
+
+    /**
+     * Show in tree (from a task's details): Tasks, with the task's parents and group open, a zoom that doesn't hold it
+     * left, and its row picked. The details close.
+     */
+    fun showInTree(id: UUID) {
+        val reveal = outline.showingInTree(board, id, selectedGroup, query) ?: return
+        if (reveal.clearSearch) {
+            search("")
+            status = "Cleared the search to show the task."
+        }
+        if (reveal.groupId != selectedGroup) reveal.groupId?.let { select(it) }
+        remember(reveal.memory)
+        outlineReveal = id
+        openTaskId = null
+        requestedView = AppView.TASKS
     }
 
     /** The Reports' range: "7", "28", "90", "365" days, or "custom". */

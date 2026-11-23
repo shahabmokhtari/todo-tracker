@@ -226,15 +226,17 @@ public enum OutlineMoves {
         item.parent?.children ?? roots ?? board.items
     }
 
-    /// The siblings shown (finished ones hidden unless `showDone`; the task itself always counts).
-    private static func shown(_ board: TaskBoard, _ item: WorkItem, showDone: Bool, roots: [WorkItem]?) -> [WorkItem] {
-        siblings(board, item, roots: roots).filter { showDone || !$0.isDone || $0 === item }
+    /// The siblings shown (`isShown` says which; without it, finished ones are hidden unless `showDone`; the task itself
+    /// always counts).
+    private static func shown(_ board: TaskBoard, _ item: WorkItem, showDone: Bool, roots: [WorkItem]?, isShown: ((WorkItem) -> Bool)?) -> [WorkItem] {
+        siblings(board, item, roots: roots).filter { $0 === item || (isShown?($0) ?? (showDone || !$0.isDone)) }
     }
 
     /// Make the task a subtask of the one above it (its previous sibling shown), last. Nil when there's none.
-    public static func indent(_ board: TaskBoard, _ id: UUID, showDone: Bool = true, roots: [WorkItem]? = nil) -> [BoardMove]? {
+    public static func indent(_ board: TaskBoard, _ id: UUID, showDone: Bool = true, roots: [WorkItem]? = nil,
+                              isShown: ((WorkItem) -> Bool)? = nil) -> [BoardMove]? {
         guard let item = board.find(id) else { return nil }
-        let visible = shown(board, item, showDone: showDone, roots: roots)
+        let visible = shown(board, item, showDone: showDone, roots: roots, isShown: isShown)
         guard let i = visible.firstIndex(where: { $0 === item }), i > 0 else { return nil }
         return [.move(id, parentId: visible[i - 1].id, groupId: nil, index: nil)]
     }
@@ -247,9 +249,10 @@ public enum OutlineMoves {
     }
 
     /// Up (-1) or down (1) among the siblings shown (finished ones may be hidden: they're stepped over).
-    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, showDone: Bool = true, roots: [WorkItem]? = nil) -> [BoardMove]? {
+    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, showDone: Bool = true, roots: [WorkItem]? = nil,
+                            isShown: ((WorkItem) -> Bool)? = nil) -> [BoardMove]? {
         guard let item = board.find(id) else { return nil }
-        let visible = shown(board, item, showDone: showDone, roots: roots)
+        let visible = shown(board, item, showDone: showDone, roots: roots, isShown: isShown)
         guard let i = visible.firstIndex(where: { $0 === item }), visible.indices.contains(i + delta) else { return nil }
         let neighbour = visible[i + delta].id
         return [delta < 0 ? .reorder(id, before: neighbour) : .reorderAfter(id, after: neighbour)]
@@ -265,6 +268,40 @@ public enum OutlineMoves {
             return parent === item.parent ? [place] : [.move(dragged, parentId: parent.id, groupId: nil, index: nil), place]
         }
         return item.parent != nil || item.groupId != onto.groupId ? [.move(dragged, parentId: nil, groupId: onto.groupId, index: nil), place] : [place]
+    }
+
+    /// A task dropped on a group's row in Tasks: to the top of that group, at its top level (outlinemodel.js
+    /// groupDropRequests). Nil when it's already that group's first task (nothing would change).
+    public static func toTopOfGroup(_ board: TaskBoard, _ id: UUID, groupId: UUID) -> [BoardMove]? {
+        guard let item = board.find(id) else { return nil }
+        if item.parent == nil, item.groupId == groupId, board.items.first(where: { $0.groupId == groupId && $0.archivedAt == nil }) === item { return nil }
+        return [.move(id, parentId: nil, groupId: groupId, index: 0)]
+    }
+
+    // In the Tasks tree, with how it's looked at (`options`): the siblings on screen are those the Show choice and the
+    // search keep, and at the top level only the task's own group's (under All groups each group is a tree of its own).
+
+    private static func onScreen(_ board: TaskBoard, _ id: UUID, _ options: OutlineOptions, _ now: Date) -> (roots: [WorkItem], isShown: (WorkItem) -> Bool) {
+        let group = board.find(id)?.groupId
+        return (board.items.filter { $0.archivedAt == nil && $0.groupId == group }, Outline.kept(board, options, now: now))
+    }
+
+    /// Tab in Tasks: under the task above it on screen, last.
+    public static func indent(_ board: TaskBoard, _ id: UUID, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        let on = onScreen(board, id, options, now)
+        return indent(board, id, roots: on.roots, isShown: on.isShown)
+    }
+
+    /// Option-up or down in Tasks: past the task above or below on screen.
+    public static func step(_ board: TaskBoard, _ id: UUID, by delta: Int, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        let on = onScreen(board, id, options, now)
+        return step(board, id, by: delta, roots: on.roots, isShown: on.isShown)
+    }
+
+    /// Shift-Tab in Tasks: out one level, except at the top of the zoom (it would leave the view; its row says so).
+    public static func outdent(_ board: TaskBoard, _ id: UUID, options: OutlineOptions, now: Date) -> [BoardMove]? {
+        if let zoom = Outline.resolveZoom(board, options, now: now), board.find(id)?.parent?.id == zoom { return nil }
+        return outdent(board, id)
     }
 
     /// A task to another group (from the sidebar): a top-level one changes group; a subtask becomes a task there, last.

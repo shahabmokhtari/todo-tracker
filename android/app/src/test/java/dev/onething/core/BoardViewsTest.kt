@@ -156,10 +156,44 @@ class BoardViewsTest {
         val pack = add("Pack", parentId = trip)
         add("Tickets", parentId = trip)
         board.complete(pack, now = now)
-        assertEquals(listOf("Trip"), OutlineRow.flatten(board.items, emptySet(), showDone = false).map { it.item.title })
-        val open = OutlineRow.flatten(board.items, setOf(trip), showDone = false)
-        assertEquals(listOf("Trip" to 0, "Tickets" to 1), open.map { it.item.title to it.depth })
-        assertEquals("a new subtask goes first", listOf("Trip", "Tickets", "Pack"), OutlineRow.flatten(board.items, setOf(trip), showDone = true).map { it.item.title })
+        val work = board.groups[0].id
+        fun rows(expanded: Set<UUID>, show: OutlineShow = OutlineShow.TODO) =
+            Outline.rows(board, OutlineOptions(groupId = work, show = show, expanded = expanded), now).map { it.title to it.depth }
+        assertEquals(listOf("Trip" to 0), rows(emptySet()))
+        assertEquals(listOf("Trip" to 0, "Tickets" to 1), rows(setOf(trip)))
+        assertEquals("a new subtask goes first", listOf("Trip" to 0, "Tickets" to 1, "Pack" to 1), rows(setOf(trip), OutlineShow.ALL))
+    }
+
+    @Test
+    fun `in the tree a task moves among its own group's tasks, and a drop on a group puts it first there`() {
+        val work = board.groups[0].id
+        val personal = board.groups[1].id
+        val report = add("Report")
+        group = personal
+        val plants = add("Water the plants")
+        val mum = add("Call mum")
+        group = null
+        val all = BoardScope(board, null)
+        val shown = Outline.keeps(board, OutlineOptions(), now)
+        assertNull("the first task of a group has nothing above it in the tree", all.indent(plants, shown))
+        assertNull(all.step(plants, -1, shown))
+        run(all.indent(mum, shown))
+        assertEquals(listOf("Call mum"), titles(board.get(plants).children))
+        assertEquals("Moved to Work", run(all.dropOnGroup(plants, work)))
+        assertEquals(listOf("Water the plants", "Report"), titles(board.items.filter { it.groupId == work }))
+        assertNull("already first there", all.dropOnGroup(plants, work))
+        assertEquals(work, board.get(report).groupId)
+    }
+
+    @Test
+    fun `a new task can go first in its group`() {
+        val personal = board.groups[1].id
+        add("Report")
+        group = personal
+        add("Plants")
+        val first = board.addInPlace("Mum", groupId = personal, id = UUID.randomUUID(), now = now, first = true)
+        assertEquals(listOf("Mum", "Plants"), titles(board.items.filter { it.groupId == personal }))
+        assertEquals(personal, first.groupId)
     }
 
     @Test

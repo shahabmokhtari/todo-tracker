@@ -225,7 +225,7 @@ async function captureWeb(browser, ids) {
   await shoot('today-light');
   await shoot('today-dark', { dark: true });
   await shoot('board', { hash: '#/board' });
-  await shoot('tasks', { hash: '#/tasks', prepare: async (page) => { await page.getByRole('button', { name: 'Expand all' }).click(); await wait(500); } });
+  await shoot('tasks', { hash: '#/tasks', prepare: async (page) => { await page.getByRole('group', { name: 'Open to' }).getByRole('button', { name: 'Subtasks' }).click(); await wait(500); } });
   await shoot('plan', { hash: '#/plan' });
   await shoot('reports', { hash: '#/reports' });
   await shoot('task-details', { hash: `#/task/${ids.release.id}` });

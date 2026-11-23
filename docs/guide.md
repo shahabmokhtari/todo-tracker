@@ -80,8 +80,19 @@ The web app (and the app window on Windows) has six views; switch with the side 
 - **Today**: what to do now (the same list as the sidebar).
 - **Board**: Inbox → Next → Doing → Done. Drag cards along, or focus one and press `Alt+←/→` (`Alt+↑/↓` within a
   column). Doing is kept to three on purpose. New tasks start in Inbox.
-- **Tasks**: every task as an outline. Type to rename, `Enter` for the next task, `Tab`/`Shift+Tab` to nest and
-  un-nest, `Alt+↑/↓` to move, `Space` to finish, `Esc` to leave; or drag a row before, after or into another.
+- **Tasks**: every task as an outline. Under *All groups* your groups are the top level, each with what's left to do;
+  drop a task on a group to move it there. A parent shows how far along it is (`3/8`, counting the tasks without
+  subtasks under it). Click a title to pick the row and again (or `Enter`, `F2`) to rename it; `Enter` in the box adds
+  the next task, `Tab`/`Shift+Tab` nest and un-nest, `Alt+↑/↓` move, `Space` finishes, `Alt+Enter` zooms in, `Esc`
+  goes back up; or drag a row before, after or into another. A subtask that starts with its parent's name ("Publisher
+  accounts: Pick a phone number") shows only the rest.
+  - **Show**: *To do*, *Can do now* (with their parents), *Waiting* (snoozed, or after an unfinished step), or
+    *Everything* (finished tasks too).
+  - **Open to** *Groups*, *Tasks*, *Subtasks* or *All*: one press opens the whole tree that deep.
+  - **Zoom** (⊙ on a parent, or `Alt+Enter` on a row): see only that branch, with the path above it to go back. `Esc`
+    goes up one level, and from the top of the branch back to the whole tree; the address (`#/tasks/…`) can be
+    bookmarked. **Show** narrows a zoom without leaving it ("Nothing here is waiting" when nothing under it is). On a
+    phone this is the easy way through a deep tree.
 - **Done**: what you finished, day by day, with the time it took. Archive finished tasks (or everything older than a
   week or a month) to keep it short; bring them back from **Archive**, or delete them.
 - **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per
@@ -183,11 +194,18 @@ matches.
   holds more than three (finishing beats starting); starting a timer (▶) moves a card to Doing, ✓ finishes it, and a
   finished card can be archived. Type in **Add to …** under a column to add a task there. On a phone it's one column
   at a time: swipe, or tap a column's name.
-* **Tasks:** every task as an outline. Tap ▸ to show subtasks, the circle to finish one, a title to pick it and again
-  to rename it (Done on the keyboard saves it and starts the next task below). ⋯ moves a task up or down, into the task
-  above or out one level, to another group, adds a subtask or times it. Hold a task and drop it on the top of another
-  (before it), its middle (inside it) or its bottom (after it). **Show finished**, **Expand all** and **Collapse all**
-  are above the list.
+* **Tasks:** every task as a tree. With all groups shown, each group is a row of its own (its color, how many tasks
+  are left, its progress, and **+** to add a task to it) that stays at the top while you scroll its tasks; tap it to
+  open or close it. A task with subtasks shows how many of them are done (`2/17`) with a thin bar. Tap ▸ to show
+  subtasks, the circle to finish one, a title to pick it and again to rename it (Done on the keyboard saves it and
+  starts the next task below). Long titles take two lines, and a subtask doesn't repeat its parent's name ("Publisher
+  accounts: Pay the fee" under *Publisher accounts* reads "Pay the fee"; renaming shows the whole title). Tap ⤢ to
+  **zoom** into a task: you see only what's under it, with the path above (tap a part to go there, the last one opens
+  the task); Back goes up one level, then out to the whole tree. **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can do now*, *Waiting* or *Everything* (finished tasks
+  too), and **Open to** opens the tree to *Groups*, *Tasks*, *Subtasks* or *All*. ⋯ moves a task up or down, into the
+  task above or out one level, to another group, adds a subtask, zooms in or times it. Hold a task and drop it on the
+  top of another (before it), its middle (inside it), its bottom (after it), or on a group (first in that group). In a
+  task's details, **Show in tree** takes you to it here.
 * **Done:** what you finished, day by day, with the time it took: **Reopen** or **Archive** each; the **Archive** tab
   brings archived tasks back (**Unarchive**).
 * **Plan:** your day (a week on a tablet) as a time grid. Tap an empty time, or **Plan…** on a task in Not planned (☰ on
@@ -334,9 +352,18 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
 * **Board:** your tasks as cards in Inbox, Next, Doing and Done. Drag a card to another column or place. The card you
   picked shows its buttons (time it, mark it done, ⇆ move it); every card has them in its menu. Doing is kept to three on purpose: with more, it says so. Done finishes a card; out of Done opens it again.
   Starting a timer moves a card to Doing. Type in the box under a column to add a card there.
-* **Tasks:** every task as an outline. Tap the selected task's title (or press Return) to rename it; Return again adds
-  the next task below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it;
-  Space marks it done. Drag a row onto another to put it inside, or use its ⋯ menu. *Show finished* in ⋯ at the top.
+* **Tasks:** every task as a tree. With all groups shown, each group is a row of its own (its color, how many tasks are
+  left, its progress, and **+** to add a task to it) that stays at the top while you scroll its tasks; click or tap it
+  to open or close it, and drop a task on it to put it first in that group. A task with subtasks shows how many of
+  them are done (`2/17`) with a thin bar. Long titles take two lines, and a subtask doesn't repeat its parent's name
+  (renaming shows the whole title). ⤢ **zooms** into a task: you see only what's under it, with the path above (a part
+  goes there, the last one opens the task); Escape, or Back on an iPhone, goes up one level, then out (Option-Return
+  zooms into the selected task). **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can
+  do now*, *Waiting* or *Everything* (finished tasks too), and **Open to** opens the tree to *Groups*, *Tasks*,
+  *Subtasks* or *All*. Tap the selected task's title (or press Return) to rename it; Return again adds the next task
+  below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it; Space marks
+  it done. Drag a row onto another to put it inside, or use its ⋯ menu. In a task's details, **Show in tree** takes
+  you to it here.
 * **Done:** what you finished, day by day, with Reopen and Archive; the Archive tab brings tasks back.
 * **Every task** has the same menu on a right-click or a long press (a card on the Board, a row anywhere): Mark done,
   Bring back now (when it waits), Later, Start the timer, Focus on this, Add a note, Open details, Open in New Window

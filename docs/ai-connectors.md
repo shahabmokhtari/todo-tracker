@@ -134,6 +134,7 @@ MSIX yet; until then, use the Claude Desktop or VS Code setup.
 ot                                  what to do now (and what is waiting)
 ot add 'Renew passport !! due:7d #admin'   quote it: shells treat # ! @ specially
 ot list #release                    find tasks: words, #tag, label:x, group:work, is:done
+ot tree --show now --depth 2        the tree as Tasks shows it, with each parent's progress
 ot note passport 'Booked appointment for Tuesday'
 ot snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
 ot done passport                    finish

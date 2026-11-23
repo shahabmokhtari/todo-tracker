@@ -25,6 +25,10 @@ public final class ShellState: ObservableObject {
     @Published public var confirmingDone: UUID?
     /// Typing in a box inside a list (a note under a row): Space and Return are the box's, not the list's.
     @Published public var typing = false
+    /// "Show in tree": the row Tasks brings into view (and the Show choice to use for now), once it's drawn.
+    @Published public var treeReveal: TreeReveal?
+    /// The row Show in tree picked: the details' sheet going away (a phone) leaves it picked, once.
+    public var keepSelection: UUID?
 
     public init(model: BoardModel) { self.model = model }
 
@@ -56,6 +60,7 @@ public final class ShellState: ObservableObject {
 
     /// Selects a task and opens its details.
     public func open(_ id: UUID) {
+        keepSelection = nil
         selectedTask = id
         inspected = id
     }

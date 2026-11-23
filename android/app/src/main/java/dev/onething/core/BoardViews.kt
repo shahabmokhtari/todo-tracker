@@ -64,6 +64,31 @@ class BoardScope(val board: TaskBoard, val groupId: UUID?, val query: String = "
     fun indent(id: UUID, showDone: Boolean = true): PlannedMove? =
         OutlineMoves.indent(board, id, showDone, matchingRoots)?.let { PlannedMove(it, null) }
 
+    /**
+     * Under the task above it in the Tasks tree: [shown] says which tasks are on screen ([Outline.keeps]); at the top level
+     * only its own group's tasks are next to it.
+     */
+    fun indent(id: UUID, shown: (WorkItem) -> Boolean): PlannedMove? =
+        OutlineMoves.indent(board, id, shown, besides(id))?.let { PlannedMove(it, null) }
+
+    /** Up (-1) or down (1) past the task above or below in the Tasks tree ([shown]: as for [indent]). */
+    fun step(id: UUID, delta: Int, shown: (WorkItem) -> Boolean): PlannedMove? =
+        OutlineMoves.step(board, id, delta, shown, besides(id))?.let { PlannedMove(it, null) }
+
+    // The top-level tasks next to a top-level task in the Tasks tree: its group's (each group has its own rows).
+    private fun besides(id: UUID): List<WorkItem>? {
+        val item = board.find(id)?.takeIf { it.parent == null } ?: return null
+        return board.items.filter { it.archivedAt == null && it.groupId == item.groupId }
+    }
+
+    /** A task dropped on a group's row in the Tasks tree: to the top of that group, at its top level. */
+    fun dropOnGroup(id: UUID, groupId: UUID): PlannedMove? {
+        val group = board.groups.firstOrNull { it.id == groupId } ?: return null
+        val item = board.find(id) ?: return null
+        if (item.parent == null && item.groupId == groupId && board.items.firstOrNull { it.groupId == groupId && it.archivedAt == null } === item) return null
+        return PlannedMove(listOf(BoardMove.Move(id, null, groupId = groupId, index = 0)), "Moved to ${group.name}")
+    }
+
     /** Out one level, right after its parent. */
     fun outdent(id: UUID): PlannedMove? = OutlineMoves.outdent(board, id)?.let { PlannedMove(it, null) }
 
@@ -89,15 +114,17 @@ fun TaskBoard.applyPlanned(planned: PlannedMove, actor: Actor = Actor.USER, now:
 
 /**
  * Adds a task where it was typed: under [parentId] (first, or right after [after]), or at the top level of [groupId]
- * (in [stage], right after [after] when given). [id] is chosen up front (the same change made twice makes the same task).
+ * (in [stage], right after [after] when given; else last, or first of its group when [first]). [id] is chosen up front
+ * (the same change made twice makes the same task).
  */
-fun TaskBoard.addInPlace(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null, groupId: UUID? = null, id: UUID, actor: Actor = Actor.USER, now: Instant): WorkItem {
+fun TaskBoard.addInPlace(title: String, parentId: UUID? = null, after: UUID? = null, stage: Stage? = null, groupId: UUID? = null, id: UUID, actor: Actor = Actor.USER, now: Instant, first: Boolean = false): WorkItem {
     val group = if (parentId == null) (after?.let { find(it)?.groupId } ?: groupId) else null
-    val first = parentId?.let { find(it)?.children?.firstOrNull()?.id }
+    val firstId = if (parentId != null) find(parentId)?.children?.firstOrNull()?.id
+    else if (first && after == null) items.firstOrNull { it.archivedAt == null && it.groupId == (group ?: defaultGroupId) }?.id else null
     // Only a sibling can be the task it goes after.
     val sibling = after?.takeIf { find(it)?.parent?.id == parentId }
     val item = addTask(NewTask(title.trim(), parentId = parentId, groupId = group, stage = stage, id = id), actor, now)
-    if (sibling != null) reorderAfter(item.id, sibling, actor, now) else if (first != null) reorder(item.id, first, actor, now)
+    if (sibling != null) reorderAfter(item.id, sibling, actor, now) else if (firstId != null) reorder(item.id, firstId, actor, now)
     return item
 }
 
@@ -171,26 +198,6 @@ object RelativeTime {
             }
         }
         return if (delta > 0) "in $text" else "$text ago"
-    }
-}
-
-/** A row of the Tasks outline: a task, how deep it is, and whether its subtasks are shown. */
-data class OutlineRow(val item: WorkItem, val depth: Int, val hasChildren: Boolean, val expanded: Boolean) {
-    companion object {
-        /** Rows shown, depth first: closed tasks hide their subtasks; finished ones are hidden unless [showDone] (outlinemodel.js flatten). */
-        fun flatten(roots: List<WorkItem>, expanded: Set<UUID>, showDone: Boolean): List<OutlineRow> {
-            val rows = mutableListOf<OutlineRow>()
-            fun walk(items: List<WorkItem>, depth: Int) {
-                for (item in items) {
-                    if (!showDone && item.isDone) continue
-                    val open = item.id in expanded
-                    rows.add(OutlineRow(item, depth, item.children.any { showDone || !it.isDone }, open))
-                    if (open) walk(item.children, depth + 1)
-                }
-            }
-            walk(roots, 0)
-            return rows
-        }
     }
 }
 

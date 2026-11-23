@@ -70,6 +70,32 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Agent_can_read_the_whole_tree_with_progress_or_one_branch_of_it()
+    {
+        var launch = await Call("create_task", new() { ["title"] = "Launch the site", ["group"] = "work" });
+        var launchId = launch.GetProperty("id").GetString()!;
+        var copy = await Call("create_task", new() { ["title"] = "Launch the site: Write the copy", ["parentId"] = launchId });
+        await Call("create_task", new() { ["title"] = "Hero", ["parentId"] = copy.GetProperty("id").GetString() });
+        var domain = await Call("create_task", new() { ["title"] = "Buy the domain", ["parentId"] = launchId });
+        await Call("complete_task", new() { ["taskId"] = domain.GetProperty("id").GetString() });
+        var printer = await Call("create_task", new() { ["title"] = "Call the printer", ["parentId"] = launchId });
+        await Call("schedule_next_action", new() { ["taskId"] = printer.GetProperty("id").GetString(), ["inMinutes"] = 120 });
+
+        var tree = await Call("get_tree", new());
+        var rows = tree.GetProperty("rows").EnumerateArray().ToList();
+        Assert.Equal(["group", "task"], rows.Take(2).Select(r => r.GetProperty("kind").GetString()));
+        Assert.Equal("Launch the site", rows[1].GetProperty("title").GetString());
+        Assert.Equal((1, 3), (rows[1].GetProperty("doneCount").GetInt32(), rows[1].GetProperty("totalCount").GetInt32()));
+        Assert.DoesNotContain(rows, r => r.GetProperty("title").GetString() == "Buy the domain");
+        Assert.Equal("Write the copy", rows[2].GetProperty("title").GetString());
+        Assert.Equal("Launch the site: Write the copy", rows[2].GetProperty("fullTitle").GetString());
+
+        var branch = await Call("get_tree", new() { ["underTaskId"] = launchId, ["show"] = "now", ["depth"] = 1 });
+        Assert.Equal(["All groups", "Work", "Launch the site"], branch.GetProperty("path").EnumerateArray().Select(p => p.GetProperty("title").GetString()));
+        Assert.Equal(["Write the copy"], branch.GetProperty("rows").EnumerateArray().Select(r => r.GetProperty("title").GetString()));
+    }
+
+    [Fact]
     public async Task Agent_can_put_what_matters_most_first()
     {
         await Call("create_task", new() { ["title"] = "Urgent", ["priority"] = "critical" });

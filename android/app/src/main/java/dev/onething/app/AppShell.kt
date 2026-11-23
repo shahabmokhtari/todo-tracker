@@ -149,6 +149,11 @@ fun AppShell(vm: BoardViewModel) {
     // Another view: Back goes to Today first (an open task, a sheet or Settings answer Back before this).
     BackHandler(enabled = view != AppView.TODAY) { go(AppView.TODAY) }
     val open: (UUID) -> Unit = { vm.openTask(it) }
+    // Show in tree (a task's details): to Tasks.
+    LaunchedEffect(vm.requestedView) {
+        vm.requestedView?.let { go(it) }
+        vm.requestedView = null
+    }
     // Ctrl+N (a keyboard): quick add.
     LaunchedEffect(vm.addRequested) {
         if (vm.addRequested) {
