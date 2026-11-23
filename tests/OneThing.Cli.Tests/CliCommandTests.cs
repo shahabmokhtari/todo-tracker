@@ -589,4 +589,57 @@ public sealed class CliCommandTests : IDisposable
         Assert.Contains("Removed", await _tt.Ok("hooks", "remove", id), StringComparison.Ordinal);
         Assert.Contains("No hooks yet", await _tt.Ok("hooks"), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task Tree_shows_each_group_with_its_tasks_and_every_parents_progress()
+    {
+        var launch = (await _tt.Json("add", "Launch the site")).Id().ToString();
+        var copy = (await _tt.Json("add", "Launch the site: Write the copy", "--under", launch)).Id().ToString();
+        await _tt.Ok("add", "Hero", "--under", copy);
+        var domain = (await _tt.Json("add", "Buy the domain", "--under", launch)).Id().ToString();
+        await _tt.Ok("done", domain);
+        await _tt.Ok("add", "Renew passport", "-g", "personal");
+
+        var lines = (await _tt.Ok("tree")).Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.TrimEnd()).ToList();
+
+        Assert.Equal("Work  (1 to do, 1/2 done)", lines[0]);
+        Assert.EndsWith("[ ] Launch the site  1/2", lines[1], StringComparison.Ordinal);
+        Assert.StartsWith("  ", lines[1], StringComparison.Ordinal);
+        // The parent's name isn't repeated; finished tasks are left out unless --show all.
+        Assert.EndsWith("[ ] Write the copy  0/1", lines[2], StringComparison.Ordinal);
+        Assert.StartsWith("    ", lines[2], StringComparison.Ordinal);
+        Assert.EndsWith("[ ] Hero", lines[3], StringComparison.Ordinal);
+        Assert.Equal("Personal  (1 to do, 0/1 done)", lines[4]);
+        Assert.DoesNotContain("Buy the domain", string.Join('\n', lines), StringComparison.Ordinal);
+        Assert.Contains("[x] Buy the domain", await _tt.Ok("tree", "--show", "all"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Tree_shows_one_branch_with_its_path_a_few_levels_deep_or_only_what_waits()
+    {
+        var launch = (await _tt.Json("add", "Launch the site")).Id().ToString();
+        var copy = (await _tt.Json("add", "Write the copy", "--under", launch)).Id().ToString();
+        await _tt.Ok("add", "Hero", "--under", copy);
+        var call = (await _tt.Json("add", "Call the printer", "--under", launch)).Id().ToString();
+        await _tt.Ok("snooze", call, "2h");
+
+        var branch = await _tt.Ok("tree", "--under", launch, "--depth", "1");
+        Assert.StartsWith("All groups › Work › Launch the site  0/2", branch, StringComparison.Ordinal);
+        Assert.Contains("Write the copy  0/1", branch, StringComparison.Ordinal);
+        Assert.DoesNotContain("Hero", branch, StringComparison.Ordinal);
+        Assert.Contains("Call the printer  (waiting)", branch, StringComparison.Ordinal);
+
+        var waiting = await _tt.Json("tree", "--show", "waiting", "-g", "Work");
+        Assert.Empty(waiting["path"]!.AsArray());
+        Assert.Equal(["Launch the site", "Call the printer"], waiting["rows"]!.AsArray().Select(r => r.Str("title")));
+        Assert.Equal("waiting", waiting["rows"]![1].Str("state"));
+
+        Assert.Contains("has no subtasks", (await _tt.Run("tree", "--under", call)).Error, StringComparison.Ordinal);
+        // A Show choice narrows what's under the task (as in the app), it doesn't refuse it.
+        var nowOnly = await _tt.Json("tree", "--under", copy, "--show", "waiting");
+        Assert.Equal("Write the copy", nowOnly["path"]!.AsArray()[^1].Str("title"));
+        Assert.Empty(nowOnly["rows"]!.AsArray());
+        Assert.Contains("\"Launch the site\" is in Work, not Personal", (await _tt.Run("tree", "--under", launch, "-g", "Personal")).Error, StringComparison.Ordinal);
+        Assert.Contains("--show is todo, now, waiting or all", (await _tt.Run("tree", "--show", "later")).Error, StringComparison.Ordinal);
+    }
 }

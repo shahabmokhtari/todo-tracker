@@ -241,7 +241,40 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   **Show in tree**. A subtask also shows what it's **part of**: the parent (opens), its progress, and the other
   subtasks next to it (the current one highlighted). *Move…* picks a group and where in it: on its own (a top-level task)
   or under any open task of that group (searchable; never itself or its own subtasks). *Show in tree* opens Tasks with
-  its parents expanded and the task focused and highlighted. In lists, a subtask's path opens its parent.
+  its group and parents opened and the task focused and highlighted (leaving a zoom that doesn't hold it; a finished
+  task shows under *Everything* for the moment, and a search that leaves it out is cleared, with a message). In lists, a
+  subtask's path opens its parent.
+* **Tasks** is the tree, shown by the rules in `Outline` (C#), `outlinemodel.js`, Swift and Kotlin, checked against
+  `tests/fixtures/outline.json` ([design](design/tasks-tree.md)). Only how it's shown changes; nothing is written to
+  the tasks folder, and what's remembered is per device (`onething.outline.expanded`, `.closedGroups`, `.show`).
+  * **Groups at the top:** under *All groups* there's a row per group, in the board's order, with its color, how many
+    tasks are left and its progress; its top-level tasks are under it. It opens and closes like any row, stays at the
+    top while its tasks scroll under it, and takes a dropped task (to the top of that group, at the top level). It has
+    no check box and isn't renamed or dragged here. An empty group shows (somewhere to drop into) unless a search, *Can
+    do now* or *Waiting* is on. With one group picked the tree starts at its tasks.
+  * **Progress:** every parent shows `done/total` and a thin bar, counting the tasks without subtasks under it (as the
+    server's `doneCount`/`totalCount` and Workstreams do). A group adds up its top-level tasks, one each for a task
+    without subtasks.
+  * **Zoom** (⊙ on a parent, *Move… › Zoom in*, or Alt+Enter on a row; `#/tasks/<id>`): the tree shows only what's
+    under it, with the path above (*All groups › group › each parent › the task*; each part goes there, the last opens
+    the task's details). *Escape* goes up one level (to the zoomed task's parent), and from the first level out; the
+    browser's Back follows the address. While zoomed, *New task* adds inside the zoomed task and its top-level rows
+    can't move out one level (drag or *Move…* still can). *Show* and a search narrow a zoom for the moment (the zoom
+    and its path stay; an empty branch says what the choice leaves out); it's given up only when the task is really
+    gone (archived, deleted, moved out of the group picked: the top; left without subtasks: its parent).
+  * **Show:** *To do* (default: every task not finished), *Can do now* (`actionable`, with their parents), *Waiting*
+    (`waiting` or `locked`, with their parents), *Everything*. A parent kept for its subtasks stays, closed or open as
+    it was. Someone who had *Show finished* on starts at *Everything*. While there's search text (the server keeps the
+    matches, their parents and subtasks) the rows are shown open, without changing what's remembered.
+  * **Open to** *Groups* (under All groups) · *Tasks* · *Subtasks* · *All* opens what's in view exactly that deep;
+    opening and closing rows afterwards works as always.
+  * **Titles** wrap to two lines. A subtask whose title starts with its parent's title (or the parent's shorter title
+    as shown) followed by `:`, ` -`, ` –` or ` —` shows only the rest; the full title is the tooltip and what renaming
+    shows and saves. A click on a title selects the row, a click on the selected row's title (or Enter, F2) renames it.
+    Thin guide lines mark each level.
+  * Keys: one Tab stop for the tree; arrows, Home/End, Enter/F2 rename, Ctrl+Enter details, Space done, Tab/Shift+Tab
+    nest, Alt+↑/↓ move, Alt+Enter zoom in, Insert/Alt+N add, Esc up one level of the zoom, then out of the tree. On a phone the title gets the row; a tapped
+    row shows its buttons (timer, add a subtask, details, *Move…*) on a line under it.
 * **Quick add picks a group:** the picker by *Add* follows the tab shown (the first group under All); choosing another
   sends the new task there without changing the tab ("Added to Personal").
 * **Repeating tasks** (details panel *Repeat*, REST/MCP `repeat`, frontmatter `repeat:`): a rule in words, the way the
@@ -308,7 +341,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
 * Same sections and actions. The iOS app uses local notifications. The macOS app adds a menu bar glance with the focus task, Done, Later, and capture.
 * **The window** (`AppShell`): a `NavigationSplitView` on iPad and Mac with the web's views in its order (Today, Board, Tasks, Done, Reports, Plan; ⌘1–⌘6), the groups (counts as on Today's tabs, color, context menu Rename/Color/Delete, a task dropped on one moves there: `OutlineMoves.toGroup`), Search (the shared syntax; it also narrows Board, Tasks and Done) and Settings (a Settings scene on the Mac). A task's details open in a column beside the view (40% of the window, 320–520 pt); compact width (iPhone, narrow Split View or Slide Over) shows the views as tabs (Today first, the rest under More) with a group menu, and the details as a sheet. Layouts follow the size class and the window's width, never fixed widths. Commands (`OneThingCommands`, also the iPad's keyboard shortcuts): ⌘N quick add, ⌘F search, ⌘↩ mark done or reopen, ⌘L later in an hour, ⇧⌘L tomorrow morning, ⌘I details. Every task has one context menu (Mark done/Reopen, Later with the snooze choices, timer, Open details, Open in New Window via `WindowGroup(for: UUID)` where multiple windows are supported, Move to a column or group, Copy link, Archive/Unarchive, Delete after asking). Pointer hover highlights rows and cards. Do now reorders by drag (`/api/now/order`). The sidebar stays visible (`.balanced`, an iPad in portrait too). Today is two columns once the view is 680 pt wide (`Presentation.todayColumns`): the focus card and Do now in a `List`, then a second column (280–380 pt) with Workstreams, Coming up (waiting), Done today and Recent notes; narrower, one list. Rows carry no button row: a circle marks done, swipes (`Presentation.rowActions`: leading Done, Now for a waiting task, Reopen for a finished one; trailing Later and More) and the context menu do the rest; on the Board only the selected card shows its buttons. Space marks the selected row done and Return opens it. The time tracker and the focus timer share one strip (`TimerStrip`, `Presentation.timerStrip`): in the toolbar on iPad and Mac, above the tabs on iPhone (while one runs; Today offers the idle focus timer too).
 * **Board** (`boardmodel.js` ported as `BoardColumns`): Inbox, Next, Doing, Done (cards finished in the last 14 days, newest first); as many columns side by side as fit at about 250 pt, the rest scroll. Cards show title and icon, group color, priority, repeat, labels, three tags, due/overdue, waiting, subtask progress and time; timer, Mark done (Archive in Done) and a Move menu. Drops and Option-arrows make the web's requests (`/stage`, `/complete`, `/reorder`); Doing shows n/3 and the web's message past three. New tasks start in Inbox (as in C#).
-* **Tasks** (`outlinemodel.js` ported as `OutlineMoves`): the tree as rows with disclosure, check box, inline rename, chips and facts, a ⋯ menu (timer, add a subtask, details, up, down, into the task above, out one level); keys as on the web (Return rename/next, Tab/⇧Tab, ⌥↑/↓, Space, ←/→). *Show finished*, expand and collapse all; expanded rows are remembered.
+* **Tasks** tree (`Outline` in OneThingKit, shared `outline.json`; moves are `outlinemodel.js` ported as `OutlineMoves`): under All groups a section per group whose header is the group row (color, name, `n to do`, progress, open/close, **+**, a drop target that puts a task first in that group; pinned while its tasks scroll), `done/total` and a thin bar on parents (leaves), zoom (⤢, ⋯ › *Zoom in* or Option-Return; the path above the list; Escape or an iPhone's Back button goes up one level, then out; a path part goes there; Show and a search narrow it without leaving it), *Show* (To do · Can do now · Waiting · Everything) and *Open to* (Groups · Tasks · Subtasks · All), titles on two lines without the parent's name, guide lines per level. Rows with disclosure, check box, inline rename (the whole title), chips and facts, a ⋯ menu (timer, add a subtask, details, zoom in, up, down, into the task above, out one level, not at the top of a zoom); keys as on the web (Return rename/next, ⌥Return zoom in, Tab/⇧Tab, ⌥↑/↓, Space, ←/→, Escape up a level). Open rows, closed groups, the Show choice and the zoom are kept on the device (`onething.outline.expanded`, `.closedGroups`, `.show`, `.zoom`; someone who had *Show finished* on starts at *Everything*). *Show in tree* in a task's details opens Tasks with its parents and group open and its row picked and lit up for a moment, leaving a zoom that doesn't hold it and a search that leaves it out (with a message).
 * **Done**: finished top-level tasks by day (Today, Yesterday, the date) with time spent, Reopen and Archive; the Archive tab with Unarchive; a find box.
 * Moves (`BoardMove`: complete, stage, move, reorder, reorderAfter) run on the device's board in one save, or as the same requests in order on the server; shared cases in `tests/fixtures/board-moves.json` (generated by the C# core).
 * Task details edit every field the web drawer has except attachments, the rich HTML version and file-version history (title, details, priority, deadline, repeat, energy, group, the Board column, steps in order, hours between steps, and *Look, tags and labels*: icon, its own color or none, tags, label chips and a new label), offer **Move…** (a group, then on its own or under any open task of it, never itself or its subtasks: `MoveTargets`, the web's Move dialog), Later, Remind me, Mark done/Reopen, Time this task, Archive/Unarchive and Delete (asks first). Subtasks open in place at any depth; a waiting task says why. Groups can be renamed, recolored and deleted (tasks move). Search follows `TaskQuery` (shared fixture `tests/fixtures/search.json`). A Settings screen holds appearance, energy in a day, focus lengths and breaks, and **Labels** (rename, recolor, remove from every task after asking; shared fixture `tests/fixtures/labels.json`).
@@ -350,9 +383,16 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   one at a time on a phone with a bar of column names (each a drop target). Drag a card (long press, platform drag and
   drop) onto a column, a card (before it) or a column name, or use ⇄ (to a column, Up, Down). Doing shows `n/3` and
   the over-limit warning; ▶ times a card (moves it to Doing), ✓ finishes, Archive in Done; *Add to …* per column.
-* **Tasks** outline (`OutlineRow.flatten`, `OutlineMoves`): expand/collapse (kept on the phone), Show finished,
-  rename in place (Done adds the next one below), ⋯ Up/Down/Into the task above/Out one level/Move to group/Add a
-  subtask/timer; drop on a row's top quarter (before), middle (inside) or bottom quarter (after).
+* **Tasks** tree (`Outline`, shared `outline.json`; `OutlineMoves`): group rows under All groups (color, name, `n to
+  do`, progress, open/close, **+**, a drop target that puts a task first in that group; sticky headers), `done/total`
+  and a thin bar on parents (leaves), zoom (⤢ or ⋯ › *Zoom in*; the path above the list, system Back goes up one level, then out; Show and a search narrow it without leaving it), *Show*
+  (To do · Can do now · Waiting · Everything) and *Open to* (Groups · Tasks · Subtasks · All), titles on two lines
+  without the parent's name, guide lines per level. Rename in place shows the whole title (Done adds the next one
+  below); ⋯ Up/Down/Into the task above/Out one level (not at the top of a zoom)/Move to group/Add a subtask/timer;
+  drop on a row's top quarter (before), middle (inside) or bottom quarter (after). Open rows, closed groups, the Show
+  choice and the zoom are kept on the phone (`outline.expanded`, `outline.closedGroups`, `outline.show`,
+  `outline.zoom`; someone who had *Show finished* on starts at *Everything*). *Show in tree* in a task's details opens
+  Tasks with its parents and group open and its row picked (a search that leaves it out is cleared, with a message).
 * **Done**: Done and Archive tabs, find box, by day (Today, Yesterday, then the date) with time spent; Reopen, Archive,
   Unarchive.
 * **Plan** (`PlanDays`, `PlanGrid` as `PlanGrid.swift`; shared `plan.json`): a day on a phone, a day or week on a
@@ -534,6 +574,7 @@ the docs explain the options and risks. The server sends the same short instruct
 |---|---|
 | `get_dashboard` | Now / waiting / overview / notes / timer, optionally for one group |
 | `list_tasks`, `get_task`, `get_report` | Read tree, details, timeline |
+| `get_tree` | The tree as Tasks shows it: group rows, progress, one branch with its path, *now* / *waiting*, a few levels (`ot tree`) |
 | `create_task` | Task or subtask (group, priority, deadline, optional defer) |
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |

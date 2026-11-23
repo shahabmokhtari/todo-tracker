@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { duration, clock, byDay, dayKey, dayLabel } from '../../src/OneThing.Server/wwwroot/js/timefmt.js';
 import { columnsOf, wip, dropRequests, keyboardMove, cardFacts } from '../../src/OneThing.Server/wwwroot/js/boardmodel.js';
-import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests as outlineDrop } from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
+import { outlineRows, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests as outlineDrop } from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
 import { breakState, tipFor } from '../../src/OneThing.Server/wwwroot/js/breaks.js';
 import { score, rank } from '../../src/OneThing.Server/wwwroot/js/palette.js';
 import { niceScale, barLayout, donutSlices, arcPath, ganttLayout, heatLevel } from '../../src/OneThing.Server/wwwroot/js/charts.js';
@@ -78,11 +78,12 @@ test('card facts put the urgent ones first', () => {
   assert.equal(cardFacts(node('b', { deadline: '2026-01-21T00:00:00Z' }), now)[0].tone, 'warn');
 });
 
-test('the outline hides collapsed and (optionally) finished subtasks', () => {
-  const roots = [node('a', { children: [node('a1'), node('a2', { done: true })] }), node('b')];
-  assert.deepEqual(flatten(roots, new Set()).map((r) => r.node.id), ['a', 'b']);
-  assert.deepEqual(flatten(roots, new Set(['a'])).map((r) => [r.node.id, r.depth]), [['a', 0], ['a1', 1], ['a2', 1], ['b', 0]]);
-  assert.deepEqual(flatten(roots, new Set(['a']), false).map((r) => r.node.id), ['a', 'a1', 'b']);
+test('the outline hides collapsed and (unless Everything) finished subtasks', () => {
+  const roots = [node('a', { groupId: 'g', children: [node('a1'), node('a2', { done: true })] }), node('b', { groupId: 'g' })];
+  const rows = (expanded, show) => outlineRows(roots, [], { groupId: 'g', show, expanded: new Set(expanded) });
+  assert.deepEqual(rows([], 'all').map((r) => r.id), ['a', 'b']);
+  assert.deepEqual(rows(['a'], 'all').map((r) => [r.id, r.depth]), [['a', 0], ['a1', 1], ['a2', 1], ['b', 0]]);
+  assert.deepEqual(rows(['a'], 'todo').map((r) => r.id), ['a', 'a1', 'b']);
 });
 
 test('Tab makes a task a subtask of the one above it; Shift+Tab takes it out again, right after its parent', () => {
@@ -144,6 +145,12 @@ test('drops go before, inside or after a row, never into the task itself', () =>
     { method: 'POST', url: '/api/items/a1/reorder', body: { after: 'b' } },
   ]);
   assert.equal(outlineDrop(map, 'a', 'a1', 'inside'), null);
+  // Under All groups: next to another group's top-level task moves it to that group too.
+  const groups = index([node('x', { groupId: 'g1' }), node('y', { groupId: 'g2' })]);
+  assert.deepEqual(outlineDrop(groups, 'x', 'y', 'before'), [
+    { method: 'POST', url: '/api/items/x/move', body: { toTopLevel: true, groupId: 'g2' } },
+    { method: 'POST', url: '/api/items/x/reorder', body: { before: 'y' } },
+  ]);
   assert.equal(outlineDrop(map, 'a', 'a', 'before'), null);
 });
 
@@ -247,9 +254,16 @@ test('routes: views, a task full size, and panels a plugin opens over the view',
   const { parseRoute } = await import('../../src/OneThing.Server/wwwroot/js/shell.js');
   assert.deepEqual(parseRoute('#/board'), { view: 'board', task: null });
   assert.deepEqual(parseRoute('#/task/abc'), { view: null, task: 'abc' });
+  // Tasks zoomed into a branch: #/tasks/<id>.
+  assert.deepEqual(parseRoute('#/tasks'), { view: 'tasks', task: null });
+  assert.deepEqual(parseRoute('#/tasks/abc'), { view: 'tasks', task: null, zoom: 'abc' });
   assert.deepEqual(parseRoute('#/ask'), { view: null, task: null, panel: 'ask' });
   assert.deepEqual(parseRoute('#/nope'), { view: 'today', task: null });
   assert.deepEqual(parseRoute(''), { view: 'today', task: null });
+  // A broken address (a cut-off escape) is the view without the id, never an error.
+  assert.deepEqual(parseRoute('#/tasks/%E0%A4'), { view: 'tasks', task: null });
+  assert.deepEqual(parseRoute('#/task/%E0%A4'), { view: 'today', task: null });
+  assert.deepEqual(parseRoute('#/tasks/a%20b'), { view: 'tasks', task: null, zoom: 'a b' });
 });
 test('moves name the neighbouring task, not a position, so they land right when a filter hides some subtasks', () => {
   // Shown under P: only D (A, B and C are hidden by the filter). "After D" means after D, wherever D is.

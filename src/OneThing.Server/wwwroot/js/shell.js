@@ -18,12 +18,20 @@ export const VIEWS = [
   { id: 'settings', name: 'Settings', icon: 'settings', key: '7', nav: false },
 ];
 
-/** The view and task a location hash names: #/board, #/task/<id> (a task, full size, over the last view). */
+/**
+ * The view and task a location hash names: #/board, #/task/<id> (a task, full size, over the last view), #/tasks/<id>
+ * (Tasks, zoomed into that task's branch).
+ */
 export function parseRoute(hash) {
   const parts = String(hash ?? '').replace(/^#\/?/, '').split('/').filter(Boolean);
-  if (parts[0] === 'task' && parts[1]) return { view: null, task: decodeURIComponent(parts[1]) };
+  // An id that can't be read (a cut-off %-escape): the address as if it had none.
+  const id = (text) => { try { return decodeURIComponent(text); } catch { return null; } };
+  const task = parts[0] === 'task' && parts[1] ? id(parts[1]) : null;
+  if (task) return { view: null, task };
   // A panel a plugin opens over the view on screen (#/ask: the chat).
   if (parts[0] === 'ask') return { view: null, task: null, panel: parts[0] };
+  const zoom = parts[0] === 'tasks' && parts[1] ? id(parts[1]) : null;
+  if (zoom) return { view: 'tasks', task: null, zoom };
   return { view: VIEWS.some((v) => v.id === parts[0]) ? parts[0] : 'today', task: null };
 }
 
@@ -112,7 +120,7 @@ export function createShell(ctx) {
   // ---- routing ---------------------------------------------------------------------------------------------------
 
   async function route() {
-    const { view, task, panel } = parseRoute(location.hash);
+    const { view, task, panel, zoom } = parseRoute(location.hash);
     if (panel) {
       if (!current) show(localStorage.getItem('onething.view') || 'today');
       return;
@@ -126,6 +134,8 @@ export function createShell(ctx) {
 
     // Another view, or Back from a task's own address: the panel closes (it would cover the view).
     if (ctx.drawerOpen()) await ctx.closeDrawer();
+    // Tasks: the branch the address zooms into (none: the whole tree), before it draws.
+    if (view === 'tasks') ctx.views.tasks?.setZoom?.(zoom ?? null);
     show(view);
   }
 

@@ -28,6 +28,7 @@ links them into `~/.local/bin`), in `~/.local/bin` with the Linux install, or `d
 | [`ot now`](#ot-now) | What to do now, and what is waiting |
 | [`ot add`](#ot-add) | Add a task |
 | [`ot list`](#ot-list) | Find tasks |
+| [`ot tree`](#ot-tree) | The task tree as Tasks shows it, with each parent's progress |
 | [`ot show`](#ot-show) | A task with its subtasks, notes, file and link |
 | [`ot open`](#ot-open) | Open a task in the app (its onething:// link) |
 | [`ot done`](#ot-done) | Mark tasks done |
@@ -103,6 +104,18 @@ ot list [filter] [-g group] [--all]
 ```
 
 Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.  
+
+### ot tree
+
+The task tree as Tasks shows it, with each parent's progress.
+
+```
+ot tree [-g group] [--under task] [--show todo|now|waiting|all] [--depth n]
+```
+
+All groups: a line per group, its tasks under it. --under shows one branch; --show now keeps what can be done now (with its parents),  
+--show waiting what's waiting or comes after an unfinished step, --show all finished tasks too; --depth 1 only the top level.  
+done/total counts the tasks without subtasks under a parent. A subtask's title leaves out its parent's name, as in the app.  
 
 ### ot show
 

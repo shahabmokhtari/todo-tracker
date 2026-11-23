@@ -168,6 +168,7 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = close) { Text("Close") }
                     Spacer(Modifier.weight(1f))
+                    if (!item.isArchived) TextButton(onClick = { leave { vm.showInTree(id) } }) { Text("Show in tree") }
                     val dirty = titleChanged || detailsChanged
                     TextButton(onClick = { saveTyped() }, enabled = dirty) { Text(if (dirty) "Save" else "Saved") }
                 }

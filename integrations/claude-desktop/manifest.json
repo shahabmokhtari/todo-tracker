@@ -40,6 +40,7 @@
     { "name": "get_dashboard", "description": "What to do now, what is waiting, and an overview per group" },
     { "name": "search_tasks", "description": "Find tasks by words, #tag, label, group, or state" },
     { "name": "list_tasks", "description": "The full task tree" },
+    { "name": "get_tree", "description": "The task tree as Tasks shows it: groups, progress, one branch, what can be done now or is waiting" },
     { "name": "get_task", "description": "One task with subtasks, notes, tags, labels and attachments" },
     { "name": "create_task", "description": "Capture a task or a subtask" },
     { "name": "add_steps", "description": "Add ordered steps under a task" },

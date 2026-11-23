@@ -26,6 +26,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | --- | --- |
 | [`get_dashboard`](#get_dashboard) | What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes). |
 | [`list_tasks`](#list_tasks) | Full task tree (optionally for one group), including ids needed by the other tools. |
+| [`get_tree`](#get_tree) | The task tree as the user sees it in Tasks, in one call: rows in order with their depth (under all groups, a row per group first), each parent's progress (doneCount/totalCount count the tasks without subtasks under it), and titles as shown (fullTitle has the whole title). |
 | [`search_tasks`](#search_tasks) | Find tasks and subtasks. |
 | [`get_task`](#get_task) | One task with its subtasks, reminders, notes, tags, labels, attachments, its markdown file, and its link (onething://task/&lt;id&gt;: give it to the user, clicking it opens the task in the app). |
 | [`create_task`](#create_task) | Create a task (or a subtask when parentId is set). |
@@ -99,6 +100,17 @@ Full task tree (optionally for one group), including ids needed by the other too
 | --- | --- | --- | --- |
 | `group` | text | optional | Group (tab) name or id, e.g. 'Work'. Omit for every group. |
 | `includeDone` | true/false | optional | Include finished tasks. |
+
+### `get_tree`
+
+The task tree as the user sees it in Tasks, in one call: rows in order with their depth (under all groups, a row per group first), each parent's progress (doneCount/totalCount count the tasks without subtasks under it), and titles as shown (fullTitle has the whole title). Narrow it to one group, one branch (underTaskId), what can be done now or what's waiting, or a few levels. *(read-only)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `group` | text | optional | Group (tab) name or id, e.g. 'Work'. Omit for every group (one group row each). |
+| `underTaskId` | text | optional | Only what's under this task (a full id); the path then says where it is. |
+| `show` | text | optional | todo (default: everything not finished), now (what can be done now, with its parents), waiting (snoozed, waiting for another task, or after an unfinished step, with their parents), or all (finished tasks too). |
+| `depth` | integer | optional | How many levels of tasks (1: only the top level). Omit for all. |
 
 ### `search_tasks`
 

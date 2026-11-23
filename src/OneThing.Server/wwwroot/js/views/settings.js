@@ -21,7 +21,8 @@ const SHORTCUTS = [
   ['Alt ↑ ↓', 'Move a task up or down'],
   ['Alt ← →', 'Move a card between columns (Board)'],
   ['Tab / Shift Tab', 'Nest and un-nest (Tasks)'],
-  ['Esc', 'Close'],
+  ['Alt Enter', 'Zoom into a task (Tasks)'],
+  ['Esc', 'Close; in a zoom, go up one level (Tasks)'],
 ];
 
 /** The sections #/settings/<id> can land on (each one's id is settings-<id>). */

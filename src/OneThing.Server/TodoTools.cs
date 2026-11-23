@@ -46,6 +46,23 @@ public sealed partial class TodoTools(IBoardStore store, TimeProvider time, Vaul
             return b.Items.Where(i => (includeDone || !i.IsDone) && (groupId is null || i.GroupId == groupId)).Select(i => Wire.Item(i, time.GetUtcNow(), b, links)).ToList();
         }));
 
+    [McpServerTool(Name = "get_tree", ReadOnly = true), Description(
+        "The task tree as the user sees it in Tasks, in one call: rows in order with their depth (under all groups, a row per group first), " +
+        "each parent's progress (doneCount/totalCount count the tasks without subtasks under it), and titles as shown (fullTitle has the whole title). " +
+        "Narrow it to one group, one branch (underTaskId), what can be done now or what's waiting, or a few levels.")]
+    public Task<TreeViewDto> GetTree(
+        [Description("Group (tab) name or id, e.g. 'Work'. Omit for every group (one group row each).")] string? group = null,
+        [Description("Only what's under this task (a full id); the path then says where it is.")] string? underTaskId = null,
+        [Description("todo (default: everything not finished), now (what can be done now, with its parents), waiting (snoozed, waiting for another task, or after an unfinished step, with their parents), or all (finished tasks too).")] string? show = null,
+        [Description("How many levels of tasks (1: only the top level). Omit for all.")] int? depth = null) =>
+        Guard(() => store.ReadAsync(b => Wire.TreeView(
+            b,
+            time.GetUtcNow(),
+            ResolveGroup(b, group),
+            underTaskId is null ? null : b.Get(ParseId(underTaskId)),
+            show is null ? OutlineShow.Todo : Outline.ParseShow(show) ?? throw new ArgumentException("show is todo, now, waiting or all.", nameof(show)),
+            depth)));
+
     [McpServerTool(Name = "search_tasks", ReadOnly = true), Description(
         "Find tasks and subtasks. Words match title or details; #tag (nested tags too), label:name, group:name, is:open|is:done narrow it. " +
         "Tags and labels are inherited by subtasks. Quote multi-word values: label:\"deep work\". Open tasks only unless the query has is:.")]
