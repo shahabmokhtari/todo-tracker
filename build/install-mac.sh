@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds the Mac app as CI does (Release, with the sync server inside, signed ad hoc) and puts it in /Applications.
+# Builds the Mac app as CI does (Release, with the sync server and the onething/ot command line inside, signed ad hoc)
+# and puts it in /Applications.
 # A copy built on this Mac runs here without notarization. Run from anywhere: build/install-mac.sh
 # Needs Xcode, xcodegen and the .NET SDK (global.json). Your tasks stay where they are (~/Documents/OneThing).
 # Replacing a notarized copy with this one changes its signature: macOS asks for its permissions again, and the
@@ -27,6 +28,8 @@ dotnet publish src/OneThing.Web --configuration Release --runtime "osx-$arch" --
 mkdir -p "$app/Contents/Resources/Server"
 cp -R "$work/server/." "$app/Contents/Resources/Server/"
 rm -f "$app/Contents/Resources/Server/"*.pdb
+. "$repo/build/mac-cli.sh"
+put_cli_in_mac_app "$repo" "$app" "osx-$arch" "$work"
 
 # Sign inside out, each part with its own entitlements, so the widgets keep their sandbox and App Group (as CI does).
 group=$(/usr/libexec/PlistBuddy -c 'Print :WidgetAppGroup' "$app/Contents/Info.plist")

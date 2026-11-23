@@ -56,6 +56,7 @@ struct OneThingApp: App {
         .defaultSize(width: 1180, height: 800)
         .windowResizability(.contentMinSize)
         .commands { OneThingCommands() }
+        .commands { CommandLineToolCommands() }
 
         // "Open in New Window" on a task.
         WindowGroup("Task", id: TaskWindow.sceneId, for: UUID.self) { $id in

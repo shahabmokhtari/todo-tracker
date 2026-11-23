@@ -82,6 +82,8 @@ public struct SettingsView: View {
                 Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
             }
 
+            CommandLineToolSection()
+
             Section {
                 Button("Send feedback…") { sendingFeedback = true }
                     .accessibilityIdentifier("settings-feedback")

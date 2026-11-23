@@ -16,7 +16,8 @@ public static class AiSetups
 
     /// <summary>
     /// The command line shipped with the app (<c>onething</c>, else its short name <c>ot</c>): in the <c>cli</c> folder
-    /// next to the app (the Windows app keeps it there) or next to the app itself; otherwise <c>onething</c> from the PATH.
+    /// next to the app (the Windows app keeps it there; the Mac app in <c>Contents/Resources/Server/cli</c>, next to
+    /// the server) or next to the app itself; otherwise <c>onething</c> from the PATH.
     /// </summary>
     public static string FindCli(string? directory = null)
     {
@@ -54,7 +55,9 @@ public static class AiSetups
                 $$"""{ "mcpServers": { "onething": { "command": {{command}}, "args": ["mcp"] } } }""", "json"),
             new("vscode", "VS Code (Copilot Chat)", "Command palette → MCP: Open User Configuration, add:",
                 $$"""{ "servers": { "onething": { "type": "stdio", "command": {{command}}, "args": ["mcp"] } } }""", "json"),
-            new("plugin", "Skill + tools for Claude Code / Copilot CLI", "Also teaches the agent how you like to work (needs onething on your PATH):",
+            new("plugin", "Skill + tools for Claude Code / Copilot CLI", OperatingSystem.IsMacOS()
+                    ? "Also teaches the agent how you like to work (needs onething on your PATH: One Thing › Install Command Line Tool…):"
+                    : "Also teaches the agent how you like to work (needs onething on your PATH):",
                 $"/plugin marketplace add {Repository}\n/plugin install onething@onething", "command"),
             new("http", "Other MCP apps (HTTP, while One Thing runs)", "Use this server URL and header:",
                 $"URL: {connection.McpUrl}\nHeader: Authorization: Bearer {connection.Token}", "text"),

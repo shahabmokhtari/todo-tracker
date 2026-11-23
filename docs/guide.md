@@ -358,6 +358,9 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
   quotes).
 * **Settings** (in the sidebar, the gear on an iPhone, or One Thing › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
   also where your tasks are and **Sync** (below).
+* **Command line tool** (Mac: Settings, or **One Thing › Install Command Line Tool…**): says whether `ot` and
+  `onething` work in Terminal and which file they run, and **Install** links both into `~/.local/bin` (it asks before
+  replacing a file that isn't One Thing's, and keeps it). See [ai-connectors.md](ai-connectors.md#get-ot).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
 * **Plan** (a week as a time grid; a day at a time on iPhone): drag a task from *Not planned* onto a time to plan a block

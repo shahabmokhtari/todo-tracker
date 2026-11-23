@@ -23,6 +23,12 @@ a per-folder lock and re-read the files first). Several AI apps can be connected
 
 * **Windows app:** `onething.exe` and `ot.exe` are installed in the `cli` folder next to `OneThing.exe`. "Connect an AI app"
   fills in the full path. To type `ot` in any terminal, add that folder to your PATH.
+* **Mac app:** `onething` and `ot` are inside the app (`OneThing.app/Contents/Resources/Server/cli`), and "Connect an AI
+  app" fills in that full path, so nothing needs to be on your PATH. To type `ot` in Terminal, choose **One Thing ›
+  Install Command Line Tool…** (or Settings › Command line tool › Install): it links both into `~/.local/bin` (no
+  password; a file there that isn't One Thing's is only replaced if you say so, and then kept beside it), and tells you
+  the one line to add to your shell profile if `~/.local/bin` isn't on your PATH yet. Moved the app? Settings shows
+  the link as broken; **Repair** links it again.
 * **Linux app:** the install script puts `onething` and `ot` in `~/.local/bin`.
 * **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
   artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it). A .NET tool has one name: `onething`.
@@ -42,6 +48,9 @@ shows an install dialog. Leave *Tasks folder* empty to use the app's folder.
 ```json
 { "mcpServers": { "onething": { "command": "C:\\Program Files\\One Thing\\cli\\onething.exe", "args": ["mcp"] } } }
 ```
+
+On a Mac the command is inside the app: `/Applications/OneThing.app/Contents/Resources/Server/cli/onething`. On Linux,
+`~/.local/bin/onething` (with your home folder spelled out: Claude doesn't expand `~`).
 
 Restart Claude Desktop completely after editing.
 

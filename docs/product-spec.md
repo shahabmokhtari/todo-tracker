@@ -469,7 +469,10 @@ One design language, adapted to each platform's native controls (Fluent on Windo
 AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-connectors.md)):
 
 * **`onething mcp`**: the MCP server over stdio, launched by Claude Desktop, Claude Code, Copilot CLI and VS Code. It works
-  on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, as a
+  on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, inside the
+  Mac app (`Contents/Resources/Server/cli`, `ot` a link to `onething`; *Install Command Line Tool…* in the app menu and
+  Settings › Command line tool link both into `~/.local/bin`, asking before replacing anything that isn't One Thing's,
+  and showing a link into a moved app as broken, with Repair; `CommandLineTool` in OneThingKit), as a
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
 * **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
