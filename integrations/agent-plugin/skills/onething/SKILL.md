@@ -50,7 +50,7 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | Run a script or call a webhook when something happens | `add_hook`, `update_hook`, `list_hooks`, `set_hook_enabled`, `remove_hook` | `ot hooks add <event> --bash … --powershell …` |
 | Everything, as JSON (a backup, another tool) | `export_board` | `ot export` |
 | The user's settings and extras (they switch them; you can read them) | — | `ot settings`, `ot plugins` |
-| Sync with the user's other computers, connectors (Notion, Microsoft To Do, GitHub): status; sync now while the app isn't running | — | `ot sync`, `ot sync now`, `ot connectors`, `ot connectors sync <id>` |
+| Sync with the user's other computers, connectors (Notion, Microsoft To Do, GitHub): status (syncing now is the user's: `ot sync now` and `ot connectors sync` refuse `--as`) | — | `ot sync`, `ot connectors` |
 | Where the files are, and their format | `vault_info` | `ot vault`, `ot vault guide` |
 
 ## How to help

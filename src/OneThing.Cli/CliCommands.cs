@@ -88,9 +88,9 @@ internal static partial class CliCommands
         new CliCommand("settings", "ot settings [theme system|light|dark | teams <https://…|off>]", "The app's settings: the theme, and where reminders are posted (Teams)",
             "teams is for you, the person at the computer (not for AI agents). The app uses a change from its next start.", SettingsCommand),
         new CliCommand("sync", "ot sync [now]", "How syncing with your other computers is going; now syncs (while the app isn't running)",
-            "Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so.", Sync),
+            "Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so. Syncing now is yours: ot sync now refuses --as (the status doesn't).", Sync),
         new CliCommand("connectors", "ot connectors [sync <id> | sync github <group>]", "Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the app isn't running)",
-            "Signing in and choosing what to connect are in the app: Settings › Connected apps.", Connectors),
+            "Signing in and choosing what to connect are in the app: Settings › Connected apps. Syncing now is yours (it starts one that isn't syncing yet, like Start syncing in the app): ot connectors sync refuses --as (the status doesn't).", Connectors),
         new CliCommand("plugins", "ot plugins [on <id> | off <id>]", "The extras (plugins) and whether each is on; switch one on or off",
             "Switching is for you, the person at the computer (not for AI agents); it applies when the app starts again.", Plugins),
     }.ToDictionary(c => c.Name, StringComparer.Ordinal);

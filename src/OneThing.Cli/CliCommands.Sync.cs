@@ -31,6 +31,7 @@ internal static partial class CliCommands
         SyncView view;
         if (verb == "now")
         {
+            OwnerOnly(s, "Only you can start a sync: run ot sync now without --as (or ONETHING_AGENT), or Sync now in Settings › Sync of the One Thing app. ot sync shows how it's going.");
             using var app = AppNotRunning(s, "syncs by itself every few minutes (or Sync now in Settings › Sync)");
             view = await sync.SyncNowAsync().ConfigureAwait(false);
         }
@@ -60,6 +61,9 @@ internal static partial class CliCommands
                 return;
             case "sync":
                 var id = a.Word(1, "which connector (its id, as ot connectors lists it; github <group> for a group's repository)").ToLowerInvariant();
+
+                // Like Sync now (Start syncing) in the app, which only the person can press: a first sync starts it.
+                OwnerOnly(s, "Only you can sync a connected app now: run ot connectors sync without --as (or ONETHING_AGENT), or Sync now in Settings › Connected apps of the One Thing app. ot connectors shows how it's going.");
                 using (AppNotRunning(s, "syncs its connectors by itself every few minutes (or Sync now in Settings › Connected apps)"))
                 {
                     if (id is "github" or "connector-github")
@@ -79,7 +83,8 @@ internal static partial class CliCommands
                     var known = connector.View.FirstOrDefault(c => c.Id == id || c.PluginId == id || c.Name.Equals(id, StringComparison.OrdinalIgnoreCase))
                         ?? throw new ArgumentException($"There's no connector \"{id}\". ot connectors lists them.");
                     var done = await connector.SyncAsync(known.Id).ConfigureAwait(false);
-                    await s.Print(done, (o, c) => o.Line($"{c.Name}: {c.LastResult ?? "synced"}{(c.Problems.Count > 0 ? " · " + string.Join("; ", c.Problems) : string.Empty)}")).ConfigureAwait(false);
+                    var started = known.Enabled ? string.Empty : " · It syncs by itself every few minutes from now on, while the app runs.";
+                    await s.Print(done, (o, c) => o.Line($"{c.Name}: {c.LastResult ?? "synced"}{(c.Problems.Count > 0 ? " · " + string.Join("; ", c.Problems) : string.Empty)}{started}")).ConfigureAwait(false);
                 }
 
                 return;

@@ -492,7 +492,7 @@ How syncing with your other computers is going; now syncs (while the app isn't r
 ot sync [now]
 ```
 
-Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so.  
+Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so. Syncing now is yours: ot sync now refuses --as (the status doesn't).  
 
 ### ot connectors
 
@@ -502,7 +502,7 @@ Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the
 ot connectors [sync <id> | sync github <group>]
 ```
 
-Signing in and choosing what to connect are in the app: Settings › Connected apps.  
+Signing in and choosing what to connect are in the app: Settings › Connected apps. Syncing now is yours (it starts one that isn't syncing yet, like Start syncing in the app): ot connectors sync refuses --as (the status doesn't).  
 
 ### ot plugins
 

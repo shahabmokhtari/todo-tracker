@@ -103,10 +103,10 @@ internal static class Coverage
         new("Try hooks now", ["POST /api/hooks/test"], ["ot hooks test"], [], "Runs scripts on this computer now: the person's."),
 
         // ---- Sync and connectors -----------------------------------------------------------------------------------
-        new("Sync: status and sync now", ["GET /api/plugins/sync", "POST /api/plugins/sync/now"], ["ot sync", "ot sync now"], [], NoMcpSync + " ot sync now runs only while the app doesn't (it syncs by itself)."),
+        new("Sync: status and sync now", ["GET /api/plugins/sync", "POST /api/plugins/sync/now"], ["ot sync", "ot sync now"], [], NoMcpSync + " Syncing now is the person's (ot sync now refuses --as); ot sync shows the status to anyone, and runs only while the app doesn't (it syncs by itself)."),
         new("Sync: set up, clashes, devices", ["PUT /api/plugins/sync/provider", "PUT /api/plugins/sync/library", "PUT /api/plugins/sync/places", "POST /api/plugins/sync/forget", "POST /api/plugins/sync/resolve", "POST /api/plugins/sync/compare"], [], [], SyncSetup),
         new("Connectors (Notion, Microsoft To Do, GitHub): status and sync now", ["GET /api/plugins/connectors", "POST /api/plugins/connectors/{id}/sync", "GET /api/plugins/connector-github", "POST /api/plugins/connector-github/groups/{id}/sync"],
-            ["ot connectors", "ot connectors sync", "ot connectors sync github"], [], NoMcpSync + " ot connectors sync runs only while the app doesn't."),
+            ["ot connectors", "ot connectors sync", "ot connectors sync github"], [], NoMcpSync + " Syncing now (which starts one not syncing yet, like Start syncing in the app) is the person's: ot connectors sync refuses --as and runs only while the app doesn't; ot connectors shows the status to anyone."),
         new("Connectors: set up, sign in, preview, disconnect", [
             "PUT /api/plugins/connectors/{id}", "POST /api/plugins/connectors/{id}/preview", "DELETE /api/plugins/connectors/{id}", "PUT /api/plugins/connectors/notion/token", "GET /api/plugins/connectors/notion/databases",
             "POST /api/plugins/connectors/mstodo/signin", "GET /api/plugins/connectors/mstodo/signin", "GET /api/plugins/connectors/mstodo/lists",

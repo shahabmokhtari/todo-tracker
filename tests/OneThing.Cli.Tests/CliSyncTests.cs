@@ -50,6 +50,20 @@ public sealed class CliSyncTests : IDisposable
         Assert.Contains("off", result.Error, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("sync", "now")]
+    [InlineData("connectors", "sync", "notion")]
+    [InlineData("connectors", "sync", "github", "Work")]
+    public async Task Only_you_sync_now_an_agent_sees_the_status(params string[] command)
+    {
+        var refused = await _tt.Run([.. command, "--as", "bot"]);
+
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Contains("Only you", refused.Error, StringComparison.Ordinal);
+        Assert.NotNull((await _tt.Json("sync", "--as", "bot"))["state"]);
+        Assert.NotNull((await _tt.Json("connectors", "--as", "bot"))["connectors"]);
+    }
+
     [Fact]
     public async Task Setting_up_sync_is_left_to_the_app()
     {
