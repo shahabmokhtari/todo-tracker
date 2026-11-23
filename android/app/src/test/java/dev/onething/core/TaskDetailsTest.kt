@@ -204,6 +204,9 @@ class TaskDetailsTest {
         assertEquals(PomodoroSettings(50, 10, 30, 4), board.pomodoro.settings)
         assertThrows(BoardException::class.java) { board.setFocusLengths(0, 5, 15) }
         assertThrows(BoardException::class.java) { board.setFocusLengths(25, 5, 999) }
+        // The same limits as OneThing.Core and the Apple apps: a break is at most an hour, a long one two.
+        assertThrows(BoardException::class.java) { board.setFocusLengths(25, 61, 15) }
+        assertThrows(BoardException::class.java) { board.setFocusLengths(25, 5, 121) }
         assertEquals(PomodoroSettings(50, 10, 30, 4), BoardCodec.decode(BoardCodec.encode(board)).pomodoro.settings)
     }
 

@@ -155,6 +155,16 @@ public struct DashboardView: View {
                 if let status = model.status {
                     Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
                 }
+                // A task file in the tasks folder that can't be read (the web app's notice): it's left alone until fixed.
+                if let problem = model.vaultInfo?.problemNotice {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warnText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.warnText.opacity(0.1)))
+                        .accessibilityIdentifier("vault-problems")
+                }
             }
             .padding(.horizontal, Self.margin)
             .padding(.top, 14)

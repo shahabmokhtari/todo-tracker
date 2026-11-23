@@ -67,6 +67,12 @@ public sealed class MacAppContractTests : IAsyncLifetime
         await Send(HttpMethod.Post, "/api/timer/start", $$"""{"itemId":"{{task}}"}""");
         await Send(HttpMethod.Post, "/api/timer/stop");
         await Send(HttpMethod.Put, "/api/settings/theme", """{"theme":"dark"}""");
+        await Send(HttpMethod.Put, "/api/pomodoro/settings", """{"focusesBeforeLongBreak":3,"focusMinutes":50,"longBreakMinutes":30,"shortBreakMinutes":10}""");
+        Assert.Equal(50, (await Send(HttpMethod.Get, "/api/pomodoro/settings"))!["focusMinutes"]!.GetValue<int>());
+        // What it reads besides the board: the extras, hooks waiting for approval (it may approve), the tasks folder.
+        Assert.NotEmpty((await Send(HttpMethod.Get, "/api/plugins"))!.AsArray());
+        Assert.True((await Send(HttpMethod.Get, "/api/hooks"))!["canApprove"]!.GetValue<bool>());
+        Assert.False(string.IsNullOrEmpty((await Send(HttpMethod.Get, "/api/vault"))!["path"]!.GetValue<string>()));
         await Send(HttpMethod.Delete, $"/api/items/{step}");
 
         var board = BoardSerializer.Deserialize((await Send(HttpMethod.Get, "/api/export"))!.ToJsonString());

@@ -47,6 +47,8 @@ public enum ServerAction: Equatable, Sendable {
     case boardMove(BoardMove)
     /// A new task: under a parent, or at the top of a group in a column (nil: the server's defaults).
     case addTask(title: String, parentId: UUID?, groupId: UUID?, stage: Stage?)
+    /// The focus timer's lengths (kept with the tasks folder).
+    case setFocusLengths(PomodoroSettings)
 }
 
 public enum PomodoroCommand: String, Sendable {
@@ -141,6 +143,10 @@ public enum ServerAPI {
             return request(for: move)
         case let .addTask(title, parentId, groupId, stage):
             return post("/api/items", ["title": title, "parentId": parentId.map(id), "groupId": groupId.map(id), "stage": stage?.rawValue])
+        case let .setFocusLengths(s):
+            return ServerRequest(method: "PUT", path: "/api/pomodoro/settings", body: json([
+                "focusMinutes": s.focusMinutes, "shortBreakMinutes": s.shortBreakMinutes, "longBreakMinutes": s.longBreakMinutes, "focusesBeforeLongBreak": s.focusesBeforeLongBreak,
+            ]))
         }
     }
 

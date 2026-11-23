@@ -75,6 +75,14 @@ final class ServerExtrasModelTests: XCTestCase {
         XCTAssertFalse(FakeServer.requests.contains("POST /api/hooks/h1/approve"))
     }
 
+    func testTheFocusTimersLengthsChangeOnTheServer() async throws {
+        let model = BoardModel(store: nil)
+        model.use(server: client())
+        try await waitUntil { FakeServer.requests.contains("GET /api/export") }
+        model.setPomodoroSettings(PomodoroSettings(focusMinutes: 45))
+        try await waitUntil { FakeServer.requests.contains("PUT /api/pomodoro/settings") }
+    }
+
     func testTheTasksFolderAndItsProblemsComeFromTheServer() async throws {
         FakeServer.bodies["/api/vault"] = Data(#"{"path":"/Users/me/Documents/OneThing","problems":[{"path":"a.md","message":"bad"}],"obsidianUrl":"obsidian://open?path=x","obsidianInstalled":false}"#.utf8)
         let model = BoardModel(store: nil)

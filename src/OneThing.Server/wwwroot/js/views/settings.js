@@ -1,4 +1,4 @@
-// Settings: everything to set up in one place: how it looks (light, dark or the system's), label colors, connected apps (Notion,
+// Settings: everything to set up in one place: how it looks (light, dark or the system's), energy, the focus timer's lengths, label colors, connected apps (Notion,
 // Microsoft To Do: switch on, sign in, pick what to keep in step), sync, which extras are on, and the keyboard.
 
 import { createConnectorsPanel } from '../plugins/connectors.js';
@@ -68,7 +68,7 @@ export function createSettingsView(ctx) {
           if (result.restartRequired) note.hidden = false;
           // Off (or a live extra on): its buttons, menus and views follow at once.
           await ctx.reloadPlugins?.();
-          if (p.id === 'energy') await load();
+          if (p.id === 'energy' || p.id === 'focus-timer') await load();
         } catch (err) {
           toggle.checked = !toggle.checked;
           ctx.toast(err.message, 'error');
@@ -288,11 +288,41 @@ export function createSettingsView(ctx) {
       status);
   }
 
-  function render(settings, list, labelList, hookStatus, energyInfo) {
+  /** The focus timer's lengths (kept with the tasks, so every app and computer uses them). */
+  function focus(lengths) {
+    const field = (key, label, min, max) => {
+      const input = h('input', { type: 'number', min, max, step: 1, value: String(lengths[key]), 'aria-label': label, dataset: { key } });
+      return [input, h('label', { class: 'field' }, h('span', null, label), input)];
+    };
+    const fields = [
+      field('focusMinutes', 'Focus (minutes)', 1, 180),
+      field('shortBreakMinutes', 'Short break (minutes)', 1, 60),
+      field('longBreakMinutes', 'Long break (minutes)', 1, 120),
+      field('focusesBeforeLongBreak', 'Long break after (sessions)', 1, 12),
+    ];
+    const save = async (body) => {
+      try {
+        const next = await ctx.api('/api/pomodoro/settings', { method: 'PUT', body });
+        for (const [input] of fields) input.value = String(next[input.dataset.key]);
+        ctx.toast('Focus timer saved');
+        ctx.refreshAll?.();
+      } catch (err) {
+        ctx.toast(err.message, 'error');
+      }
+    };
+    return section('focus', 'Focus timer', 'How long a focus session and its breaks last. A new length counts from the next session; every app uses these.',
+      h('div', { class: 'row' }, ...fields.map(([, label]) => label)),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn primary small', type: 'button', onclick: () => save(Object.fromEntries(fields.map(([input]) => [input.dataset.key, Number(input.value)]))) }, 'Save'),
+        h('button', { class: 'btn ghost small', type: 'button', onclick: () => save({ focusMinutes: 25, shortBreakMinutes: 5, longBreakMinutes: 15, focusesBeforeLongBreak: 4 }) }, 'Back to 25 / 5 / 15')));
+  }
+
+  function render(settings, list, labelList, hookStatus, energyInfo, focusLengths) {
     connectors ??= createConnectorsPanel(ctx.pluginHost);
     root.replaceChildren(h('div', { class: 'settings' },
       appearance(settings.theme ?? 'system'),
       energyInfo && list.some((p) => p.id === 'energy' && p.enabled) ? energy(energyInfo) : null,
+      focusLengths && list.some((p) => p.id === 'focus-timer' && p.enabled) ? focus(focusLengths) : null,
       labels(labelList),
       section('connected', 'Connected apps', null, connectors.element),
       sync(list),
@@ -306,8 +336,8 @@ export function createSettingsView(ctx) {
 
   async function load() {
     try {
-      const [settings, list, labelList, hookStatus, energyInfo] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null), ctx.api('/api/energy').catch(() => null)]);
-      render(settings, list, labelList, hookStatus, energyInfo);
+      const [settings, list, labelList, hookStatus, energyInfo, focusLengths] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null), ctx.api('/api/energy').catch(() => null), ctx.api('/api/pomodoro/settings').catch(() => null)]);
+      render(settings, list, labelList, hookStatus, energyInfo, focusLengths);
       await connectors.load();
       // #/settings/<section> lands on that section: connected (apps), sync, hooks (a hook waiting for approval links
       // here), plugins (Extras), feedback… The Mac app's Settings opens each of them in its One Thing window.

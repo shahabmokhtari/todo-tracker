@@ -422,10 +422,14 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         return clean
     }
 
-    /** How long a focus session and its breaks last, in minutes (1 to [MAX_FOCUS_MINUTES]). */
+    /**
+     * How long a focus session and its breaks last, in minutes: focus 1 to [MAX_FOCUS_MINUTES], a break 1 to
+     * [MAX_SHORT_BREAK_MINUTES], a long break 1 to [MAX_LONG_BREAK_MINUTES] (the same limits as OneThing.Core and the
+     * Apple apps).
+     */
     fun setFocusLengths(focusMinutes: Int, shortBreakMinutes: Int, longBreakMinutes: Int) {
-        for (m in listOf(focusMinutes, shortBreakMinutes, longBreakMinutes)) {
-            if (m !in 1..MAX_FOCUS_MINUTES) throw BoardException("Focus and break lengths are 1 to $MAX_FOCUS_MINUTES minutes.")
+        if (focusMinutes !in 1..MAX_FOCUS_MINUTES || shortBreakMinutes !in 1..MAX_SHORT_BREAK_MINUTES || longBreakMinutes !in 1..MAX_LONG_BREAK_MINUTES) {
+            throw BoardException("Focus is 1 to $MAX_FOCUS_MINUTES minutes, a break 1 to $MAX_SHORT_BREAK_MINUTES, a long break 1 to $MAX_LONG_BREAK_MINUTES.")
         }
         pomodoro.settings = pomodoro.settings.copy(focusMinutes = focusMinutes, shortBreakMinutes = shortBreakMinutes, longBreakMinutes = longBreakMinutes)
     }
@@ -774,6 +778,8 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         const val MAX_TITLE_LENGTH = 300
         const val MAX_TEXT_LENGTH = 10_000
         const val MAX_FOCUS_MINUTES = 180
+        const val MAX_SHORT_BREAK_MINUTES = 60
+        const val MAX_LONG_BREAK_MINUTES = 120
 
         /** What every app writes in the "completed" entry of a repeating task that moved on (it stays open). */
         const val ROLLED_MARKER = "(repeats: next "

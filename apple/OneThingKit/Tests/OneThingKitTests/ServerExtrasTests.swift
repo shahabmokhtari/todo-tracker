@@ -51,6 +51,12 @@ final class ServerExtrasTests: XCTestCase {
         XCTAssertNil(VaultInfo(path: "/x").problemNotice)
     }
 
+    func testTheFocusTimersLengthsGoToTheServer() {
+        XCTAssertEqual(ServerAPI.request(for: .setFocusLengths(PomodoroSettings(focusMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: 30, focusesBeforeLongBreak: 3))),
+                       ServerRequest(method: "PUT", path: "/api/pomodoro/settings",
+                                     body: #"{"focusesBeforeLongBreak":3,"focusMinutes":50,"longBreakMinutes":30,"shortBreakMinutes":10}"#))
+    }
+
     func testHookDecisionsNameTheVersionShown() {
         XCTAssertEqual(ServerAPI.approveHook("a1", version: "v1"), ServerRequest(method: "POST", path: "/api/hooks/a1/approve", body: #"{"version":"v1"}"#))
         XCTAssertEqual(ServerAPI.rejectHook("a/1", version: "v1").path, "/api/hooks/a%2F1/reject")

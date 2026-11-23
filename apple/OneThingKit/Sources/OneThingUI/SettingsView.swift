@@ -1,6 +1,9 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import OneThingKit
+#if os(macOS)
+import AppKit
+#endif
 
 /// Settings: how a phone syncs, appearance, the energy you have in a day, and the focus timer. The same settings as the web app's
 /// Appearance and Energy sections; the focus timer's lengths are kept with the board.
@@ -50,7 +53,10 @@ public struct SettingsView: View {
             }
 
             #if os(macOS)
-            if model.usesServer { windowSection }
+            if model.usesServer {
+                tasksFolderSection
+                windowSection
+            }
             #endif
 
             Section {
@@ -117,6 +123,36 @@ public struct SettingsView: View {
     }
 
     #if os(macOS)
+    /// Where your tasks are (the web app's footer): the folder, Show in Finder, Open in Obsidian, and files that need
+    /// fixing.
+    @ViewBuilder private var tasksFolderSection: some View {
+        Section {
+            if let vault = model.vaultInfo {
+                Text(vault.path)
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("settings-tasks-folder")
+                HStack {
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: vault.path, isDirectory: true)])
+                    }
+                    if model.isOn(ExtraSwitches.obsidian), vault.obsidianInstalled, let url = vault.obsidianURL {
+                        Button("Open in Obsidian") { NSWorkspace.shared.open(url) }
+                    }
+                }
+                if let problem = vault.problemNotice {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.warnText)
+                }
+            } else {
+                Text("Opening your tasks folder…").foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Your tasks")
+        } footer: {
+            Text("Saved as markdown files, synced with your other computers. You can open and edit them in any editor.")
+        }
+    }
+
     /// What the web app's Settings has beyond these, each opening its own panel in the One Thing window (signed in as
     /// you, inside this app).
     private var windowSection: some View {
@@ -152,22 +188,15 @@ public struct SettingsView: View {
     @ViewBuilder private var focusSection: some View {
         let settings = model.board.pomodoro.settings
         Section {
-            if model.usesServer {
-                LabeledContent("Focus", value: "\(settings.focusMinutes) min")
-                LabeledContent("Short break", value: "\(settings.shortBreakMinutes) min")
-                LabeledContent("Long break", value: "\(settings.longBreakMinutes) min")
-                LabeledContent("Long break after", value: "\(settings.focusesBeforeLongBreak) sessions")
-            } else {
-                Stepper("Focus: \(settings.focusMinutes) min", value: binding(\.focusMinutes), in: 5...120, step: 5)
-                    .accessibilityIdentifier("settings-focus")
-                Stepper("Short break: \(settings.shortBreakMinutes) min", value: binding(\.shortBreakMinutes), in: 1...30)
-                Stepper("Long break: \(settings.longBreakMinutes) min", value: binding(\.longBreakMinutes), in: 5...60, step: 5)
-                Stepper("Long break after \(settings.focusesBeforeLongBreak) sessions", value: binding(\.focusesBeforeLongBreak), in: 2...8)
-            }
+            Stepper("Focus: \(settings.focusMinutes) min", value: binding(\.focusMinutes), in: 5...120, step: 5)
+                .accessibilityIdentifier("settings-focus")
+            Stepper("Short break: \(settings.shortBreakMinutes) min", value: binding(\.shortBreakMinutes), in: 1...30)
+            Stepper("Long break: \(settings.longBreakMinutes) min", value: binding(\.longBreakMinutes), in: 5...60, step: 5)
+            Stepper("Long break after \(settings.focusesBeforeLongBreak) sessions", value: binding(\.focusesBeforeLongBreak), in: 2...8)
         } header: {
             Text("Focus timer")
         } footer: {
-            Text(model.usesServer ? "These come from your tasks folder." : "A new length counts from the next session.")
+            Text(model.usesServer ? "A new length counts from the next session. Kept with your tasks, so every app uses it." : "A new length counts from the next session.")
         }
     }
 
