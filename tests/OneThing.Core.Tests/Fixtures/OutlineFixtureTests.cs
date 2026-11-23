@@ -21,6 +21,7 @@ public sealed class OutlineFixtureTests
         ("copy", "Launch the site: Write the copy", null, "launch", false, false, false, false),
         ("hero", "Hero section", null, "copy", false, false, false, false),
         ("faq", "Launch the site - FAQ", null, "copy", false, false, false, false),
+        ("headline", "Write the copy: Headline", null, "copy", false, false, false, false),
         ("domain", "launch the site – Buy the domain", null, "launch", true, false, false, false),
         ("ship", "Launch the site — Ship it", null, "launch", false, false, false, false),
         ("bare", "Launch the site:", null, "launch", false, false, false, false),
@@ -40,23 +41,26 @@ public sealed class OutlineFixtureTests
         ("oldstep", "Old step", null, "old", false, false, false, false),
     ];
 
-    private static readonly (string Title, string? Parent)[] Titles =
+    private static readonly (string Title, string? Parent, string? ParentShown)[] Titles =
     [
-        ("Publisher accounts: Pick the contact phone number", "Publisher accounts"),
-        ("Launch - Buy the domain", "Launch"),
-        ("Launch – Buy the domain", "Launch"),
-        ("Launch — Buy the domain", "Launch"),
-        ("LAUNCH:   shout", "launch"),
-        ("Écrire: le texte", "écrire"),
-        ("Launch:", "Launch"),
-        ("Launch:   ", "Launch"),
-        ("Launch —", "Launch"),
-        ("Launcher: other", "Launch"),
-        ("Launch-pad", "Launch"),
-        ("Launch—no space", "Launch"),
-        ("The launch: later", "Launch"),
-        ("Launch: copy", null),
-        ("Launch: copy", ""),
+        ("Publisher accounts: Pick the phone number", "Go to market: Publisher accounts", "Publisher accounts"),
+        ("Go to market: Publisher accounts - Pay the fee", "Go to market: Publisher accounts", "Publisher accounts"),
+        ("Go to market: Ads", "Go to market: Publisher accounts", "Publisher accounts"),
+        ("Publisher accounts: Pick the contact phone number", "Publisher accounts", null),
+        ("Launch - Buy the domain", "Launch", null),
+        ("Launch – Buy the domain", "Launch", null),
+        ("Launch — Buy the domain", "Launch", null),
+        ("LAUNCH:   shout", "launch", null),
+        ("Écrire: le texte", "écrire", null),
+        ("Launch:", "Launch", null),
+        ("Launch:   ", "Launch", null),
+        ("Launch —", "Launch", null),
+        ("Launcher: other", "Launch", null),
+        ("Launch-pad", "Launch", null),
+        ("Launch—no space", "Launch", null),
+        ("The launch: later", "Launch", null),
+        ("Launch: copy", null, null),
+        ("Launch: copy", "", null),
     ];
 
     private sealed record Case(string Name, string? Group = null, string? Zoom = null, string Show = "todo", string? Query = null, string[]? Expanded = null, string[]? ClosedGroups = null, bool OpenTo = false);
@@ -204,7 +208,7 @@ public sealed class OutlineFixtureTests
                 ["tasks"] = "{ key, title, group?: name (top-level tasks), parent?: key, sequential?: true, done?: true, archived?: true, snoozed?: true }, added in this order at `now`; then, in order, done ones are completed (a parent's subtasks with it), snoozed ones deferred until `snoozedUntil`, archived ones archived",
                 ["snoozedUntil"] = "when snoozed tasks come back",
                 ["nodes"] = "what /api/tree says about each task at `now` (state, doneCount, totalCount): for a port that reads the tree from the server (the web app) instead of working it out",
-                ["titles"] = "{ title, parent, shown }: shownTitle(title, parentTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty",
+                ["titles"] = "{ title, parent, parentShown, shown }: shownTitle(title, parentTitle, parentShownTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty; when that leaves it as it was and the parent is shown shorter (parentShown, null: not), the same against that. In rows, a task's parentShown is its parent's row title (at the top of a zoom: the zoomed task's title in the path)",
                 ["cases[].options"] = "{ group: name|null (null: all groups), zoom: key|null (a key that isn't a task: a task that's gone), show: todo|now|waiting|all, query: search text|null, expanded: [keys] (open tasks), closedGroups: [names] }",
                 ["cases[].keep"] = "with a query: the tasks the search keeps (matches, their parents and their subtasks; what /api/tree?q= returns), in the order of `tasks`",
                 ["cases[].zoom"] = "resolveZoom: the zoom used (key) or null (the top). The asked task when it's shown and has subtasks, else its nearest parent that is; null for one that's gone, archived or in another group than the one picked",
@@ -228,7 +232,7 @@ public sealed class OutlineFixtureTests
                 return (JsonNode)o;
             })]),
             ["nodes"] = nodes,
-            ["titles"] = new JsonArray([.. Titles.Select(t => (JsonNode)new JsonObject { ["title"] = t.Title, ["parent"] = t.Parent, ["shown"] = Outline.ShownTitle(t.Title, t.Parent) })]),
+            ["titles"] = new JsonArray([.. Titles.Select(t => (JsonNode)new JsonObject { ["title"] = t.Title, ["parent"] = t.Parent, ["parentShown"] = t.ParentShown, ["shown"] = Outline.ShownTitle(t.Title, t.Parent, t.ParentShown) })]),
             ["cases"] = cases,
         });
     }

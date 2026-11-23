@@ -133,14 +133,17 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   await expect(copyRow()).toHaveAttribute('aria-level', '2');
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Launch website')?.children.map((c) => c.title)).toEqual(['Write the copy']);
 
-  // Enter renames in place.
+  // Enter renames in place: the title turns into a box with the whole title.
   await expect(copyRow()).toBeFocused();
   await page.keyboard.press('Enter');
+  await expect(copyRow().locator('input.otitle')).toBeFocused();
   await page.keyboard.type('Write the landing copy');
   await page.keyboard.press('Escape'); // Escape cancels...
-  await expect(copyRow().locator('.otitle')).toHaveValue('Write the copy');
+  await expect(copyRow().locator('input.otitle')).toHaveCount(0);
+  await expect(copyRow().locator('.otext')).toHaveText('Write the copy');
+  await expect(copyRow()).toBeFocused();
   await page.keyboard.press('Enter');
-  const title = copyRow().locator('.otitle');
+  const title = copyRow().locator('input.otitle');
   await title.fill('Write the landing copy');
   await title.press('Tab'); // ...leaving the field saves.
   await expect.poll(async () => (await tree(request)).find((n) => n.title === 'Launch website')?.children[0]?.title).toBe('Write the landing copy');
@@ -168,6 +171,116 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: 'New task' })).toBeFocused();
   await expect(outline.locator('.orow[data-id][tabindex="0"]')).toHaveCount(1);
+  expect(errors).toEqual([]);
+});
+
+test('Tasks: groups at the top, progress, Open to, Show, zoom with a path and Back, short titles, and drops on a group', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  const other = await (await request.post('/api/groups', { headers: auth, data: { name: `Tree other ${Date.now() % 100000}` } })).json();
+  const site = await add(request, 'Website relaunch');
+  await add(request, 'Website relaunch: Pick the fonts', { parentId: site.id });
+  const copy = await add(request, 'Website relaunch - Write the copy', { parentId: site.id });
+  await add(request, 'Write the copy: Hero', { parentId: copy.id });
+  const logo = await add(request, 'Website relaunch: Old logo', { parentId: site.id });
+  await request.post(`/api/items/${logo.id}/complete`, { headers: auth });
+  const printer = await add(request, 'Call the printer');
+  await request.post(`/api/items/${printer.id}/schedule`, { headers: auth, data: { inMinutes: 24 * 60 } });
+  const loose = await add(request, 'Loose task for the other group');
+
+  await open(page, request);
+  // All groups: the tree's top level is the groups.
+  await page.locator('#tabs > button.tab').first().click();
+  await page.evaluate(() => { location.hash = '#/tasks'; });
+  const outline = page.locator('#view-tasks .outline');
+  const rowOf = (title) => outline.locator(`.orow[data-id][aria-label="${title}"]`);
+  const groupRow = (id) => outline.locator(`.orow.ogroup[data-group="${id}"]`);
+  await expect(groupRow(group.id)).toHaveAttribute('aria-level', '1');
+  await expect(groupRow(other.id)).toBeVisible();
+  await expect(rowOf('Website relaunch')).toHaveAttribute('aria-level', '2');
+  // A parent says how far along it is: leaves under it (Hero counts, Write the copy doesn't).
+  await expect(rowOf('Website relaunch').locator('.ocount')).toHaveText('1/3');
+
+  // Open to: one press sets how deep the tree is open.
+  const openTo = page.getByRole('group', { name: 'Open to' });
+  await openTo.getByRole('button', { name: 'Subtasks' }).click();
+  // The parent's name isn't repeated; the whole title is the tooltip.
+  await expect(rowOf('Website relaunch: Pick the fonts').locator('.otext')).toHaveText('Pick the fonts');
+  await expect(rowOf('Website relaunch: Pick the fonts').locator('.otext')).toHaveAttribute('title', 'Website relaunch: Pick the fonts');
+  await expect(rowOf('Write the copy: Hero')).toHaveCount(0);
+  await openTo.getByRole('button', { name: 'Groups' }).click();
+  await expect(rowOf('Website relaunch')).toHaveCount(0);
+  await expect(groupRow(group.id)).toHaveAttribute('aria-expanded', 'false');
+  await openTo.getByRole('button', { name: 'All' }).click();
+  await expect(rowOf('Write the copy: Hero').locator('.otext')).toHaveText('Hero');
+
+  // Show: finished tasks only under Everything; Waiting and Can do now narrow the tree.
+  const showPick = page.locator('#view-tasks select[aria-label="Show"]');
+  await expect(rowOf('Website relaunch: Old logo')).toHaveCount(0);
+  await showPick.selectOption('all');
+  await expect(rowOf('Website relaunch: Old logo')).toBeVisible();
+  await showPick.selectOption('waiting');
+  await expect(rowOf('Call the printer')).toBeVisible();
+  await expect(rowOf('Website relaunch')).toHaveCount(0);
+  await showPick.selectOption('now');
+  await expect(rowOf('Call the printer')).toHaveCount(0);
+  await expect(rowOf('Website relaunch: Pick the fonts')).toBeVisible();
+  await showPick.selectOption('todo');
+
+  // Zoom: only the branch, with a path back; the address can be linked and Back leaves it.
+  await rowOf('Website relaunch').getByRole('button', { name: 'Zoom into Website relaunch' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/tasks/${site.id}$`));
+  const path = page.getByRole('navigation', { name: 'Where you are' });
+  await expect(path.locator('.crumb-text')).toHaveText(['All groups', group.name, 'Website relaunch']);
+  await expect(rowOf('Website relaunch')).toHaveCount(0);
+  await expect(rowOf('Website relaunch: Pick the fonts')).toHaveAttribute('aria-level', '1');
+  await expect(rowOf('Website relaunch: Pick the fonts')).toBeFocused();
+  // New task adds inside the zoomed task.
+  await page.getByRole('button', { name: 'New task' }).click();
+  await outline.getByRole('textbox', { name: 'New task' }).fill('Website relaunch: Buy the domain');
+  await outline.getByRole('textbox', { name: 'New task' }).press('Enter');
+  await outline.getByRole('textbox', { name: 'New task' }).press('Escape');
+  await expect(rowOf('Website relaunch: Buy the domain').locator('.otext')).toHaveText('Buy the domain');
+  const subtasks = async () => (await (await request.get(`/api/items/${site.id}`, { headers: auth })).json()).children.map((c) => c.title);
+  await expect.poll(subtasks).toContain('Website relaunch: Buy the domain');
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/tasks$/);
+  await expect(path).toHaveCount(0);
+  await expect(rowOf('Website relaunch')).toBeVisible();
+
+  // Escape leaves a zoom, back on the task that was zoomed into.
+  await page.evaluate((id) => { location.hash = `#/tasks/${id}`; }, copy.id);
+  await expect(path.locator('.crumb-text')).toHaveText(['All groups', group.name, 'Website relaunch', 'Write the copy']);
+  await rowOf('Write the copy: Hero').focus();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/tasks$/);
+  await expect(rowOf('Website relaunch - Write the copy')).toBeFocused();
+
+  // A click on a title selects the row; a click on the selected row's title renames it.
+  const hero = rowOf('Write the copy: Hero');
+  await hero.locator('.otext').click();
+  await expect(hero).toBeFocused();
+  await expect(hero.locator('input.otitle')).toHaveCount(0);
+  await hero.locator('.otext').click();
+  await expect(hero.locator('input.otitle')).toHaveValue('Write the copy: Hero');
+  await hero.locator('input.otitle').press('Escape');
+
+  // Dropping a task on a group row moves it there, at the top level.
+  await groupRow(other.id).scrollIntoViewIfNeeded();
+  await rowOf('Loose task for the other group').dragTo(groupRow(other.id));
+  await expect(page.locator('#toast')).toContainText(`Moved to ${other.name}`);
+  await expect.poll(async () => (await (await request.get(`/api/items/${loose.id}`, { headers: auth })).json()).groupId).toBe(other.id);
+
+  // What's shown is remembered on this device; someone who had "Show finished" on starts at Everything.
+  await showPick.selectOption('waiting');
+  await page.reload();
+  await page.evaluate(() => { location.hash = '#/tasks'; });
+  await expect(page.locator('#view-tasks select[aria-label="Show"]')).toHaveValue('waiting');
+  await page.evaluate(() => { localStorage.removeItem('onething.outline.show'); localStorage.setItem('onething.outline.showDone', '1'); });
+  await page.reload();
+  await expect(page.locator('#view-tasks select[aria-label="Show"]')).toHaveValue('all');
+  await page.locator('#view-tasks select[aria-label="Show"]').selectOption('todo');
+  // The rest of this file works in its own group.
+  await page.locator('#tabs .tab', { hasText: group.name }).click();
   expect(errors).toEqual([]);
 });
 

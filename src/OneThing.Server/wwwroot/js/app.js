@@ -1584,13 +1584,15 @@ function wherePanel(item) {
   return h('div', { class: 'where' }, path, partOf);
 }
 
-/** The task in the tree (Tasks): in its group, its parents opened, highlighted. */
+/** The task in the tree (Tasks): in its group, its parents opened, highlighted; a zoom that doesn't hold it is left. */
 async function showInTree(item) {
   await closeDrawer();
   if (!$('#drawer').hidden) return; // couldn't save what was typed: the panel stays open
   if (state.group && state.group !== item.groupId) { setGroup(item.groupId); refreshAll(); }
-  location.hash = '#/tasks';
-  await ctx.views.tasks.reveal(item.id, (item.pathIds ?? []).slice(0, -1), { finished: !!item.completedAt });
+  const parents = (item.pathIds ?? []).slice(0, -1);
+  const zoom = ctx.views.tasks.zoom();
+  location.hash = zoom && parents.includes(zoom) && location.hash.startsWith('#/tasks/') ? `#/tasks/${encodeURIComponent(zoom)}` : '#/tasks';
+  await ctx.views.tasks.reveal(item.id, parents, { finished: !!item.completedAt, groupId: item.groupId });
 }
 
 /**

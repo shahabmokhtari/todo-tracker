@@ -191,4 +191,19 @@ public sealed class OutlineTests
     [InlineData("Launch: copy", null, "Launch: copy")]
     public void A_subtask_does_not_repeat_its_parents_name(string title, string? parent, string shown) =>
         Assert.Equal(shown, Outline.ShownTitle(title, parent));
+
+    [Fact]
+    public void A_subtask_named_after_its_parents_shorter_title_is_trimmed_too()
+    {
+        var market = Add("Go to market");
+        var accounts = Add("Go to market: Publisher accounts", market);
+        Add("Publisher accounts: Pick the phone number", accounts);
+        Add("Go to market: Publisher accounts - Pay the fee", accounts);
+
+        var rows = Rows(Open(market, accounts));
+
+        Assert.Equal(["Work", "Go to market", "Publisher accounts", "Pick the phone number", "Pay the fee", "Personal"], rows.Select(r => r.Title));
+        Assert.Equal("Publisher accounts", Outline.Path(_board, new OutlineOptions { ZoomId = accounts.Id }, T0)[^1].Title);
+        Assert.Equal("Pick the phone number", Rows(new OutlineOptions { ZoomId = accounts.Id })[0].Title);
+    }
 }

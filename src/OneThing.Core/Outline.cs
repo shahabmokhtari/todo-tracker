@@ -123,7 +123,7 @@ public static class Outline
         var rows = new List<OutlineRow>();
         var zoom = ResolveZoom(shown);
 
-        void Walk(IEnumerable<WorkItem> items, int depth)
+        void Walk(IEnumerable<WorkItem> items, int depth, string? parentShown)
         {
             foreach (var item in items.Where(shown.Kept))
             {
@@ -131,11 +131,12 @@ public static class Outline
                 var open = children.Count > 0 && (options.Searching || options.Expanded.Contains(item.Id));
                 var (done, total) = Leaves(item);
                 var parent = item.Parent;
+                var title = ShownTitle(item.Title, parent?.Title, parentShown);
                 rows.Add(new OutlineRow(
                     OutlineRowKind.Task,
                     item.Id,
                     depth,
-                    ShownTitle(item.Title, parent?.Title),
+                    title,
                     item.Title,
                     children.Count > 0,
                     open,
@@ -147,21 +148,21 @@ public static class Outline
                 { Item = item });
                 if (open)
                 {
-                    Walk(children, depth + 1);
+                    Walk(children, depth + 1, title);
                 }
             }
         }
 
         if (zoom is not null)
         {
-            Walk(zoom.Children, 0);
+            Walk(zoom.Children, 0, Chain(zoom)[^1].Shown);
             return rows;
         }
 
         var roots = shown.Roots().ToList();
         if (options.GroupId is { } picked)
         {
-            Walk(roots.Where(r => r.GroupId == picked), 0);
+            Walk(roots.Where(r => r.GroupId == picked), 0, null);
             return rows;
         }
 
@@ -181,7 +182,7 @@ public static class Outline
             rows.Add(new OutlineRow(OutlineRowKind.Group, group.Id, 0, group.Name, group.Name, hasChildren, open, done, total, total - done, null, false) { Group = group });
             if (open)
             {
-                Walk(tasks, 1);
+                Walk(tasks, 1, null);
             }
         }
 
@@ -200,12 +201,10 @@ public static class Outline
 
         var group = board.GetGroup(zoom.GroupId);
         var parts = new List<OutlinePathPart> { new(OutlinePartKind.All, null, AllGroupsTitle), new(OutlinePartKind.Group, group.Id, group.Name) };
-        WorkItem? previous = null;
-        foreach (var item in zoom.Ancestors().Reverse().Append(zoom))
+        foreach (var (item, shown) in Chain(zoom))
         {
             var (done, total) = Leaves(item);
-            parts.Add(new OutlinePathPart(OutlinePartKind.Task, item.Id, ShownTitle(item.Title, previous?.Title), done, total));
-            previous = item;
+            parts.Add(new OutlinePathPart(OutlinePartKind.Task, item.Id, shown, done, total));
         }
 
         return parts;
@@ -284,10 +283,17 @@ public static class Outline
     /// <summary>
     /// A subtask's title without its parent's name in front: when it starts with the parent's title (any case)
     /// followed by <c>:</c>, <c> -</c>, <c> –</c> or <c> —</c>, the rest (leading spaces dropped), unless that's empty.
+    /// When the parent's own title is shown shorter (<paramref name="parentShownTitle"/>), that name counts too.
     /// </summary>
-    public static string ShownTitle(string title, string? parentTitle)
+    public static string ShownTitle(string title, string? parentTitle, string? parentShownTitle = null)
     {
         ArgumentNullException.ThrowIfNull(title);
+        var shown = Trim(title, parentTitle);
+        return shown == title && parentShownTitle != parentTitle ? Trim(title, parentShownTitle) : shown;
+    }
+
+    private static string Trim(string title, string? parentTitle)
+    {
         if (string.IsNullOrEmpty(parentTitle) || !title.StartsWith(parentTitle, StringComparison.OrdinalIgnoreCase))
         {
             return title;
@@ -321,6 +327,18 @@ public static class Outline
     {
         var leaves = item.SelfAndDescendants().Skip(1).Where(i => i.Children.Count == 0).ToList();
         return (leaves.Count(l => l.IsDone), leaves.Count);
+    }
+
+    /// <summary>The task and its parents, outermost first, each with its title as shown under the one before.</summary>
+    private static List<(WorkItem Item, string Shown)> Chain(WorkItem item)
+    {
+        var chain = new List<(WorkItem Item, string Shown)>();
+        foreach (var at in item.Ancestors().Reverse().Append(item))
+        {
+            chain.Add((at, chain.Count == 0 ? at.Title : ShownTitle(at.Title, chain[^1].Item.Title, chain[^1].Shown)));
+        }
+
+        return chain;
     }
 
     private static (int Done, int Total) GroupLeaves(IEnumerable<WorkItem> roots)

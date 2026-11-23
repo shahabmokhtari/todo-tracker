@@ -252,20 +252,34 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 
 /* ---------- outline (tasks) ---------- */
 
-.outline { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.outline { display: grid; grid-template-columns: minmax(0, 1fr); padding: var(--space-2); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
 .orow {
   --depth: 0;
+  /* Indent per level, the space before the first arrow, and the arrow's width: guide lines run under each arrow. */
+  --indent: 24px;
+  --lead: 8px;
+  --twisty: 22px;
   position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: 38px;
-  padding: 2px 8px 2px calc(8px + var(--depth) * 24px);
+  padding: 2px 8px 2px calc(var(--lead) + var(--depth) * var(--indent));
   border-radius: 10px;
   cursor: default;
   content-visibility: auto;
   contain-intrinsic-size: auto 38px;
 }
+/* Thin guide lines, one per level of indent (drawn behind the row, so a task's color tint stays). */
+.orow::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 calc(var(--lead) + var(--twisty) / 2);
+  width: calc(var(--depth) * var(--indent));
+  background: repeating-linear-gradient(to right, var(--guide) 0 1px, transparent 1px var(--indent));
+  pointer-events: none;
+}
+.outline { --guide: color-mix(in srgb, var(--border-strong) 50%, transparent); }
 .orow:hover { background: var(--surface-hover); }
 .orow:focus, .orow:focus-within { background: var(--accent-soft); outline: none; }
 .orow:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -273,7 +287,7 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .orow.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
 .orow.drop-after { box-shadow: inset 0 -3px 0 var(--accent); }
 .orow.drop-inside { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
-.otwisty { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer; }
+.otwisty { display: grid; place-items: center; flex: 0 0 auto; width: var(--twisty); height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer; }
 .otwisty:disabled { cursor: default; }
 .otwisty .icon { transition: transform .15s var(--ease); }
 .otwisty .icon.open { transform: rotate(90deg); }
@@ -282,24 +296,81 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 .orow.is-done .ocheck { background: var(--ok); border-color: var(--ok); }
 .orow.prio-critical .ocheck { border-color: #ef4444; }
 .orow.prio-high .ocheck { border-color: #f59e0b; }
-.otitle { flex: 1 1 auto; min-width: 0; padding: 5px 6px; border: 1px solid transparent; border-radius: 8px; background: transparent; font-size: 14.5px; }
-.otitle:hover { border-color: var(--border); }
-.otitle:focus { background: var(--surface-solid); }
-.orow.is-done .otitle { color: var(--text-3); text-decoration: line-through; }
+/* The title: text that wraps to two lines (the full title is its tooltip); the box only while renaming. */
+.otext {
+  flex: 1 1 0;
+  min-width: 0;
+  /* Margin, not padding: the clamp cuts the text at its box, so a third line never peeks out. */
+  margin: 7px 0;
+  padding: 0 7px;
+  font-size: 14.5px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  cursor: text;
+}
+.otitle { flex: 1 1 auto; min-width: 0; padding: 6px 6px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface-solid); font-size: 14.5px; line-height: 20px; }
+.orow.is-done .otext { color: var(--text-3); text-decoration: line-through; }
 .orow.adding .otitle { border-color: var(--accent); background: var(--surface-solid); }
 .ochips, .ofacts { display: flex; gap: 4px; align-items: center; flex: 0 1 auto; overflow: hidden; }
+.ochips:empty, .ofacts:empty { display: none; }
 .ofact { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ofact.danger { color: var(--danger); }
 .ofact.accent { color: var(--ok); font-weight: 600; }
-.oactions { display: flex; opacity: 0; transition: opacity .15s var(--ease); }
+/* A parent's progress: a thin bar and done/total (leaves under it). */
+.oprogress { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.obar { display: block; width: 44px; height: 3px; border-radius: 3px; background: var(--border-strong); overflow: hidden; }
+.obar-fill { display: block; width: var(--p, 0%); height: 100%; border-radius: inherit; background: var(--task-accent, var(--ok)); }
+.ocount { min-width: 3.2em; text-align: right; }
+.ozoom { flex: 0 0 auto; color: var(--text-3); }
+.oactions { display: flex; flex: 0 0 auto; opacity: 0; transition: opacity .15s var(--ease); }
 .orow:hover .oactions, .orow:focus-within .oactions, .orow.is-timing .oactions { opacity: 1; }
 @media (hover: none) { .oactions { opacity: 1; } }
+
+/* Group rows (All groups): the group's dot and name, what's left, its progress; they stay at the top while their
+   tasks scroll under them. */
+.orow.ogroup {
+  position: sticky;
+  top: var(--sticky-top, var(--topbar-h));
+  z-index: 2;
+  content-visibility: visible;
+  margin-top: 2px;
+  background: var(--surface-solid);
+  font-weight: 600;
+}
+.orow.ogroup:first-child { margin-top: 0; }
+.orow.ogroup:hover { background: linear-gradient(var(--surface-hover), var(--surface-hover)), var(--surface-solid); }
+.orow.ogroup:focus, .orow.ogroup:focus-within, .orow.ogroup.drop-inside { background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--surface-solid); }
+.gdot { flex: 0 0 auto; width: 10px; height: 10px; margin: 0 5px; border-radius: 50%; background: var(--group, var(--text-3)); }
+.ogroup .otext { cursor: pointer; -webkit-line-clamp: 1; line-clamp: 1; }
+.gleft { flex: 0 0 auto; font-size: 12.5px; font-weight: 500; color: var(--text-2); white-space: nowrap; }
+
+/* The path above a zoomed tree. */
+.opath ol { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.opath li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
+.opath li + li::before { content: "›"; color: var(--text-3); padding: 0 2px; }
+.opath .crumb { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: min(280px, 70vw); }
+.opath .crumb-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opath .crumb.current { color: var(--text); }
+.open-to { display: inline-flex; align-items: center; gap: 6px; }
+.open-to .seg button { padding: 4px 10px; font-size: 13px; }
+
 @media (max-width: 640px) {
   .ochips, .kbd-hints { display: none; }
-  .orow { padding-left: calc(4px + var(--depth) * 14px); }
-  /* Phones: the row opens with a tap on its arrow button; moves are in the Move menu. */
-  .oactions .icon-btn:not(:last-of-type) { display: none; }
+  .orow { --indent: 14px; --lead: 4px; flex-wrap: wrap; column-gap: 4px; }
   .ofacts .ofact:not(:first-child) { display: none; }
+  .obar, .gleft { display: none; }
+  .ocount { min-width: 0; }
+  /* Phones: the title gets the row. A tapped (selected) row shows its buttons on a line of their own under it: open,
+     timer, add a subtask, the Move menu. A running timer's stop button stays. */
+  .orow:not(.ogroup) .oactions { display: none; }
+  .orow:not(.ogroup):focus-within .oactions, .orow.is-timing .oactions { display: flex; flex: 1 0 100%; justify-content: flex-end; gap: 4px; padding-bottom: 4px; opacity: 1; }
+  .orow:not(.ogroup):focus-within .oactions .icon-btn { display: inline-grid; }
+  .orow.is-timing:not(:focus-within) .oactions > :not(.on) { display: none; }
 }
 .kbd-hints kbd { font-size: 11px; padding: 0 5px; border: 1px solid var(--border); border-radius: 5px; }
 
@@ -774,7 +845,8 @@ body.nav-rail .sidenav { transition: none; }
   .search #filter-clear { right: 44px; }
   .check-btn, .ocheck, .sib-check, .done-check { position: relative; }
   .check-btn::after, .ocheck::after, .otwisty::after { content: ""; position: absolute; inset: -11px; }
-  .otwisty { position: relative; width: 32px; height: 32px; }
+  .otwisty { position: relative; height: 32px; }
+  .orow { --twisty: 32px; }
   .orow { min-height: 52px; }
   .seg button { min-height: 40px; padding-inline: 14px; }
   .move-select { height: 40px; max-width: 110px; font-size: 13.5px; }

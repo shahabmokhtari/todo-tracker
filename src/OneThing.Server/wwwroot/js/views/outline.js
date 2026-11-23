@@ -1,39 +1,85 @@
-// Tasks: every task of a group as an outline. Click a title to rename it; Enter adds the next task, Tab and Shift+Tab
-// (or Alt+Shift+Right/Left) nest and un-nest, Alt+Up/Down reorder, Space or the checkbox finishes, Escape leaves the
-// tree; drag a row before, after or into another (or use a row's Move menu on a touch screen).
+// Tasks: every task as an outline. Under All groups the top level is the groups; a parent shows how far along it is;
+// ⊙ zooms into a branch (#/tasks/<id>, with a path back). Click a row's title to select it, click it again (or Enter,
+// F2) to rename it; Enter adds the next task, Tab and Shift+Tab (or Alt+Shift+Right/Left) nest and un-nest,
+// Alt+Up/Down reorder, Space or the checkbox finishes, Escape leaves the zoom, then the tree; drag a row before, after
+// or into another, or onto a group (or use a row's Move menu on a touch screen).
 
-import { flatten, index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests } from '../outlinemodel.js';
+import {
+  index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests, groupDropRequests,
+  outlineRows, outlinePath, resolveZoom, openTo, newTaskPlace, keptOf, shownTitle, initialShow, SHOW_CHOICES,
+} from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus, DRAG_TYPE } from './common.js';
 import { iconBadge, repeatMark, withAccent } from '../looks.js';
 
 const EXPANDED_KEY = 'onething.outline.expanded';
+const CLOSED_KEY = 'onething.outline.closedGroups';
+const SHOW_KEY = 'onething.outline.show';
+// The old "Show finished" box: read once to pick the first Show choice, and left in place.
 const DONE_KEY = 'onething.outline.showDone';
+const ROWS = '.orow[data-key]';
+
+const read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
+const write = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private window */ } };
+const readSet = (key) => { try { return new Set(JSON.parse(read(key) ?? '[]')); } catch { return new Set(); } };
+
+const LEVELS = [['groups', 'Groups'], ['tasks', 'Tasks'], ['subtasks', 'Subtasks'], ['all', 'All']];
+const EMPTY = {
+  now: 'Nothing can be done right now.',
+  waiting: 'Nothing is waiting.',
+};
 
 export function createOutlineView(ctx) {
   const { h, icon } = ctx;
   const root = document.getElementById('view-tasks');
-  const expanded = new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? '[]'));
-  let showDone = localStorage.getItem(DONE_KEY) === '1';
+  let expanded = readSet(EXPANDED_KEY);
+  let closedGroups = readSet(CLOSED_KEY);
+  let show = initialShow(read(SHOW_KEY), read(DONE_KEY));
   let roots = [];
   let map = new Map();
+  let groups = [];
   let dragging = null;
-  // A new task being typed: after `afterId` (as a sibling) or inside `parentId` (first), at the top when both are null.
+  // The branch zoomed into (from the address), and its parents as last drawn (to zoom out to when it's gone).
+  let zoomId = null;
+  let trail = [];
+  // A new task being typed: after `afterId` (as a sibling), inside `parentId` (first), or first in `groupId`.
   let adding = null;
+  // The rows as last drawn, by key (task or group id).
+  let drawn = new Map();
 
-  const saveExpanded = () => localStorage.setItem(EXPANDED_KEY, JSON.stringify([...expanded].slice(-500)));
+  // Group rows stay under the top bar while their tasks scroll; how tall it is depends on the screen.
+  const topbar = document.querySelector('.topbar');
+  const stickUnder = () => root.style.setProperty('--sticky-top', `${topbar?.offsetHeight ?? 0}px`);
+  if (topbar && typeof ResizeObserver === 'function') new ResizeObserver(stickUnder).observe(topbar);
+
+  const saveExpanded = () => write(EXPANDED_KEY, JSON.stringify([...expanded].slice(-500)));
+  const saveClosed = () => write(CLOSED_KEY, JSON.stringify([...closedGroups]));
   const fetchTree = latest(() => ctx.api(treeUrl(ctx)));
   const queue = serial();
   let shown = null;
   // The row the keyboard comes back to (the tree is one Tab stop; arrows move inside it).
   let activeId = null;
+  // After a zoom: the row to focus (the task zoomed out of), or the first row (zoomed in).
+  let focusNext = null;
+
+  const options = () => ({
+    groupId: ctx.state.group || null, zoomId, show, query: ctx.state.query ?? '', expanded, closedGroups, trail,
+  });
+
+  /** The groups in the board's order (the side bar has them; asked for once if it hasn't yet). */
+  async function loadGroups() {
+    const known = ctx.groups();
+    if (known.length) groups = known;
+    else if (!groups.length) groups = await ctx.api('/api/groups').catch(() => []);
+  }
 
   /** `quiet`: a background refresh, which leaves the outline alone when nothing changed. */
   async function load({ quiet = false } = {}) {
     try {
       const reply = await fetchTree();
       if (!reply.current) return;
-      const { same, text } = sameAs(shown, reply.value);
+      await loadGroups();
+      const { same, text } = sameAs(shown, [reply.value, groups.map((g) => [g.id, g.name, g.color])]);
       shown = text;
       if (quiet && same) return;
       roots = reply.value;
@@ -47,10 +93,12 @@ export function createOutlineView(ctx) {
   /** Changes go one at a time; `build` makes the requests from the tree as it is when the change's turn comes. */
   const run = (build, message, focusId = null) => queue(() => send(ctx, typeof build === 'function' ? build() : build, message, focusId));
 
-  /** Focuses a task's row (or its title); false when the row isn't shown. */
-  function focusRow(id, field = 'row') {
-    const row = root.querySelector(`.orow[data-id="${CSS.escape(id)}"]`);
-    (field === 'title' ? row?.querySelector('.otitle') : row)?.focus({ preventScroll: true });
+  const rowEl = (key) => root.querySelector(`.orow[data-key="${CSS.escape(key)}"]`);
+
+  /** Focuses a row (a task's or a group's); false when it isn't shown. */
+  function focusRow(key) {
+    const row = rowEl(key);
+    row?.focus({ preventScroll: true });
     row?.scrollIntoView?.({ block: 'nearest' });
     return !!row;
   }
@@ -85,10 +133,46 @@ export function createOutlineView(ctx) {
     }
   }
 
+  // ---- zoom ----------------------------------------------------------------------------------------------------
+
+  /** Into a task's branch (the address changes, so Back comes out again). */
+  function zoomTo(id, focus = { first: true }) {
+    adding = null;
+    focusNext = focus;
+    location.hash = id ? `#/tasks/${encodeURIComponent(id)}` : '#/tasks';
+  }
+
+  /** Out of the zoom, to the whole tree, with the task that was zoomed into in sight and focused. */
+  function zoomOut() {
+    const from = zoomId;
+    if (!from) return;
+    const node = map.get(from)?.node;
+    trail.forEach((id) => expanded.add(id));
+    if (node) closedGroups.delete(node.groupId);
+    saveExpanded();
+    saveClosed();
+    zoomTo(null, { key: from });
+  }
+
+  /** Called by the router before the view draws: the zoom the address names (null: none). */
+  function setZoom(id) {
+    if (id === zoomId) return;
+    // Back or a link while the keyboard is in the tree: it lands on the first row.
+    if (!focusNext && root.contains(document.activeElement)) focusNext = { first: true };
+    zoomId = id;
+    if (!id) trail = [];
+    adding = null;
+  }
+
+  // ---- adding --------------------------------------------------------------------------------------------------
+
   async function create(title, at) {
-    const body = { title, groupId: ctx.state.group, stage: 'next' };
-    const parentId = at.parentId ?? (at.afterId ? map.get(at.afterId)?.parent?.id : null);
+    const after = at.afterId ? map.get(at.afterId) : null;
+    const parentId = at.parentId ?? after?.parent?.id ?? null;
+    const groupId = after?.node.groupId ?? at.groupId ?? ctx.state.group ?? null;
+    const body = { title, stage: 'next' };
     if (parentId) body.parentId = parentId;
+    else if (groupId) body.groupId = groupId;
     let created;
     try {
       created = await ctx.post('/api/items', body);
@@ -97,11 +181,12 @@ export function createOutlineView(ctx) {
       return null;
     }
 
-    // In place: after the task it was typed under (or first inside its parent).
-    const siblings = parentId ? map.get(parentId).node.children : roots;
-    const place = at.afterId ? { after: at.afterId } : siblings[0] ? { before: siblings[0].id } : null;
+    // In place: after the task it was typed under (or first inside its parent or group).
+    const siblings = parentId ? map.get(parentId)?.node.children ?? [] : roots.filter((r) => !groupId || r.groupId === groupId);
+    const first = siblings.find((s) => s.id !== created.id);
+    const place = at.afterId ? { after: at.afterId } : first ? { before: first.id } : null;
     if (place) await ctx.api(`/api/items/${created.id}/reorder`, { method: 'POST', body: place }).catch(() => {});
-    if (parentId) expanded.add(parentId);
+    if (parentId && parentId !== zoomId) expanded.add(parentId);
     saveExpanded();
     return created;
   }
@@ -140,20 +225,114 @@ export function createOutlineView(ctx) {
     return row;
   }
 
-  function row({ node, depth, hasChildren, expanded: open }) {
-    const title = h('input', {
-      class: 'otitle', value: node.title, maxlength: 300, 'aria-label': `Title of ${node.title}`, tabindex: -1,
-      onblur: () => rename(node, title),
+  /** New task: inside the zoomed task, else first in the group picked (all groups: the first group). */
+  function startAdding() {
+    const place = newTaskPlace(roots, groups, options());
+    if (place.parentId) adding = { parentId: place.parentId };
+    else if (!ctx.state.group && place.groupId) {
+      adding = { groupId: place.groupId };
+      closedGroups.delete(place.groupId);
+      saveClosed();
+    } else adding = { afterId: null, parentId: null };
+    render();
+  }
+
+  // ---- rows ----------------------------------------------------------------------------------------------------
+
+  /** Done/total and a thin bar (leaves under it). */
+  function progress(done, total) {
+    const fill = h('span', { class: 'obar-fill' });
+    fill.style.setProperty('--p', `${total ? Math.round((done / total) * 100) : 0}%`);
+    return h('span', { class: 'oprogress', title: `${done} of ${total} done` },
+      h('span', { class: 'obar', 'aria-hidden': 'true' }, fill),
+      h('span', { class: 'ocount' }, `${done}/${total}`));
+  }
+
+  /** Drop handlers shared by task and group rows. */
+  function dropTarget(el, zoneOf, onDrop) {
+    el.addEventListener('dragover', (e) => {
+      if (!dragging || dragging === el.dataset.key) return;
+      e.preventDefault();
+      clearMarks();
+      el.classList.add(`drop-${zoneOf(e)}`);
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drop-before', 'drop-inside', 'drop-after'));
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const zone = zoneOf(e);
+      const moved = dragging;
+      clearMarks();
+      if (moved) onDrop(moved, zone);
+    });
+  }
+
+  function groupRow(r) {
+    const g = r.group;
+    const el = h('div', {
+      class: 'orow ogroup',
+      role: 'treeitem',
+      'aria-level': 1,
+      'aria-expanded': String(r.expanded),
+      'aria-label': `${g.name}, ${r.left} to do`,
+      tabindex: g.id === activeId ? 0 : -1,
+      dataset: { key: g.id, group: g.id },
+      onfocus: (e) => { if (e.target === el) setActive(g.id); },
+      onkeydown: (e) => onGroupKey(e, r),
+    },
+    h('button', { class: 'otwisty', type: 'button', tabindex: -1, 'aria-hidden': 'true', onclick: () => toggleGroup(g.id, !r.expanded) }, icon('chevron', { size: 14, className: r.expanded ? 'open' : '' })),
+    h('span', { class: 'gdot', 'aria-hidden': 'true' }),
+    h('span', { class: 'otext gname' }, g.name),
+    h('span', { class: 'gleft' }, r.left ? `${r.left} to do` : 'All done'),
+    r.total ? progress(r.done, r.total) : null,
+    h('span', { class: 'oactions' },
+      h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: `Add a task to ${g.name}`, 'aria-label': `Add a task to ${g.name}`, onclick: () => { closedGroups.delete(g.id); saveClosed(); adding = { groupId: g.id }; render(); } }, icon('plus', { size: 13 }))));
+    if (g.color) el.style.setProperty('--group', g.color);
+    el.addEventListener('click', (e) => { if (e.target.closest('.otext')) toggleGroup(g.id, !r.expanded); });
+    dropTarget(el, () => 'inside', (moved) => {
+      const requests = groupDropRequests(map, moved, g.id);
+      if (!requests) return;
+      closedGroups.delete(g.id);
+      saveClosed();
+      run(requests, `Moved to ${g.name}`, moved);
+    });
+    return el;
+  }
+
+  /** The title as text (wraps to two lines); the selected row's title, Enter or F2 turns it into the box. */
+  function titleText(r) {
+    return h('span', { class: 'otext', title: r.fullTitle !== r.title ? r.fullTitle : null }, r.title);
+  }
+
+  function startRename(el, r) {
+    const node = r.node;
+    const text = el.querySelector('.otext');
+    if (!text) return;
+    let cancelled = false;
+    const input = h('input', {
+      class: 'otitle', value: node.title, maxlength: 300, 'aria-label': `Title of ${node.title}`,
       onkeydown: (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); title.blur(); adding = { afterId: node.id }; render(); }
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); title.value = node.title; focusRow(node.id); }
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); adding = { afterId: node.id }; render(); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelled = true; input.value = node.title; focusRow(node.id); }
+      },
+      onblur: async () => {
+        if (!cancelled) await rename(node, input);
+        if (input.isConnected) input.replaceWith(titleText({ title: shownTitle(node.title, r.parent?.title, r.parentShown), fullTitle: node.title }));
       },
     });
+    input.addEventListener('mousedown', (e) => e.stopPropagation());
+    text.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
+  function row(r) {
+    const { node, depth, hasChildren, expanded: open } = r;
     const facts = [];
     if (node.deadline && !node.done) facts.push(h('span', { class: `ofact${new Date(node.deadline) < new Date() ? ' danger' : ''}` }, icon('calendar', { size: 12 }), ctx.relativeTime(node.deadline)));
-    if (node.totalCount) facts.push(h('span', { class: 'ofact' }, `${node.doneCount}/${node.totalCount}`));
     if (node.timeSpentSeconds || node.timing) facts.push(h('span', { class: `ofact${node.timing ? ' accent' : ''}` }, icon('timer', { size: 12 }), duration(node.timeSpentSeconds)));
     if (node.noteCount) facts.push(h('span', { class: 'ofact' }, icon('note', { size: 12 }), String(node.noteCount)));
+    let selected = false;
+    const text = titleText(r);
     const el = h('div', {
       class: `orow prio-${node.priority}${node.done ? ' is-done' : ''}${node.timing ? ' is-timing' : ''}`,
       role: 'treeitem',
@@ -162,36 +341,17 @@ export function createOutlineView(ctx) {
       'aria-label': node.title,
       tabindex: node.id === activeId ? 0 : -1,
       draggable: 'true',
-      dataset: { id: node.id },
+      dataset: { id: node.id, key: node.id },
       onfocus: (e) => { if (e.target === el) setActive(node.id); },
-      onkeydown: (e) => onRowKey(e, node, hasChildren, open),
+      onkeydown: (e) => onRowKey(e, r),
       ondragstart: (e) => {
-        if (e.target === title) { e.preventDefault(); return; }
+        if (e.target.closest?.('input, select')) { e.preventDefault(); return; }
         dragging = node.id;
         el.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData(DRAG_TYPE, node.id);
       },
       ondragend: () => { dragging = null; el.classList.remove('dragging'); clearMarks(); },
-      ondragover: (e) => {
-        if (!dragging || dragging === node.id) return;
-        e.preventDefault();
-        clearMarks();
-        const r = el.getBoundingClientRect();
-        el.classList.add(`drop-${dropZone(e.clientY - r.top, r.height)}`);
-      },
-      ondragleave: () => el.classList.remove('drop-before', 'drop-inside', 'drop-after'),
-      ondrop: (e) => {
-        e.preventDefault();
-        const r = el.getBoundingClientRect();
-        const zone = dropZone(e.clientY - r.top, r.height);
-        const moved = dragging;
-        clearMarks();
-        if (!dropRequests(map, moved, node.id, zone, ctx.state.group)) return ctx.toast('A task can’t go inside itself', 'error');
-        if (zone === 'inside') expanded.add(node.id);
-        saveExpanded();
-        run(() => dropRequests(map, moved, node.id, zone, ctx.state.group), 'Moved', moved);
-      },
     },
     h('button', {
       class: 'otwisty', type: 'button', tabindex: -1, 'aria-hidden': 'true', disabled: !hasChildren,
@@ -202,19 +362,31 @@ export function createOutlineView(ctx) {
       onclick: () => complete(node),
     }, node.done ? icon('check', { size: 13 }) : null),
     iconBadge(node.icon),
-    title,
+    text,
     repeatMark(node.repeat),
     h('span', { class: 'ochips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 2).map((t) => h('span', { class: 'chip tag' }, `#${t}`))),
     h('span', { class: 'ofacts' }, ...facts),
+    r.total ? progress(r.done, r.total) : null,
+    (node.children ?? []).length
+      ? h('button', { class: 'icon-btn small ozoom', type: 'button', tabindex: -1, title: 'Zoom in: show only this', 'aria-label': `Zoom into ${node.title}`, onclick: () => zoomTo(node.id) }, icon('target', { size: 13 }))
+      : null,
     h('span', { class: 'oactions' },
       node.done ? null : h('button', { class: `icon-btn small${node.timing ? ' on' : ''}`, type: 'button', tabindex: -1, title: node.timing ? 'Stop the timer' : 'Start the timer', 'aria-label': node.timing ? `Stop timing ${node.title}` : `Start timing ${node.title}`,
         onclick: () => run([node.timing ? { method: 'POST', url: '/api/timer/stop' } : { method: 'POST', url: '/api/timer/start', body: { itemId: node.id } }], null, node.id) }, icon(node.timing ? 'stop' : 'play', { size: 13 })),
       h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Add a subtask', 'aria-label': `Add a subtask to ${node.title}`, onclick: () => { expanded.add(node.id); adding = { parentId: node.id }; render(); } }, icon('plus', { size: 13 })),
       h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: 'Open (Ctrl+Enter)', 'aria-label': `Open ${node.title}`, onclick: () => ctx.openDrawer(node.id) }, icon('expand', { size: 13 })),
-      moveMenu(node)));
+      moveMenu(r)));
     el.style.setProperty('--depth', depth);
     withAccent(el, node.accent);
-    title.addEventListener('mousedown', (e) => e.stopPropagation());
+    // A click on the title selects the row; a click on the selected row's title renames it.
+    text.addEventListener('mousedown', () => { selected = document.activeElement === el; });
+    el.addEventListener('click', (e) => { if (selected && e.target.closest('.otext')) startRename(el, r); selected = false; });
+    dropTarget(el, (e) => { const b = el.getBoundingClientRect(); return dropZone(e.clientY - b.top, b.height); }, (moved, zone) => {
+      if (!dropRequests(map, moved, node.id, zone, ctx.state.group)) { ctx.toast('A task can’t go inside itself', 'error'); return; }
+      if (zone === 'inside') expanded.add(node.id);
+      saveExpanded();
+      run(() => dropRequests(map, moved, node.id, zone, ctx.state.group), 'Moved', moved);
+    });
     return el;
   }
 
@@ -222,32 +394,41 @@ export function createOutlineView(ctx) {
   function setActive(id) {
     if (activeId === id) return;
     activeId = id;
-    root.querySelectorAll('.orow[data-id]').forEach((r) => { r.tabIndex = r.dataset.id === id ? 0 : -1; });
+    root.querySelectorAll(ROWS).forEach((r) => { r.tabIndex = r.dataset.key === id ? 0 : -1; });
   }
 
   /** The same moves as the keys, as a menu (touch screens can't drag, and have no Tab or Alt). */
-  function moveMenu(node) {
+  function moveMenu(r) {
+    const choices = [['', 'Move…'], ['up', 'Up'], ['down', 'Down'], ['in', 'Into the task above']];
+    if (r.outdent) choices.push(['out', 'Out one level']);
     return h('select', {
-      class: 'move-select', tabindex: -1, 'aria-label': `Move ${node.title}`,
+      class: 'move-select', tabindex: -1, 'aria-label': `Move ${r.node.title}`,
       onchange: (e) => {
         const key = e.target.value;
         e.target.value = '';
-        if (key) move(node.id, key);
+        if (key) move(r.node.id, key);
       },
-    }, ...[['', 'Move…'], ['up', 'Up'], ['down', 'Down'], ['in', 'Into the task above'], ['out', 'Out one level']].map(([value, label]) => h('option', { value }, label)));
+    }, ...choices.map(([value, label]) => h('option', { value }, label)));
+  }
+
+  /** Whether a sibling is on screen next to this task (kept by Show, and in the same group at the top level). */
+  function besides(id) {
+    const kept = keptOf(roots, options());
+    const group = map.get(id)?.node.groupId;
+    return (n) => kept(n) && n.groupId === group;
   }
 
   /** Up/down among the rows shown, into the task above, or out one level; built from the tree when its turn comes. */
   function move(id, how) {
     const build = {
-      up: () => stepRequests(map, id, -1, showDone),
-      down: () => stepRequests(map, id, 1, showDone),
+      up: () => stepRequests(map, id, -1, besides(id)),
+      down: () => stepRequests(map, id, 1, besides(id)),
       in: () => {
-        const requests = indentRequests(map, id, showDone);
+        const requests = indentRequests(map, id, besides(id));
         if (requests) { expanded.add(requests[0].body.parentId); saveExpanded(); }
         return requests;
       },
-      out: () => outdentRequests(map, id, ctx.state.group),
+      out: () => (drawn.get(id)?.outdent === false ? null : outdentRequests(map, id, ctx.state.group)),
     }[how];
     return run(build, null, id);
   }
@@ -267,31 +448,64 @@ export function createOutlineView(ctx) {
     focusRow(id);
   }
 
-  function onRowKey(e, node, hasChildren, open) {
-    if (e.target !== e.currentTarget) return;
-    const rows = [...root.querySelectorAll('.orow[data-id]')];
-    const i = rows.findIndex((r) => r.dataset.id === node.id);
+  function toggleGroup(id, open) {
+    if (open) closedGroups.delete(id);
+    else closedGroups.add(id);
+    saveClosed();
+    render();
+    focusRow(id);
+  }
+
+  /** Arrow keys between rows, Escape out of the zoom then the tree, Insert to add. */
+  function commonKey(e, i, rows) {
     const go = (k) => rows[k]?.focus();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (zoomId) zoomOut();
+      else root.querySelector('.view-toolbar .btn')?.focus();
+    } else if (e.key === 'ArrowDown' && !e.altKey) { e.preventDefault(); go(i + 1); }
+    else if (e.key === 'ArrowUp' && !e.altKey) { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(rows.length - 1); }
+    else return false;
+    return true;
+  }
+
+  function onGroupKey(e, r) {
+    if (e.target !== e.currentTarget) return;
+    const rows = [...root.querySelectorAll(ROWS)];
+    const i = rows.findIndex((x) => x.dataset.key === r.id);
+    if (commonKey(e, i, rows)) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); if (!r.expanded) toggleGroup(r.id, true); else if (r.hasChildren) rows[i + 1]?.focus(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); if (r.expanded) toggleGroup(r.id, false); }
+    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroup(r.id, !r.expanded); }
+    else if (e.key === 'Insert' || (e.key === 'n' && e.altKey)) { e.preventDefault(); closedGroups.delete(r.id); saveClosed(); adding = { groupId: r.id }; render(); }
+  }
+
+  function onRowKey(e, r) {
+    if (e.target !== e.currentTarget) return;
+    const { node, hasChildren, expanded: open } = r;
+    const rows = [...root.querySelectorAll(ROWS)];
+    const i = rows.findIndex((x) => x.dataset.key === node.id);
     const nest = (e.key === 'Tab' && !e.shiftKey) || (e.key === 'ArrowRight' && e.altKey && e.shiftKey);
     const unnest = (e.key === 'Tab' && e.shiftKey) || (e.key === 'ArrowLeft' && e.altKey && e.shiftKey);
     if (nest || unnest) {
       // Tab only nests when it can; otherwise it moves on like Tab anywhere else.
-      if (nest ? indentRequests(map, node.id, showDone) : outdentRequests(map, node.id, ctx.state.group)) {
+      if (nest ? indentRequests(map, node.id, besides(node.id)) : r.outdent && outdentRequests(map, node.id, ctx.state.group)) {
         e.preventDefault();
         move(node.id, nest ? 'in' : 'out');
       }
-    } else if (e.key === 'Escape') { e.preventDefault(); root.querySelector('.view-toolbar .btn')?.focus(); }
+    } else if (commonKey(e, i, rows)) { /* handled */ }
     else if (e.key === 'ArrowDown' && e.altKey) { e.preventDefault(); move(node.id, 'down'); }
     else if (e.key === 'ArrowUp' && e.altKey) { e.preventDefault(); move(node.id, 'up'); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); go(i - 1); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); if (hasChildren && !open) toggle(node.id, true); else go(i + 1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); if (hasChildren && !open) toggle(node.id, true); else rows[i + 1]?.focus(); }
     else if (e.key === 'ArrowLeft') {
       e.preventDefault();
       if (hasChildren && open) toggle(node.id, false);
-      else if (map.get(node.id)?.parent) focusRow(map.get(node.id).parent.id);
+      else if (r.parent) focusRow(r.parent.id);
+      else if (!ctx.state.group && !zoomId) focusRow(node.groupId);
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ctx.openDrawer(node.id); }
-    else if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); const t = e.currentTarget.querySelector('.otitle'); t.focus(); t.select(); }
+    else if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); startRename(e.currentTarget, r); }
     else if (e.key === ' ') { e.preventDefault(); complete(node); }
     else if (e.key === 'Insert' || (e.key === 'n' && e.altKey)) { e.preventDefault(); adding = { afterId: node.id }; render(); }
   }
@@ -300,22 +514,96 @@ export function createOutlineView(ctx) {
     root.querySelectorAll('.drop-before, .drop-inside, .drop-after').forEach((x) => x.classList.remove('drop-before', 'drop-inside', 'drop-after'));
   }
 
+  // ---- drawing -------------------------------------------------------------------------------------------------
+
+  /** The path above a zoomed tree: All groups › group › each parent › the zoomed task (its details). */
+  function pathBar(parts) {
+    const crumb = (p, i) => {
+      const last = i === parts.length - 1;
+      const go = () => {
+        if (p.kind === 'all') { zoomTo(null); if (ctx.state.group) ctx.setGroup(null); }
+        else if (p.kind === 'group') { zoomTo(null); if (ctx.state.group !== p.id) ctx.setGroup(p.id); }
+        else if (last) ctx.openDrawer(p.id);
+        else zoomTo(p.id);
+      };
+      const label = p.kind === 'all' ? 'All groups: leave the zoom' : last ? `${p.title}: open its details` : p.title;
+      return h('li', null, h('button', { class: `crumb${last ? ' current' : ''}`, type: 'button', title: label, 'aria-label': label, 'aria-current': last ? 'location' : null, onclick: go },
+        p.kind === 'all' ? icon('layers', { size: 13 }) : null, h('span', { class: 'crumb-text' }, p.title)),
+      last && p.total ? progress(p.done, p.total) : null);
+    };
+    return h('nav', { class: 'opath', 'aria-label': 'Where you are' }, h('ol', null, ...parts.map(crumb)));
+  }
+
+  function toolbar() {
+    const all = !ctx.state.group && !zoomId;
+    const showPick = h('select', {
+      'aria-label': 'Show',
+      onchange: (e) => { show = e.target.value; write(SHOW_KEY, show); render(); },
+    }, ...SHOW_CHOICES.map(([value, label]) => h('option', { value, selected: value === show }, label)));
+    const levels = LEVELS.filter(([id]) => id !== 'groups' || all);
+    return h('div', { class: 'view-toolbar' },
+      h('button', { class: 'btn primary', type: 'button', onclick: startAdding }, icon('plus', { size: 16 }), 'New task'),
+      h('label', { class: 'inline-select' }, 'Show', showPick),
+      h('div', { class: 'open-to', role: 'group', 'aria-label': 'Open to' },
+        h('span', { class: 'muted small', 'aria-hidden': 'true' }, 'Open to'),
+        h('div', { class: 'seg' }, ...levels.map(([id, label]) => h('button', {
+          type: 'button', title: `Open the tree to ${label.toLowerCase()}`,
+          onclick: () => {
+            const sets = openTo(roots, groups, options(), id);
+            expanded = sets.expanded;
+            closedGroups = sets.closedGroups;
+            saveExpanded();
+            saveClosed();
+            render();
+          },
+        }, label)))),
+      h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave'));
+  }
+
+  function emptyText() {
+    if (ctx.state.query?.trim()) return h('p', { class: 'empty-state' }, 'Nothing here matches the filter.');
+    if (EMPTY[show]) return h('p', { class: 'empty-state' }, EMPTY[show]);
+    if (zoomId) return h('p', { class: 'empty-state' }, 'Nothing left under this task. Press ', h('kbd', null, 'Esc'), ' to go back out.');
+    return h('p', { class: 'empty-state' }, 'No tasks here yet. Press ', h('kbd', null, 'Insert'), ' or the button to add one.');
+  }
+
   function render() {
-    const keep = ctx.state.refocus ?? document.activeElement?.closest?.('#view-tasks .orow')?.dataset.id;
+    const after = focusNext;
+    focusNext = null;
+    const keep = after?.key ?? ctx.state.refocus ?? document.activeElement?.closest?.('#view-tasks .orow')?.dataset.key;
     // A redraw after a change puts focus back only if the keyboard hasn't moved on (to the toolbar, say).
-    const focusHere = document.activeElement === document.body || !!root.querySelector('.outline')?.contains(document.activeElement);
-    // Where that row was, for when it's no longer shown (finished with "Show finished" off).
-    const keptAt = keep ? [...root.querySelectorAll('.orow[data-id]')].findIndex((r) => r.dataset.id === keep) : -1;
-    const rows = flatten(roots, expanded, showDone);
-    if (keep) activeId = keep;
-    if (!rows.some((r) => r.node.id === activeId)) activeId = rows[0]?.node.id ?? null;
-    const tree = h('div', { class: 'outline', role: 'tree', 'aria-label': 'Tasks' });
-    if (adding && !adding.afterId && !adding.parentId) tree.append(newRowEditor(0, adding));
+    const focusHere = !!after || document.activeElement === document.body || !!root.querySelector('.outline, .opath')?.contains(document.activeElement);
+    // Where that row was, for when it's no longer shown (finished, under To do).
+    const keptAt = keep ? [...root.querySelectorAll(ROWS)].findIndex((r) => r.dataset.key === keep) : -1;
+
+    // A zoom that can't be shown any more (finished, moved, gone): out to its nearest parent that can. A search only
+    // narrows for now (the address stays, for when it's cleared).
+    let opts = options();
+    const zoom = resolveZoom(roots, opts);
+    if (zoom !== zoomId) {
+      if (!opts.query.trim()) {
+        zoomId = zoom;
+        history.replaceState(null, '', zoom ? `#/tasks/${encodeURIComponent(zoom)}` : '#/tasks');
+      }
+      opts = { ...opts, zoomId: zoom };
+    }
+    const parts = outlinePath(roots, groups, opts);
+    if (parts.length) trail = parts.filter((p) => p.kind === 'task').slice(0, -1).map((p) => p.id);
+    const rows = outlineRows(roots, groups, opts);
+    drawn = new Map(rows.map((r) => [r.id, r]));
+    if (keep && !after?.first) activeId = keep;
+    if (after?.first || !rows.some((r) => r.id === activeId)) activeId = rows[0]?.id ?? null;
+
+    const tree = h('div', { class: `outline${opts.zoomId ? ' zoomed' : ''}`, role: 'tree', 'aria-label': parts.length ? `Tasks under ${parts.at(-1).title}` : 'Tasks' });
+    const editorAtTop = adding && ((!adding.afterId && !adding.parentId && !adding.groupId) || (adding.parentId && adding.parentId === opts.zoomId)
+      || (adding.groupId && !rows.some((r) => r.kind === 'group' && r.id === adding.groupId)));
+    if (editorAtTop) tree.append(newRowEditor(0, adding));
     for (const r of rows) {
-      tree.append(row(r));
-      if (adding?.parentId === r.node.id) tree.append(newRowEditor(r.depth + 1, adding));
+      tree.append(r.kind === 'group' ? groupRow(r) : row(r));
+      if (r.kind === 'group' && adding?.groupId === r.id && !editorAtTop) tree.append(newRowEditor(1, adding));
+      if (r.kind === 'task' && adding?.parentId === r.id) tree.append(newRowEditor(r.depth + 1, adding));
       // After the task and everything shown under it.
-      if (adding?.afterId === r.node.id) {
+      if (adding?.afterId === r.id) {
         const next = rows[rows.indexOf(r) + 1];
         if (!next || next.depth <= r.depth) tree.append(newRowEditor(r.depth, adding));
       }
@@ -323,45 +611,41 @@ export function createOutlineView(ctx) {
 
     // "After X" where X's subtasks are shown: the editor goes after the last of them.
     if (adding?.afterId && !tree.querySelector('.orow.adding')) {
-      const at = rows.findIndex((r) => r.node.id === adding.afterId);
+      const at = rows.findIndex((r) => r.id === adding.afterId);
       if (at >= 0) {
         let end = at + 1;
         while (end < rows.length && rows[end].depth > rows[at].depth) end++;
-        const anchor = tree.querySelectorAll('.orow[data-id]')[end - 1];
+        const anchor = tree.querySelectorAll(ROWS)[end - 1];
         anchor?.after(newRowEditor(rows[at].depth, adding));
       }
     }
 
-    if (!rows.length && !adding) tree.append(h('p', { class: 'empty-state' }, 'No tasks here yet. Press ', h('kbd', null, 'Insert'), ' or the button to add one.'));
-    const doneToggle = h('label', { class: 'check small' }, h('input', { type: 'checkbox', checked: showDone, onchange: (e) => { showDone = e.target.checked; localStorage.setItem(DONE_KEY, showDone ? '1' : '0'); render(); } }), 'Show finished');
-    keepToolbarFocus(root, () => root.replaceChildren(
-      h('div', { class: 'view-toolbar' },
-        h('button', { class: 'btn primary', type: 'button', onclick: () => { adding = { afterId: null, parentId: null }; render(); } }, icon('plus', { size: 16 }), 'New task'),
-        h('button', { class: 'btn ghost', type: 'button', onclick: () => { roots.forEach(function walk(n) { if (n.children?.length) { expanded.add(n.id); n.children.forEach(walk); } }); saveExpanded(); render(); } }, 'Expand all'),
-        h('button', { class: 'btn ghost', type: 'button', onclick: () => { expanded.clear(); saveExpanded(); render(); } }, 'Collapse all'),
-        doneToggle,
-        h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave')),
-      tree));
-    if (keep && focusHere && !root.querySelector('.orow.adding') && !focusRow(keep) && keptAt >= 0) {
+    if (!rows.length && !adding) tree.append(emptyText());
+    keepToolbarFocus(root, () => root.replaceChildren(...[toolbar(), parts.length ? pathBar(parts) : null, tree].filter(Boolean)));
+    if (after?.first) { if (activeId) focusRow(activeId); }
+    else if (keep && focusHere && !root.querySelector('.orow.adding') && !focusRow(keep) && keptAt >= 0) {
       // Its row is gone: the keyboard goes to the row above it (like deleting a line), never off the page.
-      const shown = root.querySelectorAll('.orow[data-id]');
-      const next = shown[Math.max(0, Math.min(keptAt - 1, shown.length - 1))];
-      if (next) focusRow(next.dataset.id);
+      const shownRows = root.querySelectorAll(ROWS);
+      const next = shownRows[Math.max(0, Math.min(keptAt - 1, shownRows.length - 1))];
+      if (next) focusRow(next.dataset.key);
     }
 
     applyReveal();
   }
 
   /**
-   * Shows a task in the tree: its parents opened, the row in view, focused and briefly highlighted ("Show in tree"
-   * from a task's details). Applied by the next drawing of the tree, whichever load it comes from.
+   * Shows a task in the tree: its group and parents opened, the row in view, focused and briefly highlighted ("Show
+   * in tree" from a task's details). Applied by the next drawing of the tree, whichever load it comes from.
    */
   let revealing = null;
-  async function reveal(id, ancestorIds = [], { finished = false } = {}) {
+  async function reveal(id, ancestorIds = [], { finished = false, groupId = null } = {}) {
     ancestorIds.forEach((a) => expanded.add(a));
+    if (groupId) closedGroups.delete(groupId);
     saveExpanded();
-    // A finished task only shows with "Show finished" on: on for now, not saved as the user's choice.
-    if (finished && !showDone) showDone = true;
+    saveClosed();
+    // A task the Show choice hides shows for now (not saved as the choice): finished ones under Everything.
+    if (finished) show = 'all';
+    else if (show === 'now' || show === 'waiting') show = 'todo';
     // Applied by the next drawing that shows the row (whichever load it comes from); given up after two drawings
     // without it, so it never jumps there later out of the blue.
     revealing = { id, misses: 0 };
@@ -375,12 +659,16 @@ export function createOutlineView(ctx) {
       if (++revealing.misses >= 2) revealing = null;
       return;
     }
-    const row = root.querySelector(`.orow[data-id="${CSS.escape(revealing.id)}"]`);
+    const el = rowEl(revealing.id);
     revealing = null;
-    row.scrollIntoView({ block: 'center' });
-    row.classList.add('revealed');
-    setTimeout(() => row.classList.remove('revealed'), 2400);
+    el.scrollIntoView({ block: 'center' });
+    el.classList.add('revealed');
+    setTimeout(() => el.classList.remove('revealed'), 2400);
   }
 
-  return { root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks', reveal };
+  return {
+    root, show: () => load(), refresh: () => load(), poll: () => load({ quiet: true }), title: 'Tasks', reveal, setZoom,
+    /** The zoom on screen (null: none), for "Show in tree" to leave it when it doesn't hold the task. */
+    zoom: () => zoomId,
+  };
 }

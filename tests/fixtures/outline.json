@@ -6,7 +6,7 @@
     "tasks": "{ key, title, group?: name (top-level tasks), parent?: key, sequential?: true, done?: true, archived?: true, snoozed?: true }, added in this order at `now`; then, in order, done ones are completed (a parent's subtasks with it), snoozed ones deferred until `snoozedUntil`, archived ones archived",
     "snoozedUntil": "when snoozed tasks come back",
     "nodes": "what /api/tree says about each task at `now` (state, doneCount, totalCount): for a port that reads the tree from the server (the web app) instead of working it out",
-    "titles": "{ title, parent, shown }: shownTitle(title, parentTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty",
+    "titles": "{ title, parent, parentShown, shown }: shownTitle(title, parentTitle, parentShownTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty; when that leaves it as it was and the parent is shown shorter (parentShown, null: not), the same against that. In rows, a task's parentShown is its parent's row title (at the top of a zoom: the zoomed task's title in the path)",
     "cases[].options": "{ group: name|null (null: all groups), zoom: key|null (a key that isn't a task: a task that's gone), show: todo|now|waiting|all, query: search text|null, expanded: [keys] (open tasks), closedGroups: [names] }",
     "cases[].keep": "with a query: the tasks the search keeps (matches, their parents and their subtasks; what /api/tree?q= returns), in the order of `tasks`",
     "cases[].zoom": "resolveZoom: the zoom used (key) or null (the top). The asked task when it's shown and has subtasks, else its nearest parent that is; null for one that's gone, archived or in another group than the one picked",
@@ -41,6 +41,11 @@
     {
       "key": "faq",
       "title": "Launch the site - FAQ",
+      "parent": "copy"
+    },
+    {
+      "key": "headline",
+      "title": "Write the copy: Headline",
       "parent": "copy"
     },
     {
@@ -142,12 +147,12 @@
     "launch": {
       "state": "container",
       "doneCount": 1,
-      "totalCount": 5
+      "totalCount": 6
     },
     "copy": {
       "state": "container",
       "doneCount": 0,
-      "totalCount": 2
+      "totalCount": 3
     },
     "hero": {
       "state": "actionable",
@@ -155,6 +160,11 @@
       "totalCount": 0
     },
     "faq": {
+      "state": "actionable",
+      "doneCount": 0,
+      "totalCount": 0
+    },
+    "headline": {
       "state": "actionable",
       "doneCount": 0,
       "totalCount": 0
@@ -247,78 +257,111 @@
   },
   "titles": [
     {
+      "title": "Publisher accounts: Pick the phone number",
+      "parent": "Go to market: Publisher accounts",
+      "parentShown": "Publisher accounts",
+      "shown": "Pick the phone number"
+    },
+    {
+      "title": "Go to market: Publisher accounts - Pay the fee",
+      "parent": "Go to market: Publisher accounts",
+      "parentShown": "Publisher accounts",
+      "shown": "Pay the fee"
+    },
+    {
+      "title": "Go to market: Ads",
+      "parent": "Go to market: Publisher accounts",
+      "parentShown": "Publisher accounts",
+      "shown": "Go to market: Ads"
+    },
+    {
       "title": "Publisher accounts: Pick the contact phone number",
       "parent": "Publisher accounts",
+      "parentShown": null,
       "shown": "Pick the contact phone number"
     },
     {
       "title": "Launch - Buy the domain",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Buy the domain"
     },
     {
       "title": "Launch – Buy the domain",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Buy the domain"
     },
     {
       "title": "Launch — Buy the domain",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Buy the domain"
     },
     {
       "title": "LAUNCH:   shout",
       "parent": "launch",
+      "parentShown": null,
       "shown": "shout"
     },
     {
       "title": "Écrire: le texte",
       "parent": "écrire",
+      "parentShown": null,
       "shown": "le texte"
     },
     {
       "title": "Launch:",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launch:"
     },
     {
       "title": "Launch:   ",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launch:   "
     },
     {
       "title": "Launch —",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launch —"
     },
     {
       "title": "Launcher: other",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launcher: other"
     },
     {
       "title": "Launch-pad",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launch-pad"
     },
     {
       "title": "Launch—no space",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "Launch—no space"
     },
     {
       "title": "The launch: later",
       "parent": "Launch",
+      "parentShown": null,
       "shown": "The launch: later"
     },
     {
       "title": "Launch: copy",
       "parent": null,
+      "parentShown": null,
       "shown": "Launch: copy"
     },
     {
       "title": "Launch: copy",
       "parent": "",
+      "parentShown": null,
       "shown": "Launch: copy"
     }
   ],
@@ -344,8 +387,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -358,8 +401,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -477,8 +520,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -569,8 +612,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -583,8 +626,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -597,8 +640,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": true
         },
@@ -622,6 +665,20 @@
           "depth": 3,
           "title": "Launch the site - FAQ",
           "fullTitle": "Launch the site - FAQ",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "actionable",
+          "outdent": true
+        },
+        {
+          "kind": "task",
+          "id": "headline",
+          "depth": 3,
+          "title": "Headline",
+          "fullTitle": "Write the copy: Headline",
           "hasChildren": false,
           "expanded": false,
           "done": 0,
@@ -772,8 +829,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -879,8 +936,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -893,8 +950,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -907,8 +964,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": true
         },
@@ -1141,8 +1198,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -1155,8 +1212,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -1169,8 +1226,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": true
         },
@@ -1194,6 +1251,20 @@
           "depth": 3,
           "title": "Launch the site - FAQ",
           "fullTitle": "Launch the site - FAQ",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "actionable",
+          "outdent": true
+        },
+        {
+          "kind": "task",
+          "id": "headline",
+          "depth": 3,
+          "title": "Headline",
+          "fullTitle": "Write the copy: Headline",
           "hasChildren": false,
           "expanded": false,
           "done": 0,
@@ -1317,8 +1388,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -1448,8 +1519,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -1542,8 +1613,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": null,
           "outdent": false
         },
@@ -1556,8 +1627,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -1570,8 +1641,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": true
         },
@@ -1786,8 +1857,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": false
         },
@@ -1811,6 +1882,20 @@
           "depth": 1,
           "title": "Launch the site - FAQ",
           "fullTitle": "Launch the site - FAQ",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "actionable",
+          "outdent": true
+        },
+        {
+          "kind": "task",
+          "id": "headline",
+          "depth": 1,
+          "title": "Headline",
+          "fullTitle": "Write the copy: Headline",
           "hasChildren": false,
           "expanded": false,
           "done": 0,
@@ -1868,7 +1953,7 @@
           "id": "launch",
           "title": "Launch the site",
           "done": 1,
-          "total": 5
+          "total": 6
         }
       ],
       "newTask": {
@@ -1915,6 +2000,20 @@
           "left": 0,
           "state": "actionable",
           "outdent": false
+        },
+        {
+          "kind": "task",
+          "id": "headline",
+          "depth": 0,
+          "title": "Headline",
+          "fullTitle": "Write the copy: Headline",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "actionable",
+          "outdent": false
         }
       ],
       "path": [
@@ -1937,14 +2036,14 @@
           "id": "launch",
           "title": "Launch the site",
           "done": 1,
-          "total": 5
+          "total": 6
         },
         {
           "kind": "task",
           "id": "copy",
           "title": "Write the copy",
           "done": 0,
-          "total": 2
+          "total": 3
         }
       ],
       "newTask": {
@@ -2177,6 +2276,20 @@
           "left": 0,
           "state": "actionable",
           "outdent": false
+        },
+        {
+          "kind": "task",
+          "id": "headline",
+          "depth": 0,
+          "title": "Headline",
+          "fullTitle": "Write the copy: Headline",
+          "hasChildren": false,
+          "expanded": false,
+          "done": 0,
+          "total": 0,
+          "left": 0,
+          "state": "actionable",
+          "outdent": false
         }
       ],
       "path": [
@@ -2199,14 +2312,14 @@
           "id": "launch",
           "title": "Launch the site",
           "done": 1,
-          "total": 5
+          "total": 6
         },
         {
           "kind": "task",
           "id": "copy",
           "title": "Write the copy",
           "done": 0,
-          "total": 2
+          "total": 3
         }
       ],
       "newTask": {
@@ -2282,8 +2395,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -2296,8 +2409,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -2427,8 +2540,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -2441,8 +2554,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -2558,8 +2671,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -2572,8 +2685,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -2652,8 +2765,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": null,
           "outdent": false
         },
@@ -2666,8 +2779,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -2680,8 +2793,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": true
         },
@@ -2732,8 +2845,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": false
         },
@@ -2772,7 +2885,7 @@
           "id": "launch",
           "title": "Launch the site",
           "done": 1,
-          "total": 5
+          "total": 6
         }
       ],
       "newTask": {
@@ -2806,8 +2919,8 @@
           "hasChildren": true,
           "expanded": true,
           "done": 2,
-          "total": 10,
-          "left": 8,
+          "total": 11,
+          "left": 9,
           "state": null,
           "outdent": false
         },
@@ -2820,8 +2933,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -2947,8 +3060,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 2,
-              "total": 10,
-              "left": 8,
+              "total": 11,
+              "left": 9,
               "state": null,
               "outdent": false
             },
@@ -2995,8 +3108,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 2,
-              "total": 10,
-              "left": 8,
+              "total": 11,
+              "left": 9,
               "state": null,
               "outdent": false
             },
@@ -3009,8 +3122,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3117,8 +3230,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 2,
-              "total": 10,
-              "left": 8,
+              "total": 11,
+              "left": 9,
               "state": null,
               "outdent": false
             },
@@ -3131,8 +3244,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3145,8 +3258,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": true
             },
@@ -3339,8 +3452,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 2,
-              "total": 10,
-              "left": 8,
+              "total": 11,
+              "left": 9,
               "state": null,
               "outdent": false
             },
@@ -3353,8 +3466,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3367,8 +3480,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": true
             },
@@ -3392,6 +3505,20 @@
               "depth": 3,
               "title": "Launch the site - FAQ",
               "fullTitle": "Launch the site - FAQ",
+              "hasChildren": false,
+              "expanded": false,
+              "done": 0,
+              "total": 0,
+              "left": 0,
+              "state": "actionable",
+              "outdent": true
+            },
+            {
+              "kind": "task",
+              "id": "headline",
+              "depth": 3,
+              "title": "Headline",
+              "fullTitle": "Write the copy: Headline",
               "hasChildren": false,
               "expanded": false,
               "done": 0,
@@ -3598,8 +3725,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 1,
-          "total": 5,
-          "left": 4,
+          "total": 6,
+          "left": 5,
           "state": "container",
           "outdent": false
         },
@@ -3655,8 +3782,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3707,8 +3834,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3761,8 +3888,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3775,8 +3902,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": true
             },
@@ -3900,8 +4027,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 1,
-              "total": 5,
-              "left": 4,
+              "total": 6,
+              "left": 5,
               "state": "container",
               "outdent": false
             },
@@ -3914,8 +4041,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": true
             },
@@ -3939,6 +4066,20 @@
               "depth": 2,
               "title": "Launch the site - FAQ",
               "fullTitle": "Launch the site - FAQ",
+              "hasChildren": false,
+              "expanded": false,
+              "done": 0,
+              "total": 0,
+              "left": 0,
+              "state": "actionable",
+              "outdent": true
+            },
+            {
+              "kind": "task",
+              "id": "headline",
+              "depth": 2,
+              "title": "Headline",
+              "fullTitle": "Write the copy: Headline",
               "hasChildren": false,
               "expanded": false,
               "done": 0,
@@ -4074,8 +4215,8 @@
           "hasChildren": true,
           "expanded": false,
           "done": 0,
-          "total": 2,
-          "left": 2,
+          "total": 3,
+          "left": 3,
           "state": "container",
           "outdent": false
         },
@@ -4128,7 +4269,7 @@
           "id": "launch",
           "title": "Launch the site",
           "done": 1,
-          "total": 5
+          "total": 6
         }
       ],
       "newTask": {
@@ -4152,8 +4293,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": false
             },
@@ -4203,8 +4344,8 @@
               "hasChildren": true,
               "expanded": false,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": false
             },
@@ -4255,8 +4396,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": false
             },
@@ -4280,6 +4421,20 @@
               "depth": 1,
               "title": "Launch the site - FAQ",
               "fullTitle": "Launch the site - FAQ",
+              "hasChildren": false,
+              "expanded": false,
+              "done": 0,
+              "total": 0,
+              "left": 0,
+              "state": "actionable",
+              "outdent": true
+            },
+            {
+              "kind": "task",
+              "id": "headline",
+              "depth": 1,
+              "title": "Headline",
+              "fullTitle": "Write the copy: Headline",
               "hasChildren": false,
               "expanded": false,
               "done": 0,
@@ -4335,8 +4490,8 @@
               "hasChildren": true,
               "expanded": true,
               "done": 0,
-              "total": 2,
-              "left": 2,
+              "total": 3,
+              "left": 3,
               "state": "container",
               "outdent": false
             },
@@ -4360,6 +4515,20 @@
               "depth": 1,
               "title": "Launch the site - FAQ",
               "fullTitle": "Launch the site - FAQ",
+              "hasChildren": false,
+              "expanded": false,
+              "done": 0,
+              "total": 0,
+              "left": 0,
+              "state": "actionable",
+              "outdent": true
+            },
+            {
+              "kind": "task",
+              "id": "headline",
+              "depth": 1,
+              "title": "Headline",
+              "fullTitle": "Write the copy: Headline",
               "hasChildren": false,
               "expanded": false,
               "done": 0,
