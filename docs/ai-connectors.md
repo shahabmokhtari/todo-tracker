@@ -172,7 +172,7 @@ missing is missing on purpose, and says why: deleting (nothing is ever lost), th
 and what needs a person at the app (signing in, pairing a browser, Ask AI). A test keeps this table in step with
 the server's endpoints.
 
-<!-- Coverage table: made from tests/OneThing.Cli.Tests/Coverage/Coverage.cs by CoverageTests. Don't edit by hand. -->
+<!-- Coverage table: made from tests/OneThing.Cli.Tests/Reach/Coverage.cs by CoverageTests. Don't edit by hand. -->
 
 | What | `ot` | MCP tool | Why not (where missing) |
 | --- | --- | --- | --- |
