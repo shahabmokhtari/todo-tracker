@@ -120,11 +120,24 @@ extension BoardModel {
         }
     }
 
+    /// Whether a task is in Tasks with this Show choice (the group picked and the search too).
+    func inOutline(_ show: OutlineShow) -> (WorkItem) -> Bool {
+        Outline.kept(board, OutlineOptions(groupId: selectedGroupId, show: show, query: searchText), now: now)
+    }
+
+    /// The tasks next to `id` in Tasks: its parent's subtasks, or the top-level tasks of its group on screen, those the
+    /// Show choice and the search keep (under All groups each group is a tree of its own).
+    private func outlineSiblings(_ id: UUID, _ show: OutlineShow) -> (roots: [WorkItem], isShown: (WorkItem) -> Bool) {
+        let group = board.find(id)?.groupId
+        return (visibleRoots.filter { $0.groupId == group }, inOutline(show))
+    }
+
     /// Tab: under the task above it on screen.
-    public func indent(_ id: UUID, showDone: Bool = true) {
+    public func indent(_ id: UUID, show: OutlineShow = .all) {
         perform { [weak self] in
             guard let self else { return nil }
-            return OutlineMoves.indent(self.board, id, showDone: showDone, roots: self.matchingRoots).map { PlannedMove($0, nil) }
+            let on = self.outlineSiblings(id, show)
+            return OutlineMoves.indent(self.board, id, roots: on.roots, isShown: on.isShown).map { PlannedMove($0, nil) }
         }
     }
 
@@ -136,17 +149,19 @@ extension BoardModel {
         }
     }
 
-    public func canIndent(_ id: UUID, showDone: Bool = true) -> Bool {
-        OutlineMoves.indent(board, id, showDone: showDone, roots: matchingRoots) != nil
+    public func canIndent(_ id: UUID, show: OutlineShow = .all) -> Bool {
+        let on = outlineSiblings(id, show)
+        return OutlineMoves.indent(board, id, roots: on.roots, isShown: on.isShown) != nil
     }
 
     public func canOutdent(_ id: UUID) -> Bool { OutlineMoves.outdent(board, id) != nil }
 
     /// Option-up or down: past the task above or below on screen.
-    public func step(_ id: UUID, by delta: Int, showDone: Bool = true) {
+    public func step(_ id: UUID, by delta: Int, show: OutlineShow = .all) {
         perform { [weak self] in
             guard let self else { return nil }
-            return OutlineMoves.step(self.board, id, by: delta, showDone: showDone, roots: self.matchingRoots).map { PlannedMove($0, nil) }
+            let on = self.outlineSiblings(id, show)
+            return OutlineMoves.step(self.board, id, by: delta, roots: on.roots, isShown: on.isShown).map { PlannedMove($0, nil) }
         }
     }
 
@@ -173,6 +188,15 @@ extension BoardModel {
         }
     }
 
+    /// A task dropped on a group's row in Tasks: to the top of that group (a subtask becomes a task of its own there).
+    public func moveToTop(_ id: UUID, ofGroup groupId: UUID) {
+        let name = groups.first { $0.id == groupId }?.name ?? "the group"
+        perform { [weak self] in
+            guard let self else { return nil }
+            return OutlineMoves.toTopOfGroup(self.board, id, groupId: groupId).map { PlannedMove($0, "Moved to \(name)") }
+        }
+    }
+
     /// Do now in a new order (a task dragged before another, or to the end).
     public func arrangeNow(moving id: UUID, before other: UUID?) {
         var ids = dashboard.now.map(\.item.id)
@@ -190,9 +214,10 @@ extension BoardModel {
 
     // MARK: New tasks
 
-    /// Adds a task: under `parentId` (first, or right after `after`), or at the top level of the group on screen (in
-    /// `stage`, right after `after` when given). `done` gets its id (nil: it wasn't added).
-    public func addTask(_ title: String, parentId: UUID? = nil, after: UUID? = nil, stage: Stage? = nil, done: ((UUID?) -> Void)? = nil) {
+    /// Adds a task: under `parentId` (first, or right after `after`), first in `group` (a group's row in Tasks), or at the
+    /// top level of the group on screen (in `stage`, right after `after` when given). `done` gets its id (nil: it wasn't
+    /// added).
+    public func addTask(_ title: String, parentId: UUID? = nil, after: UUID? = nil, group: UUID? = nil, stage: Stage? = nil, done: ((UUID?) -> Void)? = nil) {
         let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty else {
             done?(nil)
@@ -202,8 +227,9 @@ extension BoardModel {
             done?(nil)
             return
         }
-        let groupId = parentId == nil ? (after.flatMap { board.find($0)?.groupId } ?? selectedGroupId) : nil
+        let groupId = parentId == nil ? (after.flatMap { board.find($0)?.groupId } ?? group ?? selectedGroupId) : nil
         let first = parentId.flatMap { board.find($0)?.children.first?.id }
+            ?? (after == nil ? group.flatMap { g in board.items.first { $0.groupId == g && $0.archivedAt == nil }?.id } : nil)
         // Only a sibling can be the task it goes after.
         let after = after.flatMap { board.find($0)?.parent?.id == parentId ? $0 : nil }
         if server != nil {

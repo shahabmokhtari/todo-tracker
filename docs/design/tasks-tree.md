@@ -126,7 +126,7 @@ The logic lives in one place per language and is checked against one fixture, ge
 | C# | `src/OneThing.Core/Outline.cs` (new; also behind `ot tree`) |
 | Web | `wwwroot/js/outlinemodel.js` |
 | Swift | `OneThingKit/Sources/OneThingKit/Outline.swift` (the pure part moves out of `TasksOutlineView.swift`) |
-| Kotlin | `dev/onething/core/BoardViews.kt` (`OutlineRow`) |
+| Kotlin | `dev/onething/core/Outline.kt` |
 
 `Outline.rows(board, options, now)` returns the rows to draw, in order. Options: `groupId?`, `zoomId?`, `show`
 (`todo|now|waiting|all`), `query`, `expanded` (task ids), `closedGroups` (group ids). Each row: `kind`

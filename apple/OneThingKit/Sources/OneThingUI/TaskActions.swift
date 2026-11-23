@@ -25,6 +25,8 @@ public final class ShellState: ObservableObject {
     @Published public var confirmingDone: UUID?
     /// Typing in a box inside a list (a note under a row): Space and Return are the box's, not the list's.
     @Published public var typing = false
+    /// "Show in tree": the row Tasks brings into view (and the Show choice to use for now), once it's drawn.
+    @Published public var treeReveal: TreeReveal?
 
     public init(model: BoardModel) { self.model = model }
 
