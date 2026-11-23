@@ -6,17 +6,44 @@ plugins {
 
 android {
     namespace = "dev.onething"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "dev.onething"
         minSdk = 26
-        targetSdk = 35
+        // Google Play: since 31 August 2026 new apps and updates must target Android 16 (API 36) or higher
+        // (developer.android.com/google/play/requirements/target-sdk).
+        targetSdk = 36
         versionCode = 1
         versionName = "2.0.0"
         // Send feedback: a debug build only logs a note; `gradle assembleDebug -PonethingFeedbackSend=true` sends it
         // for real (to the issues relay). Release builds always send.
         buildConfigField("boolean", "FEEDBACK_SEND", (project.findProperty("onethingFeedbackSend")?.toString() == "true").toString())
+    }
+
+    // The release build is signed with the upload key (Play App Signing re-signs it for the store). The key comes from
+    // Gradle properties or environment variables, never from the repository: in CI, release.yml writes the keystore
+    // from secrets and sets ONETHING_UPLOAD_*. Without them the release build is left unsigned and debug builds are
+    // unaffected.
+    val upload = listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD").associateWith { name ->
+        (project.findProperty("onethingUpload" + name.split('_').joinToString("") { it.lowercase().replaceFirstChar(Char::uppercase) })
+            ?: System.getenv("ONETHING_UPLOAD_$name"))?.toString()?.takeIf { it.isNotBlank() }
+    }
+    if (upload.values.all { it != null }) {
+        signingConfigs {
+            create("upload") {
+                storeFile = file(upload.getValue("STORE_FILE")!!)
+                storePassword = upload.getValue("STORE_PASSWORD")
+                keyAlias = upload.getValue("KEY_ALIAS")
+                keyPassword = upload.getValue("KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.findByName("upload")
+        }
     }
 
     buildFeatures {

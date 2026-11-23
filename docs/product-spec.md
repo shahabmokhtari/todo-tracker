@@ -631,13 +631,14 @@ by `ot open`.
 | Web and extension | Vanilla ES modules (no build step), `node --test`, Playwright e2e | Linux |
 | Windows | WPF (.NET 10, Fluent theme), Win32 AppBar, toast notifications | Windows: build, tests, publish, and a real-app `--smoke-test` with a screenshot artifact |
 | macOS and iOS | Swift 5.9, SwiftUI, XcodeGen | macOS: `swift test` (shared scenarios), iOS simulator build, macOS build and zip |
-| Android | Kotlin, Jetpack Compose (min SDK 26, target 35), AlarmManager and notifications for reminders and the focus timer | Linux: `gradle testDebugUnitTest` (shared fixtures) and `assembleDebug` |
+| Android | Kotlin, Jetpack Compose (min SDK 26, target 36), AlarmManager and notifications for reminders and the focus timer | Linux: `gradle testDebugUnitTest` (shared fixtures) and `assembleDebug` |
 
 The **shared scenarios** in `tests/fixtures/scenarios/*.json` hold a board, a time, and the expected Now, Waiting,
 focus, attention, and states. The C#, Swift and Kotlin test suites all run them.
 
 Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Release with the apps it built
-(`.github/workflows/release.yml`).
+(`.github/workflows/release.yml`). With the Android upload key in the repository secrets, it also builds the signed
+App Bundle for Google Play.
 
 ## 10. Roadmap
 
