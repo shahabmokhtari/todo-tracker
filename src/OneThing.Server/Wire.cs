@@ -211,8 +211,51 @@ public sealed record DoneDto(Guid Id, string Title, IReadOnlyList<string> Path, 
 
 public sealed record ReportDto(ItemDto? Item, IReadOnlyList<TimelineDto> Timeline);
 
+/// <summary>
+/// A row of the task tree as the Tasks view shows it: a group (under all groups) or a task, its depth, its title as
+/// shown (without the parent's name it repeats) and in full, and how far along it is (leaves under it).
+/// </summary>
+public sealed record TreeRowDto(string Kind, Guid Id, int Depth, string Title, string FullTitle, string? State, bool Done, int DoneCount, int TotalCount, int Left);
+
+/// <summary>A part of the path above a tree that starts under a task: all groups, the group, each parent, the task.</summary>
+public sealed record TreePathPartDto(string Kind, Guid? Id, string Title, int DoneCount, int TotalCount);
+
+/// <summary>The task tree in one go: the path (when it starts under a task) and the rows, open as deep as asked.</summary>
+public sealed record TreeViewDto(IReadOnlyList<TreePathPartDto> Path, IReadOnlyList<TreeRowDto> Rows);
+
 public static class Wire
 {
+    /// <summary>
+    /// The tree the Tasks view draws (Outline), every row open down to <paramref name="depth"/> task levels (null: all).
+    /// <paramref name="under"/>: start under this task (it must have subtasks shown with <paramref name="show"/>).
+    /// </summary>
+    public static TreeViewDto TreeView(TaskBoard board, DateTimeOffset now, Guid? group, WorkItem? under, OutlineShow show, int? depth)
+    {
+        ArgumentNullException.ThrowIfNull(board);
+        if (depth is < 1)
+        {
+            throw new ArgumentException("The depth is 1 or more (1: only the top level).", nameof(depth));
+        }
+
+        var options = new OutlineOptions { GroupId = group, ZoomId = under?.Id, Show = show };
+        if (under is not null && Outline.ResolveZoom(board, options, now) != under.Id)
+        {
+            throw new ArgumentException(under.Children.Count == 0
+                ? $"\"{under.Title}\" has no subtasks."
+                : $"Nothing under \"{under.Title}\" is shown with show {Of(show)}; try all.", nameof(under));
+        }
+
+        options = options with { Expanded = Outline.OpenTo(board, options, OutlineLevel.All, now).Expanded };
+        // Under all groups the groups are level 0, so tasks start at depth 1; elsewhere tasks start at depth 0.
+        var first = group is null && under is null ? 1 : 0;
+        var rows = Outline.Rows(board, options, now)
+            .Where(r => r.Kind == OutlineRowKind.Group || depth is null || r.Depth - first < depth)
+            .Select(r => new TreeRowDto(Of(r.Kind), r.Id, r.Depth, r.Title, r.FullTitle, r.State is { } st ? Of(st) : null, r.Item?.IsDone ?? false, r.Done, r.Total, r.Left))
+            .ToList();
+        var path = Outline.Path(board, options, now).Select(p => new TreePathPartDto(Of(p.Kind), p.Id, p.Title, p.Done, p.Total)).ToList();
+        return new TreeViewDto(path, rows);
+    }
+
     public static string Of<T>(T value)
         where T : struct, Enum
     {

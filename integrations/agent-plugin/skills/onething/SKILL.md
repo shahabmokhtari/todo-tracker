@@ -22,6 +22,7 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | --- | --- | --- |
 | See what to do now, what's waiting, what got done today | `get_dashboard` | `ot now` |
 | Find tasks (`#tag`, `label:x`, `group:work`, `is:done`, `is:archived`) | `search_tasks`, `list_tasks` | `ot list <query>` |
+| See the whole tree at a glance: groups, each parent's progress, one branch, what can be done now or is waiting | `get_tree` (`group`, `underTaskId`, `show`: todo, now, waiting, all; `depth`) | `ot tree [-g group] [--under <task>] [--show now] [--depth 2]` |
 | Read one task (subtasks, notes, file, link) | `get_task` | `ot show <task>` |
 | Give the user a link that opens the task in the app | the task's `link` (`onething://task/<id>`) | `ot open <task>` |
 | Capture a task or a subtask | `create_task` (`parentId` for a subtask) | `ot add <title> [--under <task>]` |

@@ -20,6 +20,10 @@ internal static class CliCommands
             "Or use options: ot add Renew passport --due 7d --tag admin", Add),
         new CliCommand("list", "ot list [filter] [-g group] [--all]", "Find tasks",
             "Words match titles and details; #tag, label:name, group:name, is:open, is:done narrow it. Open tasks unless --all or is:.", List),
+        new CliCommand("tree", "ot tree [-g group] [--under task] [--show todo|now|waiting|all] [--depth n]", "The task tree as Tasks shows it, with each parent's progress",
+            "All groups: a line per group, its tasks under it. --under shows one branch; --show now keeps what can be done now (with its parents),\n" +
+            "--show waiting what's waiting or comes after an unfinished step, --show all finished tasks too; --depth 1 only the top level.\n" +
+            "done/total counts the tasks without subtasks under a parent. A subtask's title leaves out its parent's name, as in the app.", Tree),
         new CliCommand("show", "ot show <task>", "A task with its subtasks, notes, file and link", null, Show),
         new CliCommand("open", "ot open <task>", "Open a task in the app (its onething:// link)", "ot show prints the link, to paste in a note, chat or mail.", Open),
         new CliCommand("done", "ot done <task> | ot done <id> <id>…", "Mark tasks done", "Several tasks at once by id (as ot prints them); words are one task's title.", Done),
@@ -153,6 +157,23 @@ internal static class CliCommands
             .Select(i => Wire.SearchHit(i, s.Now, b, s.Links))
             .ToList()).ConfigureAwait(false);
         await s.Print(hits, (o, h) => o.Hits(h, filter)).ConfigureAwait(false);
+    }
+
+    private static async Task Tree(CliSession s, CliArgs a)
+    {
+        a.Allow("group", "under", "show", "depth");
+        var show = a.Value("show") is { } text ? Outline.ParseShow(text) ?? throw new ArgumentException("--show is todo, now, waiting or all.") : OutlineShow.Todo;
+        int? depth = a.Value("depth") is { } d
+            ? int.TryParse(d, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n >= 1 ? n : throw new ArgumentException("--depth is a number, 1 or more.")
+            : null;
+        var view = await s.Read(b => Wire.TreeView(
+            b,
+            s.Now,
+            TodoTools.ResolveGroup(b, a.Value("group")),
+            a.Value("under") is { } under ? TaskResolver.Resolve(b, under) : null,
+            show,
+            depth)).ConfigureAwait(false);
+        await s.Print(view, (o, v) => o.Tree(v)).ConfigureAwait(false);
     }
 
     private static async Task Show(CliSession s, CliArgs a)

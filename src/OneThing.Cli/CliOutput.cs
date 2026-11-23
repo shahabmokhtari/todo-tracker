@@ -183,6 +183,45 @@ internal sealed class CliOutput(TextWriter output, TimeZoneInfo zone)
         }
     }
 
+    public void Tree(TreeViewDto tree)
+    {
+        if (tree.Path.Count > 0)
+        {
+            output.WriteLine(string.Join(" › ", tree.Path.Select(p => p.Title)) + Progress(tree.Path[^1].DoneCount, tree.Path[^1].TotalCount));
+        }
+
+        if (tree.Rows.Count == 0)
+        {
+            output.WriteLine("Nothing to show here.");
+            return;
+        }
+
+        // Under all groups the groups are the top level; tasks are indented under them.
+        var groups = tree.Rows.Any(r => r.Kind == "group");
+        foreach (var r in tree.Rows)
+        {
+            if (r.Kind == "group")
+            {
+                output.WriteLine(r.TotalCount == 0
+                    ? $"{r.Title}  (no tasks)"
+                    : $"{r.Title}  ({r.Left.ToString(CultureInfo.InvariantCulture)} to do, {r.DoneCount.ToString(CultureInfo.InvariantCulture)}/{r.TotalCount.ToString(CultureInfo.InvariantCulture)} done)");
+                continue;
+            }
+
+            var indent = new string(' ', (r.Depth - (groups ? 1 : 0)) * 2 + (groups ? 2 : 0));
+            var state = r.State switch
+            {
+                "waiting" => "  (waiting)",
+                "locked" => "  (after an earlier step)",
+                _ => string.Empty,
+            };
+            output.WriteLine($"{indent}{TaskResolver.ShortId(r.Id)}  {(r.Done ? "[x]" : "[ ]")} {r.Title}{Progress(r.DoneCount, r.TotalCount)}{state}");
+        }
+    }
+
+    private static string Progress(int done, int total) =>
+        total > 0 ? $"  {done.ToString(CultureInfo.InvariantCulture)}/{total.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+
     public void Groups(IReadOnlyList<GroupDto> groups)
     {
         foreach (var g in groups)
