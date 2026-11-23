@@ -9,7 +9,7 @@ extension TaskBoard {
 
     /// The label called `name` (case doesn't matter), or nil.
     public func findLabel(_ name: String) -> LabelDefinition? {
-        let clean = name.trimmingCharacters(in: .whitespaces)
+        let clean = name.oTrim()
         return labels.first { Ordinal.equalIgnoreCase($0.name, clean) }
     }
 
@@ -80,10 +80,11 @@ extension TaskBoard {
     /// An emoji shown before the title (nil or blank: none).
     public func setIcon(_ id: UUID, _ icon: String?, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        let clean = icon?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // As .NET: trimmed as String.Trim does, and only C0/C1 controls refused (a zero-width joiner in 👩‍💻 is fine).
+        let clean = icon?.oTrim() ?? ""
         if !clean.isEmpty {
-            let bad = clean.utf16.count > Self.maxIconLength
-                || clean.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || $0 == "\u{2028}" || $0 == "\u{2029}" }
+            let bad = clean.u16 > Self.maxIconLength
+                || clean.utf16.contains { Ordinal.isControl($0) || $0 == 0x2028 || $0 == 0x2029 }
             if bad { throw BoardError.invalid("An icon is an emoji or a few characters (at most \(Self.maxIconLength)).") }
         }
         item.icon = clean.isEmpty ? nil : clean
@@ -93,7 +94,7 @@ extension TaskBoard {
     /// The task's own color, #rrggbb (nil or blank: none, it shows its first label's).
     public func setColor(_ id: UUID, _ color: String?, actor: Actor = .user, now: Date) throws {
         let item = try get(id)
-        let clean = color?.trimmingCharacters(in: .whitespaces) ?? ""
+        let clean = color?.oTrim() ?? ""
         if !clean.isEmpty { try Self.validateColor(clean) }
         item.color = clean.isEmpty ? nil : clean.lowercased()
         log(now, id, "updated", "Updated \"\(item.title)\"", actor)
@@ -114,9 +115,10 @@ extension TaskBoard {
     static func validateLabelNames(_ names: [String]) throws -> [String] {
         var result: [String] = []
         for raw in names {
-            let name = raw.trimmingCharacters(in: .whitespaces)
-            let bad = name.isEmpty || name.utf16.count > maxLabelLength
-                || name.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) || ",[]\"".unicodeScalars.contains($0) }
+            // As .NET: String.Trim, char.IsControl (C0/C1 only: a zero-width joiner in 👩‍💻 is fine), UTF-16 length.
+            let name = raw.oTrim()
+            let bad = name.isEmpty || name.u16 > maxLabelLength
+                || name.utf16.contains { Ordinal.isControl($0) || $0 == 0x2C || $0 == 0x5B || $0 == 0x5D || $0 == 0x22 }
             if bad { throw BoardError.invalid("\"\(raw)\" isn't a valid label. Use up to \(maxLabelLength) characters without commas, brackets, or quotes.") }
             if !result.contains(where: { Ordinal.equalIgnoreCase($0, name) }) { result.append(name) }
         }
@@ -125,9 +127,15 @@ extension TaskBoard {
     }
 
     static func validateColor(_ color: String) throws {
-        let hex = color.dropFirst()
-        guard color.hasPrefix("#"), hex.count == 6, hex.allSatisfy({ $0.isHexDigit }) else {
+        guard isHexColor(color) else {
             throw BoardError.invalid("Colors must be #rrggbb.")
         }
+    }
+
+    /// #rrggbb in ASCII hex digits (as .NET's `^#[0-9a-fA-F]{6}\z`; Character.isHexDigit also takes fullwidth ones).
+    static func isHexColor(_ color: String) -> Bool {
+        let hex = color.utf16.dropFirst()
+        return color.u16 == 7 && color.oStarts("#")
+            && hex.allSatisfy { ($0 >= 0x30 && $0 <= 0x39) || ($0 >= 0x41 && $0 <= 0x46) || ($0 >= 0x61 && $0 <= 0x66) }
     }
 }

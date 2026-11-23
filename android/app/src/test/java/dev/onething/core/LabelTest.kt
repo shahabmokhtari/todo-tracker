@@ -24,7 +24,7 @@ class LabelTest {
     }
 
     private fun snapshot(board: TaskBoard) =
-        board.labels.joinToString(";") { "${it.name} ${it.color}" } + "|" + board.allItems.joinToString(";") { it.labels.joinToString(",") }
+        board.labels.joinToString(";") { "${it.name} ${it.color}" } + "|" + board.allItems.joinToString(";") { "${it.labels.joinToString(",")} ${it.icon ?: ""} ${it.color ?: ""}" }
 
     private fun JsonObject.text(key: String): String? = this[key]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content
 
@@ -40,6 +40,8 @@ class LabelTest {
                 "define" -> { { board.defineLabel(label, color, now = t0); Unit } }
                 "remove" -> { { board.deleteLabel(label, now = t0) } }
                 "set" -> { { board.setLabels(UUID.fromString(step.text("task")), step["names"]!!.jsonArray.map { it.jsonPrimitive.content }, now = t0) } }
+                "icon" -> { { board.setIcon(UUID.fromString(step.text("task")), step.text("value"), now = t0) } }
+                "color" -> { { board.setColor(UUID.fromString(step.text("task")), step.text("value"), now = t0) } }
                 else -> error("$step")
             }
             val before = snapshot(board)
@@ -49,6 +51,14 @@ class LabelTest {
                 continue
             }
             change()
+            if (step.containsKey("icon")) {
+                assertEquals("$step", step.text("icon"), board.get(UUID.fromString(step.text("task"))).icon)
+                continue
+            }
+            if (step.containsKey("taskColor")) {
+                assertEquals("$step", step.text("taskColor"), board.get(UUID.fromString(step.text("task"))).color)
+                continue
+            }
             val expected = step["labels"]!!.jsonArray.map { it.jsonObject }.map { "${it.text("name")} ${it.text("color")}" }
             assertEquals("$step", expected, board.labels.map { "${it.name} ${it.color}" })
             for ((id, names) in step["tasks"]!!.jsonObject) {

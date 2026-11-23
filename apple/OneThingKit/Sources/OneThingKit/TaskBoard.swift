@@ -745,8 +745,7 @@ public final class TaskBoard {
     private func validateGroup(name: String, color: String?, except: TaskGroup?) throws -> String {
         let clean = try Self.requireText(name, "A group name is required.", maxLength: 60)
         if let color {
-            let hex = color.dropFirst()
-            guard color.hasPrefix("#"), hex.count == 6, hex.allSatisfy({ $0.isHexDigit }) else {
+            guard Self.isHexColor(color) else {
                 throw BoardError.invalid("Group colors must be #rrggbb.")
             }
         }

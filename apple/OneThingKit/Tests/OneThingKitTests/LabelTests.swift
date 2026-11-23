@@ -13,7 +13,7 @@ final class LabelTests: XCTestCase {
     }
 
     private func snapshot(_ board: TaskBoard) -> String {
-        board.labels.map { "\($0.name) \($0.color)" }.joined(separator: ";") + "|" + board.allItems.map { $0.labels.joined(separator: ",") }.joined(separator: ";")
+        board.labels.map { "\($0.name) \($0.color)" }.joined(separator: ";") + "|" + board.allItems.map { "\($0.labels.joined(separator: ",")) \($0.icon ?? "") \($0.color ?? "")" }.joined(separator: ";")
     }
 
     func testLabelsChangeAsTheSharedFixtureSays() throws {
@@ -29,6 +29,8 @@ final class LabelTests: XCTestCase {
             case "define": change = { try board.defineLabel(label, color: color, now: now) }
             case "remove": change = { try board.deleteLabel(label, now: now) }
             case "set": change = { try board.setLabels(UUID(uuidString: step["task"] as! String)!, step["names"] as! [String], now: now) }
+            case "icon": change = { try board.setIcon(UUID(uuidString: step["task"] as! String)!, step["value"] as? String, now: now) }
+            case "color": change = { try board.setColor(UUID(uuidString: step["task"] as! String)!, step["value"] as? String, now: now) }
             default: return XCTFail("\(step)")
             }
             let before = snapshot(board)
@@ -38,6 +40,14 @@ final class LabelTests: XCTestCase {
                 continue
             }
             try change()
+            if let icon = step["icon"] as? String {
+                XCTAssertEqual(try board.get(UUID(uuidString: step["task"] as! String)!).icon, icon, "\(step)")
+                continue
+            }
+            if let color = step["taskColor"] as? String {
+                XCTAssertEqual(try board.get(UUID(uuidString: step["task"] as! String)!).color, color, "\(step)")
+                continue
+            }
             let expected = try XCTUnwrap(step["labels"] as? [[String: String]]).map { "\($0["name"]!) \($0["color"]!)" }
             XCTAssertEqual(board.labels.map { "\($0.name) \($0.color)" }, expected, "\(step)")
             for (id, names) in try XCTUnwrap(step["tasks"] as? [String: [String]]) {

@@ -3,7 +3,7 @@ using OneThing.Core;
 
 namespace OneThing.Core.Tests;
 
-/// <summary>Labels in Settings (rename, recolor, remove, add): tests/fixtures/labels.json, the same in C#, Swift and Kotlin.</summary>
+/// <summary>Labels in Settings (rename, recolor, remove, add), and a task's icon and color: tests/fixtures/labels.json, the same in C#, Swift and Kotlin.</summary>
 public sealed class LabelFixtureTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
@@ -25,6 +25,8 @@ public sealed class LabelFixtureTests
                 "define" => () => board.DefineLabel(label, color, Actor.User, T0),
                 "remove" => () => board.DeleteLabel(label, Actor.User, T0),
                 "set" => () => board.SetLabels(Guid.Parse(step.GetProperty("task").GetString()!), step.GetProperty("names").EnumerateArray().Select(n => n.GetString()!), Actor.User, T0),
+                "icon" => () => board.Update(Guid.Parse(step.GetProperty("task").GetString()!), new TaskChanges { Icon = step.GetProperty("value").GetString() }, Actor.User, T0),
+                "color" => () => board.Update(Guid.Parse(step.GetProperty("task").GetString()!), new TaskChanges { Color = step.GetProperty("value").GetString() }, Actor.User, T0),
                 var other => throw new InvalidOperationException(other),
             };
 
@@ -37,6 +39,18 @@ public sealed class LabelFixtureTests
             }
 
             change();
+            if (step.TryGetProperty("icon", out var icon))
+            {
+                Assert.Equal(icon.GetString(), board.Get(Guid.Parse(step.GetProperty("task").GetString()!)).Icon);
+                continue;
+            }
+
+            if (step.TryGetProperty("taskColor", out var taskColor))
+            {
+                Assert.Equal(taskColor.GetString(), board.Get(Guid.Parse(step.GetProperty("task").GetString()!)).Color);
+                continue;
+            }
+
             Assert.Equal(
                 step.GetProperty("labels").EnumerateArray().Select(x => $"{x.GetProperty("name").GetString()} {x.GetProperty("color").GetString()}").ToList(),
                 board.Labels.Select(x => $"{x.Name} {x.Color}").ToList());
@@ -48,5 +62,5 @@ public sealed class LabelFixtureTests
     }
 
     private static string Snapshot(TaskBoard board) =>
-        string.Join(";", board.Labels.Select(x => $"{x.Name} {x.Color}")) + "|" + string.Join(";", board.AllItems().Select(i => string.Join(",", i.Labels)));
+        string.Join(";", board.Labels.Select(x => $"{x.Name} {x.Color}")) + "|" + string.Join(";", board.AllItems().Select(i => $"{string.Join(",", i.Labels)} {i.Icon} {i.Color}"));
 }

@@ -1,5 +1,5 @@
 {
-  "about": "Labels in Settings: renaming or recoloring one changes it on every task that has it (case doesn't matter), removing one takes it off every task (the tasks stay), a new one takes the next color nobody uses, and a name is 1 to 40 characters without commas, brackets or quotes and is never taken twice. A step with \"error\" changes nothing. Checked by the C# core (LabelFixtureTests), Swift (LabelTests) and Kotlin (LabelTest).",
+  "about": "Labels in Settings: renaming or recoloring one changes it on every task that has it (case doesn't matter), removing one takes it off every task (the tasks stay), a new one takes the next color nobody uses, and a name is 1 to 40 characters without commas, brackets or quotes and is never taken twice (an emoji joined with a zero-width joiner is fine; a control character isn't). A task's icon is an emoji or a few characters, and its own color #rrggbb in ASCII hex digits; both are trimmed as .NET trims. A step with \"error\" changes nothing. Checked by the C# core (LabelFixtureTests), Swift (LabelTests) and Kotlin (LabelTest).",
   "board": {
     "schemaVersion": 1,
     "labels": [
@@ -35,6 +35,19 @@
     { "do": "remove", "label": "now",
       "labels": [ { "name": "Q3/Q4", "color": "#14b8a6" }, { "name": "Waiting", "color": "#7c3aed" }, { "name": "Someday", "color": "#0ea5e9" } ],
       "tasks": { "00000000-0000-4000-8000-00000000a001": ["Q3/Q4"], "00000000-0000-4000-8000-00000000a002": [], "00000000-0000-4000-8000-00000000a003": ["Waiting", "Someday"] } },
-    { "do": "remove", "label": "Now", "error": "missing" }
+    { "do": "remove", "label": "Now", "error": "missing" },
+    { "do": "set", "task": "00000000-0000-4000-8000-00000000a003", "names": ["Waiting", "\ud83d\udc69\u200d\ud83d\udcbb Dev", "Later\n"],
+      "labels": [ { "name": "Q3/Q4", "color": "#14b8a6" }, { "name": "Waiting", "color": "#7c3aed" }, { "name": "Someday", "color": "#0ea5e9" }, { "name": "\ud83d\udc69\u200d\ud83d\udcbb Dev", "color": "#10b981" }, { "name": "Later", "color": "#f59e0b" } ],
+      "tasks": { "00000000-0000-4000-8000-00000000a001": ["Q3/Q4"], "00000000-0000-4000-8000-00000000a002": [], "00000000-0000-4000-8000-00000000a003": ["Waiting", "\ud83d\udc69\u200d\ud83d\udcbb Dev", "Later"] } },
+    { "do": "update", "label": "later", "name": "Later", "color": "#\uff11\uff12\uff13\uff14\uff15\uff16", "error": "color" },
+    { "do": "update", "label": "later", "name": "Later", "color": "#ef4444\n", "error": "color" },
+    { "do": "set", "task": "00000000-0000-4000-8000-00000000a003", "names": ["Lat\u0007er"], "error": "name" },
+    { "do": "icon", "task": "00000000-0000-4000-8000-00000000a003", "value": "\ud83d\udc69\u200d\ud83d\udcbb", "icon": "\ud83d\udc69\u200d\ud83d\udcbb" },
+    { "do": "icon", "task": "00000000-0000-4000-8000-00000000a003", "value": " \u2705\n", "icon": "\u2705" },
+    { "do": "icon", "task": "00000000-0000-4000-8000-00000000a003", "value": "a\u2028b", "error": "icon" },
+    { "do": "icon", "task": "00000000-0000-4000-8000-00000000a003", "value": "a\u0007", "error": "icon" },
+    { "do": "color", "task": "00000000-0000-4000-8000-00000000a003", "value": "#A1B2C3\n", "taskColor": "#a1b2c3" },
+    { "do": "color", "task": "00000000-0000-4000-8000-00000000a003", "value": "#\uff11\uff12\uff13\uff14\uff15\uff16", "error": "color" },
+    { "do": "color", "task": "00000000-0000-4000-8000-00000000a003", "value": "#12345g", "error": "color" }
   ]
 }
