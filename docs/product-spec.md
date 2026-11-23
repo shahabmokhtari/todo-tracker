@@ -472,7 +472,9 @@ AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-c
   on the vault directly (shared lock), so it works whether or not the app runs. Shipped next to the Windows app, inside the
   Mac app (`Contents/Resources/Server/cli`, `ot` a link to `onething`; *Install Command Line Tool…* in the app menu and
   Settings › Command line tool link both into `~/.local/bin`, asking before replacing anything that isn't One Thing's,
-  and showing a link into a moved app as broken, with Repair; `CommandLineTool` in OneThingKit), as a
+  and showing a link into a moved app as broken, with Repair; `CommandLineTool` in OneThingKit; on Windows the
+  sidebar's *Add ot to your PATH* appends the `cli` folder to the user's own PATH, keeping its registry kind:
+  `UserPath`, `CliOnPath`; the Linux install links both into `~/.local/bin` and says when that isn't on the PATH), as a
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
 * **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.

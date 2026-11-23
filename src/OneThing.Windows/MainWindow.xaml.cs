@@ -861,6 +861,11 @@ public partial class MainWindow : Window
         }
 
         menu.Items.Add(new MenuItem { Header = "Copy MCP config for Copilot / agents", Command = _vm.CopyMcpConfigCommand });
+        if (CliOnPath.Folder is { } cli)
+        {
+            menu.Items.Add(CliOnPath.MenuItem(cli));
+        }
+
         if (On("browser-extension"))
         {
             menu.Items.Add(new MenuItem { Header = "Set up the browser extension (Edge, Chrome, Safari)…", Command = _vm.SetUpBrowserExtensionCommand });

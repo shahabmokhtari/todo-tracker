@@ -22,14 +22,16 @@ a per-folder lock and re-read the files first). Several AI apps can be connected
 ## Get `ot`
 
 * **Windows app:** `onething.exe` and `ot.exe` are installed in the `cli` folder next to `OneThing.exe`. "Connect an AI app"
-  fills in the full path. To type `ot` in any terminal, add that folder to your PATH.
+  fills in the full path. To type `ot` in any terminal, choose **Add ot to your PATH** in the sidebar's menu (it adds
+  that folder to your own PATH, no admin rights; open a new terminal after), or add the folder yourself.
 * **Mac app:** `onething` and `ot` are inside the app (`OneThing.app/Contents/Resources/Server/cli`), and "Connect an AI
   app" fills in that full path, so nothing needs to be on your PATH. To type `ot` in Terminal, choose **One Thing ›
   Install Command Line Tool…** (or Settings › Command line tool › Install): it links both into `~/.local/bin` (no
   password; a file there that isn't One Thing's is only replaced if you say so, and then kept beside it), and tells you
   the one line to add to your shell profile if `~/.local/bin` isn't on your PATH yet. Moved the app? Settings shows
   the link as broken; **Repair** links it again.
-* **Linux app:** the install script puts `onething` and `ot` in `~/.local/bin`.
+* **Linux app:** the install script links `onething` and `ot` into `~/.local/bin` (most distributions have it on the
+  PATH; if `ot` isn't found, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile`).
 * **.NET tool:** `dotnet tool install -g OneThing.Cli --add-source <folder with the .nupkg>` (the package is a CI
   artifact; `dotnet pack src/OneThing.Cli -o <folder>` builds it). A .NET tool has one name: `onething`.
 * **Standalone:** self-contained `onething` and `ot` for Windows, macOS and Linux (`onething-cli-<platform>.zip`, no
