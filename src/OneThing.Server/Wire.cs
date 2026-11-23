@@ -227,7 +227,8 @@ public static class Wire
 {
     /// <summary>
     /// The tree the Tasks view draws (Outline), every row open down to <paramref name="depth"/> task levels (null: all).
-    /// <paramref name="under"/>: start under this task (it must have subtasks shown with <paramref name="show"/>).
+    /// <paramref name="under"/>: start under this task (it must have subtasks, and be in <paramref name="group"/> when one
+    /// is given); <paramref name="show"/> narrows what's under it, as in the app.
     /// </summary>
     public static TreeViewDto TreeView(TaskBoard board, DateTimeOffset now, Guid? group, WorkItem? under, OutlineShow show, int? depth)
     {
@@ -240,9 +241,11 @@ public static class Wire
         var options = new OutlineOptions { GroupId = group, ZoomId = under?.Id, Show = show };
         if (under is not null && Outline.ResolveZoom(board, options, now) != under.Id)
         {
-            throw new ArgumentException(under.Children.Count == 0
-                ? $"\"{under.Title}\" has no subtasks."
-                : $"Nothing under \"{under.Title}\" is shown with show {Of(show)}; try all.", nameof(under));
+            throw new ArgumentException(
+                under.IsArchived ? $"\"{under.Title}\" is archived."
+                : group is { } g && under.GroupId != g ? $"\"{under.Title}\" is in {board.GetGroup(under.GroupId).Name}, not {board.GetGroup(g).Name}: leave out the group, or pick {board.GetGroup(under.GroupId).Name}."
+                : $"\"{under.Title}\" has no subtasks.",
+                nameof(under));
         }
 
         options = options with { Expanded = Outline.OpenTo(board, options, OutlineLevel.All, now).Expanded };

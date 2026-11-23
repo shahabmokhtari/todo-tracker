@@ -635,6 +635,11 @@ public sealed class CliCommandTests : IDisposable
         Assert.Equal("waiting", waiting["rows"]![1].Str("state"));
 
         Assert.Contains("has no subtasks", (await _tt.Run("tree", "--under", call)).Error, StringComparison.Ordinal);
+        // A Show choice narrows what's under the task (as in the app), it doesn't refuse it.
+        var nowOnly = await _tt.Json("tree", "--under", copy, "--show", "waiting");
+        Assert.Equal("Write the copy", nowOnly["path"]!.AsArray()[^1].Str("title"));
+        Assert.Empty(nowOnly["rows"]!.AsArray());
+        Assert.Contains("\"Launch the site\" is in Work, not Personal", (await _tt.Run("tree", "--under", launch, "-g", "Personal")).Error, StringComparison.Ordinal);
         Assert.Contains("--show is todo, now, waiting or all", (await _tt.Run("tree", "--show", "later")).Error, StringComparison.Ordinal);
     }
 }
