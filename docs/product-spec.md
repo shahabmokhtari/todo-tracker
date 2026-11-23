@@ -241,7 +241,38 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   **Show in tree**. A subtask also shows what it's **part of**: the parent (opens), its progress, and the other
   subtasks next to it (the current one highlighted). *Move…* picks a group and where in it: on its own (a top-level task)
   or under any open task of that group (searchable; never itself or its own subtasks). *Show in tree* opens Tasks with
-  its parents expanded and the task focused and highlighted. In lists, a subtask's path opens its parent.
+  its group and parents opened and the task focused and highlighted (leaving a zoom that doesn't hold it; a finished
+  task shows under *Everything* for the moment). In lists, a subtask's path opens its parent.
+* **Tasks** is the tree, shown by the rules in `Outline` (C#), `outlinemodel.js`, Swift and Kotlin, checked against
+  `tests/fixtures/outline.json` ([design](design/tasks-tree.md)). Only how it's shown changes; nothing is written to
+  the tasks folder, and what's remembered is per device (`onething.outline.expanded`, `.closedGroups`, `.show`).
+  * **Groups at the top:** under *All groups* there's a row per group, in the board's order, with its color, how many
+    tasks are left and its progress; its top-level tasks are under it. It opens and closes like any row, stays at the
+    top while its tasks scroll under it, and takes a dropped task (to the top of that group, at the top level). It has
+    no check box and isn't renamed or dragged here. An empty group shows (somewhere to drop into) unless a search, *Can
+    do now* or *Waiting* is on. With one group picked the tree starts at its tasks.
+  * **Progress:** every parent shows `done/total` and a thin bar, counting the tasks without subtasks under it (as the
+    server's `doneCount`/`totalCount` and Workstreams do). A group adds up its top-level tasks, one each for a task
+    without subtasks.
+  * **Zoom** (⊙ on a parent, `#/tasks/<id>`): the tree shows only what's under it, with the path above (*All groups ›
+    group › each parent › the task*; each part goes there, the last opens the task's details). *Escape* and Back go
+    back out. While zoomed, *New task* adds inside the zoomed task and its top-level rows can't move out one level
+    (drag or *Move…* still can). A zoom that can't be shown (finished and hidden, archived, deleted, moved out of the
+    group picked, or left without subtasks) goes out to its nearest parent that can, else to the top; a search only
+    narrows it for the moment.
+  * **Show:** *To do* (default: every task not finished), *Can do now* (`actionable`, with their parents), *Waiting*
+    (`waiting` or `locked`, with their parents), *Everything*. A parent kept for its subtasks stays, closed or open as
+    it was. Someone who had *Show finished* on starts at *Everything*. While there's search text (the server keeps the
+    matches, their parents and subtasks) the rows are shown open, without changing what's remembered.
+  * **Open to** *Groups* (under All groups) · *Tasks* · *Subtasks* · *All* opens what's in view exactly that deep;
+    opening and closing rows afterwards works as always.
+  * **Titles** wrap to two lines. A subtask whose title starts with its parent's title (or the parent's shorter title
+    as shown) followed by `:`, ` -`, ` –` or ` —` shows only the rest; the full title is the tooltip and what renaming
+    shows and saves. A click on a title selects the row, a click on the selected row's title (or Enter, F2) renames it.
+    Thin guide lines mark each level.
+  * Keys: one Tab stop for the tree; arrows, Home/End, Enter/F2 rename, Ctrl+Enter details, Space done, Tab/Shift+Tab
+    nest, Alt+↑/↓ move, Insert/Alt+N add, Esc leaves the zoom, then the tree. On a phone the title gets the row; a tapped
+    row shows its buttons (timer, add a subtask, details, *Move…*) on a line under it.
 * **Quick add picks a group:** the picker by *Add* follows the tab shown (the first group under All); choosing another
   sends the new task there without changing the tab ("Added to Personal").
 * **Repeating tasks** (details panel *Repeat*, REST/MCP `repeat`, frontmatter `repeat:`): a rule in words, the way the
@@ -488,6 +519,7 @@ the docs explain the options and risks. The server sends the same short instruct
 |---|---|
 | `get_dashboard` | Now / waiting / overview / notes / timer, optionally for one group |
 | `list_tasks`, `get_task`, `get_report` | Read tree, details, timeline |
+| `get_tree` | The tree as Tasks shows it: group rows, progress, one branch with its path, *now* / *waiting*, a few levels (`ot tree`) |
 | `create_task` | Task or subtask (group, priority, deadline, optional defer) |
 | `add_steps` | Gated rollout steps with `stepDelayHours` |
 | `add_note` | Progress log with optional source URL |

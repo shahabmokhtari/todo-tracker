@@ -80,8 +80,17 @@ The web app (and the app window on Windows) has six views; switch with the side 
 - **Today**: what to do now (the same list as the sidebar).
 - **Board**: Inbox → Next → Doing → Done. Drag cards along, or focus one and press `Alt+←/→` (`Alt+↑/↓` within a
   column). Doing is kept to three on purpose. New tasks start in Inbox.
-- **Tasks**: every task as an outline. Type to rename, `Enter` for the next task, `Tab`/`Shift+Tab` to nest and
-  un-nest, `Alt+↑/↓` to move, `Space` to finish, `Esc` to leave; or drag a row before, after or into another.
+- **Tasks**: every task as an outline. Under *All groups* your groups are the top level, each with what's left to do;
+  drop a task on a group to move it there. A parent shows how far along it is (`3/8`, counting the tasks without
+  subtasks under it). Click a title to pick the row and again (or `Enter`, `F2`) to rename it; `Enter` in the box adds
+  the next task, `Tab`/`Shift+Tab` nest and un-nest, `Alt+↑/↓` move, `Space` finishes, `Esc` leaves; or drag a row
+  before, after or into another. A subtask that starts with its parent's name ("Publisher accounts: Pick a phone
+  number") shows only the rest.
+  - **Show**: *To do*, *Can do now* (with their parents), *Waiting* (snoozed, or after an unfinished step), or
+    *Everything* (finished tasks too).
+  - **Open to** *Groups*, *Tasks*, *Subtasks* or *All*: one press opens the whole tree that deep.
+  - **Zoom** (⊙ on a parent): see only that branch, with the path above it to go back. `Esc` or Back leaves it, and
+    the address (`#/tasks/…`) can be bookmarked. On a phone this is the easy way through a deep tree.
 - **Done**: what you finished, day by day, with the time it took. Archive finished tasks (or everything older than a
   week or a month) to keep it short; bring them back from **Archive**, or delete them.
 - **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per

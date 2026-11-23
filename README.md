@@ -52,7 +52,7 @@ calm until it matters.
 | Reports | Every task, as an outline |
 |---|---|
 | ![Reports: time tracked, tasks done, a streak, time per day, a donut by group, where the time went, and when you work](docs/images/reports.png) | ![Tasks: an outline of every task with icons, labels, tags, deadlines and time spent; a rollout expanded into its steps](docs/images/tasks.png) |
-| See **where the time went**: by day, group and task, and when you work best. | **Type an outline**: Enter for the next task, Tab to nest, Space to finish. |
+| See **where the time went**: by day, group and task, and when you work best. | **Type an outline**: Enter for the next task, Tab to nest, Space to finish. Groups on top, progress on every parent, and zoom into one branch. |
 
 | Everything about a task | The Windows sidebar | In a narrow window |
 |---|---|---|
