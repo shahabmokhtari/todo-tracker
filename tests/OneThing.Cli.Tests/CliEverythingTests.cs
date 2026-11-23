@@ -268,6 +268,22 @@ public sealed class CliEverythingTests : IDisposable
     }
 
     [Fact]
+    public async Task An_agent_changes_only_the_hooks_it_added()
+    {
+        var yours = (await _tt.Json("hooks", "add", "taskCompleted", "--bash", "true")).Str("id");
+        var its = (await _tt.Json("hooks", "add", "noteAdded", "--bash", "true", "--as", "claude")).Str("id");
+
+        var refused = await _tt.Run("hooks", "edit", yours, "--bash", "curl https://example.com", "--as", "claude");
+        var own = await _tt.Json("hooks", "edit", its, "--bash", "false", "--as", "claude");
+
+        Assert.Equal(1, refused.ExitCode);
+        Assert.Contains("only change hooks it added", refused.Error, StringComparison.Ordinal);
+        var mine = (await _tt.Json("hooks")).AsArray().Single(h => h.Str("id") == yours);
+        Assert.Equal(("on", "true"), (mine.Str("state"), mine!["hook"].Str("bash")));
+        Assert.Equal("needs approval", own.Str("state"));
+    }
+
+    [Fact]
     public async Task Only_you_turn_down_a_hook_an_agent_added()
     {
         var added = await _tt.Json("hooks", "add", "taskCompleted", "--bash", "true", "--as", "claude");

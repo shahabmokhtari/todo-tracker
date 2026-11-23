@@ -23,8 +23,8 @@ with `--as`/`ONETHING_AGENT`) adds or changes is saved with `"needsApproval": tr
 Settings › Hooks (it shows everything it would do) or with `ot hooks approve <id> <version>` (`ot hooks list` shows
 everything it would do and its version). Approving names the version you looked at: if it changed since, it isn't
 approved (each change gets a new random revision, so a version can't be matched by trying). Changing a hook that waits for approval keeps it waiting;
-only approving approves. Switching a hook off or removing it needs no approval, but an agent can only switch on or off,
-or remove, the hooks it added itself: yours stay yours (`hooks.json` keeps no versions, so a removed hook would be gone).
+only approving approves. Switching a hook off or removing it needs no approval, but an agent can only change, switch
+on or off, or remove the hooks it added itself: yours stay yours (`hooks.json` keeps no versions, so a removed hook would be gone).
 Only you can turn one down (**Don't allow**) or try hooks (**Try it**, `POST /api/hooks/test`).
 
 **You're asked.** You don't have to go looking: on Windows a notification says *"Claude wants to run a hook"* with what

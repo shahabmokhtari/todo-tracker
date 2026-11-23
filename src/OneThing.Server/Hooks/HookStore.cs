@@ -159,6 +159,7 @@ public sealed class HookStore
         return Change(file =>
         {
             var (oldEvent, old) = Find(file, id);
+            MayChange(old, author, "change");
 
             // Hidden values sent back as they were shown keep the values they had.
             hook.Headers = Restore(hook.Headers, old.Headers);

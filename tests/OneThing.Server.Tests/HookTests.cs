@@ -197,9 +197,11 @@ public sealed class HookTests : IAsyncLifetime
     {
         using var app = AppClient();
         using var agent = _server.Client(actor: "agent:claude");
-        var id = (await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = new { type = "command", bash = "exit 0", powershell = "exit 0", env = new Dictionary<string, string> { ["TOKEN"] = "s3cret" } } }))["id"]!.GetValue<string>();
+        // A hook the agent added, which you gave a variable (an agent can't set one).
+        var id = (await agent.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 }))["id"]!.GetValue<string>();
+        await (await app.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", bash = "exit 0", powershell = "exit 0", env = new Dictionary<string, string> { ["TOKEN"] = "s3cret" } } })).Json();
 
-        // An agent renames it, sending back what it was shown: the variable keeps its value (and it now needs approval).
+        // The agent renames it, sending back what it was shown: the variable keeps its value (and it now needs approval).
         var shown = (await agent.GetJson("/api/hooks"))["hooks"]![0]!["hook"]!;
         Assert.Equal("•••", shown["env"]!["TOKEN"]!.GetValue<string>());
         var renamed = await (await agent.PutAsJsonAsync($"/api/hooks/{id}", new { hook = new { type = "command", bash = "exit 0", powershell = "exit 0", name = "renamed", env = new Dictionary<string, string> { ["TOKEN"] = "•••" } } })).Json();
@@ -245,13 +247,31 @@ public sealed class HookTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_agent_can_change_only_the_hooks_it_added()
+    {
+        using var app = AppClient();
+        using var claude = _server.Client(actor: "agent:claude");
+        using var copilot = _server.Client(actor: "agent:copilot");
+        var yours = (await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = Exit0 }))["id"]!.GetValue<string>();
+        var its = (await claude.PostJson("/api/hooks", new { @event = "noteAdded", hook = Exit0 }))["id"]!.GetValue<string>();
+        var other = new { hook = new { type = "command", powershell = "exit 1", bash = "curl https://example.com" } };
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await claude.PutAsJsonAsync($"/api/hooks/{yours}", other)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await copilot.PutAsJsonAsync($"/api/hooks/{its}", other)).StatusCode);
+        Assert.Equal("needs approval", (await (await claude.PutAsJsonAsync($"/api/hooks/{its}", other)).Json())["state"]!.GetValue<string>());
+
+        var mine = (await app.GetJson("/api/hooks"))["hooks"]!.AsArray().Single(h => h!["id"]!.GetValue<string>() == yours)!;
+        Assert.Equal(("on", "exit 0"), (mine["state"]!.GetValue<string>(), mine["hook"]!["bash"]!.GetValue<string>()));
+    }
+
+    [Fact]
     public async Task Recent_runs_and_secret_addresses_are_hidden_from_anything_but_the_owners_session()
     {
         using var app = AppClient();
         using var agent = _server.Client(actor: "agent:claude");
         const string url = "https://prod.example.com/workflows/abc/invoke?sig=s3cret";
         await app.PostJson("/api/hooks", new { @event = "taskCompleted", hook = new { type = "command", powershell = "Write-Output private", bash = "echo private" } });
-        var web = (await app.PostJson("/api/hooks", new { @event = "reminderDue", hook = new { type = "http", url } }))["id"]!.GetValue<string>();
+        var web = (await agent.PostJson("/api/hooks", new { @event = "reminderDue", hook = new { type = "http", url } }))["id"]!.GetValue<string>();
         await app.PostJson("/api/hooks/test", new { @event = "taskCompleted" });
 
         var seen = await agent.GetJson("/api/hooks");

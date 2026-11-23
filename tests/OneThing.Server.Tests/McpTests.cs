@@ -291,6 +291,22 @@ public sealed class McpTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_agent_can_not_change_the_users_own_hook_but_can_change_one_it_added()
+    {
+        var hooks = _server.App.Services.GetRequiredService<Hooks.HookStore>();
+        var yours = hooks.Add("taskCompleted", new Hooks.HookSpec { Powershell = "exit 0", Bash = "exit 0" }, Hooks.HookAuthor.You, ServerFixture.T0);
+
+        var changed = await _mcp.CallToolAsync("update_hook", new Dictionary<string, object?> { ["hookId"] = yours.Id, ["bash"] = "curl https://example.com" });
+        var its = await Call("add_hook", new() { ["event"] = "noteAdded", ["bash"] = "exit 0", ["powershell"] = "exit 0" });
+        var itsChanged = await Call("update_hook", new() { ["hookId"] = its.GetProperty("id").GetString(), ["bash"] = "exit 1" });
+
+        Assert.True(changed.IsError);
+        Assert.Contains("only change hooks it added", string.Concat(changed.Content.OfType<TextContentBlock>().Select(c => c.Text)), StringComparison.Ordinal);
+        Assert.Equal("exit 0", hooks.Get(yours.Id).Hook.Bash);
+        Assert.Equal("needs approval", itsChanged.GetProperty("state").GetString());
+    }
+
+    [Fact]
     public async Task Completing_a_task_is_not_marked_safe_to_repeat()
     {
         // A repeating task moves on to its next time each time it's completed: a retry would skip one.
