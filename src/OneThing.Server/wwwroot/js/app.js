@@ -2049,6 +2049,8 @@ const ctx = {
   dashboard: () => state.dashboard,
   signedIn: () => !!state.signedIn,
   setGroup: (id) => { setGroup(id); refreshAll(); },
+  /** The filter box's text (every view follows it). */
+  setQuery,
   capture: focusCapture,
   closeDrawer,
   drawerOpen: () => !$('#drawer').hidden,

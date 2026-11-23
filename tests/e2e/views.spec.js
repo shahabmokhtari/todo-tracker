@@ -247,13 +247,31 @@ test('Tasks: groups at the top, progress, Open to, Show, zoom with a path and Ba
   await expect(path).toHaveCount(0);
   await expect(rowOf('Website relaunch')).toBeVisible();
 
-  // Escape leaves a zoom, back on the task that was zoomed into.
-  await page.evaluate((id) => { location.hash = `#/tasks/${id}`; }, copy.id);
+  // Alt+Enter zooms into the row the keyboard is on.
+  await rowOf('Website relaunch').focus();
+  await page.keyboard.press('Alt+Enter');
+  await expect(page).toHaveURL(new RegExp(`#/tasks/${site.id}$`));
+  await rowOf('Website relaunch - Write the copy').focus();
+  await page.keyboard.press('Alt+Enter');
   await expect(path.locator('.crumb-text')).toHaveText(['All groups', group.name, 'Website relaunch', 'Write the copy']);
+
+  // Show narrows a zoom like a search does: nothing waits here, and the zoom (and its address) stays for when it's back.
+  await showPick.selectOption('waiting');
+  await expect(outline.locator('.empty-state')).toContainText('Nothing here is waiting');
+  await expect(page).toHaveURL(new RegExp(`#/tasks/${copy.id}$`));
+  await expect(path.locator('.crumb-text')).toHaveText(['All groups', group.name, 'Website relaunch', 'Write the copy']);
+  await showPick.selectOption('todo');
+  await expect(rowOf('Write the copy: Hero')).toBeVisible();
+
+  // Escape goes up one level (on the task it came from), then out to the tree.
   await rowOf('Write the copy: Hero').focus();
   await page.keyboard.press('Escape');
-  await expect(page).toHaveURL(/#\/tasks$/);
+  await expect(page).toHaveURL(new RegExp(`#/tasks/${site.id}$`));
   await expect(rowOf('Website relaunch - Write the copy')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page).toHaveURL(/#\/tasks$/);
+  await expect(rowOf('Website relaunch')).toBeFocused();
+  await openTo.getByRole('button', { name: 'All' }).click();
 
   // A click on a title selects the row; a click on the selected row's title renames it.
   const hero = rowOf('Write the copy: Hero');

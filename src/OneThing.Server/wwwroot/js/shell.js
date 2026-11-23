@@ -24,10 +24,14 @@ export const VIEWS = [
  */
 export function parseRoute(hash) {
   const parts = String(hash ?? '').replace(/^#\/?/, '').split('/').filter(Boolean);
-  if (parts[0] === 'task' && parts[1]) return { view: null, task: decodeURIComponent(parts[1]) };
+  // An id that can't be read (a cut-off %-escape): the address as if it had none.
+  const id = (text) => { try { return decodeURIComponent(text); } catch { return null; } };
+  const task = parts[0] === 'task' && parts[1] ? id(parts[1]) : null;
+  if (task) return { view: null, task };
   // A panel a plugin opens over the view on screen (#/ask: the chat).
   if (parts[0] === 'ask') return { view: null, task: null, panel: parts[0] };
-  if (parts[0] === 'tasks' && parts[1]) return { view: 'tasks', task: null, zoom: decodeURIComponent(parts[1]) };
+  const zoom = parts[0] === 'tasks' && parts[1] ? id(parts[1]) : null;
+  if (zoom) return { view: 'tasks', task: null, zoom };
   return { view: VIEWS.some((v) => v.id === parts[0]) ? parts[0] : 'today', task: null };
 }
 

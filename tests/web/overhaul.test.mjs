@@ -260,6 +260,10 @@ test('routes: views, a task full size, and panels a plugin opens over the view',
   assert.deepEqual(parseRoute('#/ask'), { view: null, task: null, panel: 'ask' });
   assert.deepEqual(parseRoute('#/nope'), { view: 'today', task: null });
   assert.deepEqual(parseRoute(''), { view: 'today', task: null });
+  // A broken address (a cut-off escape) is the view without the id, never an error.
+  assert.deepEqual(parseRoute('#/tasks/%E0%A4'), { view: 'tasks', task: null });
+  assert.deepEqual(parseRoute('#/task/%E0%A4'), { view: 'today', task: null });
+  assert.deepEqual(parseRoute('#/tasks/a%20b'), { view: 'tasks', task: null, zoom: 'a b' });
 });
 test('moves name the neighbouring task, not a position, so they land right when a filter hides some subtasks', () => {
   // Shown under P: only D (A, B and C are hidden by the filter). "After D" means after D, wherever D is.

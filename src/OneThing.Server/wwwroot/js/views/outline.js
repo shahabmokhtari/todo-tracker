@@ -1,12 +1,13 @@
 // Tasks: every task as an outline. Under All groups the top level is the groups; a parent shows how far along it is;
 // ⊙ zooms into a branch (#/tasks/<id>, with a path back). Click a row's title to select it, click it again (or Enter,
 // F2) to rename it; Enter adds the next task, Tab and Shift+Tab (or Alt+Shift+Right/Left) nest and un-nest,
-// Alt+Up/Down reorder, Space or the checkbox finishes, Escape leaves the zoom, then the tree; drag a row before, after
-// or into another, or onto a group (or use a row's Move menu on a touch screen).
+// Alt+Up/Down reorder, Alt+Enter zooms in, Space or the checkbox finishes, Escape goes up one level of the zoom, then
+// leaves the tree; drag a row before, after or into another, or onto a group (or use a row's Move menu on a touch
+// screen).
 
 import {
   index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests, groupDropRequests,
-  outlineRows, outlinePath, resolveZoom, openTo, newTaskPlace, keptOf, shownTitle, initialShow, SHOW_CHOICES,
+  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, besidesOf, shownTitle, initialShow, SHOW_CHOICES,
 } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus, DRAG_TYPE } from './common.js';
@@ -27,6 +28,13 @@ const LEVELS = [['groups', 'Groups'], ['tasks', 'Tasks'], ['subtasks', 'Subtasks
 const EMPTY = {
   now: 'Nothing can be done right now.',
   waiting: 'Nothing is waiting.',
+};
+// In a zoom: what the Show choice leaves out there, and how to see it.
+const EMPTY_HERE = {
+  todo: 'Nothing left to do here. Show › Everything shows what’s done.',
+  now: 'Nothing here can be done right now. Show › To do shows the rest.',
+  waiting: 'Nothing here is waiting. Show › To do shows the rest.',
+  all: 'Nothing under this task.',
 };
 
 export function createOutlineView(ctx) {
@@ -52,8 +60,21 @@ export function createOutlineView(ctx) {
   const stickUnder = () => root.style.setProperty('--sticky-top', `${topbar?.offsetHeight ?? 0}px`);
   if (topbar && typeof ResizeObserver === 'function') new ResizeObserver(stickUnder).observe(topbar);
 
-  const saveExpanded = () => write(EXPANDED_KEY, JSON.stringify([...expanded].slice(-500)));
-  const saveClosed = () => write(CLOSED_KEY, JSON.stringify([...closedGroups]));
+  // Escape where no row takes it (the path, an empty zoom): up one level all the same.
+  root.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || !zoomId || e.target.closest?.('input, select, textarea')) return;
+    e.preventDefault();
+    zoomBack();
+  });
+
+  // Kept in the order they were opened (the newest few hundred), without tasks and groups that are gone. Only the whole
+  // tree (no group picked, no search) knows every task.
+  const wholeTree = () => !ctx.state.group && !ctx.state.query?.trim();
+  const saveExpanded = () => {
+    const known = [...expanded].filter((id) => !wholeTree() || !roots.length || map.has(id));
+    write(EXPANDED_KEY, JSON.stringify(known.slice(-500)));
+  };
+  const saveClosed = () => write(CLOSED_KEY, JSON.stringify([...closedGroups].filter((id) => !groups.length || groups.some((g) => g.id === id))));
   const fetchTree = latest(() => ctx.api(treeUrl(ctx)));
   const queue = serial();
   let shown = null;
@@ -142,6 +163,14 @@ export function createOutlineView(ctx) {
     location.hash = id ? `#/tasks/${encodeURIComponent(id)}` : '#/tasks';
   }
 
+  /** Escape: up one level (to the zoomed task's parent), and from the first level out to the whole tree. */
+  function zoomBack() {
+    const opts = options();
+    const up = zoomUp(roots, opts);
+    if (up) zoomTo(up, { key: resolveZoom(roots, opts) });
+    else zoomOut();
+  }
+
   /** Out of the zoom, to the whole tree, with the task that was zoomed into in sight and focused. */
   function zoomOut() {
     const from = zoomId;
@@ -181,11 +210,12 @@ export function createOutlineView(ctx) {
       return null;
     }
 
-    // In place: after the task it was typed under (or first inside its parent or group).
-    const siblings = parentId ? map.get(parentId)?.node.children ?? [] : roots.filter((r) => !groupId || r.groupId === groupId);
-    const first = siblings.find((s) => s.id !== created.id);
-    const place = at.afterId ? { after: at.afterId } : first ? { before: first.id } : null;
-    if (place) await ctx.api(`/api/items/${created.id}/reorder`, { method: 'POST', body: place }).catch(() => {});
+    // In place: after the task it was typed under, else first inside its parent or group (by position: a search or a
+    // Show choice may leave the first one out of the tree).
+    const place = at.afterId
+      ? [`/api/items/${created.id}/reorder`, { after: at.afterId }]
+      : [`/api/items/${created.id}/move`, parentId ? { parentId, index: 0 } : { toTopLevel: true, groupId: created.groupId, index: 0 }];
+    await ctx.api(place[0], { method: 'POST', body: place[1] }).catch(() => {});
     if (parentId && parentId !== zoomId) expanded.add(parentId);
     saveExpanded();
     return created;
@@ -303,6 +333,10 @@ export function createOutlineView(ctx) {
     return h('span', { class: 'otext', title: r.fullTitle !== r.title ? r.fullTitle : null }, r.title);
   }
 
+  // The title being renamed: saved before the tree is drawn again (a zoom, Show in tree, the Back button), as leaving
+  // the box does, so what was typed is never lost.
+  let renaming = null;
+
   function startRename(el, r) {
     const node = r.node;
     const text = el.querySelector('.otext');
@@ -315,11 +349,13 @@ export function createOutlineView(ctx) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelled = true; input.value = node.title; focusRow(node.id); }
       },
       onblur: async () => {
+        if (renaming?.input === input) renaming = null;
         if (!cancelled) await rename(node, input);
         if (input.isConnected) input.replaceWith(titleText({ title: shownTitle(node.title, r.parent?.title, r.parentShown), fullTitle: node.title }));
       },
     });
     input.addEventListener('mousedown', (e) => e.stopPropagation());
+    renaming = { node, input, cancelled: () => cancelled };
     text.replaceWith(input);
     input.focus();
     input.select();
@@ -401,22 +437,20 @@ export function createOutlineView(ctx) {
   function moveMenu(r) {
     const choices = [['', 'Move…'], ['up', 'Up'], ['down', 'Down'], ['in', 'Into the task above']];
     if (r.outdent) choices.push(['out', 'Out one level']);
+    if ((r.node.children ?? []).length) choices.push(['zoom', 'Zoom in (Alt+Enter)']);
     return h('select', {
       class: 'move-select', tabindex: -1, 'aria-label': `Move ${r.node.title}`,
       onchange: (e) => {
         const key = e.target.value;
         e.target.value = '';
-        if (key) move(r.node.id, key);
+        if (key === 'zoom') zoomTo(r.node.id);
+        else if (key) move(r.node.id, key);
       },
     }, ...choices.map(([value, label]) => h('option', { value }, label)));
   }
 
   /** Whether a sibling is on screen next to this task (kept by Show, and in the same group at the top level). */
-  function besides(id) {
-    const kept = keptOf(roots, options());
-    const group = map.get(id)?.node.groupId;
-    return (n) => kept(n) && n.groupId === group;
-  }
+  const besides = (id) => besidesOf(roots, options(), id);
 
   /** Up/down among the rows shown, into the task above, or out one level; built from the tree when its turn comes. */
   function move(id, how) {
@@ -461,7 +495,7 @@ export function createOutlineView(ctx) {
     const go = (k) => rows[k]?.focus();
     if (e.key === 'Escape') {
       e.preventDefault();
-      if (zoomId) zoomOut();
+      if (zoomId) zoomBack();
       else root.querySelector('.view-toolbar .btn')?.focus();
     } else if (e.key === 'ArrowDown' && !e.altKey) { e.preventDefault(); go(i + 1); }
     else if (e.key === 'ArrowUp' && !e.altKey) { e.preventDefault(); go(i - 1); }
@@ -505,6 +539,7 @@ export function createOutlineView(ctx) {
       else if (r.parent) focusRow(r.parent.id);
       else if (!ctx.state.group && !zoomId) focusRow(node.groupId);
     } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ctx.openDrawer(node.id); }
+    else if (e.key === 'Enter' && e.altKey) { e.preventDefault(); if ((node.children ?? []).length) zoomTo(node.id); }
     else if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); startRename(e.currentTarget, r); }
     else if (e.key === ' ') { e.preventDefault(); complete(node); }
     else if (e.key === 'Insert' || (e.key === 'n' && e.altKey)) { e.preventDefault(); adding = { afterId: node.id }; render(); }
@@ -557,13 +592,13 @@ export function createOutlineView(ctx) {
             render();
           },
         }, label)))),
-      h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Esc'), ' leave'));
+      h('span', { class: 'muted small push-right kbd-hints' }, h('kbd', null, 'Enter'), ' rename · ', h('kbd', null, 'Tab'), ' nest · ', h('kbd', null, 'Alt ↑↓'), ' move · ', h('kbd', null, 'Space'), ' done · ', h('kbd', null, 'Alt Enter'), ' zoom · ', h('kbd', null, 'Esc'), ' up'));
   }
 
-  function emptyText() {
+  function emptyText(zoomed) {
     if (ctx.state.query?.trim()) return h('p', { class: 'empty-state' }, 'Nothing here matches the filter.');
+    if (zoomed) return h('p', { class: 'empty-state' }, EMPTY_HERE[show], ' Press ', h('kbd', null, 'Esc'), ' to go back up.');
     if (EMPTY[show]) return h('p', { class: 'empty-state' }, EMPTY[show]);
-    if (zoomId) return h('p', { class: 'empty-state' }, 'Nothing left under this task. Press ', h('kbd', null, 'Esc'), ' to go back out.');
     return h('p', { class: 'empty-state' }, 'No tasks here yet. Press ', h('kbd', null, 'Insert'), ' or the button to add one.');
   }
 
@@ -576,17 +611,22 @@ export function createOutlineView(ctx) {
     // Where that row was, for when it's no longer shown (finished, under To do).
     const keptAt = keep ? [...root.querySelectorAll(ROWS)].findIndex((r) => r.dataset.key === keep) : -1;
 
-    // A zoom that can't be shown any more (finished, moved, gone): out to its nearest parent that can. A search only
-    // narrows for now (the address stays, for when it's cleared).
+    // What's being renamed is saved first (the row may not be drawn again).
+    if (renaming?.input.isConnected && !renaming.cancelled()) rename(renaming.node, renaming.input);
+    renaming = null;
+
+    // A zoom on a task that's really gone (deleted, archived, moved out of the group picked, without subtasks) is
+    // given up for good: the address changes to what's left. A search or a Show choice only narrows for now (the
+    // address stays, and so does the path above the tree).
     let opts = options();
-    const zoom = resolveZoom(roots, opts);
-    if (zoom !== zoomId) {
-      if (!opts.query.trim()) {
-        zoomId = zoom;
-        history.replaceState(null, '', zoom ? `#/tasks/${encodeURIComponent(zoom)}` : '#/tasks');
-      }
-      opts = { ...opts, zoomId: zoom };
+    const lasting = rememberedZoom(roots, opts);
+    if (lasting !== zoomId) {
+      zoomId = lasting;
+      history.replaceState(null, '', lasting ? `#/tasks/${encodeURIComponent(lasting)}` : '#/tasks');
+      opts = options();
     }
+    const zoom = resolveZoom(roots, opts);
+    if (zoom !== zoomId) opts = { ...opts, zoomId: zoom };
     const parts = outlinePath(roots, groups, opts);
     if (parts.length) trail = parts.filter((p) => p.kind === 'task').slice(0, -1).map((p) => p.id);
     const rows = outlineRows(roots, groups, opts);
@@ -620,9 +660,13 @@ export function createOutlineView(ctx) {
       }
     }
 
-    if (!rows.length && !adding) tree.append(emptyText());
+    if (!rows.length && !adding) tree.append(emptyText(!!opts.zoomId));
     keepToolbarFocus(root, () => root.replaceChildren(...[toolbar(), parts.length ? pathBar(parts) : null, tree].filter(Boolean)));
-    if (after?.first) { if (activeId) focusRow(activeId); }
+    if (after?.first) {
+      // Nothing to show under the zoom: the keyboard waits on the path (Escape goes back up from there).
+      if (activeId) focusRow(activeId);
+      else root.querySelector('.opath .crumb.current')?.focus();
+    }
     else if (keep && focusHere && !root.querySelector('.orow.adding') && !focusRow(keep) && keptAt >= 0) {
       // Its row is gone: the keyboard goes to the row above it (like deleting a line), never off the page.
       const shownRows = root.querySelectorAll(ROWS);
@@ -650,6 +694,13 @@ export function createOutlineView(ctx) {
     // without it, so it never jumps there later out of the blue.
     revealing = { id, misses: 0 };
     await load();
+    // Still not in the tree with a search on: the search leaves it out, so it goes (and says so).
+    if (revealing?.id === id && !map.has(id) && ctx.state.query?.trim()) {
+      revealing.misses = 0;
+      ctx.setQuery('');
+      ctx.toast('Cleared the search to show the task');
+      await load();
+    }
   }
 
   function applyReveal() {
