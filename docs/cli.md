@@ -67,6 +67,8 @@ links them into `~/.local/bin`), in `~/.local/bin` with the Linux install, or `d
 | [`ot attachment`](#ot-attachment) | Save a copy of a task's attachment (default: here, by its name; - prints it) |
 | [`ot export`](#ot-export) | The whole board as JSON (the format every app reads) |
 | [`ot settings`](#ot-settings) | The app's settings: the theme, and where reminders are posted (Teams) |
+| [`ot sync`](#ot-sync) | How syncing with your other computers is going; now syncs (while the app isn't running) |
+| [`ot connectors`](#ot-connectors) | Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the app isn't running) |
 | [`ot plugins`](#ot-plugins) | The extras (plugins) and whether each is on; switch one on or off |
 
 ### ot now
@@ -481,6 +483,26 @@ ot settings [theme system|light|dark | teams <https://…|off>]
 ```
 
 teams is for you, the person at the computer (not for AI agents). The app uses a change from its next start.  
+
+### ot sync
+
+How syncing with your other computers is going; now syncs (while the app isn't running).
+
+```
+ot sync [now]
+```
+
+Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so.  
+
+### ot connectors
+
+Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the app isn't running).
+
+```
+ot connectors [sync <id> | sync github <group>]
+```
+
+Signing in and choosing what to connect are in the app: Settings › Connected apps.  
 
 ### ot plugins
 

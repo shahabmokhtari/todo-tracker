@@ -13,6 +13,14 @@ public sealed class CliHarness : IDisposable
 {
     public static readonly DateTimeOffset T0 = new(2026, 1, 5, 9, 0, 0, TimeSpan.Zero);
 
+    // ot sync and ot connectors run the app's sync here: never through this computer's real OneDrive or iCloud Drive,
+    // and never into the folder ONETHING_VAULT names.
+    static CliHarness()
+    {
+        Environment.SetEnvironmentVariable("ONETHING_CLOUD", "off");
+        Environment.SetEnvironmentVariable("ONETHING_VAULT", null);
+    }
+
     public CliHarness(bool history = false)
     {
         DataDirectory = Path.Combine(Path.GetTempPath(), "onething-cli-" + Guid.NewGuid().ToString("N"));

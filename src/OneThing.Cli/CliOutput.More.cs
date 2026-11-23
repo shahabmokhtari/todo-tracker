@@ -113,4 +113,63 @@ internal sealed partial class CliOutput
             Writer.WriteLine($"  {(p.Enabled ? "on " : "off")}  {p.Id,-20} {p.Name}");
         }
     }
+
+    public void Sync(OneThing.Server.Plugins.Sync.SyncView v)
+    {
+        var last = v.LastSync is { } at ? $", last synced {Local(at)}" : string.Empty;
+        Writer.WriteLine(v.State switch
+        {
+            "off" => "Sync is off (Settings › Sync in the app turns it on).",
+            "unavailable" => $"Nothing to sync with yet: {v.Where ?? "no OneDrive or iCloud Drive here"}",
+            "syncing" => $"Syncing now{(v.Where is { } w ? $" through {w}" : string.Empty)}{last}",
+            "error" => $"Sync has a problem{last}",
+            _ => $"Sync is on{(v.Where is { } where ? $" through {where}" : string.Empty)}{last}",
+        });
+        if (v.Problem is { } problem)
+        {
+            Writer.WriteLine($"! {problem}");
+        }
+
+        if (v.Warning is { } warning)
+        {
+            Writer.WriteLine($"! {warning}");
+        }
+
+        foreach (var d in v.Devices)
+        {
+            Writer.WriteLine($"  {d.Name}: last synced {Local(d.At)}");
+        }
+
+        if (v.Conflicts.Count > 0)
+        {
+            Writer.WriteLine($"{v.Conflicts.Count.ToString(CultureInfo.InvariantCulture)} clash(es) to settle in the app (Settings › Sync):");
+            foreach (var c in v.Conflicts)
+            {
+                Writer.WriteLine($"  {c.Path} (with {c.PeerName})");
+            }
+        }
+    }
+
+    public void Connectors(ConnectorsDto v)
+    {
+        if (v.Connectors.Count == 0 && v.GitHub is null)
+        {
+            Writer.WriteLine("No connectors. Switch one on in Settings › Extras of the app (Notion, Microsoft To Do, GitHub Issues).");
+        }
+
+        foreach (var c in v.Connectors)
+        {
+            var state = !c.On ? "off" : c.Missing is { } missing ? missing : c.Enabled ? $"on, {c.TargetName ?? c.Target} ({c.Linked.ToString(CultureInfo.InvariantCulture)} linked)" : "not set up";
+            Writer.WriteLine($"  {c.Id,-10} {c.Name,-20} {state}{(c.LastRun is { } at ? $", last {Local(at)}: {c.LastResult}" : string.Empty)}");
+        }
+
+        if (v.GitHub is { } g)
+        {
+            Writer.WriteLine($"  github     GitHub Issues        {(g.Missing ?? $"signed in as {g.Account}")}");
+            foreach (var group in g.Groups)
+            {
+                Writer.WriteLine($"    {group.Group}: {group.Repo ?? "no repository"}{(group.LastRun is { } at ? $", last {Local(at)}: {group.LastResult}" : string.Empty)}");
+            }
+        }
+    }
 }

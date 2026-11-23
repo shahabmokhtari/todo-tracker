@@ -480,7 +480,10 @@ AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-c
   a test fails when a REST endpoint has neither a command nor a reason not to), except deleting (tasks, groups,
   labels, attachments, time entries): a shell agent can run `ot` without `--as`, so `ot` can't tell it from the
   person, and deletes stay in the apps. Owner-only changes that aren't deletes (`ot plugins on|off`, `ot settings
-  teams`, `ot hooks reject`, `ot vault use`) are refused with `--as`/`ONETHING_AGENT`.
+  teams`, `ot hooks reject`, `ot vault use`) are refused with `--as`/`ONETHING_AGENT`. `ot sync [now]` and `ot connectors [sync
+  <id>]` run the app's own sync and connector services in-process (status, and a sync while the app isn't running:
+  they take the app's instance lock, so the two never sync one folder at once); setting them up, signing in, pairing
+  the browser extension, Ask AI and feedback stay with the person at the app.
 * **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
 * **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
   subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test

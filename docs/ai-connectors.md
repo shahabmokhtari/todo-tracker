@@ -150,6 +150,7 @@ ot group add Garden --color '#22c55e'   a new group (tab); then ot add 'Plant tu
 ot plan passport tomorrow 9:00      a block on the plan (ot plan shows it)
 ot log passport 45m                 time already spent; ot focus start passport for a focus session
 ot export > backup.json             everything, as JSON
+ot sync                             how syncing is going (ot sync now, while the app isn't running)
 onething mcp                        the MCP server over stdio (ot mcp works too)
 ```
 
@@ -231,9 +232,9 @@ the server's endpoints.
 | Hooks: list, add, change, on/off, remove | `ot hooks`, `ot hooks add`, `ot hooks edit`, `ot hooks enable`, `ot hooks remove` | `list_hooks`, `add_hook`, `update_hook`, `set_hook_enabled`, `remove_hook` |  |
 | Approve or turn down a hook | `ot hooks approve`, `ot hooks reject` | — | Only the person allows what runs on their computer: ot refuses it with --as. |
 | Try hooks now | `ot hooks test` | — | Runs scripts on this computer now: the person's. |
-| Sync: status and sync now | — | — | ot sync isn't there yet. Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. |
+| Sync: status and sync now | `ot sync`, `ot sync now` | — | Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. ot sync now runs only while the app doesn't (it syncs by itself). |
 | Sync: set up, clashes, devices | — | — | Setting up sync and choosing a side in a clash are the person's, in Settings › Sync. |
-| Connectors (Notion, Microsoft To Do, GitHub): status and sync now | — | — | ot connectors isn't there yet. Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. |
+| Connectors (Notion, Microsoft To Do, GitHub): status and sync now | `ot connectors`, `ot connectors sync`, `ot connectors sync github` | — | Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. ot connectors sync runs only while the app doesn't. |
 | Connectors: set up, sign in, preview, disconnect | — | — | Signing in to another service and choosing what to connect are the person's, in Settings › Connected apps. |
 | Connect an AI app (setup snippets) | — | — | Setup for the person connecting an app (this page has it too); an agent is already connected. |
 | Ask AI (chat in the app) | — | — | Ask AI is a person chatting with an agent inside the app; an agent outside it is already connected. |
