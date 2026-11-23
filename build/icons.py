@@ -172,6 +172,11 @@ def web():
     (ROOT / "build/icon.svg").write_text(full_bleed() + "\n")
 
 
+def play():
+    """The Google Play store icon: 512x512, 32-bit PNG (with alpha), full bleed; Play rounds the corners itself."""
+    save(png(full_bleed(), 512).convert("RGBA"), "store/play-icon.png")
+
+
 
 def tv_layer(layer, width, height, scale):
     """One layer of the Apple TV icon (back: the gradient; middle: the glow and the later tasks; front: the task to do
@@ -273,4 +278,5 @@ if __name__ == "__main__":
     android()
     windows()
     web()
+    play()
     print("Icons written.")

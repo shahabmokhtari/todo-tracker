@@ -11,6 +11,7 @@ gradient, at the same size: these are the ones to upload).
 | `screenshots/mac` | 2880 × 1800 | M1 Today, M2 details, M3 Board, M4 Plan, M5 Reports, M6 Today in dark |
 | `screenshots/android-phone` | 1080 × 2400 | A1 Today, A2 Later, A4 Board, A5 details |
 | `play-feature-graphic.png` | 1024 × 500 | The Play feature graphic (no alpha) |
+| `play-icon.png` | 512 × 512 | The Play store icon (32-bit PNG, full bleed: Play rounds it), from `build/icons.py` |
 
 Not captured yet (each needs a tap or a home screen): the iPhone's Later sheet, its scrolled Workstreams and widgets,
 Android's notification shade and widgets, the Mac menu bar glance and desktop widgets.
@@ -27,5 +28,6 @@ Android's notification shade and widgets, the Mac menu bar glance and desktop wi
   ones draw every emoji as a box.
 * **Android:** a debug build on a Pixel emulator, `adb shell am start -n dev.onething/.app.MainActivity --ez demo true`,
   then `adb exec-out screencap -p`. Its demo banner shows in the frame.
+* **The Play icon:** `python3 build/icons.py` writes it with every other icon (pip install cairosvg pillow).
 * **Framing and the graphic:** `/usr/bin/python3 store/frame.py` and `/usr/bin/python3 store/graphic.py` (Pillow, and
   the SF Pro font macOS ships; `/usr/bin/python3 -m pip install --user pillow` if it's missing).
