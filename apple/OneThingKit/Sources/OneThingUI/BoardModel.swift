@@ -114,7 +114,7 @@ public final class BoardModel: ObservableObject {
     private var extrasReadAt = Date.distantPast
     private var readingExtras = false
     /// Hooks asked about in this run (each version once), as the web page keeps them.
-    private var askedHooks = Set<String>()
+    private var hookQuestions = HookQuestions()
 
     /// The phone itself (iPhone and iPad; nil on the Mac): its name and what it is.
     public let phone: PhoneSetup?
@@ -281,6 +281,7 @@ public final class BoardModel: ObservableObject {
             serverBoardRead = false
             extras = .everything
             vaultInfo = nil
+            hookQuestions.reset()
             pendingHook = nil
             board = (try? store?.load()) ?? TaskBoard()
             refresh()
@@ -370,15 +371,16 @@ public final class BoardModel: ObservableObject {
         if let approvals { ask(approvals) }
     }
 
-    /// The next hook to ask about, unless one is being asked about (it stays until it's decided or put off).
+    /// The next hook to ask about, unless one is being asked about (it stays until it's decided or put off, or goes
+    /// when it was decided elsewhere or changed meanwhile: `HookQuestions`).
     private func ask(_ approvals: HookApprovals) {
-        if let shown = pendingHook {
-            // Decided elsewhere (the browser, ot) or changed meanwhile: that question goes.
-            if !approvals.waiting.contains(shown) { pendingHook = nil } else { return }
-        }
-        guard let next = approvals.nextToAsk(asked: askedHooks) else { return }
-        askedHooks.insert(next.askKey)
-        pendingHook = next
+        hookQuestions.read(approvals)
+        if pendingHook != hookQuestions.asking { pendingHook = hookQuestions.asking }
+    }
+
+    private func answered(_ hook: PendingHook) {
+        hookQuestions.answered(hook)
+        if pendingHook != hookQuestions.asking { pendingHook = hookQuestions.asking }
     }
 
     /// Whether an extra is on (Settings › Extras). Everything is on without a server.
@@ -387,7 +389,7 @@ public final class BoardModel: ObservableObject {
     /// Allow (it runs from now on) or Don't allow (it's removed) the hook asked about. Only ever the person's answer:
     /// nothing approves a hook on its own.
     public func decideHook(_ hook: PendingHook, allow: Bool) {
-        if pendingHook?.askKey == hook.askKey { pendingHook = nil }
+        answered(hook)
         guard let server else { return }
         let request = allow ? ServerAPI.approveHook(hook.id, version: hook.version) : ServerAPI.rejectHook(hook.id, version: hook.version)
         Task {
@@ -402,7 +404,7 @@ public final class BoardModel: ObservableObject {
 
     /// "Later": not asked again in this run; it waits in Settings › Hooks (and the browser asks).
     public func putOffHook(_ hook: PendingHook) {
-        if pendingHook?.askKey == hook.askKey { pendingHook = nil }
+        answered(hook)
     }
 
     /// The shared theme. The first time, a choice made on this Mac wins over the server's untouched default.

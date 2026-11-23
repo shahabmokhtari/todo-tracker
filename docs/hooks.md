@@ -30,8 +30,10 @@ Only you can turn one down (**Don't allow**) or try hooks (**Try it**, `POST /ap
 **You're asked.** You don't have to go looking: on Windows a notification says *"Claude wants to run a hook"* with what
 it would run. When that line is all of it (a short, plain command or address with nothing else set), it has **Allow**;
 otherwise **Review…** opens all of it in Settings › Hooks first. Both have **Don't allow**. On a Mac the app asks
-itself, with everything the hook would do in full; **Don't allow** is the default button (Return), and **Later**
-(Escape) leaves it waiting. Without the Windows app, or with its notifications switched off, the app's own window or
+itself, with everything the hook would do in full; **Allow** and **Don't allow** need a click, and **Later** (Return or
+Escape) leaves it waiting. It doesn't jump in front of what you're doing: the Dock icon asks for your attention, and the
+question shows when you switch to the app. If it's answered elsewhere meanwhile, the Mac's question closes and the next one
+is asked. Without the Windows app, or with its notifications switched off, the app's own window or
 browser tab (the owner's session) asks in a dialog that shows everything (the Mac's One Thing window leaves it to the
 Mac app's own question). Each version is asked about once: **Allow** approves exactly what you saw, and from then on the hook
 just runs, with nothing more to check; **Don't allow** removes it (only if it still waits, in the version you saw);

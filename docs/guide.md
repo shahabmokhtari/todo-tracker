@@ -364,8 +364,9 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
 * **On a Mac, Settings also has** **Your tasks** (the folder, **Show in Finder**, **Open in Obsidian**) and **More
   settings**: Connected apps, Sync, Hooks, Extras, Connect AI apps, Browser extension and Ask AI. Each opens in the
   **One Thing window**: the full app, inside the Mac app and signed in as you (also **File › Open the Full App**, ⇧⌘O).
-  When an AI agent adds a hook, the Mac asks you: it shows everything the hook would run, and **Don't allow** is the
-  default.
+  When an AI agent adds a hook, the Mac asks you: it shows everything the hook would run; **Allow** and **Don't
+  allow** need a click, and Return or Escape means **Later**. In the background its Dock icon asks for your attention
+  instead of jumping in front.
 * **Task details** also have the task's **Board** column, **Move…** (another group, under another task, or on its
   own), and **Look, tags and labels**: an icon, its own color, tags, and labels to switch on or add. Attachments, the
   rich version and version history are on the computers (on a Mac, in the One Thing window).
