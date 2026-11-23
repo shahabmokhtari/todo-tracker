@@ -181,7 +181,7 @@ the server's endpoints.
 | Find tasks | `ot list` | `search_tasks` |  |
 | Every task | `ot list --all` | `list_tasks` |  |
 | One task | `ot show`, `ot open` | `get_task` |  |
-| The task tree (board and outline) | — | — | ot tree and get_tree come with the Tasks tree rework (its own branch); until then ot list and list_tasks. |
+| The task tree (groups, progress, one branch, what's shown) | `ot tree` | `get_tree` |  |
 | Add a task | `ot add` | `create_task` |  |
 | Quick capture (!! due:fri #tag @tomorrow) | `ot add` | `capture_task` |  |
 | Change a task (title, details, priority, deadline, tags, labels, icon, color, repeat, energy, steps) | `ot edit`, `ot tag`, `ot label` | `update_task` |  |
