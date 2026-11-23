@@ -9,7 +9,7 @@ namespace OneThing.Cli;
 internal sealed record CliCommand(string Name, string Usage, string Summary, string? Details, Func<CliSession, CliArgs, Task> Run);
 
 /// <summary>Every <c>ot</c> command, its help, and what it does.</summary>
-internal static class CliCommands
+internal static partial class CliCommands
 {
     public static readonly IReadOnlyDictionary<string, CliCommand> All = new[]
     {
@@ -38,7 +38,12 @@ internal static class CliCommands
         new CliCommand("attach", "ot attach <task> <file>", "Copy a file into the tasks folder and link it", null, Attach),
         new CliCommand("history", "ot history <task>", "Saved versions of a task, newest first", null, History),
         new CliCommand("restore", "ot restore <task> <version>", "Put a task back the way it was in a version", null, Restore),
-        new CliCommand("groups", "ot groups", "Groups (tabs) with counts", null, Groups),
+        new CliCommand("groups", "ot groups", "Groups (tabs) with counts", "ot group adds, renames and recolors them.", GroupCommand),
+        new CliCommand("group", "ot group (add <name> [--color #rrggbb] | rename <group> <new name> | color <group> <#rrggbb | none>)", "Make a group (tab), rename it or change its color",
+            "Quote a group name with spaces when it comes before more words: ot group rename \"Side projects\" Hobbies.\n" +
+            "Groups are deleted only in the app (its tasks move to another group there).", GroupCommand),
+        new CliCommand("timeline", "ot timeline [<task>] [--limit n]", "What happened, newest first: on one task (with its subtasks) or the whole board",
+            "Each entry says who did it: you, an agent (by name), a connector or the tasks folder.", Timeline),
         new CliCommand("labels", "ot labels", "The curated labels", null, Labels),
         new CliCommand("vault", "ot vault [guide | obsidian | use <folder|obsidian vault>]", "Where the task files live, their format, or switch folders", "use is for you, the person at the computer (not for AI agents); the app switches at its next start.", Vault),
         new CliCommand("mcp", "onething mcp", "Run the MCP server over stdio (for Claude, Copilot, VS Code…)", "See docs/ai-connectors.md for setup in each app.", (_, _) => Task.CompletedTask),
@@ -101,7 +106,7 @@ internal static class CliCommands
     {
         a.Allow("group");
         var filter = a.Words.Count > 0 ? string.Join(' ', a.Words) : null;
-        var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, TodoTools.ResolveGroup(b, a.Value("group")), 5, s.Links, filter)).ConfigureAwait(false);
+        var dashboard = await s.Read(b => Wire.Dashboard(b, s.Now, Group(b, a.Value("group")), 5, s.Links, filter)).ConfigureAwait(false);
         await s.Print(dashboard, (o, d) => o.Dashboard(d)).ConfigureAwait(false);
     }
 
@@ -117,7 +122,7 @@ internal static class CliCommands
                 new NewTask(capture.Title)
                 {
                     ParentId = parent?.Id,
-                    GroupId = TodoTools.ResolveGroup(b, a.Value("group")),
+                    GroupId = Group(b, a.Value("group")),
                     Priority = capture.Priority,
                     Details = a.Value("details"),
                     Deadline = a.Value("due") is { } due ? CliTime.Deadline(due, now, s.Zone) : capture.Deadline,
@@ -319,7 +324,7 @@ internal static class CliCommands
         var report = await s.Read(b =>
         {
             var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(s.Now, s.Zone).DateTime);
-            return TimeReport.Build(b, today.AddDays(-(Math.Max(1, days) - 1)), today, s.Zone, s.Now, TodoTools.ResolveGroup(b, a.Value("group")));
+            return TimeReport.Build(b, today.AddDays(-(Math.Max(1, days) - 1)), today, s.Zone, s.Now, Group(b, a.Value("group")));
         }).ConfigureAwait(false);
         await s.Print(report, (o, r) =>
         {
@@ -493,7 +498,7 @@ internal static class CliCommands
         var item = await s.Change((b, now) =>
         {
             var found = TaskResolver.Resolve(b, reference);
-            var group = TodoTools.ResolveGroup(b, a.Value("group"));
+            var group = Group(b, a.Value("group"));
             if (a.Value("under") is { } under)
             {
                 b.Move(found.Id, TaskResolver.Resolve(b, under, i => !i.IsDone).Id, index, null, s.Actor, now);
@@ -581,13 +586,6 @@ internal static class CliCommands
         await s.SaveVersion().ConfigureAwait(false);
         var item = await s.Item(id).ConfigureAwait(false);
         await s.Print(item, (o, i) => o.Changed("Restored", i)).ConfigureAwait(false);
-    }
-
-    private static async Task Groups(CliSession s, CliArgs a)
-    {
-        a.Allow();
-        var groups = await s.Read(b => Wire.Dashboard(b, s.Now, null, 0).Groups).ConfigureAwait(false);
-        await s.Print(groups, (o, g) => o.Groups(g)).ConfigureAwait(false);
     }
 
     private static async Task Labels(CliSession s, CliArgs a)

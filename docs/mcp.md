@@ -13,7 +13,7 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 > - Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.
 > - Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).
 > - Log progress with add_note ("did X, next Y"); defer with schedule_next_action (or wait_for_task) instead of leaving stale tasks in Now.
-> - Groups are tabs such as Work and Personal. Tags are free-form; labels are a curated colored set (list_labels).
+> - Groups are tabs such as Work and Personal (list_groups); make one with create_group only when the user asks (an unknown group name is an error, never a new group). Tags are free-form; labels are a curated colored set (list_labels).
 > - Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).
 > - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.
 > - Every task has a link (onething://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
@@ -56,6 +56,9 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`stop_timer`](#stop_timer) | Stop the timer (whatever task it is on). |
 | [`log_time`](#log_time) | Record time already spent on a task (e.g. a meeting): when it started and for how many minutes (at most 24 hours). |
 | [`get_time_report`](#get_time_report) | Where the time went between two local dates (yyyy-MM-dd, inclusive; default the last 4 weeks): seconds tracked per day, group and task, focus sessions, tasks done, streaks, and a timeline. |
+| [`list_groups`](#list_groups) | The groups (tabs, e.g. |
+| [`create_group`](#create_group) | Make a new group (a tab, e.g. 'Garden'), for tasks that belong together. |
+| [`update_group`](#update_group) | Rename a group or change its color (its tasks stay in it). |
 | [`list_hooks`](#list_hooks) | The hooks set up on this computer: what runs (a command or a web address) when something happens in One Thing, and whether each is on, off or waiting for approval. |
 | [`add_hook`](#add_hook) | Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. |
 | [`set_hook_enabled`](#set_hook_enabled) | Switch a hook on or off (by its id from list_hooks). |
@@ -356,6 +359,29 @@ Where the time went between two local dates (yyyy-MM-dd, inclusive; default the 
 | `from` | text | optional | First day, yyyy-MM-dd (default: 4 weeks ago). |
 | `to` | text | optional | Last day, yyyy-MM-dd, inclusive (default: today). |
 | `group` | text | optional | Group (tab) name or id, e.g. 'Work'. Omit for every group. |
+
+### `list_groups`
+
+The groups (tabs, e.g. Work and Personal) with their ids, colors and how many tasks are to do now and waiting in each. *(read-only)*
+
+### `create_group`
+
+Make a new group (a tab, e.g. 'Garden'), for tasks that belong together. Only when the user asks for one: an unknown group name elsewhere is an error, never a new group.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `name` | text | required | The group's name (up to 60 characters), e.g. 'Garden'. |
+| `color` | text | optional | A color as #rrggbb, e.g. #22c55e (optional). |
+
+### `update_group`
+
+Rename a group or change its color (its tasks stay in it). Groups can't be deleted by an agent: the user does that in the app.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `group` | text | required | The group's name or id (from list_groups). |
+| `name` | text | optional | The new name; omit to keep it. |
+| `color` | text | optional | A color as #rrggbb; empty removes it; omit to keep it. |
 
 ### `list_hooks`
 

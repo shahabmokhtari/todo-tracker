@@ -498,6 +498,7 @@ the docs explain the options and risks. The server sends the same short instruct
 | `complete_task`, `reopen_task`, `update_task` | Status and fields (incl. tags, labels, icon, color and repeat rule; completing a repeating task moves it on, reopening undoes that) |
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
 | `move_task`, `move_card`, `list_labels` | Reorganize the hierarchy; board columns; curated labels |
+| `list_groups`, `create_group`, `update_group` | Groups (tabs): list, make one (only when asked: an unknown group name is an error that says how to make it, never a new group), rename and recolor. Deleting a group stays in the apps |
 | `archive_task`, `unarchive_task` | Put finished tasks away, and back |
 | `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time tracking and where the time went |
 | `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks (an agent's wait for approval; it can switch off or remove only its own) |

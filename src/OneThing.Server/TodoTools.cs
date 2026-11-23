@@ -408,16 +408,54 @@ public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks l
     private static Guid ParseId(string id) =>
         Guid.TryParse(id, out var guid) ? guid : throw new ArgumentException($"\"{id}\" is not a task id. Use search_tasks or list_tasks to find ids.", nameof(id));
 
-    internal static Guid? ResolveGroup(TaskBoard board, string? group)
+    internal static Guid? ResolveGroup(TaskBoard board, string? group) => ResolveGroup(board, group, name => $"create_group with name \"{name}\"");
+
+    /// <summary>
+    /// A group by name or id. An unknown one is an error that says how to make it (<paramref name="howToMake"/>):
+    /// a typo must never make a group.
+    /// </summary>
+    internal static Guid? ResolveGroup(TaskBoard board, string? group, Func<string, string> howToMake)
     {
         if (string.IsNullOrWhiteSpace(group))
         {
             return null;
         }
 
-        var match = board.Groups.FirstOrDefault(g => string.Equals(g.Name, group.Trim(), StringComparison.OrdinalIgnoreCase) || g.Id.ToString() == group.Trim());
-        return match?.Id ?? throw new ArgumentException($"Unknown group \"{group}\". Groups: {string.Join(", ", board.Groups.Select(g => g.Name))}.", nameof(group));
+        var name = group.Trim();
+        var match = board.Groups.FirstOrDefault(g => string.Equals(g.Name, name, StringComparison.OrdinalIgnoreCase) || g.Id.ToString() == name);
+        return match?.Id ?? throw new ArgumentException($"Unknown group \"{name}\". Groups: {string.Join(", ", board.Groups.Select(g => g.Name))}. To make a new one: {howToMake(name)}.", nameof(group));
     }
+
+    /// <summary>A group with its counts, as the dashboard and <c>list_groups</c> show it.</summary>
+    internal static GroupDto GroupOf(TaskBoard board, Guid id, DateTimeOffset now) => Wire.Dashboard(board, now, null, 0).Groups.First(g => g.Id == id);
+
+    // ---- Groups (the tabs): list, create, rename, recolor. Never delete: that's the person's, in the app. ----------
+
+    [McpServerTool(Name = "list_groups", ReadOnly = true), Description("The groups (tabs, e.g. Work and Personal) with their ids, colors and how many tasks are to do now and waiting in each.")]
+    public Task<IReadOnlyList<GroupDto>> ListGroups() => Guard(() => store.ReadAsync(b => Wire.Dashboard(b, time.GetUtcNow(), null, 0).Groups));
+
+    [McpServerTool(Name = "create_group"), Description("Make a new group (a tab, e.g. 'Garden'), for tasks that belong together. Only when the user asks for one: an unknown group name elsewhere is an error, never a new group.")]
+    public Task<GroupDto> CreateGroup(McpServer server, [Description("The group's name (up to 60 characters), e.g. 'Garden'.")] string name, [Description("A color as #rrggbb, e.g. #22c55e (optional).")] string? color = null) =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            return GroupOf(b, b.AddGroup(name, string.IsNullOrWhiteSpace(color) ? null : color.Trim(), ActorOf(server), now).Id, now);
+        }));
+
+    [McpServerTool(Name = "update_group"), Description("Rename a group or change its color (its tasks stay in it). Groups can't be deleted by an agent: the user does that in the app.")]
+    public Task<GroupDto> UpdateGroup(
+        McpServer server,
+        [Description("The group's name or id (from list_groups).")] string group,
+        [Description("The new name; omit to keep it.")] string? name = null,
+        [Description("A color as #rrggbb; empty removes it; omit to keep it.")] string? color = null) =>
+        Guard(() => store.UpdateAsync(b =>
+        {
+            var now = time.GetUtcNow();
+            var current = b.GetGroup(ResolveGroup(b, group) ?? throw new ArgumentException("Say which group (its name or id, from list_groups).", nameof(group)));
+            var newColor = color is null ? current.Color : string.IsNullOrWhiteSpace(color) ? null : color.Trim();
+            b.UpdateGroup(current.Id, string.IsNullOrWhiteSpace(name) ? current.Name : name, newColor, ActorOf(server), now);
+            return GroupOf(b, current.Id, now);
+        }));
 
     // ---- Hooks: what runs when something happens. An agent's hook waits for the person's approval. ----------------
 

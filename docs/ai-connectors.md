@@ -137,6 +137,7 @@ ot list #release                    find tasks: words, #tag, label:x, group:work
 ot note passport 'Booked appointment for Tuesday'
 ot snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
 ot done passport                    finish
+ot group add Garden --color '#22c55e'   a new group (tab); then ot add 'Plant tulips' -g Garden
 onething mcp                        the MCP server over stdio (ot mcp works too)
 ```
 

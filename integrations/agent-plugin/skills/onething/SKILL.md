@@ -37,10 +37,10 @@ Full reference: `docs/mcp.md` (every tool and parameter) and `docs/cli.md` (ever
 | Rename, re-prioritize, deadline, icon, color, repeat | `update_task` | `ot edit <task> --priority high --due fri` |
 | Tags (free words) and labels (the user's curated, colored set) | `update_task`, `list_labels` | `ot tag <task> +x -y`, `ot label <task> "+Deep work"`, `ot labels` |
 | Reorganize (under another task, top level, another group) | `move_task` | `ot move <task> --under <task>` |
-| Groups (tabs) | `get_dashboard` (groups) | `ot groups` |
+| Groups (tabs): list, make one, rename, recolor (only when the user asks: an unknown group is an error, never a new group) | `list_groups`, `create_group`, `update_group` | `ot groups`, `ot group add <name>`, `ot group rename <group> <new name>`, `ot group color <group> #22c55e` |
 | Board columns (inbox, next, doing) | `move_card` | `ot stage <task> doing` |
 | Time work | `start_timer`, `stop_timer`, `log_time` | `ot start <task>`, `ot stop` |
-| Where did the time go | `get_time_report`, `get_report` (timeline) | `ot time --days 7` |
+| Where did the time go | `get_time_report`, `get_report` (timeline) | `ot time --days 7`, `ot timeline [<task>]` |
 | Put finished work away | `archive_task`, `unarchive_task` | `ot archive <task>`, `ot archive --done-before 14` |
 | Undo a change (every change is a version) | `task_history`, `restore_task_version` | `ot history <task>`, `ot restore <task> <version>` |
 | Tables or a dashboard in a task (when markdown isn't enough) | `set_rich_html`, `get_rich_html` | — |

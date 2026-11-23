@@ -14,7 +14,7 @@ public static class McpInfo
         "- Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.\n" +
         "- Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).\n" +
         "- Log progress with add_note (\"did X, next Y\"); defer with schedule_next_action (or wait_for_task) instead of leaving stale tasks in Now.\n" +
-        "- Groups are tabs such as Work and Personal. Tags are free-form; labels are a curated colored set (list_labels).\n" +
+        "- Groups are tabs such as Work and Personal (list_groups); make one with create_group only when the user asks (an unknown group name is an error, never a new group). Tags are free-form; labels are a curated colored set (list_labels).\n" +
         "- Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).\n" +
         "- Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.\n" +
         "- Every task has a link (onething://task/<id>, in get_task): give it to the user; clicking it opens the task in the app.\n" +

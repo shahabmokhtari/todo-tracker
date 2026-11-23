@@ -44,6 +44,8 @@ They're in the `cli` folder next to the app on Windows, in `~/.local/bin` with t
 | [`ot history`](#ot-history) | Saved versions of a task, newest first |
 | [`ot restore`](#ot-restore) | Put a task back the way it was in a version |
 | [`ot groups`](#ot-groups) | Groups (tabs) with counts |
+| [`ot group`](#ot-group) | Make a group (tab), rename it or change its color |
+| [`ot timeline`](#ot-timeline) | What happened, newest first: on one task (with its subtasks) or the whole board |
 | [`ot labels`](#ot-labels) | The curated labels |
 | [`ot vault`](#ot-vault) | Where the task files live, their format, or switch folders |
 | [`ot mcp`](#ot-mcp) | Run the MCP server over stdio (for Claude, Copilot, VS Code…) |
@@ -231,6 +233,29 @@ Groups (tabs) with counts.
 ```
 ot groups
 ```
+
+ot group adds, renames and recolors them.  
+
+### ot group
+
+Make a group (tab), rename it or change its color.
+
+```
+ot group (add <name> [--color #rrggbb] | rename <group> <new name> | color <group> <#rrggbb | none>)
+```
+
+Quote a group name with spaces when it comes before more words: ot group rename "Side projects" Hobbies.  
+Groups are deleted only in the app (its tasks move to another group there).  
+
+### ot timeline
+
+What happened, newest first: on one task (with its subtasks) or the whole board.
+
+```
+ot timeline [<task>] [--limit n]
+```
+
+Each entry says who did it: you, an agent (by name), a connector or the tasks folder.  
 
 ### ot labels
 

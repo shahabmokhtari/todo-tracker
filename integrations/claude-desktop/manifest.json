@@ -72,7 +72,10 @@
     { "name": "start_timer", "description": "Start timing work on a task" },
     { "name": "stop_timer", "description": "Stop the timer" },
     { "name": "log_time", "description": "Record time already spent on a task" },
-    { "name": "get_time_report", "description": "Where the time went: per day, group and task" }
+    { "name": "get_time_report", "description": "Where the time went: per day, group and task" },
+    { "name": "list_groups", "description": "The groups (tabs) with their counts" },
+    { "name": "create_group", "description": "Make a new group (tab)" },
+    { "name": "update_group", "description": "Rename a group or change its color" }
   ],
   "compatibility": {
     "platforms": ["win32", "darwin", "linux"]
