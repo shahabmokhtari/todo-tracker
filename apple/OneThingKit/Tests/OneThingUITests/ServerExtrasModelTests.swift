@@ -83,6 +83,27 @@ final class ServerExtrasModelTests: XCTestCase {
         try await waitUntil { FakeServer.requests.contains("PUT /api/pomodoro/settings") }
     }
 
+    func testLabelsAndATasksLookAndPlaceGoToTheServerOnAMac() async throws {
+        let remote = TaskBoard()
+        let trip = try remote.addTask(NewTask("Trip"), now: Date())
+        let hotel = try remote.addTask(NewTask("Hotel"), now: Date())
+        try remote.setLabels(hotel.id, ["Q3/Q4"], now: Date())
+        FakeServer.board = try BoardCodec.encode(remote)
+        let model = BoardModel(store: nil)
+        model.use(server: client())
+        try await waitUntil { model.board.find(hotel.id) != nil }
+        let path = "/api/items/\(hotel.id.uuidString.lowercased())"
+        model.setIcon(hotel.id, "🏨")
+        model.toggleLabel(hotel.id, "Urgent")
+        model.move(hotel.id, groupId: hotel.groupId, under: trip.id)
+        model.renameLabel("Q3/Q4", to: "Later")
+        try await waitUntil {
+            FakeServer.requests.filter { $0 == "PATCH \(path)" }.count >= 2 && FakeServer.requests.contains("POST \(path)/move")
+                && FakeServer.requests.contains("PATCH /api/labels/Q3/Q4")
+        }
+        XCTAssertNil(model.board.find(hotel.id)?.icon, "nothing changes here first: the board comes back from the server")
+    }
+
     func testTheTasksFolderAndItsProblemsComeFromTheServer() async throws {
         FakeServer.bodies["/api/vault"] = Data(#"{"path":"/Users/me/Documents/OneThing","problems":[{"path":"a.md","message":"bad"}],"obsidianUrl":"obsidian://open?path=x","obsidianInstalled":false}"#.utf8)
         let model = BoardModel(store: nil)

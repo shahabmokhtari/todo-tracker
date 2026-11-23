@@ -46,6 +46,33 @@ final class VaultStoreTests: XCTestCase {
         XCTAssertEqual(lines.count, try store.read { $0.activity.count })
     }
 
+    /// The phone sets a task's icon, color, tags and labels (and renames or removes a label): saved in the files,
+    /// read back the same, and kept by later saves (the spec: the phones keep both icon and color).
+    func testATasksLookTagsAndLabelsAreSavedAndKept() throws {
+        let temp = TempDir()
+        let store = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+        let id = try store.update { board in try board.addTask(NewTask("Ship it"), now: self.now).id }
+        try store.update { board in
+            try board.setIcon(id, "🚀", now: self.now)
+            try board.setColor(id, "#0EA5E9", now: self.now)
+            try board.setTags(id, ["deep work"], now: self.now)
+            try board.setLabels(id, ["Urgent", "Q3/Q4"], now: self.now)
+        }
+        try store.update { try $0.update(id, title: "Ship it now", now: self.now) }
+        try store.update { try $0.updateLabel("Q3/Q4", newName: "Later", color: "#10b981", now: self.now) }
+
+        let again = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })
+        let item = try again.read { try $0.get(id) }
+        XCTAssertEqual(item.icon, "🚀")
+        XCTAssertEqual(item.color, "#0ea5e9")
+        XCTAssertEqual(item.tags, ["deep work"])
+        XCTAssertEqual(item.labels, ["Urgent", "Later"])
+        XCTAssertEqual(try again.read { $0.labels.map { "\($0.name) \($0.color)" } }, ["Urgent #7c3aed", "Later #10b981"])
+
+        try again.update { try $0.deleteLabel("urgent", now: self.now) }
+        XCTAssertEqual(try VaultStore(root: temp.url, timeZone: tz, clock: { self.now }).read { try $0.get(id).labels }, ["Later"])
+    }
+
     func testReadingNeverRewritesAHandWrittenFile() throws {
         let temp = TempDir()
         _ = try VaultStore(root: temp.url, timeZone: tz, clock: { self.now })

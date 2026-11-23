@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import dev.onething.core.Agenda
+import dev.onething.core.BoardColumn
 import dev.onething.core.ItemState
 import dev.onething.core.Priority
 import dev.onething.core.TaskChanges
@@ -69,7 +70,8 @@ private val REPEAT_CHOICES = listOf(
 internal fun sameText(text: String): String = text.replace("\r\n", "\n").replace('\r', '\n').trim()
 
 /**
- * A task's details, full screen: what it is (title, details, priority, deadline, energy, repeat, group), what to do
+ * A task's details, full screen: what it is (title, details, priority, deadline, energy, repeat, group, Board column,
+ * Move…, icon, color, tags and labels), what to do
  * with it (done, Later, archive, delete), its subtasks and steps, reminders and notes. What's typed is saved when you
  * leave a box's screen (Close, Back, or opening another task) or with Save.
  */
@@ -205,6 +207,10 @@ fun TaskScreen(id: UUID, vm: BoardViewModel, onClose: () -> Unit) {
                     }
                     RepeatField(item, vm)
                     if (item.parent == null) GroupField(item, vm)
+                    if (item.parent == null && !item.isDone) BoardField(item, vm)
+                    MoveField(item, vm)
+                    HorizontalDivider()
+                    LookFields(item, vm)
                     HorizontalDivider()
                     Subtasks(item, vm, open)
                     HorizontalDivider()
@@ -389,6 +395,121 @@ private fun GroupField(item: WorkItem, vm: BoardViewModel) {
                 vm.groups.forEach { (gid, name) ->
                     DropdownMenuItem(text = { Text(if (gid == item.groupId) "✓ $name" else name) }, onClick = { open = false; if (gid != item.groupId) vm.moveToGroup(item.id, gid) })
                 }
+            }
+        }
+    }
+}
+
+/** Its column on the Board (a finished card is in Done; reopening it moves it back). */
+@Composable
+private fun BoardField(item: WorkItem, vm: BoardViewModel) {
+    val columns = listOf(BoardColumn.INBOX to "Inbox", BoardColumn.NEXT to "Next", BoardColumn.DOING to "Doing")
+    val current = columns.firstOrNull { it.first.wire == item.stage.wire }?.first ?: BoardColumn.NEXT
+    Field("Board") { ChoiceRow(columns, current) { vm.moveCard(item.id, it) } }
+}
+
+/**
+ * Move… (the web's Move dialog): pick a group, then on its own or under any open task of it, never the task itself or
+ * one of its subtasks; back in its own group, where it is now is picked again.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MoveField(item: WorkItem, vm: BoardViewModel) {
+    var open by remember { mutableStateOf(false) }
+    OutlinedButton(onClick = { open = true }, modifier = Modifier.semantics { contentDescription = "Move: another group, under another task, or on its own" }) { Text("Move…") }
+    if (!open) return
+    var group by remember(item.id) { mutableStateOf(item.groupId) }
+    var target by remember(item.id) { mutableStateOf(item.parent?.id) }
+    var query by remember(item.id) { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text("Move “${item.title}”") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    vm.groups.forEach { (gid, name) ->
+                        FilterChip(selected = gid == group, onClick = {
+                            group = gid
+                            target = if (gid == item.groupId) item.parent?.id else null
+                        }, label = { Text(name) })
+                    }
+                }
+                OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, placeholder = { Text("Find a task to put it under…") }, modifier = Modifier.fillMaxWidth())
+                vm.moveTargets(item.id, group, query).forEach { place ->
+                    val chosen = place.parentId == target
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { target = place.parentId }.padding(start = (place.depth * 14).dp, top = 6.dp, bottom = 6.dp)
+                            .semantics { contentDescription = (if (chosen) "Chosen: " else "") + place.title },
+                    ) {
+                        Text(
+                            if (place.parentId == null) "On its own (a top-level task)" else (if (place.depth > 0) "↳ " else "") + place.title,
+                            fontWeight = if (place.parentId == null || chosen) FontWeight.SemiBold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (chosen) Text("✓", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { vm.moveTo(item.id, group, target); open = false }) { Text("Move") } },
+        dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+    )
+}
+
+/** Its icon, its own color (none: its first label's), its tags and its labels: the web details' fields. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LookFields(item: WorkItem, vm: BoardViewModel) {
+    var icon by rememberSaveable(item.id, item.icon) { mutableStateOf(item.icon.orEmpty()) }
+    var tags by rememberSaveable(item.id) { mutableStateOf("") }
+    var label by rememberSaveable(item.id) { mutableStateOf("") }
+    Section("Look, tags and labels") {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = icon, onValueChange = { icon = it }, singleLine = true, label = { Text("Icon (an emoji)") }, modifier = Modifier.weight(1f))
+            if (icon.trim() != item.icon.orEmpty()) TextButton(onClick = { vm.setIcon(item.id, icon) }) { Text("Save") }
+        }
+        Field("Color (none: its first label’s)") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GROUP_COLORS.forEach { hex ->
+                    val chosen = hex.equals(item.color, ignoreCase = true) || (hex == null && item.color == null)
+                    FilterChip(
+                        selected = chosen,
+                        onClick = { if (!chosen) vm.setColor(item.id, hex) },
+                        label = { Text(if (hex == null) "None" else "●", color = parseColor(hex) ?: MaterialTheme.colorScheme.onSurfaceVariant) },
+                        modifier = Modifier.semantics { contentDescription = hex?.let { "Color $it" } ?: "No color of its own" },
+                    )
+                }
+            }
+        }
+        Field("Tags") {
+            if (item.tags.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item.tags.forEach { tag ->
+                        FilterChip(selected = true, onClick = { vm.removeTag(item.id, tag) }, label = { Text("#$tag  ✕") },
+                            modifier = Modifier.semantics { contentDescription = "Remove the tag $tag" })
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = tags, onValueChange = { tags = it }, singleLine = true, placeholder = { Text("deep work, errands") }, modifier = Modifier.weight(1f))
+                TextButton(onClick = { if (vm.addTags(item.id, tags)) tags = "" }, enabled = tags.isNotBlank()) { Text("Add") }
+            }
+        }
+        Field("Labels") {
+            val labels = vm.boardLabels
+            if (labels.isNotEmpty()) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    labels.forEach { l ->
+                        val on = item.labels.any { it.equals(l.name, ignoreCase = true) }
+                        FilterChip(selected = on, onClick = { vm.toggleLabel(item.id, l.name) },
+                            label = { Text(l.name, color = if (on) MaterialTheme.colorScheme.onSurface else parseColor(l.color) ?: MaterialTheme.colorScheme.onSurface) })
+                    }
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = label, onValueChange = { label = it }, singleLine = true, placeholder = { Text("New label") }, modifier = Modifier.weight(1f))
+                TextButton(onClick = { if (vm.toggleLabel(item.id, label)) label = "" }, enabled = label.isNotBlank()) { Text("Add") }
             }
         }
     }
