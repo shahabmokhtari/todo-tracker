@@ -355,11 +355,24 @@ internal static partial class CliCommands
             return;
         }
 
-        string? content = source.Equals("none", StringComparison.OrdinalIgnoreCase) ? null
-            : source == "-" ? await s.Context.In.ReadToEndAsync().ConfigureAwait(false)
-            : File.Exists(s.FullPath(source)) ? await File.ReadAllTextAsync(s.FullPath(source)).ConfigureAwait(false)
-            : throw new ArgumentException($"There is no file {s.FullPath(source)}.");
-        var clean = string.IsNullOrWhiteSpace(content) ? null : content;
+        string? clean = null;
+        if (!source.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            if (source == "-" && ReferenceEquals(s.Context.In, Console.In) && !Console.IsInputRedirected)
+            {
+                await s.Context.Error.WriteLineAsync(OperatingSystem.IsWindows() ? "Type or paste the HTML, then Ctrl+Z and Enter:" : "Type or paste the HTML, then Ctrl+D:").ConfigureAwait(false);
+            }
+
+            var content = source == "-" ? await s.Context.In.ReadToEndAsync().ConfigureAwait(false)
+                : File.Exists(s.FullPath(source)) ? await File.ReadAllTextAsync(s.FullPath(source)).ConfigureAwait(false)
+                : throw new ArgumentException($"There is no file {s.FullPath(source)}.");
+
+            // A pipe that failed (or an empty file) must not quietly remove what's there: removing is said outright.
+            clean = string.IsNullOrWhiteSpace(content)
+                ? throw new ArgumentException($"{(source == "-" ? "Nothing came in on stdin" : $"{s.FullPath(source)} is empty")}, so the rich version stays as it is. To remove it: ot rich <task> none")
+                : content;
+        }
+
         await s.Links.Vault.WriteRichAsync(id, clean, s.Actor).ConfigureAwait(false);
         await s.SaveVersion().ConfigureAwait(false);
         await s.Print(new RichDto(clean is not null), (o, r) => o.Line(r.HasRich ? "Saved the rich version" : "Removed the rich version")).ConfigureAwait(false);
@@ -383,7 +396,15 @@ internal static partial class CliCommands
         var to = a.Value("to");
         if (to == "-")
         {
-            await s.Context.Out.WriteAsync(await File.ReadAllTextAsync(full).ConfigureAwait(false)).ConfigureAwait(false);
+            // Byte for byte: an image or a PDF read as text would come out broken.
+            await s.Context.Out.FlushAsync().ConfigureAwait(false);
+            var stdout = s.Context.RawOut();
+            await using (var file = File.OpenRead(full))
+            {
+                await file.CopyToAsync(stdout).ConfigureAwait(false);
+            }
+
+            await stdout.FlushAsync().ConfigureAwait(false);
             return;
         }
 
@@ -405,11 +426,22 @@ internal static partial class CliCommands
 
     private static async Task Export(CliSession s, CliArgs a)
     {
-        a.Allow("to");
+        a.Allow("to", "force");
         var json = await s.Read(BoardSerializer.Serialize).ConfigureAwait(false);
         if (a.Value("to") is { } to)
         {
             var path = s.FullPath(to);
+            var tasks = Path.TrimEndingDirectorySeparator(Path.GetFullPath(s.Links.Vault.RootPath)) + Path.DirectorySeparatorChar;
+            if ((path + Path.DirectorySeparatorChar).StartsWith(tasks, OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"{path} is in your tasks folder: export somewhere else (it would overwrite or add a task file).");
+            }
+
+            if (File.Exists(path) && !a.Has("force"))
+            {
+                throw new ArgumentException($"There's already a file {path}: say another place with --to, or add --force to replace it.");
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             await File.WriteAllTextAsync(path, json).ConfigureAwait(false);
             await s.Print(new { exported = path }, (o, x) => o.Line($"Exported to {x.exported}")).ConfigureAwait(false);

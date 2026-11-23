@@ -42,6 +42,9 @@ public sealed class CliHarness : IDisposable
 
     public string Git { get; init; } = "git";
 
+    /// <summary>Bytes written to stdout as they are (an attachment with <c>--to -</c>), since the last run.</summary>
+    public MemoryStream RawOutput { get; private set; } = new();
+
     /// <summary>Links <c>ot open</c> asked the system to open.</summary>
     public List<string> OpenedLinks { get; } = [];
 
@@ -52,6 +55,7 @@ public sealed class CliHarness : IDisposable
         using var output = new StringWriter();
         using var error = new StringWriter();
         using var reader = new StringReader(input);
+        RawOutput = new MemoryStream();
         var context = new CliContext
         {
             Out = output,
@@ -67,6 +71,7 @@ public sealed class CliHarness : IDisposable
             Git = Git,
             Agent = null,
             OpenLink = OpenedLinks.Add,
+            RawOut = () => RawOutput,
         };
         var code = await CliApp.RunAsync(args, context);
         return new CliResult(code, output.ToString(), error.ToString());

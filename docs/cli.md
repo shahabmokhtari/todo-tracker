@@ -64,7 +64,7 @@ links them into `~/.local/bin`), in `~/.local/bin` with the Linux install, or `d
 | [`ot plan`](#ot-plan) | The plan: blocks of time on tasks |
 | [`ot hooks`](#ot-hooks) | Run your own scripts or webhooks when something happens (hooks.json) |
 | [`ot rich`](#ot-rich) | A task's rich HTML version (tables, colors): print it, save one from a file or stdin, or remove it |
-| [`ot attachment`](#ot-attachment) | Save a copy of a task's attachment (default: here, by its name; - prints it) |
+| [`ot attachment`](#ot-attachment) | Save a copy of a task's attachment (default: here, by its name; - writes it to stdout as it is) |
 | [`ot export`](#ot-export) | The whole board as JSON (the format every app reads) |
 | [`ot settings`](#ot-settings) | The app's settings: the theme, and where reminders are posted (Teams) |
 | [`ot sync`](#ot-sync) | How syncing with your other computers is going; now syncs (while the app isn't running) |
@@ -454,11 +454,11 @@ A task's rich HTML version (tables, colors): print it, save one from a file or s
 ot rich <task> [<file.html> | - | none]
 ```
 
-Only top-level tasks have one. Scripts in it never run.  
+Only top-level tasks have one. Scripts in it never run. Only none removes it: empty input or an empty file is refused.  
 
 ### ot attachment
 
-Save a copy of a task's attachment (default: here, by its name; - prints it).
+Save a copy of a task's attachment (default: here, by its name; - writes it to stdout as it is).
 
 ```
 ot attachment <task> <file name or id> [--to path | --to -]
@@ -471,8 +471,10 @@ ot attach adds one. Attachments are removed only in the app.
 The whole board as JSON (the format every app reads).
 
 ```
-ot export [--to file]
+ot export [--to file [--force]]
 ```
+
+--to never replaces a file unless --force, and never writes into the tasks folder.  
 
 ### ot settings
 

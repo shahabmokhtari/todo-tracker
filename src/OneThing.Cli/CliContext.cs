@@ -33,6 +33,9 @@ public sealed class CliContext
     /// <summary>Who changes are attributed to when <c>--as</c> isn't given (<c>ONETHING_AGENT</c>).</summary>
     public string? Agent { get; init; } = Environment.GetEnvironmentVariable("ONETHING_AGENT");
 
+    /// <summary>Stdout as bytes, for a file that goes out as it is (tests capture it). Not disposed by ot.</summary>
+    public Func<Stream> RawOut { get; init; } = Console.OpenStandardOutput;
+
     /// <summary>Opens a onething:// link with the app that handles it (tests record it instead).</summary>
     public Action<string> OpenLink { get; init; } = link => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(link) { UseShellExecute = true })?.Dispose();
 

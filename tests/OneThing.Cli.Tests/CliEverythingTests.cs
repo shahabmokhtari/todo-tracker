@@ -224,6 +224,22 @@ public sealed class CliEverythingTests : IDisposable
     }
 
     [Fact]
+    public async Task Nothing_on_stdin_or_an_empty_file_never_removes_the_rich_version()
+    {
+        var id = await Add("Dashboard");
+        await _tt.RunWithInput("<p>kept</p>", "rich", id, "-");
+        var empty = Path.Combine(_tt.DataDirectory, "empty.html");
+        await File.WriteAllTextAsync(empty, "  \n", TestContext.Current.CancellationToken);
+
+        var fromNothing = await _tt.RunWithInput(string.Empty, "rich", id, "-");
+        var fromEmpty = await _tt.Run("rich", id, empty);
+
+        Assert.Equal((1, 1), (fromNothing.ExitCode, fromEmpty.ExitCode));
+        Assert.Contains("ot rich <task> none", fromNothing.Error, StringComparison.Ordinal);
+        Assert.Contains("<p>kept</p>", await _tt.Ok("rich", id), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task An_attachment_is_saved_out_of_the_tasks_folder()
     {
         var id = await Add("Taxes");
@@ -237,7 +253,24 @@ public sealed class CliEverythingTests : IDisposable
 
         Assert.Equal("paid 42", await File.ReadAllTextAsync(target));
         Assert.Equal(target, saved.Str("savedTo"));
-        Assert.Equal("paid 42", (await _tt.Run("attachment", id, "receipt", "--to", "-")).Out);
+        Assert.Equal(0, (await _tt.Run("attachment", id, "receipt", "--to", "-")).ExitCode);
+        Assert.Equal("paid 42"u8.ToArray(), _tt.RawOutput.ToArray());
+    }
+
+    [Fact]
+    public async Task An_attachment_goes_to_stdout_byte_for_byte()
+    {
+        var id = await Add("Scan");
+        Directory.CreateDirectory(_tt.DataDirectory);
+        var source = Path.Combine(_tt.DataDirectory, "scan.bin");
+        var bytes = Enumerable.Range(0, 256).Select(i => (byte)i).Concat(new byte[] { 0xFF, 0xFE, 0x0D, 0x0A, 0x00 }).ToArray();
+        await File.WriteAllBytesAsync(source, bytes, TestContext.Current.CancellationToken);
+        await _tt.Ok("attach", id, source);
+
+        var result = await _tt.Run("attachment", id, "scan.bin", "--to", "-");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(bytes, _tt.RawOutput.ToArray());
     }
 
     [Fact]
@@ -254,6 +287,31 @@ public sealed class CliEverythingTests : IDisposable
         var file = Path.Combine(_tt.DataDirectory, "board.json");
         await _tt.Ok("export", "--to", file);
         Assert.Contains("Exported", await File.ReadAllTextAsync(file), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Export_never_overwrites_a_file_unless_told_and_never_writes_into_the_tasks_folder()
+    {
+        await Add("Exported");
+        Directory.CreateDirectory(_tt.DataDirectory);
+        var file = Path.Combine(_tt.DataDirectory, "mine.json");
+        await File.WriteAllTextAsync(file, "my own file", TestContext.Current.CancellationToken);
+        var task = Directory.GetFiles(_tt.VaultDirectory, "Exported.md", SearchOption.AllDirectories).Single();
+        var before = await File.ReadAllTextAsync(task, TestContext.Current.CancellationToken);
+
+        var refused = await _tt.Run("export", "--to", file);
+        var intoTasks = await _tt.Run("export", "--to", task, "--force");
+        var beside = await _tt.Run("export", "--to", Path.Combine(_tt.VaultDirectory, "board.json"), "--force");
+
+        Assert.Equal((1, 1, 1), (refused.ExitCode, intoTasks.ExitCode, beside.ExitCode));
+        Assert.Contains("--force", refused.Error, StringComparison.Ordinal);
+        Assert.Contains("tasks folder", intoTasks.Error, StringComparison.Ordinal);
+        Assert.Equal("my own file", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken));
+        Assert.Equal(before, await File.ReadAllTextAsync(task, TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(Path.Combine(_tt.VaultDirectory, "board.json")));
+
+        await _tt.Ok("export", "--to", file, "--force");
+        Assert.Contains("Exported", await File.ReadAllTextAsync(file, TestContext.Current.CancellationToken), StringComparison.Ordinal);
     }
 
     [Fact]
