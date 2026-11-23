@@ -28,6 +28,11 @@ public final class OneThingWindow: NSObject {
     private var breaksScript: WKUserScript?
     private var watching = Set<AnyCancellable>()
     private var downloads: [ObjectIdentifier: URL] = [:]
+    /// Tries since the server last answered, and the next one (while the window is open: 1, 2, 4… then every 30 s).
+    private var retryAttempt = 0
+    private var retry: Task<Void, Never>?
+    /// The path last loaded with a sign-in link (tried again when it couldn't load).
+    private var loadingPath = "/"
 
     /// Shows a panel of the app (Settings' rows, Ask AI…) in the window.
     public func show(_ panel: WebAppPanel, model: BoardModel) { show(path: panel.path, model: model) }
@@ -126,16 +131,31 @@ public final class OneThingWindow: NSObject {
     private func navigate(_ path: String) {
         guard let model, let web else { return }
         loaded = false
+        loadingPath = path
         let session = model.serverSession
         Task { @MainActor in
             guard let url = await model.launchURL(returnPath: path) else {
                 // The server isn't answering (it's being started again): shown when it's back.
-                waitingPath = path
-                showProblem("One Thing’s server isn’t answering right now. This window comes back by itself when it does.")
+                serverNotAnswering(path)
                 return
             }
             signedInSession = session
             web.load(URLRequest(url: url))
+        }
+    }
+
+    /// Says so, and tries again soon while the window is open (a new server session also brings it back at once).
+    private func serverNotAnswering(_ path: String) {
+        waitingPath = path
+        showProblem("One Thing’s server isn’t answering right now. This window comes back by itself when it does.")
+        retry?.cancel()
+        let delay = AppWindowNavigation.retryDelay(attempt: retryAttempt)
+        retryAttempt += 1
+        retry = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled, self.window?.isVisible == true, let path = self.waitingPath else { return }
+            self.waitingPath = nil
+            self.navigate(path)
         }
     }
 
@@ -148,21 +168,18 @@ public final class OneThingWindow: NSObject {
     }
 
     /// Opens a link that doesn't stay in the window: the app's other pages in the browser (signed in), links elsewhere
-    /// in the browser, other apps only when clicked, and nothing else.
-    private func follow(_ url: URL, userInitiated: Bool, inWindow: Bool) {
+    /// in the browser, other apps only when clicked, and nothing else (`AppWindowNavigation.follow`).
+    private func follow(_ url: URL, userInitiated: Bool, inWindow: Bool, mainFrame: Bool) {
         guard let model, let origin = model.serverURL else { return }
-        switch AppWindowNavigation.classify(origin: origin, url) {
-        case .app where !inWindow && url.absoluteString != "about:blank", .ownPageInBrowser:
+        let kind = AppWindowNavigation.classify(origin: origin, url)
+        switch AppWindowNavigation.follow(kind, url: url, inWindow: inWindow, mainFrame: mainFrame, userInitiated: userInitiated) {
+        case .signedInBrowser:
             let path = AppWindowNavigation.path(of: url)
             Task { @MainActor in if let signedIn = await model.launchURL(returnPath: path) { NSWorkspace.shared.open(signedIn) } }
-        case .outside:
+        case .open:
+            // A task link opens in the One Thing app (its own link handler); the rest in the browser or their app.
             NSWorkspace.shared.open(url)
-        case .outsideIfAsked where userInitiated:
-            NSWorkspace.shared.open(url)
-        case .taskLink where userInitiated:
-            // The app's own link handler: the task, in the One Thing app.
-            NSWorkspace.shared.open(url)
-        default:
+        case .nothing:
             break
         }
     }
@@ -191,7 +208,9 @@ extension OneThingWindow: WKNavigationDelegate {
             return
         }
         decisionHandler(.cancel, preferences)
-        if let url = action.request.url { follow(url, userInitiated: action.navigationType == .linkActivated, inWindow: true) }
+        if let url = action.request.url {
+            follow(url, userInitiated: action.navigationType == .linkActivated, inWindow: true, mainFrame: action.targetFrame?.isMainFrame != false)
+        }
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
@@ -202,6 +221,10 @@ extension OneThingWindow: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let origin = model?.serverURL else { return }
         loaded = AppWindowNavigation.classify(origin: origin, webView.url) == .app && webView.url?.absoluteString != "about:blank"
+        if loaded {
+            retryAttempt = 0
+            retry?.cancel()
+        }
     }
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -209,8 +232,7 @@ extension OneThingWindow: WKNavigationDelegate {
         // Cancelled on purpose (a link sent elsewhere, a download): nothing went wrong.
         let code = (error as NSError).code
         if code == NSURLErrorCancelled || code == 102 /* frame load interrupted */ { return }
-        waitingPath = webView.url.map(AppWindowNavigation.path(of:)) ?? "/"
-        showProblem("One Thing’s server isn’t answering right now. This window comes back by itself when it does.")
+        serverNotAnswering(loadingPath)
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -256,10 +278,14 @@ extension OneThingWindow: WKDownloadDelegate {
 }
 
 extension OneThingWindow: WKUIDelegate {
-    /// A new window (target=_blank, window.open): never a bare popup; the link goes where it belongs.
+    /// A new window (target=_blank, window.open): never a bare popup; the link goes where it belongs. Only a clicked
+    /// link counts as asked for (a script's window.open to mailto: or obsidian: opens nothing), as `IsUserInitiated` on
+    /// Windows.
     public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
                         windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let url = action.request.url { follow(url, userInitiated: true, inWindow: false) }
+        if let url = action.request.url {
+            follow(url, userInitiated: action.navigationType == .linkActivated, inWindow: false, mainFrame: true)
+        }
         return nil
     }
 

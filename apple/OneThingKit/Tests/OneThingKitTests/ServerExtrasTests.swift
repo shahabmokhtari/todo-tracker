@@ -125,4 +125,37 @@ final class ServerExtrasTests: XCTestCase {
         XCTAssertEqual(AppWindowNavigation.plan(current: shell, loaded: true, path: "/?connect"), .navigate("/?connect"))
         XCTAssertEqual(AppWindowNavigation.path(of: URL(string: "http://127.0.0.1:5317/report.html?id=1#top")!), "/report.html?id=1#top")
     }
+
+    func testALinkTheWindowDoesntKeepGoesWhereItBelongsAndOnlyAClickLeavesForAnotherApp() {
+        let origin = URL(string: "http://127.0.0.1:5317")!
+        func follow(_ url: String, inWindow: Bool = true, mainFrame: Bool = true, clicked: Bool) -> AppWindowFollow {
+            let link = URL(string: url)!
+            return AppWindowNavigation.follow(AppWindowNavigation.classify(origin: origin, link), url: link, inWindow: inWindow,
+                                              mainFrame: mainFrame, userInitiated: clicked)
+        }
+        // The main frame: pages elsewhere open in the browser, other apps only when clicked.
+        XCTAssertEqual(follow("https://example.com/a", clicked: false), .open)
+        XCTAssertEqual(follow("https://example.com/a", clicked: true), .open)
+        XCTAssertEqual(follow("mailto:me@example.com", clicked: true), .open)
+        XCTAssertEqual(follow("mailto:me@example.com", clicked: false), .nothing)
+        XCTAssertEqual(follow("onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", clicked: false), .nothing)
+        XCTAssertEqual(follow("onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", clicked: true), .open)
+        XCTAssertEqual(follow("http://127.0.0.1:5317/report.html", clicked: false), .signedInBrowser)
+        XCTAssertEqual(follow("javascript:alert(1)", clicked: true), .nothing)
+        // A frame inside the page navigating on its own opens nothing; a click in it does.
+        XCTAssertEqual(follow("https://example.com/a", mainFrame: false, clicked: false), .nothing)
+        XCTAssertEqual(follow("https://example.com/a", mainFrame: false, clicked: true), .open)
+        // A new window (target=_blank, window.open): the app's own page in the browser; a script's mailto:, obsidian:
+        // or onething: goes nowhere, a click's does.
+        XCTAssertEqual(follow("http://127.0.0.1:5317/", inWindow: false, clicked: false), .signedInBrowser)
+        XCTAssertEqual(follow("about:blank", inWindow: false, clicked: true), .nothing)
+        XCTAssertEqual(follow("http://127.0.0.1:5317/", clicked: true), .nothing)
+        XCTAssertEqual(follow("obsidian://open?vault=x", inWindow: false, clicked: false), .nothing)
+        XCTAssertEqual(follow("onething://task/4f9d1c2e-3b7a-4e10-9c55-0a1b2c3d4e5f", inWindow: false, clicked: false), .nothing)
+        XCTAssertEqual(follow("obsidian://open?vault=x", inWindow: false, clicked: true), .open)
+    }
+
+    func testAWindowThatCantReachTheServerTriesAgainSoonerFirstThenNoMoreThanEveryHalfMinute() {
+        XCTAssertEqual((0..<8).map(AppWindowNavigation.retryDelay(attempt:)), [1, 2, 4, 8, 16, 30, 30, 30])
+    }
 }

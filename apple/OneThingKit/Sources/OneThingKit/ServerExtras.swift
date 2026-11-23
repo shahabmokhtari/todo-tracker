@@ -271,7 +271,34 @@ public enum AppWindowOpen: Equatable, Sendable {
     case navigate(String)
 }
 
+/// Where a link the window doesn't keep goes.
+public enum AppWindowFollow: Equatable, Sendable {
+    /// Nowhere.
+    case nothing
+    /// The app's other page, in the browser with a single-use sign-in link.
+    case signedInBrowser
+    /// The browser, or the app the link belongs to.
+    case open
+}
+
 public enum AppWindowNavigation {
+    /// Where a link that left the window goes (`inWindow`: it was to load in the window, not a new one; `mainFrame`: in
+    /// the page itself, not a frame inside it; `userInitiated`: a click). Only a click opens another app, and a frame
+    /// inside the page opens nothing on its own. As the Windows app's `Follow`.
+    public static func follow(_ kind: AppWindowLink, url: URL, inWindow: Bool, mainFrame: Bool, userInitiated: Bool) -> AppWindowFollow {
+        if !mainFrame && !userInitiated { return .nothing }
+        switch kind {
+        case .app: return !inWindow && url.absoluteString != "about:blank" ? .signedInBrowser : .nothing
+        case .ownPageInBrowser: return .signedInBrowser
+        case .outside: return .open
+        case .outsideIfAsked, .taskLink: return userInitiated ? .open : .nothing
+        case .blocked: return .nothing
+        }
+    }
+
+    /// Seconds before the window tries the server again after `attempt` tries that failed: 1, 2, 4… then every 30.
+    public static func retryDelay(attempt: Int) -> Int { attempt >= 5 ? 30 : 1 << max(0, attempt) }
+
     public static func classify(origin: URL, _ url: URL?) -> AppWindowLink {
         guard let url else { return .blocked }
         if url.absoluteString == "about:blank" { return .app }
