@@ -10,12 +10,12 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 
 > One Thing is the user's ADHD-friendly task list. Keep them focused: one clear next action beats a long list.
 > - Start with get_dashboard (what to do now, what's waiting). Find tasks with search_tasks (#tag, label:x, group:work, is:done).
-> - Respect the order of Do now (the user arranged it); when they say what matters most, put_first. plan_task blocks time for a task.
-> - Capture work as tasks with create_task; break big work into subtasks (parentId) or ordered steps (add_steps).
-> - Log progress with add_note ("did X, next Y"); defer with schedule_next_action (or wait_for_task) instead of leaving stale tasks in Now.
+> - Respect the order of Do now (the user arranged it); when they say what matters most, put_first (arrange_now sets the whole order). plan_task blocks time for a task; get_plan shows the plan.
+> - Capture work as tasks with create_task (capture_task takes the user's quick-add words: !!, due:fri, #tag, @tomorrow); break big work into subtasks (parentId) or ordered steps (add_steps).
+> - Log progress with add_note ("did X, next Y"); defer with schedule_next_action (or wait_for_task) instead of leaving stale tasks in Now; clear_snooze brings one back.
 > - Groups are tabs such as Work and Personal (list_groups); make one with create_group only when the user asks (an unknown group name is an error, never a new group). Tags are free-form; labels are a curated colored set (list_labels).
-> - Never delete: complete_task or move_task instead. Every change is versioned (task_history, restore_task_version).
-> - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time; get_time_report says where the time went. Finished tasks can be put away with archive_task.
+> - Never delete (there is no tool for it): complete_task, archive_task or move_task instead. Every change is versioned (task_history, board_history, restore_task_version). Settings and extras are the user's, in the app.
+> - Top-level tasks are cards on a board (inbox, next, doing; move_card). Time work with start_timer/stop_timer or log_time (focus_timer runs a Pomodoro session); get_time_report says where the time went. Finished tasks can be put away with archive_task.
 > - Every task has a link (onething://task/&lt;id&gt;, in get_task): give it to the user; clicking it opens the task in the app.
 > - Hooks (add_hook) run commands when things happen; one you add waits until the user allows it: tell them so.
 > - Tasks are markdown files in a folder the user may also open in Obsidian; vault_info explains the format.
@@ -63,6 +63,23 @@ attributed to the agent and versioned; there is deliberately no tool that delete
 | [`add_hook`](#add_hook) | Add a hook: run a command (PowerShell on Windows, bash on Linux/macOS; the event comes as JSON on stdin) or post the event to a URL when something happens. |
 | [`set_hook_enabled`](#set_hook_enabled) | Switch a hook on or off (by its id from list_hooks). |
 | [`remove_hook`](#remove_hook) | Remove a hook you added (by its id from list_hooks). |
+| [`capture_task`](#capture_task) | Capture a task the way the user would type it in quick add: "Renew passport !! due:7d #admin @tomorrow" (! high, !! critical, !low; @2h or @tomorrow defers it; due:3d or due:2026-02-01; #tag). |
+| [`dismiss_reminder`](#dismiss_reminder) | Dismiss one of a task's reminders (its id is in get_task's reminders): it won't go off. |
+| [`clear_snooze`](#clear_snooze) | Bring a deferred (snoozed or waiting) task back to Do now: the opposite of schedule_next_action and wait_for_task. |
+| [`update_note`](#update_note) | Correct a progress note on a task (its id is in get_task's notes). |
+| [`arrange_now`](#arrange_now) | Set the whole order of Do now (the first becomes the focus), as the user arranged it. |
+| [`reorder_task`](#reorder_task) | Move a task next to a sibling (a subtask under the same parent, or a task in the same board column): right before beforeTaskId, or right after afterTaskId. |
+| [`update_time_entry`](#update_time_entry) | Correct time logged on a task (an entry's id is in get_task's timeEntries): when it started and how long (at most 24 hours). |
+| [`focus_timer`](#focus_timer) | The focus (Pomodoro) timer: start a focus session (on a task, timed as focus time on it), pause, resume, skip to the next phase, reset, or next (start the next session). |
+| [`get_plan`](#get_plan) | The plan: blocks of time planned on tasks in the days shown, deadlines in them, the tasks to do that aren't planned yet (and those put off), energy per day, and the Plan view's settings (work hours, work days). |
+| [`create_label`](#create_label) | Add a label to the user's curated set (name and color), e.g. 'Deep work'. |
+| [`update_label`](#update_label) | Rename a label or change its color (every task with it follows). |
+| [`list_tags`](#list_tags) | The tags on open tasks, most used first, with how many tasks have each: reuse them instead of inventing near-duplicates. |
+| [`board_history`](#board_history) | Saved versions of the whole tasks folder, newest first (every change is versioned). task_history narrows it to one task. |
+| [`get_task_version`](#get_task_version) | A task's markdown file as it was in a version (from task_history or board_history), to see what changed before restore_task_version. |
+| [`export_board`](#export_board) | The whole board as JSON (every group, task, note, reminder and time entry; the format every One Thing app reads). |
+| [`read_attachment`](#read_attachment) | The text of a task's attachment (its id is in get_task's attachments), e.g. a log or a plan attached earlier. |
+| [`update_hook`](#update_hook) | Change a hook you added (by its id from list_hooks): only what you give changes. |
 
 ### `get_dashboard`
 
@@ -420,3 +437,159 @@ Remove a hook you added (by its id from list_hooks). The user's own hooks can on
 | Parameter | Type | | Description |
 | --- | --- | --- | --- |
 | `hookId` | text | required | The hook's id, from list_hooks (one you added). |
+
+### `capture_task`
+
+Capture a task the way the user would type it in quick add: "Renew passport !! due:7d #admin @tomorrow" (! high, !! critical, !low; @2h or @tomorrow defers it; due:3d or due:2026-02-01; #tag). Use create_task when you already have the fields.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `text` | text | required | The words, quick-capture syntax included, e.g. 'Call the bank !! due:fri #money'. |
+| `group` | text | optional | Group (tab) name or id for a top-level task. Defaults to the first group. |
+| `parentId` | text | optional | Parent task id to capture a subtask. |
+
+### `dismiss_reminder`
+
+Dismiss one of a task's reminders (its id is in get_task's reminders): it won't go off. The task stays as it is. *(idempotent)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `reminderId` | text | required | The reminder's id, from get_task. |
+
+### `clear_snooze`
+
+Bring a deferred (snoozed or waiting) task back to Do now: the opposite of schedule_next_action and wait_for_task. *(idempotent)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+
+### `update_note`
+
+Correct a progress note on a task (its id is in get_task's notes). The note keeps its time and author; the change is versioned.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `noteId` | text | required | The note's id, from get_task. |
+| `text` | text | required | The note's new text. |
+
+### `arrange_now`
+
+Set the whole order of Do now (the first becomes the focus), as the user arranged it. To put a few tasks on top and leave the rest, use put_first.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskIds` | list of text | required | Task ids in the order wanted, first at the top. |
+
+### `reorder_task`
+
+Move a task next to a sibling (a subtask under the same parent, or a task in the same board column): right before beforeTaskId, or right after afterTaskId. Neither: it goes last.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `beforeTaskId` | text | optional | Put it right before this sibling (a full id). |
+| `afterTaskId` | text | optional | Or right after this sibling (a full id). |
+
+### `update_time_entry`
+
+Correct time logged on a task (an entry's id is in get_task's timeEntries): when it started and how long (at most 24 hours). Logged time can't be removed by an agent.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `entryId` | text | required | The time entry's id, from get_task. |
+| `start` | date-time (ISO 8601) | required | When it started (ISO-8601). |
+| `minutes` | integer | required | How long, in minutes (at most 24 hours). |
+
+### `focus_timer`
+
+The focus (Pomodoro) timer: start a focus session (on a task, timed as focus time on it), pause, resume, skip to the next phase, reset, or next (start the next session). Its state is also in get_dashboard (pomodoro).
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `action` | text | required | start, pause, resume, skip, reset or next. |
+| `taskId` | text | optional | For start and next: the task to focus on (a full id). Omit to focus on nothing in particular (next: the last session's task, else today's focus). |
+
+### `get_plan`
+
+The plan: blocks of time planned on tasks in the days shown, deadlines in them, the tasks to do that aren't planned yet (and those put off), energy per day, and the Plan view's settings (work hours, work days). Use plan_task to plan or unplan a task. *(read-only)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `from` | text | optional | First day, yyyy-MM-dd in the user's time zone (default: today). |
+| `days` | integer | optional | How many days (1 to 31; default 7). |
+| `group` | text | optional | Group (tab) name or id, e.g. 'Work'. Omit for every group. |
+
+### `create_label`
+
+Add a label to the user's curated set (name and color), e.g. 'Deep work'. Only when they ask for one; update_task's labels also make unknown ones.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `name` | text | required | The label's name, e.g. 'Deep work'. |
+| `color` | text | optional | A color as #rrggbb (optional; one is picked). |
+
+### `update_label`
+
+Rename a label or change its color (every task with it follows). Labels can't be deleted by an agent: the user does that in the app.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `name` | text | required | The label's current name (from list_labels). |
+| `newName` | text | optional | The new name; omit to keep it. |
+| `color` | text | optional | A color as #rrggbb; omit to keep it. |
+
+### `list_tags`
+
+The tags on open tasks, most used first, with how many tasks have each: reuse them instead of inventing near-duplicates. *(read-only)*
+
+### `board_history`
+
+Saved versions of the whole tasks folder, newest first (every change is versioned). task_history narrows it to one task. *(read-only)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `limit` | integer | optional | At most this many versions (default 50). |
+
+### `get_task_version`
+
+A task's markdown file as it was in a version (from task_history or board_history), to see what changed before restore_task_version. *(read-only)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `versionId` | text | required | A version id from task_history or board_history. |
+
+### `export_board`
+
+The whole board as JSON (every group, task, note, reminder and time entry; the format every One Thing app reads). Large: prefer get_dashboard or search_tasks to answer questions. *(read-only)*
+
+### `read_attachment`
+
+The text of a task's attachment (its id is in get_task's attachments), e.g. a log or a plan attached earlier. Text files up to 1 MB; other files: their name and size only. *(read-only)*
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `taskId` | text | required | The task's id (a full id, from get_dashboard, search_tasks or list_tasks). |
+| `attachmentId` | text | required | The attachment's id, from get_task. |
+
+### `update_hook`
+
+Change a hook you added (by its id from list_hooks): only what you give changes. Like add_hook, the changed hook waits until the user allows it again: tell them so. The user's own hooks are theirs to change.
+
+| Parameter | Type | | Description |
+| --- | --- | --- | --- |
+| `hookId` | text | required | The hook's id, from list_hooks (one you added). |
+| `event` | text | optional | A new event name, or * for every event. |
+| `powershell` | text | optional | What to run on Windows (PowerShell). |
+| `bash` | text | optional | What to run on Linux and macOS (bash). |
+| `url` | text | optional | Instead of a command: post the event as JSON to this http(s) URL. |
+| `name` | text | optional | A short name for it. |
+| `timeoutSec` | integer | optional | Stop it after this many seconds (at most 600). |
+| `groups` | list of text | optional | Only for tasks in these groups. |
+| `tags` | list of text | optional | Only for tasks with one of these tags. |
+| `labels` | list of text | optional | Only for tasks with one of these labels. |
+| `actors` | list of text | optional | Only when done by these: user, agent, vault, system, connector, or an agent's name. |

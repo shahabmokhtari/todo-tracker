@@ -13,8 +13,23 @@ namespace OneThing.Server;
 /// destroy data. Tasks also live as markdown files (see <c>vault_info</c>), so agents with file tools can work there.
 /// </summary>
 [McpServerToolType]
-public sealed class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history, OneThingServerOptions options, Hooks.HookStore hooks)
+public sealed partial class TodoTools(IBoardStore store, TimeProvider time, VaultLinks links, HistoryService history, OneThingServerOptions options, Hooks.HookStore hooks, SettingsStore settings)
 {
+    // For the other part of this class (TodoTools.More.cs).
+    private IBoardStore Store => store;
+
+    private TimeProvider Time => time;
+
+    private VaultLinks Links => links;
+
+    private HistoryService History => history;
+
+    private OneThingServerOptions Options => options;
+
+    private Hooks.HookStore HookFile => hooks;
+
+    private SettingsStore Settings => settings;
+
     private const int MaxTextAttachmentBytes = 1024 * 1024;
 
     [McpServerTool(Name = "get_dashboard", ReadOnly = true), Description("What the user should do now, what is waiting (with wake times), per-workstream overview, recent notes, what got done today, focus timer state, and energy (what there is in a day and what today's plan takes).")]

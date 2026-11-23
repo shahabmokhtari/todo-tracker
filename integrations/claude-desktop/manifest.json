@@ -75,7 +75,24 @@
     { "name": "get_time_report", "description": "Where the time went: per day, group and task" },
     { "name": "list_groups", "description": "The groups (tabs) with their counts" },
     { "name": "create_group", "description": "Make a new group (tab)" },
-    { "name": "update_group", "description": "Rename a group or change its color" }
+    { "name": "update_group", "description": "Rename a group or change its color" },
+    { "name": "capture_task", "description": "Capture a task from quick-add words (!!, due:, #tag, @tomorrow)" },
+    { "name": "dismiss_reminder", "description": "Dismiss a reminder" },
+    { "name": "clear_snooze", "description": "Bring a deferred task back to Do now" },
+    { "name": "update_note", "description": "Correct a progress note" },
+    { "name": "arrange_now", "description": "Set the order of Do now" },
+    { "name": "reorder_task", "description": "Move a task next to a sibling" },
+    { "name": "update_time_entry", "description": "Correct logged time" },
+    { "name": "focus_timer", "description": "Start, pause, resume, skip or reset the focus timer" },
+    { "name": "get_plan", "description": "The plan: planned blocks, deadlines, unplanned tasks" },
+    { "name": "create_label", "description": "Add a curated label" },
+    { "name": "update_label", "description": "Rename a label or change its color" },
+    { "name": "list_tags", "description": "The tags on open tasks" },
+    { "name": "board_history", "description": "Saved versions of the whole tasks folder" },
+    { "name": "get_task_version", "description": "A task's file as it was in a version" },
+    { "name": "export_board", "description": "The whole board as JSON" },
+    { "name": "read_attachment", "description": "Read a task's text attachment" },
+    { "name": "update_hook", "description": "Change a hook you added (it waits for approval again)" }
   ],
   "compatibility": {
     "platforms": ["win32", "darwin", "linux"]

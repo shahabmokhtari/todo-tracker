@@ -507,6 +507,16 @@ the docs explain the options and risks. The server sends the same short instruct
 | `search_tasks` | The shared search syntax (`#tag`, `label:x`, `group:x`, `is:done`, words) |
 | `move_task`, `move_card`, `list_labels` | Reorganize the hierarchy; board columns; curated labels |
 | `list_groups`, `create_group`, `update_group` | Groups (tabs): list, make one (only when asked: an unknown group name is an error that says how to make it, never a new group), rename and recolor. Deleting a group stays in the apps |
+| `capture_task` | A task from quick-add words (`!!`, `due:fri`, `#tag`, `@tomorrow`), parsed as everywhere else |
+| `dismiss_reminder`, `clear_snooze` | Dismiss one reminder; bring a deferred task back to Do now |
+| `update_note`, `update_time_entry` | Correct a note or logged time (removing either stays in the apps) |
+| `arrange_now`, `reorder_task` | The whole Do now order; a task next to a sibling |
+| `focus_timer` | Start (on a task), pause, resume, skip, reset, next |
+| `get_plan` | The Plan view's data: blocks, deadlines, unplanned and later tasks, energy, and its settings (read only) |
+| `create_label`, `update_label`, `list_tags` | Curated labels (deleting one stays in the apps); the tags in use |
+| `board_history`, `get_task_version` | Versions of the whole folder; a task's file in a version |
+| `export_board`, `read_attachment` | The whole board as JSON; a text attachment's contents |
+| `update_hook` | Change a hook the agent added (it waits for approval again) |
 | `archive_task`, `unarchive_task` | Put finished tasks away, and back |
 | `start_timer`, `stop_timer`, `log_time`, `get_time_report` | Time tracking and where the time went |
 | `list_hooks`, `add_hook`, `set_hook_enabled`, `remove_hook` | Hooks (an agent's wait for approval; it can switch off or remove only its own) |
