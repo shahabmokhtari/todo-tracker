@@ -282,7 +282,7 @@ export function createOutlineView(ctx) {
     h('button', { class: 'otwisty', type: 'button', tabindex: -1, 'aria-hidden': 'true', onclick: () => toggleGroup(g.id, !r.expanded) }, icon('chevron', { size: 14, className: r.expanded ? 'open' : '' })),
     h('span', { class: 'gdot', 'aria-hidden': 'true' }),
     h('span', { class: 'otext gname' }, g.name),
-    h('span', { class: 'gleft' }, r.left ? `${r.left} to do` : 'All done'),
+    h('span', { class: 'gleft' }, r.left ? `${r.left} to do` : r.total ? 'All done' : 'No tasks yet'),
     r.total ? progress(r.done, r.total) : null,
     h('span', { class: 'oactions' },
       h('button', { class: 'icon-btn small', type: 'button', tabindex: -1, title: `Add a task to ${g.name}`, 'aria-label': `Add a task to ${g.name}`, onclick: () => { closedGroups.delete(g.id); saveClosed(); adding = { groupId: g.id }; render(); } }, icon('plus', { size: 13 }))));
