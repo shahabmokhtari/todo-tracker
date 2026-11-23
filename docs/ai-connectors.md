@@ -162,6 +162,90 @@ What only you should do (switch extras with `ot plugins`, choose where reminders
 down a hook with `ot hooks reject`, move your tasks folder with `ot vault use`) works without `--as` and is refused
 with it.
 
+## What `ot` and MCP cover
+
+Everything the app does can be done with `ot`, and everything that's safe for an agent with an MCP tool. What's
+missing is missing on purpose, and says why: deleting (nothing is ever lost), the person's own settings and choices,
+and what needs a person at the app (signing in, pairing a browser, Ask AI). A test keeps this table in step with
+the server's endpoints.
+
+<!-- Coverage table: made from tests/OneThing.Cli.Tests/Coverage/Coverage.cs by CoverageTests. Don't edit by hand. -->
+
+| What | `ot` | MCP tool | Why not (where missing) |
+| --- | --- | --- | --- |
+| What to do now, what's waiting, the timer | `ot now` | `get_dashboard` |  |
+| Find tasks | `ot list` | `search_tasks` |  |
+| Every task | `ot list --all` | `list_tasks` |  |
+| One task | `ot show`, `ot open` | `get_task` |  |
+| The task tree (board and outline) | — | — | ot tree and get_tree come with the Tasks tree rework (its own branch); until then ot list and list_tasks. |
+| Add a task | `ot add` | `create_task` |  |
+| Quick capture (!! due:fri #tag @tomorrow) | `ot add` | `capture_task` |  |
+| Change a task (title, details, priority, deadline, tags, labels, icon, color, repeat, energy, steps) | `ot edit`, `ot tag`, `ot label` | `update_task` |  |
+| Delete a task | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
+| Ordered steps | `ot steps` | `add_steps` |  |
+| Done and undo | `ot done`, `ot reopen` | `complete_task`, `reopen_task` |  |
+| Notes (with a web page), and correcting one | `ot note`, `ot note --edit` | `add_note`, `update_note` |  |
+| Snooze, and back to Do now | `ot snooze`, `ot snooze <task> clear` | `schedule_next_action`, `clear_snooze` |  |
+| Wait for another task | `ot snooze <task> after` | `wait_for_task` |  |
+| Tasks a task can wait for (the app's picker) | — | — | The app's picker for After another task…: ot snooze &lt;task&gt; after &lt;words&gt; and wait_for_task find the task themselves. |
+| Reminders, and dismissing one | `ot remind`, `ot remind --dismiss` | `add_reminder`, `dismiss_reminder` |  |
+| Do now's order | `ot first`, `ot order` | `put_first`, `arrange_now` |  |
+| Next to a sibling | `ot move --before`, `ot move --after` | `reorder_task` |  |
+| Under another task, top level, another group | `ot move` | `move_task` |  |
+| Board columns | `ot stage` | `move_card` |  |
+| Archive and unarchive | `ot archive`, `ot unarchive` | `archive_task`, `unarchive_task` |  |
+| Archive everything finished a while ago | `ot archive --done-before` | — | An agent archives one finished task at a time (archive_task), so the person sees each. |
+| The timeline (who did what) | `ot timeline` | `get_report` |  |
+| Groups (tabs) | `ot groups` | `list_groups` |  |
+| Make a group | `ot group add` | `create_group` |  |
+| Rename or recolor a group | `ot group rename`, `ot group color` | `update_group` |  |
+| Delete a group | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
+| Labels | `ot labels` | `list_labels` |  |
+| Make, rename or recolor a label | `ot labels add`, `ot labels rename`, `ot labels color` | `create_label`, `update_label` |  |
+| Delete a label | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
+| Tags in use | `ot tags` | `list_tags` |  |
+| Time a task | `ot start`, `ot stop` | `start_timer`, `stop_timer` |  |
+| Log time, and correct an entry | `ot log`, `ot log --edit` | `log_time`, `update_time_entry` |  |
+| Remove logged time | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
+| Where the time went | `ot time` | `get_time_report` |  |
+| The focus (Pomodoro) timer | `ot focus` | `focus_timer` |  |
+| The plan | `ot plan`, `ot plan settings` | `get_plan` |  |
+| Plan or unplan a task | `ot plan <task>` | `plan_task` |  |
+| How the Plan view looks | `ot plan settings --view` | — | The person's choice, in the app (work hours, work days): get_plan reads them. |
+| Energy | `ot energy` | `get_dashboard`, `set_daily_energy` |  |
+| Attach a file | `ot attach` | `attach_text` |  |
+| Read an attachment | `ot attachment` | `read_attachment` |  |
+| A picture shown inside details | — | — | How the app shows a pasted image in a task's details: ot attachment and read_attachment get the file. |
+| Remove an attachment | — | — | Deleting is the person's, in the app (nothing is ever lost): agents finish, archive or move instead, and ot can't tell a person from a shell agent. |
+| Rich HTML | `ot rich` | `get_rich_html`, `set_rich_html` |  |
+| Versions of the whole folder | `ot history` | `board_history` |  |
+| Save a version now | — | — | ot and onething mcp save a version after every change themselves. |
+| Versions of a task, a version's text, going back | `ot history <task>`, `ot history <task> --text`, `ot restore` | `task_history`, `get_task_version`, `restore_task_version` |  |
+| Export everything | `ot export` | `export_board` |  |
+| The tasks folder and its format | `ot vault`, `ot vault guide` | `vault_info` |  |
+| Obsidian vaults on this computer | `ot vault obsidian` | — | For the person choosing where tasks live. |
+| Move where the tasks live | `ot vault use` | — | The person's choice, in the app: ot refuses it with --as. |
+| Settings | `ot settings`, `ot settings theme` | — | The person's choice, in the app: an agent has no settings tool. |
+| Where reminders are posted (Teams) | `ot settings teams` | — | The person's choice, in the app: ot refuses it with --as. |
+| Extras (plugins) on and off | `ot plugins`, `ot plugins on`, `ot plugins off` | — | The person's choice, in the app: ot refuses switching with --as. |
+| Hooks: list, add, change, on/off, remove | `ot hooks`, `ot hooks add`, `ot hooks edit`, `ot hooks enable`, `ot hooks remove` | `list_hooks`, `add_hook`, `update_hook`, `set_hook_enabled`, `remove_hook` |  |
+| Approve or turn down a hook | `ot hooks approve`, `ot hooks reject` | — | Only the person allows what runs on their computer: ot refuses it with --as. |
+| Try hooks now | `ot hooks test` | — | Runs scripts on this computer now: the person's. |
+| Sync: status and sync now | — | — | ot sync isn't there yet. Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. |
+| Sync: set up, clashes, devices | — | — | Setting up sync and choosing a side in a clash are the person's, in Settings › Sync. |
+| Connectors (Notion, Microsoft To Do, GitHub): status and sync now | — | — | ot connectors isn't there yet. Syncing runs in the app by itself every few minutes; an agent has nothing to set or start. |
+| Connectors: set up, sign in, preview, disconnect | — | — | Signing in to another service and choosing what to connect are the person's, in Settings › Connected apps. |
+| Connect an AI app (setup snippets) | — | — | Setup for the person connecting an app (this page has it too); an agent is already connected. |
+| Ask AI (chat in the app) | — | — | Ask AI is a person chatting with an agent inside the app; an agent outside it is already connected. |
+| Browser extension: pairing and devices | — | — | Pairing a browser needs the person at the browser and the app at once. |
+| Send feedback | — | — | A person's note to the developers, sent from the app. |
+| Sign-in and the app's own connection | — | — | How the app's own windows sign in and talk to the server: ot and onething mcp open the tasks folder directly and need no token. |
+| Live events for the app's windows | — | — | The app's windows follow changes with it; scripts use hooks (ot hooks). |
+| MCP over HTTP | `onething mcp` | — | It is the MCP server (onething mcp is the same over stdio). |
+| The REST API's description | — | — | For HTTP-based AI tools (ChatGPT, Copilot Studio); ot and MCP describe themselves. |
+
+<!-- End of the coverage table. -->
+
 ## What the AI sees
 
 The MCP server introduces itself with short instructions (start with the dashboard, capture in the user's words,
