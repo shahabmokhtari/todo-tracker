@@ -199,8 +199,11 @@ jobs:
       - name: Self-contained onething (and ot) and Claude Desktop extensions
         run: |
           for rid in win-x64 win-arm64 osx-arm64 osx-x64 linux-x64; do
+            # Not compressed on macOS: a compressed onething crashed about one run in ten on Apple silicon
+            # (AccessViolationException while reading git's output); uncompressed it never did (build/mac-cli.sh).
+            case $rid in osx-*) compress=false ;; *) compress=true ;; esac
             dotnet publish src/OneThing.Cli --configuration Release --runtime $rid --self-contained \
-              -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
+              -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=$compress -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none \
               --output publish/$rid
             python3 build/package-mcpb.py $rid publish/$rid staging/$rid
             npx --yes @anthropic-ai/mcpb@2.1.2 pack staging/$rid artifacts/onething-$rid.mcpb
