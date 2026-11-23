@@ -240,7 +240,8 @@ public static class OneThingHost
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(settings);
-        return VaultBoardStore.Open(new VaultOptions(VaultPathOf(options, settings))
+        var vault = VaultPathOf(options, settings);
+        return VaultBoardStore.Open(new VaultOptions(vault)
         {
             TimeZone = options.TimeZone,
             Time = time ?? TimeProvider.System,
@@ -249,7 +250,7 @@ public static class OneThingHost
             LegacyBoardPath = options.IsVaultOverridden ? null : Path.Combine(options.DataDirectory, "board.json"),
             ImportLegacyIntoExisting = options.ImportLegacyIntoExisting,
             Watch = options.WatchVault,
-            LockDirectory = options.LockDirectory,
+            LockDirectory = options.LockDirectoryFor(vault),
         });
     }
 

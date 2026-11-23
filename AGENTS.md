@@ -77,6 +77,9 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
   `--vault`/`ONETHING_VAULT` says otherwise. **`ONETHING_VAULT` wins over `--data`**: set it (as above) or make
   sure it isn't set, or a test run writes into the folder it names. `ONETHING_CLOUD=off` keeps it from syncing
   through OneDrive/iCloud.
+- With a data folder of its own (`--data` or `ONETHING_DATA`, not the app's usual one) and the tasks inside it, the
+  tasks folder's lock and version history live in `<data>/locks` too, so nothing lands in local app data. Tasks
+  outside that folder (yours) keep their lock and history in local app data, shared with the app.
 - Only one Windows sidebar runs at a time: a second start hands over to the running one. To try a build of the sidebar,
   quit the running app first, and start it again when you're done.
 - `ONETHING_AGENT_PATH` (a folder) and `ONETHING_TEST_AGENT` (the e2e fake agent) control what Ask AI finds.

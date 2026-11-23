@@ -45,8 +45,40 @@ public sealed class OneThingServerOptions
     /// <summary>The Mac app's own board.json joins the vault even when the vault already has tasks (see VaultOptions).</summary>
     public bool ImportLegacyIntoExisting { get; set; }
 
-    /// <summary>Per-vault locks and version history (default: local app data). Tests point it at a temp folder.</summary>
+    /// <summary>
+    /// Per-vault locks and version history. Null: <see cref="LockDirectoryFor"/> decides (local app data, or the data
+    /// folder's own <c>locks</c> when a data folder of its own holds the tasks).
+    /// </summary>
     public string? LockDirectory { get; set; }
+
+    /// <summary>
+    /// Where the lock and the version history of the tasks folder <paramref name="vaultPath"/> live. A data folder of
+    /// its own (<c>--data</c>, <c>ONETHING_DATA</c>) with the tasks inside it keeps them in <c>&lt;data&gt;/locks</c>,
+    /// so a test or a demo leaves nothing in local app data. A tasks folder elsewhere (the person's own) keeps the
+    /// shared lock in local app data (null), so the app and every <c>ot</c> on it still take turns.
+    /// </summary>
+    public string? LockDirectoryFor(string vaultPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vaultPath);
+        if (LockDirectory is not null)
+        {
+            return LockDirectory;
+        }
+
+        var data = Path.TrimEndingDirectorySeparator(Path.GetFullPath(DataDirectory));
+        if (SamePath(data, Path.GetFullPath(PlatformDataDirectory())))
+        {
+            return null;
+        }
+
+        var vault = Path.GetFullPath(vaultPath);
+        return vault.StartsWith(data + Path.DirectorySeparatorChar, OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase)
+            ? Path.Combine(data, "locks")
+            : null;
+    }
+
+    private static bool SamePath(string a, string b) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(a), Path.TrimEndingDirectorySeparator(b), OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The git used for version history.</summary>
     public string Git { get; set; } = "git";
@@ -89,11 +121,12 @@ public sealed class OneThingServerOptions
     public static string DefaultDataDirectory()
     {
         var overridePath = Environment.GetEnvironmentVariable("ONETHING_DATA");
-        if (!string.IsNullOrWhiteSpace(overridePath))
-        {
-            return overridePath;
-        }
+        return string.IsNullOrWhiteSpace(overridePath) ? PlatformDataDirectory() : overridePath;
+    }
 
+    /// <summary>The app's own data folder on this computer (local app data), whatever <c>ONETHING_DATA</c> says.</summary>
+    public static string PlatformDataDirectory()
+    {
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create);
         return Path.Combine(string.IsNullOrEmpty(root) ? Path.GetTempPath() : root, "OneThing");
     }
