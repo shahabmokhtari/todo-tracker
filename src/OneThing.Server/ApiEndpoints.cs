@@ -93,6 +93,12 @@ public sealed record VaultDto(string Path, IReadOnlyList<VaultProblem> Problems,
 
 public sealed record FocusRequest(Guid? ItemId = null);
 
+/// <summary>The focus timer's lengths, in minutes; a field left out stays as it is.</summary>
+public sealed record FocusLengthsRequest(int? FocusMinutes = null, int? ShortBreakMinutes = null, int? LongBreakMinutes = null, int? FocusesBeforeLongBreak = null);
+
+/// <summary>How long a focus session and its breaks last, and how many sessions come before a long break.</summary>
+public sealed record FocusLengthsDto(int FocusMinutes, int ShortBreakMinutes, int LongBreakMinutes, int FocusesBeforeLongBreak);
+
 public sealed record SettingsRequest(string? TeamsWebhookUrl);
 
 public sealed record TagDto(string Name, int Count);
@@ -461,6 +467,19 @@ internal static class ApiEndpoints
             return Results.NoContent();
         }).OwnerOnly(DeleteRefusal);
 
+        // The focus timer's lengths: kept with the tasks (every app and computer uses them); a new length counts from
+        // the next session.
+        api.MapGet("/pomodoro/settings", (IBoardStore store) => store.ReadAsync(FocusLengths));
+
+        api.MapPut("/pomodoro/settings", (FocusLengthsRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
+            store.UpdateAsync(b =>
+            {
+                var s = b.Pomodoro.Settings;
+                b.SetFocusLengths(request.FocusMinutes ?? s.FocusMinutes, request.ShortBreakMinutes ?? s.ShortBreakMinutes, request.LongBreakMinutes ?? s.LongBreakMinutes,
+                    request.FocusesBeforeLongBreak ?? s.FocusesBeforeLongBreak, Security.ActorOf(http), time.GetUtcNow());
+                return FocusLengths(b);
+            }));
+
         api.MapPost("/pomodoro/{action}", (string action, FocusRequest? request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>
             {
@@ -542,6 +561,12 @@ internal static class ApiEndpoints
             settings.SetTeamsWebhook(request.TeamsWebhookUrl);
             return settings.ToDto();
         }).OwnerOnly("Only you can choose where reminders are posted: in Settings of the One Thing app.");
+    }
+
+    private static FocusLengthsDto FocusLengths(TaskBoard board)
+    {
+        var s = board.Pomodoro.Settings;
+        return new FocusLengthsDto(s.FocusMinutes, s.ShortBreakMinutes, s.LongBreakMinutes, s.FocusesBeforeLongBreak);
     }
 
     internal static ConnectionDto Connection(ApiToken token, OneThingServerOptions options)

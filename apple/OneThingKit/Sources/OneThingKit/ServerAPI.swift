@@ -47,6 +47,17 @@ public enum ServerAction: Equatable, Sendable {
     case boardMove(BoardMove)
     /// A new task: under a parent, or at the top of a group in a column (nil: the server's defaults).
     case addTask(title: String, parentId: UUID?, groupId: UUID?, stage: Stage?)
+    /// The focus timer's lengths (kept with the tasks folder).
+    case setFocusLengths(PomodoroSettings)
+    /// Rename or recolor a label (every task with it follows).
+    case updateLabel(String, name: String, color: String)
+    /// Take a label off every task and out of the list.
+    case deleteLabel(String)
+    /// A task's tags, its labels (new ones are made), its icon and its own color ("" or nil: none).
+    case setTags(UUID, [String])
+    case setLabels(UUID, [String])
+    case setIcon(UUID, String?)
+    case setColor(UUID, String?)
 }
 
 public enum PomodoroCommand: String, Sendable {
@@ -141,6 +152,22 @@ public enum ServerAPI {
             return request(for: move)
         case let .addTask(title, parentId, groupId, stage):
             return post("/api/items", ["title": title, "parentId": parentId.map(id), "groupId": groupId.map(id), "stage": stage?.rawValue])
+        case let .updateLabel(label, name, color):
+            return ServerRequest(method: "PATCH", path: labelPath(label), body: json(["name": name, "color": color]))
+        case let .deleteLabel(label):
+            return ServerRequest(method: "DELETE", path: labelPath(label))
+        case let .setTags(item, tags):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["tags": tags]))
+        case let .setLabels(item, labels):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["labels": labels]))
+        case let .setIcon(item, icon):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["icon": icon ?? ""]))
+        case let .setColor(item, color):
+            return ServerRequest(method: "PATCH", path: "/api/items/\(id(item))", body: json(["color": color ?? ""]))
+        case let .setFocusLengths(s):
+            return ServerRequest(method: "PUT", path: "/api/pomodoro/settings", body: json([
+                "focusMinutes": s.focusMinutes, "shortBreakMinutes": s.shortBreakMinutes, "longBreakMinutes": s.longBreakMinutes, "focusesBeforeLongBreak": s.focusesBeforeLongBreak,
+            ]))
         }
     }
 
@@ -163,6 +190,12 @@ public enum ServerAPI {
     }
 
     static func id(_ uuid: UUID) -> String { uuid.uuidString.lowercased() }
+
+    /// A label's address: its name may hold "/" (Q3/Q4), which stays a "/" (the route takes the rest of the path, and
+    /// an encoded slash isn't decoded in a route value), as the web app sends it.
+    static func labelPath(_ name: String) -> String {
+        "/api/labels/" + (name.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~/"))) ?? "")
+    }
 
     /// PatchItemRequest's fields (ApiEndpoints.cs): a cleared deadline or step delay is said with clearDeadline /
     /// clearStepDelay; a blank repeat stops it repeating.

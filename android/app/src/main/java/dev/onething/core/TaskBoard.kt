@@ -422,12 +422,32 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         return clean
     }
 
-    /** How long a focus session and its breaks last, in minutes (1 to [MAX_FOCUS_MINUTES]). */
-    fun setFocusLengths(focusMinutes: Int, shortBreakMinutes: Int, longBreakMinutes: Int) {
-        for (m in listOf(focusMinutes, shortBreakMinutes, longBreakMinutes)) {
-            if (m !in 1..MAX_FOCUS_MINUTES) throw BoardException("Focus and break lengths are 1 to $MAX_FOCUS_MINUTES minutes.")
+    /**
+     * How long a focus session and its breaks last, in minutes: focus 1 to [MAX_FOCUS_MINUTES], a break 1 to
+     * [MAX_SHORT_BREAK_MINUTES], a long break 1 to [MAX_LONG_BREAK_MINUTES], after every 1 to
+     * [MAX_FOCUSES_BEFORE_LONG_BREAK] sessions (the same limits as OneThing.Core and the Apple apps:
+     * tests/fixtures/focus-lengths.json). A new length counts from the next session; the timeline says who changed it.
+     */
+    fun setFocusLengths(
+        focusMinutes: Int,
+        shortBreakMinutes: Int,
+        longBreakMinutes: Int,
+        focusesBeforeLongBreak: Int = pomodoro.settings.focusesBeforeLongBreak,
+        actor: Actor = Actor.USER,
+        now: Instant = Instant.now(),
+    ) {
+        if (focusMinutes !in 1..MAX_FOCUS_MINUTES || shortBreakMinutes !in 1..MAX_SHORT_BREAK_MINUTES || longBreakMinutes !in 1..MAX_LONG_BREAK_MINUTES ||
+            focusesBeforeLongBreak !in 1..MAX_FOCUSES_BEFORE_LONG_BREAK
+        ) {
+            throw BoardException(
+                "Focus is 1 to $MAX_FOCUS_MINUTES minutes, a break 1 to $MAX_SHORT_BREAK_MINUTES, a long break 1 to $MAX_LONG_BREAK_MINUTES, every 1 to $MAX_FOCUSES_BEFORE_LONG_BREAK sessions.",
+            )
         }
-        pomodoro.settings = pomodoro.settings.copy(focusMinutes = focusMinutes, shortBreakMinutes = shortBreakMinutes, longBreakMinutes = longBreakMinutes)
+        pomodoro.settings = PomodoroSettings(focusMinutes, shortBreakMinutes, longBreakMinutes, focusesBeforeLongBreak)
+        log(
+            now, BOARD_SCOPE_ID, "updated",
+            "Focus timer: $focusMinutes min focus, $shortBreakMinutes min break, $longBreakMinutes min long break after $focusesBeforeLongBreak sessions", actor,
+        )
     }
 
     // ---- Time: one timer runs at a time; a focus session on a task times it (TaskBoard.Time.cs) ----------------
@@ -774,6 +794,9 @@ class TaskBoard(seedDefaultGroups: Boolean = true) {
         const val MAX_TITLE_LENGTH = 300
         const val MAX_TEXT_LENGTH = 10_000
         const val MAX_FOCUS_MINUTES = 180
+        const val MAX_SHORT_BREAK_MINUTES = 60
+        const val MAX_LONG_BREAK_MINUTES = 120
+        const val MAX_FOCUSES_BEFORE_LONG_BREAK = 12
 
         /** What every app writes in the "completed" entry of a repeating task that moved on (it stays open). */
         const val ROLLED_MARKER = "(repeats: next "

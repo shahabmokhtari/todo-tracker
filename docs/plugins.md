@@ -1,9 +1,12 @@
 # Plugins
 
 Every optional part of One Thing is a plugin, so you can turn off what you don't use and keep the app calm.
-Switch them in **Settings › Extras** (every window) or the sidebar menu (**⋯ › Plugins**).
+Switch them in **Settings › Extras** (every window; on a Mac, Settings › Extras opens it in the One Thing window) or
+the sidebar menu (**⋯ › Plugins**). Extras live on a computer's server: iPhone, iPad and Android have none (everything
+they have is on).
 
-* **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar),
+* **Off is off at once**, everywhere: its buttons, menu items and views leave every window (web, app window, sidebar,
+  the Mac app within a few seconds),
   its API answers 404, a paired browser extension loses access, and its background work stops (Teams cards, version
   saving, sync).
 * **On**: extras that only change what you see come on at once (Connect AI apps, Focus timer, Plan, Obsidian, Browser

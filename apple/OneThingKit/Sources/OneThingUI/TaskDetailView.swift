@@ -65,6 +65,10 @@ struct TaskDetailContent: View {
     @State private var confirmComplete = false
     @State private var pickingDeadline = false
     @State private var addingReminder = false
+    @State private var moving = false
+    @State private var newTags = ""
+    @State private var newLabel = ""
+    @State private var icon: String?
 
     var body: some View {
         if let item = model.board.find(itemId) {
@@ -96,6 +100,7 @@ struct TaskDetailContent: View {
                         model.setDeadline(itemId, at)
                     }
                 }
+                .sheet(isPresented: $moving) { MoveSheet(model: model, itemId: itemId) }
                 .sheet(isPresented: $addingReminder) {
                     WhenSheet(title: "Remind me", action: "Remind me", initial: Date().addingTimeInterval(3600), choices: model.snoozeChoices, asksMessage: true) { at, message in
                         model.addReminder(itemId, at: at, message: message)
@@ -139,16 +144,30 @@ struct TaskDetailContent: View {
                 }
                 deadlineRow(item)
                 repeatRow(item)
-                Picker("Energy per hour", selection: Binding(get: { item.energy }, set: { model.setEnergy(itemId, level: $0) })) {
-                    ForEach(EnergyChoice.all) { Text($0.label).tag($0.level) }
+                if model.isOn(ExtraSwitches.energy) {
+                    Picker("Energy per hour", selection: Binding(get: { item.energy }, set: { model.setEnergy(itemId, level: $0) })) {
+                        ForEach(EnergyChoice.all) { Text($0.label).tag($0.level) }
+                    }
                 }
                 if item.parent == nil {
                     Picker("Group", selection: Binding(get: { item.groupId }, set: { model.moveToGroup(itemId, groupId: $0) })) {
                         ForEach(model.groups) { Text($0.name).tag($0.id) }
                     }
                     .accessibilityIdentifier("detail-group")
+                    // Its column on the Board (a finished card is in Done; reopening it moves it back).
+                    if !item.isDone {
+                        Picker("Board", selection: Binding(get: { BoardColumn(rawValue: item.stage.rawValue) ?? .next }, set: { model.moveCard(itemId, to: $0) })) {
+                            ForEach([BoardColumn.inbox, .next, .doing]) { Text($0.name).tag($0) }
+                        }
+                        .accessibilityIdentifier("detail-board")
+                    }
                 }
+                Button { moving = true } label: { Label("Move…", systemImage: "folder") }
+                    .help("Another group, under another task, or on its own")
+                    .accessibilityIdentifier("detail-move")
             }
+
+            lookSection(item)
 
             subtasks(item)
             reminders(item)
@@ -172,6 +191,92 @@ struct TaskDetailContent: View {
     }
 
     /// Its group, then the tasks it's part of: each on its own row, so tapping one opens just that one.
+    /// Its icon, its own color (none: its first label's), its tags and its labels: the web details' fields.
+    @ViewBuilder private func lookSection(_ item: WorkItem) -> some View {
+        Section {
+            HStack {
+                TextField("Icon (an emoji)", text: Binding(get: { icon ?? item.icon ?? "" }, set: { icon = $0 }))
+                    .onSubmit { saveIcon(item) }
+                    .accessibilityIdentifier("detail-icon")
+                if (icon ?? item.icon ?? "") != (item.icon ?? "") {
+                    Button("Save") { saveIcon(item) }
+                }
+            }
+            Menu {
+                Button { model.setColor(itemId, nil) } label: {
+                    if item.color == nil { Label("None (its label’s)", systemImage: "checkmark") } else { Text("None (its label’s)") }
+                }
+                ForEach(groupColors, id: \.hex) { color in
+                    Button { model.setColor(itemId, color.hex) } label: {
+                        if item.color?.lowercased() == color.hex { Label(color.name, systemImage: "checkmark") } else { Text(color.name) }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("Color")
+                    Spacer()
+                    Circle().fill(model.board.accent(of: item).map { Color(hex: $0) } ?? Color.secondary.opacity(0.3)).frame(width: 14, height: 14)
+                    Text(item.color.flatMap { hex in groupColors.first { $0.hex == hex.lowercased() }?.name ?? hex } ?? "None").foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("detail-color")
+
+            if !item.tags.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(item.tags, id: \.self) { tag in
+                        Button { model.removeTag(itemId, tag) } label: {
+                            Label("#\(tag)", systemImage: "xmark").labelStyle(TrailingIcon())
+                                .font(.caption).padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove the tag \(tag)")
+                    }
+                }
+            }
+            TextField("Add tags (deep work, errands)", text: $newTags)
+                .autocorrectionDisabled()
+                .onSubmit {
+                    model.addTags(itemId, typed: newTags)
+                    newTags = ""
+                }
+                .accessibilityIdentifier("detail-tags")
+
+            if !model.labels.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(model.labels, id: \.name) { label in
+                        let on = item.labels.contains { $0.caseInsensitiveCompare(label.name) == .orderedSame }
+                        Button { model.toggleLabel(itemId, label.name) } label: {
+                            Text(label.name).font(.caption.weight(on ? .semibold : .regular))
+                                .foregroundStyle(on ? Color.white : Color(hex: label.color))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Capsule().fill(on ? Color(hex: label.color) : Color(hex: label.color).opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                        .accessibilityLabel("Label \(label.name)")
+                    }
+                }
+            }
+            TextField("New label", text: $newLabel)
+                .onSubmit {
+                    model.addLabel(itemId, newLabel)
+                    newLabel = ""
+                }
+                .accessibilityIdentifier("detail-new-label")
+        } header: {
+            Text("Look, tags and labels")
+        } footer: {
+            Text("A task without a color of its own shows its first label’s.")
+        }
+    }
+
+    private func saveIcon(_ item: WorkItem) {
+        guard let typed = icon else { return }
+        icon = nil
+        if typed.trimmingCharacters(in: .whitespacesAndNewlines) != (item.icon ?? "") { model.setIcon(itemId, typed) }
+    }
+
     @ViewBuilder private func whereRow(_ item: WorkItem) -> some View {
         let group = model.groups.first { $0.id == item.groupId }
         HStack(spacing: 5) {
@@ -497,6 +602,88 @@ struct WhenSheet: View {
             .padding(20)
         }
         .frame(minWidth: 320)
+    }
+}
+/// A label with its icon after the text (a tag's ✕).
+struct TrailingIcon: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.title
+            configuration.icon.imageScale(.small)
+        }
+    }
+}
+
+/// Move… (the web's Move dialog): pick a group, then on its own or under any open task of it (never the task itself or
+/// one of its subtasks); back in its own group, where it is now is picked again.
+struct MoveSheet: View {
+    @ObservedObject var model: BoardModel
+    let itemId: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var groupId: UUID?
+    @State private var target: UUID?
+    @State private var query = ""
+    @State private var started = false
+
+    var body: some View {
+        NavigationStack {
+            if let item = model.board.find(itemId) {
+                let group = groupId ?? item.groupId
+                Form {
+                    Picker("Group", selection: Binding(get: { group }, set: { new in
+                        groupId = new
+                        target = new == item.groupId ? item.parent?.id : nil
+                    })) {
+                        ForEach(model.groups) { Text($0.name).tag($0.id) }
+                    }
+                    Section("Where it goes") {
+                        TextField("Find a task to put it under…", text: $query)
+                            .autocorrectionDisabled()
+                        ForEach(model.moveTargets(itemId, groupId: group, query: query)) { place in
+                            Button { target = place.parentId } label: {
+                                HStack {
+                                    if place.parentId == nil {
+                                        Text("On its own").fontWeight(.semibold) + Text("  (a top-level task)").foregroundStyle(.secondary)
+                                    } else {
+                                        Text(place.depth > 0 ? "↳ " : "").foregroundStyle(.secondary) + Text(place.title)
+                                    }
+                                    Spacer()
+                                    if target == place.parentId { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+                                }
+                                .padding(.leading, CGFloat(place.depth) * 14)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(target == place.parentId ? .isSelected : [])
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+                .navigationTitle("Move “\(item.title)”")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Move") {
+                            model.move(itemId, groupId: group, under: target)
+                            dismiss()
+                        }
+                    }
+                }
+                .onAppear {
+                    guard !started else { return }
+                    started = true
+                    target = item.parent?.id
+                }
+            } else {
+                Text("This task isn’t here any more.").padding()
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 420, minHeight: 480)
+        #endif
     }
 }
 #endif

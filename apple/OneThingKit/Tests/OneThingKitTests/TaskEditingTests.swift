@@ -108,10 +108,10 @@ final class TaskEditingTests: XCTestCase {
 
     func testTheFocusTimersLengthsChangeForTheNextSession() throws {
         let board = TaskBoard()
-        try board.setPomodoroSettings(PomodoroSettings(focusMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: 30, focusesBeforeLongBreak: 3))
+        try board.setPomodoroSettings(PomodoroSettings(focusMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: 30, focusesBeforeLongBreak: 3), now: t0)
         try board.startFocus(nil, now: t0)
         XCTAssertEqual(board.pomodoro.endsAt, t0.addingTimeInterval(50 * 60))
-        XCTAssertThrowsError(try board.setPomodoroSettings(PomodoroSettings(focusMinutes: 500)))
+        XCTAssertThrowsError(try board.setPomodoroSettings(PomodoroSettings(focusMinutes: 500), now: t0))
     }
 
     func testSearchFindsWordsInTheTitleOrDetailsAndKeepsTheGroupTotals() throws {
