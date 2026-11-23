@@ -704,6 +704,10 @@ body.signed-out .sidenav, body.signed-out .bottom-nav, body.signed-out .topbar >
 /* High contrast: the focused row of the task tree gets an outline (its background tint isn't drawn there). */
 @media (forced-colors: active) {
   .orow:focus, .orow:focus-within { outline: 2px solid Highlight; outline-offset: -2px; }
+  /* A group's color dot and a parent's bar are drawn as backgrounds, which aren't drawn there: keep them visible. */
+  .gdot { forced-color-adjust: none; }
+  .obar { border: 1px solid CanvasText; height: 5px; }
+  .obar-fill { background: Highlight; }
 }
 
 /* ======================================================================================================
