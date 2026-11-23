@@ -825,7 +825,7 @@ public final class BoardModel: ObservableObject {
 
     /// The focus timer's lengths (on a Mac, kept with the tasks folder through the server: every app uses them).
     public func setPomodoroSettings(_ settings: PomodoroSettings) {
-        change("Focus timer saved", server: .setFocusLengths(settings)) { _ in try board.setPomodoroSettings(settings) }
+        change("Focus timer saved", server: .setFocusLengths(settings)) { now in try board.setPomodoroSettings(settings, now: now) }
     }
 
     static func isBlank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

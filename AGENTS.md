@@ -91,7 +91,7 @@ dotnet run --project src/OneThing.Cli -- now --data "$DATA" --vault "$DATA/vault
   board moves, the plan, reports, widgets and the export format are implemented in C#, Swift and Kotlin with shared
   cases in `tests/fixtures` (`scenarios/`, `quick-capture.json`, `snooze.json`, `breaks.json`, `repeat.json`,
   `energy.json`, `search.json`, `undo.json`, `links.json`, `board-moves.json`, `plan.json`, `reports.json`,
-  `widget.json`, `feedback.json`, `export.json`). Change one, change all three and the fixture. The tasks folder format
+  `widget.json`, `feedback.json`, `focus-lengths.json`, `export.json`). Change one, change all three and the fixture. The tasks folder format
   and sync have generated fixtures too (`vault/`, `sync/`) for the phones that sync on their own
   ([docs/design/phone-sync.md](docs/design/phone-sync.md)).
 - **Every feature on every platform, docs in the same PR.** A user-facing change lands in the web app, the Windows
@@ -125,7 +125,7 @@ Generated files (commit them after regenerating):
 ```bash
 ONETHING_WRITE_DOCS=1 dotnet test tests/OneThing.Cli.Tests --filter ReferenceDocsTests     # docs/mcp.md, docs/cli.md
 ONETHING_WRITE_FIXTURES=1 dotnet test tests/OneThing.Core.Tests --filter ExportFixtureTests  # tests/fixtures/export.json (PlanFixtureTests, ReportFixtureTests, WidgetFixtureTests: plan.json, reports.json, widget.json)
-ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json (then build again: tests read the copies in bin/)
+ONETHING_WRITE_FIXTURES=1 dotnet test --project tests/OneThing.Core.Tests --filter "FullyQualifiedName~Fixtures"  # tests/fixtures/vault, sync, board-moves.json, quick-capture.json, focus-lengths.json (then build again: tests read the copies in bin/)
 cd tests/e2e && node screenshots.mjs        # docs/images/*.png, og.png and the website's WebP copies, from a made-up demo board (quit the app first on Windows for the sidebar; --web-only skips it, --only <names> picks some)
 # The iPhone pictures (macos-ios-light/-dark): run the Screenshots workflow (.github/workflows/screenshots.yml; also on a push to a branch named screenshots), then unzip its artifact at the repo root
 store/capture-mac.sh && /usr/bin/python3 store/frame.py   # Mac store screenshots from the demo board, then every store shot framed (store/README.md)

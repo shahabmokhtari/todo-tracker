@@ -385,7 +385,7 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
   won't save a time already past) and *After another task…*. A snooze or wait can be undone from its message, like
   *Mark done*.
 * **Settings** (⚙): sync with your other devices, theme (System, Light, Dark; kept on the
-  phone), energy in a day, the focus timer's lengths (focus, break, long break; 1–180 minutes, kept with the board), and
+  phone), energy in a day, the focus timer's lengths (focus 1–180 minutes, break 1–60, long break 1–120, after 1–12 sessions; kept with the board, the same limits everywhere: `tests/fixtures/focus-lengths.json`), and
   whether notifications and on-time alarms are allowed.
 * **The board is a tasks folder** on the phone (`filesDir/vault`, the vault format of `docs/vault-format.md`, a port of
   `VaultBoardStore`; [design](design/phone-sync.md)). One `VaultStore`

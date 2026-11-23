@@ -147,8 +147,8 @@ mark it done or left for **Later**; touch and hold it (or right-click it with a 
 
 The focus timer and a task's timer share one strip at the bottom: start, pause or resume a focus session (⋯ skips or
 resets it), and tap **■** to stop timing a task. It's always on Today, and on the other views while a timer runs.
-How long a focus session and its breaks last is in **Settings › Focus timer**, in every app (a new length counts from
-the next session).
+How long a focus session and its breaks last, and how many sessions come before the long break, is in **Settings ›
+Focus timer**, in every app (a new length counts from the next session).
 
 **A task's details** fill the screen. Change the title and details (saved when you close it), the priority, the
 deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,

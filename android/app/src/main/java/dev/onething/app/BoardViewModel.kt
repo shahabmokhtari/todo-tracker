@@ -776,7 +776,8 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         prefs.edit().putString("theme", theme).apply()
     }
 
-    fun setFocusLengths(focus: Int, shortBreak: Int, longBreak: Int) = change("Saved") { b, _ -> b.setFocusLengths(focus, shortBreak, longBreak) }
+    fun setFocusLengths(focus: Int, shortBreak: Int, longBreak: Int, sessions: Int) =
+        change("Saved") { b, now -> b.setFocusLengths(focus, shortBreak, longBreak, sessions, Actor.USER, now) }
 
     /** Tasks it can wait for: the open ones shown (to do now, then waiting), not itself, its subtasks or parents, or what waits for it. */
     fun waitCandidates(id: UUID): List<Pair<UUID, String>> =

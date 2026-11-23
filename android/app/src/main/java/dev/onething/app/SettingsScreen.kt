@@ -130,18 +130,23 @@ private fun FocusLengths(vm: BoardViewModel) {
     var focus by rememberSaveable(s) { mutableStateOf(s.focusMinutes.toString()) }
     var short by rememberSaveable(s) { mutableStateOf(s.shortBreakMinutes.toString()) }
     var long by rememberSaveable(s) { mutableStateOf(s.longBreakMinutes.toString()) }
-    Setting("Focus timer", "Minutes of a focus session, the break after it, and the longer break after every ${s.focusesBeforeLongBreak}th.") {
+    var sessions by rememberSaveable(s) { mutableStateOf(s.focusesBeforeLongBreak.toString()) }
+    Setting("Focus timer", "Minutes of a focus session, the break after it, and the longer break, and how many sessions before the longer break.") {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(Triple("Focus", focus) { v: String -> focus = v }, Triple("Break", short) { v: String -> short = v }, Triple("Long break", long) { v: String -> long = v }).forEach { (label, value, set) ->
+            listOf(
+                Triple("Focus", focus) { v: String -> focus = v }, Triple("Break", short) { v: String -> short = v },
+                Triple("Long break", long) { v: String -> long = v }, Triple("Sessions", sessions) { v: String -> sessions = v },
+            ).forEach { (label, value, set) ->
                 OutlinedTextField(
                     value = value, onValueChange = set, label = { Text(label) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f),
                 )
             }
         }
-        val changed = focus != s.focusMinutes.toString() || short != s.shortBreakMinutes.toString() || long != s.longBreakMinutes.toString()
+        val changed = focus != s.focusMinutes.toString() || short != s.shortBreakMinutes.toString() || long != s.longBreakMinutes.toString() ||
+            sessions != s.focusesBeforeLongBreak.toString()
         OutlinedButton(
-            onClick = { vm.setFocusLengths(focus.toIntOrNull() ?: 0, short.toIntOrNull() ?: 0, long.toIntOrNull() ?: 0) },
+            onClick = { vm.setFocusLengths(focus.toIntOrNull() ?: 0, short.toIntOrNull() ?: 0, long.toIntOrNull() ?: 0, sessions.toIntOrNull() ?: 0) },
             enabled = changed,
         ) { Text("Save") }
     }
