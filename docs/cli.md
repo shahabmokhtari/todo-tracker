@@ -484,7 +484,7 @@ The app's settings: the theme, and where reminders are posted (Teams).
 ot settings [theme system|light|dark | teams <https://…|off>]
 ```
 
-teams is for you, the person at the computer (not for AI agents). The app uses a change from its next start.  
+teams is for you, the person at the computer (not for AI agents). A running app keeps the settings it read until it starts again or you change one in it.  
 
 ### ot sync
 

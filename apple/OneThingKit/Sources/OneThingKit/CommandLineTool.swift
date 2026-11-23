@@ -108,11 +108,12 @@ public enum CommandLineTool {
     }
 
     /// A One Thing command line: the one in a Mac app (`….app/Contents/Resources/Server/cli/onething` or `ot`), the
-    /// Linux app's, or a .NET tool's.
+    /// Linux app's, or the .NET tool's (which installs `onething` only: an `ot` there is another tool).
     static func isOneThingCli(_ path: String) -> Bool {
         let name = (path as NSString).lastPathComponent
         guard names.contains(name) else { return false }
-        return path.contains("/Contents/Resources/Server/cli/") || path.contains("/onething/app/") || path.contains("/.dotnet/tools/")
+        if path.contains("/.dotnet/tools/") { return name == "onething" }
+        return path.contains("/Contents/Resources/Server/cli/") || path.contains("/onething/app/")
     }
 
     /// What Install did for one name.

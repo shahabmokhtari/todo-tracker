@@ -87,7 +87,7 @@ internal static partial class CliCommands
         new CliCommand("export", "ot export [--to file [--force]]", "The whole board as JSON (the format every app reads)",
             "--to never replaces a file unless --force, and never writes into the tasks folder.", Export),
         new CliCommand("settings", "ot settings [theme system|light|dark | teams <https://…|off>]", "The app's settings: the theme, and where reminders are posted (Teams)",
-            "teams is for you, the person at the computer (not for AI agents). The app uses a change from its next start.", SettingsCommand),
+            "teams is for you, the person at the computer (not for AI agents). A running app keeps the settings it read until it starts again or you change one in it.", SettingsCommand),
         new CliCommand("sync", "ot sync [now]", "How syncing with your other computers is going; now syncs (while the app isn't running)",
             "Setting it up (where, which library, clashes) is in the app: Settings › Sync. While the app runs it syncs by itself, and ot sync now says so. Syncing now is yours: ot sync now refuses --as (the status doesn't).", Sync),
         new CliCommand("connectors", "ot connectors [sync <id> | sync github <group>]", "Notion, Microsoft To Do and GitHub Issues: their status; sync one now (while the app isn't running)",
@@ -671,10 +671,10 @@ internal static partial class CliCommands
             await s.Read(_ => 0).ConfigureAwait(false);
             var log = await s.History.Required.LogAsync(null, Limit(a, 100)).ConfigureAwait(false);
             var skipped = s.History.Required.Skipped;
-            await s.Print(log, (o, v) =>
+            await s.Print(new { versions = log, notInHistory = skipped }, (o, v) =>
             {
-                o.Versions(v);
-                foreach (var folder in skipped)
+                o.Versions(v.versions);
+                foreach (var folder in v.notInHistory)
                 {
                     o.Line($"Not in history (a git repository of its own): {folder}");
                 }

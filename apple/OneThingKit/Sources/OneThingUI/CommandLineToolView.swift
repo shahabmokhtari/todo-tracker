@@ -84,22 +84,54 @@ enum TerminalPath {
     static func read(shell: String?) async -> String {
         let fallback = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         return await Task.detached { () -> String in
+            // Whatever the profile prints comes first: the PATH is what follows this marker, up to the end of its line.
+            let marker = "ONETHING-PATH-\(UUID().uuidString)="
             let process = Process()
             process.executableURL = URL(fileURLWithPath: shell ?? "/bin/zsh")
-            process.arguments = ["-l", "-i", "-c", "printf '%s' \"$PATH\""]
+            process.arguments = ["-l", "-i", "-c", "printf '\\n%s%s\\n' '\(marker)' \"$PATH\""]
             let out = Pipe()
+            let received = Received()
+            // Read while it runs: a profile that prints a lot would otherwise fill the pipe and never finish.
+            out.fileHandleForReading.readabilityHandler = { handle in received.append(handle.availableData) }
             process.standardOutput = out
             process.standardError = FileHandle.nullDevice
             process.standardInput = FileHandle.nullDevice
+            defer { out.fileHandleForReading.readabilityHandler = nil }
             do { try process.run() } catch { return fallback }
             // A shell profile that waits for something mustn't hold the window: give up after 3 seconds.
             let deadline = Date().addingTimeInterval(3)
-            while process.isRunning && Date() < deadline { try? await Task.sleep(nanoseconds: 50_000_000) }
-            if process.isRunning { process.terminate(); return fallback }
-            let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            let path = text.split(separator: "\n").last.map(String.init) ?? ""
-            return path.contains("/") ? path : fallback
+            var exited: Date?
+            while Date() < deadline {
+                if let path = TerminalPath.path(in: received.text, after: marker) { return path }
+                // Gone without the marker: what was still in the pipe gets a moment to arrive, then the fallback.
+                if !process.isRunning {
+                    if let exited, Date().timeIntervalSince(exited) > 0.3 { break }
+                    exited = exited ?? Date()
+                }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            if process.isRunning { process.terminate() }
+            return TerminalPath.path(in: received.text, after: marker) ?? fallback
         }.value
+    }
+
+    /// The PATH printed after `marker` (a whole line of it), if it has come in yet.
+    static func path(in text: String, after marker: String) -> String? {
+        guard let start = text.range(of: marker, options: .backwards) else { return nil }
+        let rest = text[start.upperBound...]
+        guard let end = rest.firstIndex(of: "\n") else { return nil }
+        let path = String(rest[..<end])
+        return path.contains("/") ? path : nil
+    }
+
+    /// What the shell printed so far (filled from the pipe's own thread).
+    private final class Received: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+
+        func append(_ more: Data) { lock.lock(); data.append(more); lock.unlock() }
+
+        var text: String { lock.lock(); defer { lock.unlock() }; return String(decoding: data, as: UTF8.self) }
     }
 }
 

@@ -94,6 +94,13 @@ final class CommandLineToolTests: XCTestCase {
         XCTAssertTrue(CommandLineTool.report(home: home, bundled: this, path: pathWithBin).installed)
     }
 
+    func testOnlyOnethingIsOursAmongDotnetTools() {
+        // The .NET tool installs onething only: an ot there is someone else's tool.
+        XCTAssertTrue(CommandLineTool.isOneThingCli("/Users/me/.dotnet/tools/onething"))
+        XCTAssertFalse(CommandLineTool.isOneThingCli("/Users/me/.dotnet/tools/ot"))
+        XCTAssertTrue(CommandLineTool.isOneThingCli("/Applications/OneThing.app/Contents/Resources/Server/cli/ot"))
+    }
+
     func testAFileThatIsntOursIsNeverReplacedWithoutAsking() throws {
         let onething = try app()
         try fm.createDirectory(at: bin, withIntermediateDirectories: true)
