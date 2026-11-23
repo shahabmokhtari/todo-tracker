@@ -90,8 +90,10 @@ public enum Presentation {
     }
 
     /// The one strip for both timers (nil: nothing to show). `showIdle`: offer the focus timer even when it isn't
-    /// running (Today, and the toolbar on an iPad or a Mac).
-    public static func timerStrip(tracking: Bool, focusPhase: PomodoroPhase, showIdle: Bool) -> TimerStripLayout? {
+    /// running (Today, and the toolbar on an iPad or a Mac). `focusOn`: the focus-timer extra is on (switched off, only
+    /// the task timer shows).
+    public static func timerStrip(tracking: Bool, focusPhase: PomodoroPhase, showIdle: Bool, focusOn: Bool = true) -> TimerStripLayout? {
+        guard focusOn else { return tracking ? TimerStripLayout(tracker: true, focus: nil) : nil }
         let focusing = focusPhase != .idle
         switch (tracking, focusing) {
         case (false, false): return showIdle ? TimerStripLayout(tracker: false, focus: .full) : nil
@@ -169,8 +171,9 @@ public enum Presentation {
         return "\(icon) \(title)"
     }
 
-    /// `notes`: a "2 notes" chip (cards that show their notes themselves leave it out).
-    public static func chips(for entry: AgendaEntry, now: Date, notes showNotes: Bool = true) -> [Chip] {
+    /// `notes`: a "2 notes" chip (cards that show their notes themselves leave it out). `energy`: the energy extra is
+    /// on (switched off, no ⚡ chip).
+    public static func chips(for entry: AgendaEntry, now: Date, notes showNotes: Bool = true, energy showEnergy: Bool = true) -> [Chip] {
         var chips: [Chip] = []
         if let step = entry.stepLabel { chips.append(Chip(step, .step)) }
         if entry.state == .waiting, let wake = entry.wakeAt { chips.append(Chip("back \(RelativeTime.format(wake, now: now))", .info)) }
@@ -180,7 +183,7 @@ public enum Presentation {
                 ? Chip("overdue \(RelativeTime.format(deadline, now: now))", .danger)
                 : Chip("due \(RelativeTime.format(deadline, now: now))", .warn))
         }
-        if let energy = entry.item.energy { chips.append(Chip(String(repeating: "⚡", count: energy), .energy)) }
+        if showEnergy, let energy = entry.item.energy { chips.append(Chip(String(repeating: "⚡", count: energy), .energy)) }
         let notes = entry.item.notes.count
         if showNotes && notes > 0 { chips.append(Chip(notes == 1 ? "1 note" : "\(notes) notes", .muted)) }
         return chips

@@ -24,6 +24,15 @@ const SHORTCUTS = [
   ['Esc', 'Close'],
 ];
 
+/** The sections #/settings/<id> can land on (each one's id is settings-<id>). */
+export const SETTINGS_SECTIONS = ['appearance', 'energy', 'focus', 'labels', 'connected', 'sync', 'hooks', 'feedback', 'plugins', 'keys'];
+
+/** The section a settings address names (#/settings/hooks: "hooks"), or null. */
+export function settingsSection(hash) {
+  const part = String(hash ?? '').match(/^#\/settings\/([a-z]+)/)?.[1];
+  return SETTINGS_SECTIONS.includes(part) ? part : null;
+}
+
 export function createSettingsView(ctx) {
   const { h, icon } = ctx;
   const root = document.getElementById('view-settings');
@@ -300,8 +309,9 @@ export function createSettingsView(ctx) {
       const [settings, list, labelList, hookStatus, energyInfo] = await Promise.all([ctx.api('/api/settings'), ctx.api('/api/plugins'), ctx.api('/api/labels'), ctx.api('/api/hooks').catch(() => null), ctx.api('/api/energy').catch(() => null)]);
       render(settings, list, labelList, hookStatus, energyInfo);
       await connectors.load();
-      // #/settings/plugins, #/settings/hooks (a hook waiting for approval links here), #/settings/feedback: that section.
-      const part = location.hash.match(/^#\/settings\/(plugins|hooks|feedback)/)?.[1];
+      // #/settings/<section> lands on that section: connected (apps), sync, hooks (a hook waiting for approval links
+      // here), plugins (Extras), feedback… The Mac app's Settings opens each of them in its One Thing window.
+      const part = settingsSection(location.hash);
       if (part) root.querySelector(`#settings-${part}`)?.scrollIntoView();
     } catch (err) {
       ctx.toast(err.message, 'error');

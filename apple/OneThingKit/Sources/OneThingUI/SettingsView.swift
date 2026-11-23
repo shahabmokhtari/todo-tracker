@@ -49,6 +49,10 @@ public struct SettingsView: View {
                 if let sync = model.sync { SyncSection(model: model, sync: sync) }
             }
 
+            #if os(macOS)
+            if model.usesServer { windowSection }
+            #endif
+
             Section {
                 Picker("Appearance", selection: Binding(get: { theme }, set: { chosen in
                     theme = chosen
@@ -63,6 +67,7 @@ public struct SettingsView: View {
                 Text(model.usesServer ? "Every window follows it: this one, the browser and the sidebar." : "Light, dark, or as your device is.")
             }
 
+            if model.isOn(ExtraSwitches.energy) {
             Section {
                 Picker("Energy in a day", selection: Binding(get: { model.board.dailyEnergy }, set: { model.setDailyEnergy($0) })) {
                     ForEach(energyChoices, id: \.self) { Text("\($0) ⚡").tag($0) }
@@ -73,15 +78,20 @@ public struct SettingsView: View {
             } footer: {
                 Text("How much you have in a day, in ⚡. Each task takes ⚡ to ⚡⚡⚡ an hour (set it in its details; not said counts as ⚡). Every app uses this number.")
             }
-
-            focusSection
-
-            Section {
-                Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
-            } footer: {
-                Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
             }
 
+            // The focus-timer extra switched off: its lengths and breaks go too.
+            if model.isOn(ExtraSwitches.focusTimer) {
+                focusSection
+
+                Section {
+                    Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
+                } footer: {
+                    Text("When a focus session ends, a reminder to rest covers the screen (you can skip it).")
+                }
+            }
+
+            if model.isOn(ExtraSwitches.feedback) {
             Section {
                 Button("Send feedback…") { sendingFeedback = true }
                     .accessibilityIdentifier("settings-feedback")
@@ -97,6 +107,7 @@ public struct SettingsView: View {
                 Text("Tell us what’s broken or what you’d like (also in Help › Send Feedback…).")
                 #endif
             }
+            }
         }
         .sheet(isPresented: $sendingFeedback) { FeedbackSheet() }
         .navigationTitle("Settings")
@@ -104,6 +115,35 @@ public struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
     }
+
+    #if os(macOS)
+    /// What the web app's Settings has beyond these, each opening its own panel in the One Thing window (signed in as
+    /// you, inside this app).
+    private var windowSection: some View {
+        Section {
+            ForEach(WebAppPanel.settingsRows.filter { $0.plugin.map(model.isOn) ?? true }) { panel in
+                Button { OneThingWindow.shared.show(panel, model: model) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: panel.symbol).frame(width: 20).foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(panel.title).foregroundStyle(.primary)
+                            Text(panel.subtitle).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.forward.app").foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings-\(panel.rawValue)")
+            }
+        } header: {
+            Text("More settings")
+        } footer: {
+            Text("These open in the One Thing window, signed in as you (File › Open the Full App).")
+        }
+    }
+    #endif
 
     private var energyChoices: [Int] {
         Array(Set([4, 6, 8, 10, 12, 14, 16, 20, model.board.dailyEnergy])).sorted()

@@ -139,8 +139,10 @@ struct TaskDetailContent: View {
                 }
                 deadlineRow(item)
                 repeatRow(item)
-                Picker("Energy per hour", selection: Binding(get: { item.energy }, set: { model.setEnergy(itemId, level: $0) })) {
-                    ForEach(EnergyChoice.all) { Text($0.label).tag($0.level) }
+                if model.isOn(ExtraSwitches.energy) {
+                    Picker("Energy per hour", selection: Binding(get: { item.energy }, set: { model.setEnergy(itemId, level: $0) })) {
+                        ForEach(EnergyChoice.all) { Text($0.label).tag($0.level) }
+                    }
                 }
                 if item.parent == nil {
                     Picker("Group", selection: Binding(get: { item.groupId }, set: { model.moveToGroup(itemId, groupId: $0) })) {

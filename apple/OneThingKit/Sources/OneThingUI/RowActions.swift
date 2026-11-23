@@ -38,7 +38,7 @@ struct TaskRowActions: ViewModifier {
             .confirmationDialog(item?.title ?? "", isPresented: $more, titleVisibility: .visible) {
                 if let item, !item.isDone {
                     Button("Add a note") { note() }
-                    Button("Focus on this") { model.startFocus(id) }
+                    if model.isOn(ExtraSwitches.focusTimer) { Button("Focus on this") { model.startFocus(id) } }
                     Button(model.runningTimer?.item.id == id ? "Stop the timer" : "Start the timer") { model.toggleTimer(id) }
                 }
                 Button("Open details", action: open)
@@ -113,7 +113,8 @@ struct TimerStrip: View {
 
     var body: some View {
         let pomodoro = model.board.pomodoro
-        if let layout = Presentation.timerStrip(tracking: model.runningTimer != nil, focusPhase: pomodoro.phase, showIdle: showIdle) {
+        if let layout = Presentation.timerStrip(tracking: model.runningTimer != nil, focusPhase: pomodoro.phase, showIdle: showIdle,
+                                                focusOn: model.isOn(ExtraSwitches.focusTimer)) {
             HStack(spacing: style == .bar ? 12 : 10) {
                 if layout.tracker, let running = model.runningTimer {
                     tracker(running.item, running.entry, alone: layout.focus == nil)
