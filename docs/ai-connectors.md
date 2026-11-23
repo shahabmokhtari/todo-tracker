@@ -214,7 +214,7 @@ the server's endpoints.
 | The focus (Pomodoro) timer | `ot focus` | `focus_timer` |  |
 | The plan | `ot plan`, `ot plan settings` | `get_plan` |  |
 | Plan or unplan a task | `ot plan <task>` | `plan_task` |  |
-| How the Plan view looks | `ot plan settings --view` | — | The person's choice, in the app (work hours, work days): get_plan reads them. |
+| How the Plan view looks | `ot plan settings --view` | — | How the Plan view looks (work hours, work days) is set in the app or with ot plan settings, also with --as (the API lets anything with the token set it); no MCP tool, get_plan reads them. |
 | Energy | `ot energy` | `get_dashboard`, `set_daily_energy` |  |
 | Attach a file | `ot attach` | `attach_text` |  |
 | Read an attachment | `ot attachment` | `read_attachment` |  |

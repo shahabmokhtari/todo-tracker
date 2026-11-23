@@ -74,7 +74,7 @@ internal static class Coverage
         new("The focus (Pomodoro) timer", ["POST /api/pomodoro/{action}"], ["ot focus"], ["focus_timer"]),
         new("The plan", ["GET /api/plan", "GET /api/plan/settings"], ["ot plan", "ot plan settings"], ["get_plan"]),
         new("Plan or unplan a task", ["POST /api/items/{id}/plan"], ["ot plan <task>"], ["plan_task"]),
-        new("How the Plan view looks", ["PUT /api/plan/settings"], ["ot plan settings --view"], [], Person + " (work hours, work days): get_plan reads them."),
+        new("How the Plan view looks", ["PUT /api/plan/settings"], ["ot plan settings --view"], [], "How the Plan view looks (work hours, work days) is set in the app or with ot plan settings, also with --as (the API lets anything with the token set it); no MCP tool, get_plan reads them."),
         new("Energy", ["GET /api/energy", "PUT /api/energy"], ["ot energy"], ["get_dashboard", "set_daily_energy"]),
 
         // ---- Files, history, rich HTML, export ---------------------------------------------------------------------
