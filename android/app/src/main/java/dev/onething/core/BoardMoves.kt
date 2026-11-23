@@ -207,14 +207,18 @@ object OutlineMoves {
     /** A task's siblings: its parent's subtasks, or the top-level tasks on screen ([roots]; null: every top-level task). */
     private fun siblings(board: TaskBoard, item: WorkItem, roots: List<WorkItem>?): List<WorkItem> = item.parent?.children ?: roots ?: board.items
 
-    /** The siblings shown (finished ones hidden unless [showDone]; the task itself always counts). */
-    private fun shown(board: TaskBoard, item: WorkItem, showDone: Boolean, roots: List<WorkItem>?): List<WorkItem> =
-        siblings(board, item, roots).filter { showDone || !it.isDone || it === item }
+    /** The siblings shown ([shown] says which are on screen; the task itself always counts). */
+    private fun visible(board: TaskBoard, item: WorkItem, shown: (WorkItem) -> Boolean, roots: List<WorkItem>?): List<WorkItem> =
+        siblings(board, item, roots).filter { it === item || shown(it) }
 
     /** Makes the task a subtask of the one above it (its previous sibling shown), last. Null when there's none. */
-    fun indent(board: TaskBoard, id: UUID, showDone: Boolean = true, roots: List<WorkItem>? = null): List<BoardMove>? {
+    fun indent(board: TaskBoard, id: UUID, showDone: Boolean = true, roots: List<WorkItem>? = null): List<BoardMove>? =
+        indent(board, id, { showDone || !it.isDone }, roots)
+
+    /** As [indent], with [shown] saying which siblings are on screen. */
+    fun indent(board: TaskBoard, id: UUID, shown: (WorkItem) -> Boolean, roots: List<WorkItem>?): List<BoardMove>? {
         val item = board.find(id) ?: return null
-        val visible = shown(board, item, showDone, roots)
+        val visible = visible(board, item, shown, roots)
         val i = visible.indexOfFirst { it === item }
         if (i <= 0) return null
         return listOf(BoardMove.Move(id, visible[i - 1].id))
@@ -229,9 +233,13 @@ object OutlineMoves {
     }
 
     /** Up (-1) or down (1) among the siblings shown (finished ones may be hidden: they're stepped over). */
-    fun step(board: TaskBoard, id: UUID, delta: Int, showDone: Boolean = true, roots: List<WorkItem>? = null): List<BoardMove>? {
+    fun step(board: TaskBoard, id: UUID, delta: Int, showDone: Boolean = true, roots: List<WorkItem>? = null): List<BoardMove>? =
+        step(board, id, delta, { showDone || !it.isDone }, roots)
+
+    /** As [step], with [shown] saying which siblings are on screen. */
+    fun step(board: TaskBoard, id: UUID, delta: Int, shown: (WorkItem) -> Boolean, roots: List<WorkItem>?): List<BoardMove>? {
         val item = board.find(id) ?: return null
-        val visible = shown(board, item, showDone, roots)
+        val visible = visible(board, item, shown, roots)
         val i = visible.indexOfFirst { it === item }
         if (i < 0 || i + delta !in visible.indices) return null
         val neighbour = visible[i + delta].id
