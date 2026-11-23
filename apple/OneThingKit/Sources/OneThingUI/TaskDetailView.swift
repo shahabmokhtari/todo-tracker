@@ -260,8 +260,7 @@ struct TaskDetailContent: View {
             }
             TextField("New label", text: $newLabel)
                 .onSubmit {
-                    let name = newLabel.trimmingCharacters(in: .whitespaces)
-                    if !name.isEmpty { model.toggleLabel(itemId, name) }
+                    model.addLabel(itemId, newLabel)
                     newLabel = ""
                 }
                 .accessibilityIdentifier("detail-new-label")

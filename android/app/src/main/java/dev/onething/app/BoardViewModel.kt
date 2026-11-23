@@ -26,6 +26,7 @@ import dev.onething.core.applyMove
 import dev.onething.core.deleteLabel
 import dev.onething.core.setColor
 import dev.onething.core.setIcon
+import dev.onething.core.labelsAdding
 import dev.onething.core.setLabels
 import dev.onething.core.setTags
 import dev.onething.core.updateLabel
@@ -861,6 +862,16 @@ class BoardViewModel(application: Application, private val savedState: SavedStat
         val item = board.find(id) ?: return false
         val tags = item.tags.filter { !it.equals(tag, ignoreCase = true) }
         return change(if (tags.isEmpty()) "No tags" else "Tags saved") { b, now -> b.setTags(id, tags, now = now) }
+    }
+
+    /**
+     * A label typed under "New label": on the task (a new name makes a new label, with the next color). One it has
+     * already (any case) stays on; true means the field can be cleared.
+     */
+    fun addLabel(id: UUID, name: String): Boolean {
+        val item = board.find(id) ?: return false
+        val next = labelsAdding(item.labels, name) ?: return name.isNotBlank()
+        return change("Label on") { b, now -> b.setLabels(id, next, now = now) }
     }
 
     /** A label on or off a task (a new name makes a new label, with the next color). */

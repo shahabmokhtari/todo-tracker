@@ -58,6 +58,13 @@ extension BoardModel {
         setTags(id, item.tags.filter { !Self.same($0, tag) })
     }
 
+    /// A label typed under "New label": on the task (a new name makes a new label, with the next color). One it has
+    /// already (any case) stays on.
+    public func addLabel(_ id: UUID, _ name: String) {
+        guard let item = board.find(id), let next = TaskBoard.labels(item.labels, adding: name) else { return }
+        change("Label on", server: .setLabels(id, next)) { try board.setLabels(id, next, now: $0) }
+    }
+
     /// A task's labels: on or off one (a new name makes a new label, with the next color).
     public func toggleLabel(_ id: UUID, _ name: String) {
         guard let item = board.find(id) else { return }

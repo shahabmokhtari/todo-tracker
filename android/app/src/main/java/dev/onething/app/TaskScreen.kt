@@ -509,7 +509,7 @@ private fun LookFields(item: WorkItem, vm: BoardViewModel) {
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = label, onValueChange = { label = it }, singleLine = true, placeholder = { Text("New label") }, modifier = Modifier.weight(1f))
-                TextButton(onClick = { if (vm.toggleLabel(item.id, label)) label = "" }, enabled = label.isNotBlank()) { Text("Add") }
+                TextButton(onClick = { if (vm.addLabel(item.id, label)) label = "" }, enabled = label.isNotBlank()) { Text("Add") }
             }
         }
     }

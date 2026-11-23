@@ -27,6 +27,19 @@ final class LabelModelTests: XCTestCase {
         XCTAssertNotNil(model.board.find(a.id), "the task stays")
     }
 
+    func testAddingALabelTheTaskHasLeavesItOn() throws {
+        let model = BoardModel(store: nil)
+        let a = try model.board.addTask(NewTask("Ship"), now: Date())
+        model.addLabel(a.id, " Urgent ")
+        XCTAssertEqual(a.labels, ["Urgent"])
+        model.addLabel(a.id, "urgent")
+        XCTAssertEqual(a.labels, ["Urgent"], "typed again (any case): it stays on, never taken off")
+        model.addLabel(a.id, "Later")
+        XCTAssertEqual(a.labels, ["Urgent", "Later"])
+        model.addLabel(a.id, "  ")
+        XCTAssertEqual(a.labels, ["Urgent", "Later"])
+    }
+
     func testATasksTagsIconColorAndPlaceChangeFromItsDetails() throws {
         let model = BoardModel(store: nil)
         let trip = try model.board.addTask(NewTask("Trip"), now: Date())

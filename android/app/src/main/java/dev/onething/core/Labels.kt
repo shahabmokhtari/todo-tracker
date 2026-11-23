@@ -27,6 +27,16 @@ private fun validateColor(color: String) {
     if (!COLOR.matches(color)) throw BoardException("Colors must be #rrggbb.")
 }
 
+/**
+ * A task's labels with [name] added ("New label" › Add), or null when it already has it (any case) or it's blank:
+ * adding never takes a label off.
+ */
+fun labelsAdding(current: List<String>, name: String): List<String>? {
+    val clean = name.trim()
+    if (clean.isEmpty() || current.any { it.equals(clean, ignoreCase = true) }) return null
+    return current + clean
+}
+
 /** A new label ([color] null: the next one nobody uses). */
 fun TaskBoard.defineLabel(name: String, color: String?, actor: Actor = Actor.USER, now: Instant): LabelDefinition {
     val clean = validateLabelNames(listOf(name)).single()

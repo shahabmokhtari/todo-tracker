@@ -13,6 +13,14 @@ extension TaskBoard {
         return labels.first { Ordinal.equalIgnoreCase($0.name, clean) }
     }
 
+    /// A task's labels with `name` added ("New label" › Add), or nil when it already has it (any case) or it's blank:
+    /// adding never takes a label off.
+    public static func labels(_ current: [String], adding name: String) -> [String]? {
+        let clean = name.oTrim()
+        guard !clean.isEmpty, !current.contains(where: { Ordinal.equalIgnoreCase($0, clean) }) else { return nil }
+        return current + [clean]
+    }
+
     /// The color a task shows with: its own, else its first label's (nil: none).
     public func accent(of item: WorkItem) -> String? {
         item.color ?? item.labels.lazy.compactMap { self.findLabel($0)?.color }.first

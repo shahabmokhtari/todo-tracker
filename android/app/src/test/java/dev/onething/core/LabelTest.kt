@@ -68,6 +68,14 @@ class LabelTest {
     }
 
     @Test
+    fun addingALabelTheTaskHasLeavesItOn() {
+        assertEquals(listOf("Urgent"), labelsAdding(listOf(), " Urgent "))
+        assertEquals("typed again (any case): nothing to change", null, labelsAdding(listOf("Urgent"), "urgent"))
+        assertEquals(listOf("Urgent", "Later"), labelsAdding(listOf("Urgent"), "Later"))
+        assertEquals(null, labelsAdding(listOf("Urgent"), "  "))
+    }
+
+    @Test
     fun tagsAreCleanedAndEachKeptOnce() {
         val board = TaskBoard()
         val task = board.addTask(NewTask("Write"), now = t0)
