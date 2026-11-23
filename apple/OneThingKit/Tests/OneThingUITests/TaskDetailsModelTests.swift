@@ -257,7 +257,9 @@ final class TaskDetailsModelTests: XCTestCase {
         for _ in 0..<200 where !expected.allSatisfy(FakeServer.requests.contains) { try await Task.sleep(nanoseconds: 20_000_000) }
         for line in expected { XCTAssertTrue(FakeServer.requests.contains(line), "sent \(line)") }
 
+        // The focus timer's lengths are kept with the tasks folder: they go to the server too.
         model.setPomodoroSettings(PomodoroSettings(focusMinutes: 50))
-        XCTAssertEqual(model.status, "The focus timer’s lengths come from your tasks folder.")
+        for _ in 0..<200 where !FakeServer.requests.contains("PUT /api/pomodoro/settings") { try await Task.sleep(nanoseconds: 20_000_000) }
+        XCTAssertTrue(FakeServer.requests.contains("PUT /api/pomodoro/settings"))
     }
 }

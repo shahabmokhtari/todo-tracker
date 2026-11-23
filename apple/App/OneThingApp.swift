@@ -108,6 +108,8 @@ struct OneThingApp: App {
     /// Breaks on every screen, and the tasks folder through the server (synced with the other computers).
     private func startOnce() {
         if breakWindows == nil { breakWindows = BreakWindows(model: model) }
+        // A hook an AI agent added waits for your approval: asked here (Allow / Don't allow).
+        HookApprovalPrompt.shared.watch(model)
         // The made-up board never touches the server (or the tasks folder).
         if !Self.isDemo { LocalServer.shared.connect(model) }
     }
@@ -151,7 +153,7 @@ struct MenuBarGlance: View {
             }
             Divider()
             TextField("Add a task…", text: $model.quickText).onSubmit { model.capture() }
-            Text("\(model.dashboard.now.count) now · \(model.dashboard.waiting.count) waiting · 🍅 \(model.pomodoroText)")
+            Text("\(model.dashboard.now.count) now · \(model.dashboard.waiting.count) waiting" + (model.isOn(ExtraSwitches.focusTimer) ? " · 🍅 \(model.pomodoroText)" : ""))
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             HStack {
@@ -160,12 +162,16 @@ struct MenuBarGlance: View {
             }
             .font(.caption).foregroundStyle(.secondary)
             if model.usesServer {
-                Button("Open One Thing…") {
-                    Task { if let url = await model.launchURL() { NSWorkspace.shared.open(url) } }
+                HStack {
+                    Button("Open One Thing…") { OneThingWindow.shared.show(.app, model: model) }
+                        .help("The full app in a window: board, reports, settings, sync and connected apps")
+                    Button("In the browser") {
+                        Task { if let url = await model.launchURL() { NSWorkspace.shared.open(url) } }
+                    }
+                    .help("The full app in your browser, signed in for you")
                 }
-                .help("The full window in your browser: board, reports, settings and sync")
             }
-            Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks)
+            if model.isOn(ExtraSwitches.focusTimer) { Toggle("Full-screen breaks", isOn: $model.fullScreenBreaks) }
             HStack {
                 Button(exporting ? "Copying…" : "Copy to Apple Notes") {
                     exporting = true

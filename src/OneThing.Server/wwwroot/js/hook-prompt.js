@@ -1,7 +1,8 @@
 /**
  * Asking about hooks an AI agent added or changed (they wait for approval): "Claude wants to run a hook", with all of
  * what it would do, and Allow (it runs from now on, without asking again) or Don't allow (it's removed). Only in the
- * owner's session, and only when no desktop app asks itself (the Windows app shows a notification instead).
+ * owner's session, and only when no desktop app asks itself (the Windows app shows a notification instead; the Mac app's
+ * One Thing window says so with window.__ttNativeHookPrompt, and the Mac app asks).
  */
 
 /** Everything a hook would do, one line each: a name alone could say anything. */
@@ -22,8 +23,9 @@ export function describeHook(hook) {
 }
 
 /** The next hook to ask about: waiting for approval, and not asked about (in this version) yet. */
-export function nextToAsk(status, asked) {
-  if (!status?.canApprove || status.appAsks) return null;
+export function nextToAsk(status, asked, nativePrompt = globalThis.__ttNativeHookPrompt === true) {
+  // In the Mac app's One Thing window, the app asks itself (a native prompt): not twice.
+  if (!status?.canApprove || status.appAsks || nativePrompt) return null;
   return status.hooks.find((x) => x.state === 'needs approval' && !asked.has(`${x.id}\u001f${x.version}`)) ?? null;
 }
 
@@ -38,7 +40,7 @@ export async function askAboutHooks(ctx) {
   try {
     const status = await ctx.api('/api/hooks');
     // Not the owner's session (it can't approve), or the desktop app asks: this page never needs to look again.
-    if (!status.canApprove || status.appAsks) {
+    if (!status.canApprove || status.appAsks || globalThis.__ttNativeHookPrompt === true) {
       done = true;
       return;
     }

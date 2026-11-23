@@ -26,6 +26,13 @@ final class FakeServer: URLProtocol {
         set { lock.withLock { storedRefused = newValue } }
     }
 
+    private static var storedBodies: [String: Data] = [:]
+    /// What other paths answer ("/api/plugins": its JSON); anything not here answers {}.
+    static var bodies: [String: Data] {
+        get { lock.withLock { storedBodies } }
+        set { lock.withLock { storedBodies = newValue } }
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -43,7 +50,7 @@ final class FakeServer: URLProtocol {
         switch url.path {
         case "/api/export": body = Self.board
         case "/api/settings": body = Data(#"{"theme":"dark"}"#.utf8)
-        default: body = Data("{}".utf8)
+        default: body = Self.bodies[url.path] ?? Data("{}".utf8)
         }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: body)

@@ -126,7 +126,9 @@ struct TaskContextMenu: View {
                 } label: { Label("Later", systemImage: "clock") }
                 let timing = model.runningTimer?.item.id == id
                 Button { model.toggleTimer(id) } label: { Label(timing ? "Stop the timer" : "Start the timer", systemImage: timing ? "stop.circle" : "stopwatch") }
-                Button { model.startFocus(id) } label: { Label("Focus on this", systemImage: "play") }
+                if model.isOn(ExtraSwitches.focusTimer) {
+                    Button { model.startFocus(id) } label: { Label("Focus on this", systemImage: "play") }
+                }
                 Button {
                     if inlineNote || shell == nil {
                         if !model.openNotes.contains(id) { model.toggleNote(id) }

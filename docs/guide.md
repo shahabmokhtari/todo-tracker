@@ -49,7 +49,7 @@ other card says **2 notes ▾**: click it to read them right there, **Hide notes
 
 **Open a task.** Click its title (in the sidebar it opens full size in the app window), or **⋯ › Open in the app** /
 **Open in the browser** in the sidebar, **⋯ › Open full size** / **Open in a new tab** on the web, **⋯ › Open details** /
-**Open in the browser** on a Mac, and on Android tap its title (or **⋯ › Open**).
+**Open in the One Thing window** / **Open in the browser** on a Mac, and on Android tap its title (or **⋯ › Open**).
 
 Type a task in the box at the top and press Enter:
 
@@ -158,6 +158,8 @@ mark it done or left for **Later**; touch and hold it (or right-click it with a 
 
 The focus timer and a task's timer share one strip at the bottom: start, pause or resume a focus session (⋯ skips or
 resets it), and tap **■** to stop timing a task. It's always on Today, and on the other views while a timer runs.
+How long a focus session and its breaks last, and how many sessions come before the long break, is in **Settings ›
+Focus timer**, in every app (a new length counts from the next session).
 
 **A task's details** fill the screen. Change the title and details (saved when you close it), the priority, the
 deadline, how much energy it takes, how it repeats (type a rule or pick one) and its group. Mark it done or reopen it,
@@ -383,8 +385,18 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
   to rename it, change its color, or delete it. Its tasks move to the group you pick; they're never deleted.
 * **Search** (magnifying glass): the same words and filters as the other apps (`group:`, `is:done`, `is:archived`,
   quotes).
-* **Settings** (in the sidebar, the gear on an iPhone, or One Thing › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks; on iPhone and iPad
-  also where your tasks are and **Sync** (below).
+* **Settings** (in the sidebar, the gear on an iPhone, or One Thing › Settings on a Mac): light or dark, energy in a day, focus timer lengths and full-screen breaks, and **Labels** (rename one, change its color, or remove it from every task: you're asked first, and the tasks stay); on iPhone and iPad
+  also where your tasks are and **Sync** (below). What's switched off in Extras (Plan, Energy, the focus timer,
+  Feedback) leaves the Mac too.
+* **On a Mac, Settings also has** **Your tasks** (the folder, **Show in Finder**, **Open in Obsidian**) and **More
+  settings**: Connected apps, Sync, Hooks, Extras, Connect AI apps, Browser extension and Ask AI. Each opens in the
+  **One Thing window**: the full app, inside the Mac app and signed in as you (also **File › Open the Full App**, ⇧⌘O).
+  When an AI agent adds a hook, the Mac asks you: it shows everything the hook would run; **Allow** and **Don't
+  allow** need a click, and Return or Escape means **Later**. In the background its Dock icon asks for your attention
+  instead of jumping in front.
+* **Task details** also have the task's **Board** column, **Move…** (another group, under another task, or on its
+  own), and **Look, tags and labels**: an icon, its own color, tags, and labels to switch on or add. Attachments, the
+  rich version and version history are on the computers (on a Mac, in the One Thing window).
 * **Not done after all** on a repeating task puts it back as it was: the subtasks you'd done stay done and its
   reminders come back.
 * **Plan** (a week as a time grid; a day at a time on iPhone): drag a task from *Not planned* onto a time to plan a block

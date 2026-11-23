@@ -58,6 +58,15 @@ public final class BoardModel: ObservableObject {
     @Published public private(set) var serverURL: URL?
     /// Opening the tasks folder through the server (Mac): changes wait.
     @Published public private(set) var isConnecting = false
+    /// The extras switched on (Settings › Extras on the server): what's off doesn't show. On a phone (no server),
+    /// everything is on.
+    @Published public private(set) var extras = ExtraSwitches.everything
+    /// Where the tasks folder is, and files in it that need fixing (Mac; nil: not read yet or no server).
+    @Published public private(set) var vaultInfo: VaultInfo?
+    /// A hook an AI agent added or changed that waits for approval, to ask the person about (Mac; nil: none).
+    @Published public private(set) var pendingHook: PendingHook?
+    /// Bumped each time the server is (again) in use: the One Thing window signs in again after a restart.
+    @Published public private(set) var serverSession = 0
 
     public private(set) var board: TaskBoard
     private let store: DeviceBoardStore?
@@ -101,6 +110,11 @@ public final class BoardModel: ObservableObject {
     /// left after the tasks moved into the tasks folder).
     private var serverBoardRead = false
     private var themeSettled = false
+    /// When extras, hooks and the tasks folder were last read from the server (every few reads of the board).
+    private var extrasReadAt = Date.distantPast
+    private var readingExtras = false
+    /// Hooks asked about in this run (each version once), as the web page keeps them.
+    private var hookQuestions = HookQuestions()
 
     /// The phone itself (iPhone and iPad; nil on the Mac): its name and what it is.
     public let phone: PhoneSetup?
@@ -243,6 +257,8 @@ public final class BoardModel: ObservableObject {
         etag = nil
         serverBoardRead = false
         themeSettled = false
+        extrasReadAt = .distantPast
+        serverSession += 1
         status = nil
         Task { await reload() }
     }
@@ -263,6 +279,10 @@ public final class BoardModel: ObservableObject {
             serverURL = nil
             etag = nil
             serverBoardRead = false
+            extras = .everything
+            vaultInfo = nil
+            hookQuestions.reset()
+            pendingHook = nil
             board = (try? store?.load()) ?? TaskBoard()
             refresh()
         }
@@ -321,6 +341,7 @@ public final class BoardModel: ObservableObject {
             }
             unansweredReads = 0
             refresh()
+            if Date().timeIntervalSince(extrasReadAt) >= 10 { Task { await readExtras(from: server) } }
         } catch {
             guard mine == generation else { return }
             readFailed = true
@@ -331,6 +352,59 @@ public final class BoardModel: ObservableObject {
                 if unansweredReads == 3 { onServerLost?() }
             }
         }
+    }
+
+    /// Which extras are on, hooks waiting for approval, and the tasks folder (each read on its own: one failing leaves
+    /// the others).
+    private func readExtras(from server: ServerClient) async {
+        guard !readingExtras else { return }
+        readingExtras = true
+        extrasReadAt = Date()
+        defer { readingExtras = false }
+        let switches = try? await server.extras()
+        let approvals = try? await server.hookApprovals()
+        let vault = try? await server.vault()
+        // The server changed meanwhile (restarted, or given up on): what was read is the old one's.
+        guard server === self.server else { return }
+        if let switches, let on = switches.on, on != extras.on || switches.known != extras.known { extras = switches }
+        if let vault, vault != vaultInfo { vaultInfo = vault }
+        if let approvals { ask(approvals) }
+    }
+
+    /// The next hook to ask about, unless one is being asked about (it stays until it's decided or put off, or goes
+    /// when it was decided elsewhere or changed meanwhile: `HookQuestions`).
+    private func ask(_ approvals: HookApprovals) {
+        hookQuestions.read(approvals)
+        if pendingHook != hookQuestions.asking { pendingHook = hookQuestions.asking }
+    }
+
+    private func answered(_ hook: PendingHook) {
+        hookQuestions.answered(hook)
+        if pendingHook != hookQuestions.asking { pendingHook = hookQuestions.asking }
+    }
+
+    /// Whether an extra is on (Settings › Extras). Everything is on without a server.
+    public func isOn(_ plugin: String) -> Bool { extras.isOn(plugin) }
+
+    /// Allow (it runs from now on) or Don't allow (it's removed) the hook asked about. Only ever the person's answer:
+    /// nothing approves a hook on its own.
+    public func decideHook(_ hook: PendingHook, allow: Bool) {
+        answered(hook)
+        guard let server else { return }
+        let request = allow ? ServerAPI.approveHook(hook.id, version: hook.version) : ServerAPI.rejectHook(hook.id, version: hook.version)
+        Task {
+            do {
+                try await server.send(request)
+                status = allow ? "Allowed: it runs from now on" : "Not allowed: it was removed"
+            } catch {
+                status = Self.describe(error)
+            }
+        }
+    }
+
+    /// "Later": not asked again in this run; it waits in Settings › Hooks (and the browser asks).
+    public func putOffHook(_ hook: PendingHook) {
+        answered(hook)
     }
 
     /// The shared theme. The first time, a choice made on this Mac wins over the server's untouched default.
@@ -749,13 +823,9 @@ public final class BoardModel: ObservableObject {
         }
     }
 
-    /// The focus timer's lengths. Only for a board on this device: the server's are kept with the tasks folder.
+    /// The focus timer's lengths (on a Mac, kept with the tasks folder through the server: every app uses them).
     public func setPomodoroSettings(_ settings: PomodoroSettings) {
-        guard !usesServer else {
-            status = "The focus timer’s lengths come from your tasks folder."
-            return
-        }
-        mutate("Focus timer saved") { _ in try board.setPomodoroSettings(settings) }
+        change("Focus timer saved", server: .setFocusLengths(settings)) { now in try board.setPomodoroSettings(settings, now: now) }
     }
 
     static func isBlank(_ text: String) -> Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -806,7 +876,8 @@ public final class BoardModel: ObservableObject {
 
     /// The break to show now (or "Break's over"), or nil.
     public var breakPrompt: BreakPrompt? {
-        guard fullScreenBreaks else { return nil }
+        // The focus-timer extra switched off on the server: no breaks either.
+        guard fullScreenBreaks, isOn(ExtraSwitches.focusTimer) else { return nil }
         let due = Breaks.due(board.pomodoro, now: now)
         if let due, due.until != dismissedBreak { return due }
         let seen = due?.until ?? seenBreak

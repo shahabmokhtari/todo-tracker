@@ -511,6 +511,31 @@ test('Settings: light or dark for every window, and connected apps switch on at 
   await page.locator('#view-settings').getByRole('checkbox', { name: 'Use Notion' }).uncheck();
   await expect(page.locator('#view-settings').getByRole('textbox', { name: 'Notion integration token' })).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('Settings: each section has an address of its own (the Mac app opens them), and the focus timer’s lengths change', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await open(page, request);
+  for (const id of ['connected', 'sync', 'hooks', 'plugins', 'labels', 'focus']) {
+    await page.evaluate((h) => { location.hash = h; }, `#/settings/${id}`);
+    await expect(page.locator(`#settings-${id}`)).toBeInViewport();
+  }
+
+  const focus = page.locator('#settings-focus');
+  await focus.getByRole('spinbutton', { name: 'Focus (minutes)' }).fill('50');
+  await focus.getByRole('spinbutton', { name: 'Long break after (sessions)' }).fill('3');
+  await focus.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('#toast')).toContainText('Focus timer saved');
+  const lengths = await (await request.get('/api/pomodoro/settings', { headers: auth })).json();
+  expect([lengths.focusMinutes, lengths.focusesBeforeLongBreak]).toEqual([50, 3]);
+
+  // Too long: the server says why, nothing changes.
+  await focus.getByRole('spinbutton', { name: 'Focus (minutes)' }).fill('500');
+  await focus.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('#toast')).toContainText('Focus is 1 to 180 minutes');
+  await focus.getByRole('button', { name: 'Back to 25 / 5 / 15' }).click();
+  await expect(focus.getByRole('spinbutton', { name: 'Focus (minutes)' })).toHaveValue('25');
+  expect(errors).toEqual([]);
 });test('Tags and labels: several-word tags, and the picker by the search box filters every view', async ({ page, request }) => {
   const errors = watchErrors(page);
   await add(request, 'Write the deck', { tags: ['deep work'], stage: 'next' });

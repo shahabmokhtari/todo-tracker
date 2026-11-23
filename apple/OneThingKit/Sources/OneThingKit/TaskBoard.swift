@@ -525,13 +525,28 @@ public final class TaskBoard {
         log(now, id, "archived", "Brought \"\(item.title)\" back from the archive", actor)
     }
 
-    /// The focus timer's lengths (a session, the breaks, and how many sessions before a long break).
-    public func setPomodoroSettings(_ settings: PomodoroSettings) throws {
-        guard (1...180).contains(settings.focusMinutes), (1...60).contains(settings.shortBreakMinutes),
-              (1...120).contains(settings.longBreakMinutes), (1...12).contains(settings.focusesBeforeLongBreak) else {
-            throw BoardError.invalid("Focus is 1 to 180 minutes, a break 1 to 60, a long break 1 to 120, every 1 to 12 sessions.")
+    /// The longest focus session, short break and long break, in minutes, and the most sessions before a long break.
+    public static let maxFocusMinutes = 180, maxShortBreakMinutes = 60, maxLongBreakMinutes = 120, maxFocusesBeforeLongBreak = 12
+
+    /// The focus timer's lengths (a session, the breaks, and how many sessions before a long break): a new length counts
+    /// from the next session. The same limits as OneThing.Core (tests/fixtures/focus-lengths.json).
+    public func setFocusLengths(focusMinutes: Int, shortBreakMinutes: Int, longBreakMinutes: Int, focusesBeforeLongBreak: Int,
+                                actor: Actor = .user, now: Date) throws {
+        guard (1...Self.maxFocusMinutes).contains(focusMinutes), (1...Self.maxShortBreakMinutes).contains(shortBreakMinutes),
+              (1...Self.maxLongBreakMinutes).contains(longBreakMinutes), (1...Self.maxFocusesBeforeLongBreak).contains(focusesBeforeLongBreak) else {
+            throw BoardError.invalid("Focus is 1 to \(Self.maxFocusMinutes) minutes, a break 1 to \(Self.maxShortBreakMinutes), a long break 1 to \(Self.maxLongBreakMinutes), every 1 to \(Self.maxFocusesBeforeLongBreak) sessions.")
         }
+        let settings = PomodoroSettings(focusMinutes: focusMinutes, shortBreakMinutes: shortBreakMinutes, longBreakMinutes: longBreakMinutes,
+                                        focusesBeforeLongBreak: focusesBeforeLongBreak)
         pomodoro.settings = settings
+        log(now, Self.boardScopeId, "updated",
+            "Focus timer: \(focusMinutes) min focus, \(shortBreakMinutes) min break, \(longBreakMinutes) min long break after \(focusesBeforeLongBreak) sessions", actor)
+    }
+
+    /// The focus timer's lengths, as `setFocusLengths`.
+    public func setPomodoroSettings(_ settings: PomodoroSettings, actor: Actor = .user, now: Date) throws {
+        try setFocusLengths(focusMinutes: settings.focusMinutes, shortBreakMinutes: settings.shortBreakMinutes,
+                            longBreakMinutes: settings.longBreakMinutes, focusesBeforeLongBreak: settings.focusesBeforeLongBreak, actor: actor, now: now)
     }
 
     // MARK: Groups
@@ -745,8 +760,7 @@ public final class TaskBoard {
     private func validateGroup(name: String, color: String?, except: TaskGroup?) throws -> String {
         let clean = try Self.requireText(name, "A group name is required.", maxLength: 60)
         if let color {
-            let hex = color.dropFirst()
-            guard color.hasPrefix("#"), hex.count == 6, hex.allSatisfy({ $0.isHexDigit }) else {
+            guard Self.isHexColor(color) else {
                 throw BoardError.invalid("Group colors must be #rrggbb.")
             }
         }

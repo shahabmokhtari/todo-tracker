@@ -45,6 +45,12 @@ public enum SidebarItem: String, CaseIterable, Identifiable, Hashable, Sendable 
     }
 }
 
+extension BoardModel {
+    /// The views to offer: Plan only while its extra is on (shell.js VIEWS). (Here, not in BoardModel.swift: the Apple
+    /// TV app compiles that file without the sidebar.)
+    public var shownViews: [SidebarItem] { SidebarItem.views.filter { $0 != .plan || isOn(ExtraSwitches.plan) } }
+}
+
 /// The app's window: a sidebar (views, groups with their counts, Search, Settings) beside the view and, on a wide
 /// screen, the task's details. On a narrow one (iPhone, an iPad in Slide Over or a narrow Split View) the views are tabs
 /// and the details a sheet.
@@ -85,6 +91,8 @@ public struct AppShell: View {
         // A onething://task/<id> link (also when it started the app): the task's details.
         .onAppear { openLinkedTask() }
         .onChange(of: model.openTaskId) { _, _ in openLinkedTask() }
+        // An extra switched off (Plan) while it's on screen: back to Today.
+        .onChange(of: model.shownViews) { _, views in if SidebarItem.views.contains(shell.view) && !views.contains(shell.view) { shell.show(.today) } }
         .sheet(isPresented: $shell.quickAdd) { QuickAddSheet(model: model) }
         .sheet(item: $shell.feedback) { FeedbackSheet(source: $0) }
         #if os(iOS)
@@ -222,7 +230,7 @@ public struct AppShell: View {
     private var sidebar: some View {
         List(selection: Binding(get: { Optional(shell.view) }, set: { if let item = $0 { shell.show(item) } })) {
             Section {
-                ForEach(SidebarItem.views) { item in sidebarRow(item) }
+                ForEach(model.shownViews) { item in sidebarRow(item) }
             }
             Section("Groups") {
                 groupRow(nil)
@@ -317,8 +325,8 @@ public struct AppShell: View {
     // MARK: Narrow: tabs
 
     private var tabs: some View {
-        TabView(selection: Binding(get: { SidebarItem.views.contains(shell.view) ? shell.view : .today }, set: { shell.view = $0 })) {
-            ForEach(SidebarItem.views) { item in
+        TabView(selection: Binding(get: { model.shownViews.contains(shell.view) ? shell.view : .today }, set: { shell.view = $0 })) {
+            ForEach(model.shownViews) { item in
                 Group {
                     if item == .today {
                         // Today keeps its own header: group tabs, search and Settings.
@@ -475,9 +483,18 @@ public struct OneThingCommands: Commands {
             // ⌘N is a new task: another window (or the window again, once closed) is ⇧⌘N.
             Button("New Window") { openWindow(id: AppShell.sceneId) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            #if os(macOS)
+            // The web app in a window of this app (signed in as you): connected apps, sync, hooks, extras and the rest.
+            Divider()
+            Button("Open the Full App") { if let model = shell?.model { OneThingWindow.shared.show(.app, model: model) } }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(shell?.model.usesServer != true)
+            Button("Ask AI…") { if let model = shell?.model { OneThingWindow.shared.show(.askAI, model: model) } }
+                .disabled(shell?.model.usesServer != true || shell?.model.isOn(ExtraSwitches.askAI) == false)
+            #endif
         }
         CommandGroup(after: .sidebar) {
-            ForEach(SidebarItem.views) { item in
+            ForEach(shell?.model.shownViews ?? SidebarItem.views) { item in
                 Button(item.name) { shell?.show(item) }
                     .keyboardShortcut(item.shortcut ?? " ")
                     .disabled(shell == nil)
@@ -510,7 +527,7 @@ public struct OneThingCommands: Commands {
         }
         CommandGroup(replacing: .help) {
             Button("Send Feedback…") { shell?.feedback = .button }
-                .disabled(shell == nil)
+                .disabled(shell == nil || shell?.model.isOn(ExtraSwitches.feedback) == false)
         }
     }
 }
