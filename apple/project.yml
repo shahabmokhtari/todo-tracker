@@ -52,6 +52,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: com.onething.task-link
             CFBundleURLSchemes: [onething]
+        # Export compliance: the only encryption is Apple's own (HTTPS through URLSession, the Keychain); CryptoKit's
+        # SHA-256 only names files and ids for sync. That is exempt, so App Store Connect stops asking on each upload.
+        ITSAppUsesNonExemptEncryption: false
         # Syncing on its own (Settings › Sync): iOS wakes the app now and then to sync in the background.
         BGTaskSchedulerPermittedIdentifiers: [com.onething.ios.sync]
         UIBackgroundModes: [fetch]
@@ -140,6 +143,8 @@ targets:
       path: Support/Info-tvOS.plist
       properties:
         UILaunchScreen: {}
+        # Export compliance: only exempt encryption (HTTPS, the Keychain; SHA-256 for sync ids), as on the phone.
+        ITSAppUsesNonExemptEncryption: false
   # The widgets: they read what the app writes to the App Group and never touch the tasks themselves.
   OneThingWidgets-iOS:
     type: app-extension
