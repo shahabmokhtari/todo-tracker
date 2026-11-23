@@ -72,13 +72,21 @@ top-level tasks, where a task without subtasks counts as one.
 Any task with subtasks can be **zoomed**: the tree then shows only what's under it, starting at its subtasks.
 Above the tree is the **path**: *All groups › group › each parent › the task*. Each part goes there (a group part
 picks that group; a task part zooms to it); the last part is the zoomed task, with its progress, and opens its
-details. *Escape* (when no row is being edited) and the first part of the path go back out.
+details. Zoom in with ⤢, a row's *Zoom in*, or *Alt+Enter* (*Option-Return* on a Mac or an iPad with a keyboard)
+on the focused row.
 
-- The web address is `#/tasks/<id>`, so a zoom can be linked and the Back button leaves it.
+- **Going back out is one level at a time:** *Escape* (when no row is being edited) on the web and the Mac, the Back
+  button on an iPhone and system Back on Android go to the zoomed task's parent (the task part of the path before it,
+  `Outline.zoomUp`), and from the first level out to the tree. The path's *All groups* and group parts still go all the
+  way out.
+- The web address is `#/tasks/<id>`, so a zoom can be linked; the browser's Back follows the address history.
 - While zoomed, *New task* adds inside the zoomed task, and a row at the top level of the zoom can't be moved out
   one level (it would vanish from the view); drag or *Move…* still can.
-- If the zoomed task is gone (finished and hidden, archived, deleted, moved out of the picked group), the view
-  zooms out to its nearest parent that's still shown, else to the top.
+- **Show narrows a zoom like a search does:** the zoom stays (and so do the path and, on the web, the address); the
+  rows under it are what the choice keeps, and an empty branch says what's left out ("Nothing here is waiting. Show ›
+  To do shows the rest."). A search that leaves the zoomed task out shows its nearest parent the search keeps (or the
+  top) for now. What's remembered changes only when the task is really gone (`Outline.rememberedZoom`): deleted,
+  archived or moved out of the picked group (the top), or without subtasks (its parent).
 - "Show in tree" (from a task's details) leaves any zoom that doesn't contain the task.
 - On a phone this is how a deep tree is read: tap ⤢ to go in, the path to come back.
 
@@ -135,14 +143,18 @@ The logic lives in one place per language and is checked against one fixture, ge
 
 - `Outline.path(board, options)`: the parts of the path while zoomed (`kind`, `id`, `title`).
 - `Outline.openTo(board, options, level)`: the `expanded` and `closedGroups` sets for a level.
-- `Outline.resolveZoom(board, options)`: the zoom to use when the asked one can't be shown.
+- `Outline.resolveZoom(board, options)`: the zoom drawn; `Outline.rememberedZoom(board, options)`: the zoom kept
+  (changes only when the task is really gone); `Outline.zoomUp(board, options)`: where Back and Escape go.
 - `Outline.shownTitle(title, parentTitle)`.
 
 The fixture has a board and cases (options in, rows / path / sets out) covering: group rows and their order, an
 empty group with and without a filter, one group picked, each *Show* choice (a parent kept for a subtask; a
 sequential parent's later steps under *Waiting*), search with rows opened on the way to a match, leaf counts at
-three depths, open-to each level, zoom (rows, path, new-task place), zoom fallbacks, and title trimming (each
-separator, case, an empty rest, a grandparent's name left alone).
+three depths, open-to each level, zoom (rows, path, new-task place), zoom fallbacks (for now and for good), the
+zoom one level up, and title trimming (each separator, case, an empty rest, a grandparent's name left alone, and one
+comparison everywhere: C#'s OrdinalIgnoreCase, without normalization or locale). A `moves` section pins indent,
+outdent, up/down, drops and New task (options and a move in, the tree afterwards or "refused" out): the C# side
+writes the server changes each comes to, and the web, Swift and Kotlin plan the move with their own code.
 
 The server's `/api/tree` reply doesn't change. The web app builds group rows from the groups it already has and
 each node's `groupId`, and reads `state`, `doneCount` and `totalCount` from the nodes.

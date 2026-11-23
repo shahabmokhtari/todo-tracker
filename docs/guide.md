@@ -83,14 +83,16 @@ The web app (and the app window on Windows) has six views; switch with the side 
 - **Tasks**: every task as an outline. Under *All groups* your groups are the top level, each with what's left to do;
   drop a task on a group to move it there. A parent shows how far along it is (`3/8`, counting the tasks without
   subtasks under it). Click a title to pick the row and again (or `Enter`, `F2`) to rename it; `Enter` in the box adds
-  the next task, `Tab`/`Shift+Tab` nest and un-nest, `Alt+↑/↓` move, `Space` finishes, `Esc` leaves; or drag a row
-  before, after or into another. A subtask that starts with its parent's name ("Publisher accounts: Pick a phone
-  number") shows only the rest.
+  the next task, `Tab`/`Shift+Tab` nest and un-nest, `Alt+↑/↓` move, `Space` finishes, `Alt+Enter` zooms in, `Esc`
+  goes back up; or drag a row before, after or into another. A subtask that starts with its parent's name ("Publisher
+  accounts: Pick a phone number") shows only the rest.
   - **Show**: *To do*, *Can do now* (with their parents), *Waiting* (snoozed, or after an unfinished step), or
     *Everything* (finished tasks too).
   - **Open to** *Groups*, *Tasks*, *Subtasks* or *All*: one press opens the whole tree that deep.
-  - **Zoom** (⊙ on a parent): see only that branch, with the path above it to go back. `Esc` or Back leaves it, and
-    the address (`#/tasks/…`) can be bookmarked. On a phone this is the easy way through a deep tree.
+  - **Zoom** (⊙ on a parent, or `Alt+Enter` on a row): see only that branch, with the path above it to go back. `Esc`
+    goes up one level, and from the top of the branch back to the whole tree; the address (`#/tasks/…`) can be
+    bookmarked. **Show** narrows a zoom without leaving it ("Nothing here is waiting" when nothing under it is). On a
+    phone this is the easy way through a deep tree.
 - **Done**: what you finished, day by day, with the time it took. Archive finished tasks (or everything older than a
   week or a month) to keep it short; bring them back from **Archive**, or delete them.
 - **Reports**: time tracked, focus sessions and tasks done for a week, a month, three months or a year, with time per
@@ -197,7 +199,7 @@ matches.
   starts the next task below). Long titles take two lines, and a subtask doesn't repeat its parent's name ("Publisher
   accounts: Pay the fee" under *Publisher accounts* reads "Pay the fee"; renaming shows the whole title). Tap ⤢ to
   **zoom** into a task: you see only what's under it, with the path above (tap a part to go there, the last one opens
-  the task); Back goes out again. **Show** picks *To do*, *Can do now*, *Waiting* or *Everything* (finished tasks
+  the task); Back goes up one level, then out to the whole tree. **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can do now*, *Waiting* or *Everything* (finished tasks
   too), and **Open to** opens the tree to *Groups*, *Tasks*, *Subtasks* or *All*. ⋯ moves a task up or down, into the
   task above or out one level, to another group, adds a subtask, zooms in or times it. Hold a task and drop it on the
   top of another (before it), its middle (inside it), its bottom (after it), or on a group (first in that group). In a
@@ -353,7 +355,8 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
   to open or close it, and drop a task on it to put it first in that group. A task with subtasks shows how many of
   them are done (`2/17`) with a thin bar. Long titles take two lines, and a subtask doesn't repeat its parent's name
   (renaming shows the whole title). ⤢ **zooms** into a task: you see only what's under it, with the path above (a part
-  goes there, the last one opens the task); Escape, or Back on an iPhone, goes out again. **Show** picks *To do*, *Can
+  goes there, the last one opens the task); Escape, or Back on an iPhone, goes up one level, then out (Option-Return
+  zooms into the selected task). **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can
   do now*, *Waiting* or *Everything* (finished tasks too), and **Open to** opens the tree to *Groups*, *Tasks*,
   *Subtasks* or *All*. Tap the selected task's title (or press Return) to rename it; Return again adds the next task
   below it. Tab and Shift-Tab put a task under the one above it and back out; Option-up and down move it; Space marks
