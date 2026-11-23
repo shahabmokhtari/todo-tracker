@@ -157,8 +157,9 @@ back), **Steps in order & rollout steps** (one step after another, with hours be
 
 **Reminders tell you, even with the app closed.** When a reminder is due, or something you snoozed comes back, your
 phone shows a notification: **Mark done** (or **Open**, when it has subtasks still to do), **In an hour**, or tap it to
-open the task. With notifications off, it waits on Today and tells you once they're on. The first time you snooze or
-set a reminder, the app asks to send notifications, and once whether it may set alarms so they come right on time.
+open the task. With notifications off, it waits on Today and tells you once they're on. On Android, the first time you
+snooze or set a reminder, the app asks to send notifications, and once whether it may set alarms so they come right on
+time; the iPhone and iPad ask when you first open the app.
 After your phone restarts, reminders you missed show up.
 
 **Later** offers the same quick choices as everywhere, **Pick a time…** (a day, then a time; times already past can't
