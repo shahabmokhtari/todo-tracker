@@ -592,18 +592,21 @@ internal static class ApiEndpoints
         return parsed.Apply(board).Where(i => parsed.HasState || !i.IsDone).Take(200).Select(i => Wire.SearchHit(i, now, board, links)).ToList();
     }
 
+    /// <summary>The tags in use on open tasks (for the filter, <c>ot tags</c>, <c>list_tags</c>), most used first.</summary>
+    internal static List<TagDto> Tags(TaskBoard board) => board.AllItems()
+        .Where(i => !i.IsDone && !i.IsArchived)
+        .SelectMany(i => i.Tags)
+        .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
+        .Select(g => new TagDto(g.First(), g.Count()))
+        .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
     private static void MapLabels(RouteGroupBuilder api)
     {
         api.MapGet("/labels", (IBoardStore store) => store.ReadAsync(Wire.Labels));
 
         // The tags in use on open tasks (for the filter), most used first.
-        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(b => b.AllItems()
-            .Where(i => !i.IsDone && !i.IsArchived)
-            .SelectMany(i => i.Tags)
-            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new TagDto(g.First(), g.Count()))
-            .OrderByDescending(t => t.Count).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList()));
+        api.MapGet("/tags", (IBoardStore store) => store.ReadAsync(Tags));
 
         api.MapPost("/labels", (LabelRequest request, HttpContext http, IBoardStore store, TimeProvider time) =>
             store.UpdateAsync(b =>

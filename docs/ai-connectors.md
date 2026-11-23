@@ -147,11 +147,20 @@ ot note passport 'Booked appointment for Tuesday'
 ot snooze passport tomorrow         defer: 45m, 2h, 3d, tomorrow, next week, fri 14:30, after <other task>
 ot done passport                    finish
 ot group add Garden --color '#22c55e'   a new group (tab); then ot add 'Plant tulips' -g Garden
+ot plan passport tomorrow 9:00      a block on the plan (ot plan shows it)
+ot log passport 45m                 time already spent; ot focus start passport for a focus session
+ot export > backup.json             everything, as JSON
 onething mcp                        the MCP server over stdio (ot mcp works too)
 ```
 
 Every command takes `--json` (the same shapes as the REST API and MCP tools) and `--as <name>` to attribute changes to
 an agent (or set `ONETHING_AGENT`). All the commands and options: [cli.md](cli.md).
+
+`ot` never deletes anything (a task, a group, a label, an attachment or logged time): an agent in a shell runs `ot`
+too, and `ot` can't tell it from you. Finish (`ot done`) or archive (`ot archive`) instead, and delete in the app.
+What only you should do (switch extras with `ot plugins`, choose where reminders go with `ot settings teams`, turn
+down a hook with `ot hooks reject`, move your tasks folder with `ot vault use`) works without `--as` and is refused
+with it.
 
 ## What the AI sees
 

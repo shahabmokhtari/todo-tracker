@@ -32,6 +32,19 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_setting_changed_by_another_process_is_kept_when_this_one_saves()
+    {
+        var app = new SettingsStore(new OneThingServerOptions { DataDirectory = _data });
+        new SettingsStore(new OneThingServerOptions { DataDirectory = _data }).SetTheme("dark");
+
+        app.SetPlan("all", new PlanSettings(View: "day"));
+
+        var after = new SettingsStore(new OneThingServerOptions { DataDirectory = _data }).Current;
+        Assert.Equal("dark", after.Theme);
+        Assert.Equal("day", after.Plan!["all"].View);
+    }
+
+    [Fact]
     public async Task The_app_starts_with_a_settings_file_that_cant_be_read()
     {
         await using var server = await ServerFixture.StartAsync(o =>

@@ -69,6 +69,12 @@ public static class CliApp
             return 0;
         }
 
+        if (!CliCommands.All.ContainsKey(parsed.Command) && CliCommands.DeleteWords.Contains(parsed.Command))
+        {
+            await context.Error.WriteLineAsync($"ot: {CliCommands.NoDelete}").ConfigureAwait(false);
+            return 2;
+        }
+
         if (!CliCommands.All.TryGetValue(parsed.Command, out var command))
         {
             await context.Error.WriteLineAsync($"ot: there is no command \"{parsed.Command}\". See ot help.").ConfigureAwait(false);

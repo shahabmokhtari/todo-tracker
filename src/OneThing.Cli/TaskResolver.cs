@@ -97,6 +97,13 @@ internal static class CliTime
         return at > now ? at : throw new ArgumentException($"{text} is in the past. Snooze to a later time (e.g. 2h or tomorrow).");
     }
 
+    /// <summary>A time, past or future (when time was spent, when a block starts): the same words as Defer.</summary>
+    public static DateTimeOffset When(string when, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        var text = (when ?? string.Empty).Trim();
+        return Parse(text, now, zone) ?? throw new ArgumentException($"\"{text}\" isn't a time. Use 2026-02-01T14:30, tomorrow 9:00, fri 14:30 or 2h.");
+    }
+
     private static DateTimeOffset? Parse(string text, DateTimeOffset now, TimeZoneInfo zone)
     {
         // One token only, so "2h and more words" is an error rather than "2h" with the rest dropped.

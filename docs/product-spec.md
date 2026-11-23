@@ -476,6 +476,11 @@ AI apps reach the tasks four ways (setup per app: [`docs/ai-connectors.md`](ai-c
   `dotnet tool`, as self-contained binaries, and as a Claude Desktop extension (`.mcpb`).
 * **`ot`** (short for `onething`; both are installed): the same operations from a terminal (`ot now`, `ot add …`, `ot done …`); `--json` returns the API shapes and
   `--as <agent>` attributes changes. Tasks are named by id prefix or title words; ambiguity is an error, never a guess.
+  Everything the app does has a command (the coverage table in [`docs/ai-connectors.md`](ai-connectors.md#what-ot-and-mcp-cover);
+  a test fails when a REST endpoint has neither a command nor a reason not to), except deleting (tasks, groups,
+  labels, attachments, time entries): a shell agent can run `ot` without `--as`, so `ot` can't tell it from the
+  person, and deletes stay in the apps. Owner-only changes that aren't deletes (`ot plugins on|off`, `ot settings
+  teams`, `ot hooks reject`, `ot vault use`) are refused with `--as`/`ONETHING_AGENT`.
 * **`/mcp`**: streamable HTTP inside the running app, `Authorization: Bearer <token>`.
 * **REST + OpenAPI** (`/openapi/v1.json`, and Swagger 2.0 at `/openapi/swagger2.json` for Copilot Studio): a curated
   subset without deletes, settings, or sign-in. Every `/api` route must be classified as described or hidden (a test
