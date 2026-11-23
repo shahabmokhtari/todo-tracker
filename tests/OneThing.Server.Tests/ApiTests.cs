@@ -336,6 +336,28 @@ public sealed class ApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_focus_timers_lengths_are_read_and_changed_and_saved_with_the_tasks_saying_who_changed_them()
+    {
+        var before = await _client.GetJson("/api/pomodoro/settings");
+        Assert.Equal((25, 5, 15, 4), (before["focusMinutes"]!.GetValue<int>(), before["shortBreakMinutes"]!.GetValue<int>(), before["longBreakMinutes"]!.GetValue<int>(), before["focusesBeforeLongBreak"]!.GetValue<int>()));
+
+        // Only what's sent changes; an agent may change them (like a day's energy), and the timeline says it did.
+        var agent = _server.Client(actor: "agent:claude");
+        var set = await (await agent.PutAsJsonAsync("/api/pomodoro/settings", new { focusMinutes = 50, longBreakMinutes = 30 })).Json();
+        Assert.Equal((50, 5, 30, 4), (set["focusMinutes"]!.GetValue<int>(), set["shortBreakMinutes"]!.GetValue<int>(), set["longBreakMinutes"]!.GetValue<int>(), set["focusesBeforeLongBreak"]!.GetValue<int>()));
+        Assert.Equal(50, (await _client.GetJson("/api/pomodoro/settings"))["focusMinutes"]!.GetValue<int>());
+        Assert.Equal(50 * 60, (await _client.PostJson("/api/pomodoro/start"))["remainingSeconds"]!.GetValue<int>());
+        var entry = (await _client.GetJson("/api/timeline?limit=5")).AsArray().First(e => e!["summary"]!.GetValue<string>().StartsWith("Focus timer:", StringComparison.Ordinal))!;
+        Assert.Equal("agent", entry["actorKind"]!.GetValue<string>());
+
+        var state = Directory.EnumerateFiles(_server.VaultDirectory, "state.json", SearchOption.AllDirectories).Single();
+        Assert.Contains("50", await File.ReadAllTextAsync(state), StringComparison.Ordinal);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/pomodoro/settings", new { focusMinutes = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/pomodoro/settings", new { focusesBeforeLongBreak = 13 })).StatusCode);
+    }
+
+    [Fact]
     public async Task Energy_is_set_on_a_task_and_for_the_day_and_the_plan_and_dashboard_add_it_up()
     {
         var doc = await _client.PostJson("/api/items", new { title = "Design doc", energy = 2 });

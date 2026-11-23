@@ -155,6 +155,16 @@ public struct DashboardView: View {
                 if let status = model.status {
                     Text(status).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 4)
                 }
+                // A task file in the tasks folder that can't be read (the web app's notice): it's left alone until fixed.
+                if let problem = model.vaultInfo?.problemNotice {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warnText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.warnText.opacity(0.1)))
+                        .accessibilityIdentifier("vault-problems")
+                }
             }
             .padding(.horizontal, Self.margin)
             .padding(.top, 14)
@@ -286,7 +296,7 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(Presentation.greeting(model.now)).font(.title3.weight(.bold))
                 Text(Presentation.summary(model.dashboard)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if let energy = Presentation.energyLine(model.board, now: model.now) {
+                if model.isOn(ExtraSwitches.energy), let energy = Presentation.energyLine(model.board, now: model.now) {
                     Text(energy).font(.caption).foregroundStyle(energy.contains("too much") ? Color(hex: "#ef4444") : .secondary).lineLimit(1)
                 }
             }
@@ -615,7 +625,7 @@ public struct DashboardView: View {
             foldingCard("Coming up", count: model.dashboard.waiting.count, expanded: $showWaiting) {
                 if model.dashboard.waiting.isEmpty { emptyText(comingUpEmpty) }
                 ForEach(model.dashboard.waiting) { entry in
-                    Button { open(entry.item.id) } label: { ComingUpRow(entry: entry, now: model.now, selected: shell?.selectedTask == entry.item.id) }
+                    Button { open(entry.item.id) } label: { ComingUpRow(entry: entry, now: model.now, selected: shell?.selectedTask == entry.item.id, energy: model.isOn(ExtraSwitches.energy)) }
                         .buttonStyle(.plain)
                         .pointerHover(cornerRadius: 10)
                         .contextMenu { TaskContextMenu(model: model, id: entry.item.id) }
@@ -834,7 +844,7 @@ struct FocusCard: View {
             if !entry.breadcrumb.isEmpty {
                 Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.secondary)
             }
-            let chips = Presentation.chips(for: entry, now: now, notes: false)
+            let chips = Presentation.chips(for: entry, now: now, notes: false, energy: model.isOn(ExtraSwitches.energy))
             if !chips.isEmpty {
                 FlowLayout(spacing: 5) { ForEach(chips, id: \.self) { ChipView(chip: $0) } }
             }
@@ -859,7 +869,9 @@ struct FocusCard: View {
                     .buttonStyle(.plain)
                 }
                 SnoozeMenu(model: model, id: entry.item.id, style: .pill)
-                PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
+                if model.isOn(ExtraSwitches.focusTimer) {
+                    PillButton(title: "Focus", systemImage: "play.fill") { model.startFocus(entry.item.id) }
+                }
                 // While this task is timed, stopping it is one tap away; Note, Timer and Skip are in ⋯.
                 if model.runningTimer?.item.id == entry.item.id {
                     PillButton(title: "Stop timer", systemImage: "stop.circle") { model.toggleTimer(entry.item.id) }
@@ -923,22 +935,28 @@ struct MoreMenu: View {
                 Button(action: openDetails) { Label("Open details", systemImage: "arrow.up.left.and.arrow.down.right") }
             }
             if model.canOpenInBrowser {
-                // The full app in the browser, on this task (signed in for you).
+                let path = "/#/task/\(entry.item.id.uuidString.lowercased())"
+                #if os(macOS)
+                // The full app on this task, in the One Thing window (signed in as you)…
+                Button { OneThingWindow.shared.show(path: path, model: model) } label: { Label("Open in the One Thing window", systemImage: "macwindow") }
+                #endif
+                // …or in the browser (signed in for you).
                 Button {
-                    let id = entry.item.id.uuidString.lowercased()
-                    Task { if let url = await model.launchURL(returnPath: "/#/task/\(id)") { openURL(url) } }
+                    Task { if let url = await model.launchURL(returnPath: path) { openURL(url) } }
                 } label: { Label("Open in the browser", systemImage: "safari") }
             }
             if let reminder = entry.dueReminder {
                 Button { model.dismissReminder(entry.item.id, reminderId: reminder.id) } label: { Label("Dismiss reminder", systemImage: "bell.slash") }
             }
-            Menu {
-                ForEach(EnergyChoice.all) { choice in
-                    Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
-                        if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+            if model.isOn(ExtraSwitches.energy) {
+                Menu {
+                    ForEach(EnergyChoice.all) { choice in
+                        Button { model.setEnergy(entry.item.id, level: choice.level) } label: {
+                            if entry.item.energy == choice.level { Label(choice.label, systemImage: "checkmark") } else { Text(choice.label) }
+                        }
                     }
-                }
-            } label: { Label("Energy per hour", systemImage: "bolt") }
+                } label: { Label("Energy per hour", systemImage: "bolt") }
+            }
             Button { Clipboard.copy(TaskLinks.forTask(entry.item.id)) } label: { Label("Copy link", systemImage: "link") }
         } label: {
             if pill {
@@ -1154,7 +1172,7 @@ struct TaskRow: View {
                 if !entry.breadcrumb.isEmpty {
                     Text(entry.breadcrumb.joined(separator: " › ")).font(.caption).foregroundStyle(.tertiary).lineLimit(1)
                 }
-                let chips = Presentation.chips(for: entry, now: now, notes: false)
+                let chips = Presentation.chips(for: entry, now: now, notes: false, energy: model.isOn(ExtraSwitches.energy))
                 if !chips.isEmpty {
                     FlowLayout(spacing: 5) { ForEach(chips, id: \.self) { ChipView(chip: $0) } }
                 }
@@ -1227,6 +1245,8 @@ struct ComingUpRow: View {
     let entry: AgendaEntry
     let now: Date
     var selected = false
+    /// The energy extra is on (its ⚡ chip shows).
+    var energy = true
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1235,7 +1255,7 @@ struct ComingUpRow: View {
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
                 Text(Presentation.titleWithIcon(entry.item)).font(.subheadline.weight(.medium)).multilineTextAlignment(.leading)
-                let chips = Presentation.chips(for: entry, now: now, notes: false)
+                let chips = Presentation.chips(for: entry, now: now, notes: false, energy: energy)
                 if !chips.isEmpty { FlowLayout(spacing: 4) { ForEach(chips, id: \.self) { ChipView(chip: $0) } } }
             }
             Spacer(minLength: 0)

@@ -15,6 +15,8 @@ test('the page asks the owner about a waiting hook once per version, unless a de
 
   assert.equal(nextToAsk({ ...status, appAsks: true }, new Set()), null);
   assert.equal(nextToAsk({ ...status, canApprove: false }, new Set()), null);
+  // The Mac app's One Thing window: the app asks with a prompt of its own.
+  assert.equal(nextToAsk(status, new Set(), true), null);
 });
 
 test('describeHook shows everything a hook would do', () => {

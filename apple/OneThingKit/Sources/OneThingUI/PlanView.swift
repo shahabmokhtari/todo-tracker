@@ -53,7 +53,7 @@ public struct PlanView: View {
             Divider()
             HStack(spacing: 0) {
                 if !compact {
-                    PlanTaskList(plan: plan, groups: model.board.groups, open: open, planTask: { sheet = PlanRequest(taskId: $0, start: nextQuarter(), minutes: nil) })
+                    PlanTaskList(plan: plan, groups: model.board.groups, energy: model.isOn(ExtraSwitches.energy), open: open, planTask: { sheet = PlanRequest(taskId: $0, start: nextQuarter(), minutes: nil) })
                         .frame(width: 270)
                     Divider()
                 }
@@ -67,7 +67,7 @@ public struct PlanView: View {
         }
         .sheet(isPresented: $showTasks) {
             NavigationStack {
-                PlanTaskList(plan: plan, groups: model.board.groups, open: { id in
+                PlanTaskList(plan: plan, groups: model.board.groups, energy: model.isOn(ExtraSwitches.energy), open: { id in
                     showTasks = false
                     open(id)
                 }, planTask: { id in
@@ -226,6 +226,8 @@ struct PlanRequest: Identifiable {
 struct PlanTaskList: View {
     let plan: PlanDays
     let groups: [TaskGroup]
+    /// The energy extra is on (each task's ⚡ shows).
+    var energy = true
     let open: (UUID) -> Void
     let planTask: (UUID) -> Void
 
@@ -261,7 +263,7 @@ struct PlanTaskList: View {
                     if let icon = item.icon { Text(icon) }
                     Text(item.title).lineLimit(2)
                     if item.repeatRule != nil { Image(systemName: "repeat").font(.caption2).foregroundStyle(.secondary) }
-                    if let energy = item.energy { Text(String(repeating: "⚡", count: energy)).font(.caption2) }
+                    if energy, let level = item.energy { Text(String(repeating: "⚡", count: level)).font(.caption2) }
                 }
                 .font(.callout)
                 if !entry.breadcrumb.isEmpty {
@@ -433,7 +435,8 @@ struct PlanDayHead: View {
     @ViewBuilder private var energy: some View {
         let used = plan.energy[day] ?? 0
         let per = model.board.dailyEnergy
-        if used > 0 {
+        // The energy extra switched off: no day's energy.
+        if used > 0, model.isOn(ExtraSwitches.energy) {
             let over = used > Double(per)
             let n = (used * 10).rounded() / 10
             let shown = n == n.rounded() ? String(Int(n)) : String(format: "%.1f", n)
@@ -586,6 +589,11 @@ struct PlanBlock: View {
     @FocusState private var focused: Bool
 
     private var start: Date { item.plannedAt! }
+    /// " ⚡⚡" after the title (nothing when the energy extra is off).
+    private var energyMarks: String {
+        guard model.isOn(ExtraSwitches.energy), let level = item.energy else { return "" }
+        return " " + String(repeating: "⚡", count: level)
+    }
     private var movable: Bool { !item.isDone }
 
     var body: some View {
@@ -604,7 +612,7 @@ struct PlanBlock: View {
                 + Text(item.icon.map { "\($0) " } ?? "")
                 + Text(item.title).strikethrough(item.isDone)
                 + Text(item.repeatRule != nil ? " \(Image(systemName: "repeat"))" : "")
-                + Text(item.energy.map { " " + String(repeating: "⚡", count: $0) } ?? "").font(.caption2))
+                + Text(energyMarks).font(.caption2))
                 .font(.caption.weight(.medium))
                 .lineLimit(max(1, Int((height - (height >= 34 ? 20 : 6)) / 15)))
         }

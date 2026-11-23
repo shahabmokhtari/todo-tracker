@@ -570,6 +570,36 @@ public sealed partial class TaskBoard
 
     // ---- Pomodoro -----------------------------------------------------------------------
 
+    /// <summary>The longest focus session, short break and long break, in minutes, and the most sessions before a long break.</summary>
+    public const int MaxFocusMinutes = 180, MaxShortBreakMinutes = 60, MaxLongBreakMinutes = 120, MaxFocusesBeforeLongBreak = 12;
+
+    /// <summary>
+    /// How long the focus timer's sessions and breaks last (kept with the tasks, so every app uses them): a new length
+    /// counts from the next session. The same limits as the Mac, iPhone and Android apps.
+    /// </summary>
+    public void SetPomodoroSettings(PomodoroSettings settings, Actor actor, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        SetFocusLengths(settings.FocusMinutes, settings.ShortBreakMinutes, settings.LongBreakMinutes, settings.FocusesBeforeLongBreak, actor, now);
+    }
+
+    /// <inheritdoc cref="SetPomodoroSettings"/>
+    public void SetFocusLengths(int focusMinutes, int shortBreakMinutes, int longBreakMinutes, int focusesBeforeLongBreak, Actor actor, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        if (focusMinutes is < 1 or > MaxFocusMinutes || shortBreakMinutes is < 1 or > MaxShortBreakMinutes
+            || longBreakMinutes is < 1 or > MaxLongBreakMinutes || focusesBeforeLongBreak is < 1 or > MaxFocusesBeforeLongBreak)
+        {
+            throw new ArgumentOutOfRangeException(nameof(focusMinutes),
+                $"Focus is 1 to {MaxFocusMinutes} minutes, a break 1 to {MaxShortBreakMinutes}, a long break 1 to {MaxLongBreakMinutes}, every 1 to {MaxFocusesBeforeLongBreak} sessions.");
+        }
+
+        var settings = new PomodoroSettings(focusMinutes, shortBreakMinutes, longBreakMinutes, focusesBeforeLongBreak);
+        Pomodoro.Settings = settings;
+        Log(now, Guid.Empty, ActivityKind.Updated,
+            $"Focus timer: {settings.FocusMinutes} min focus, {settings.ShortBreakMinutes} min break, {settings.LongBreakMinutes} min long break after {settings.FocusesBeforeLongBreak} sessions", actor);
+    }
+
     /// <summary>Starts a focus session (on a task, timed as focus time on this <paramref name="device"/>).</summary>
     public void StartFocus(Guid? itemId, Actor actor, DateTimeOffset now, string? device = null)
     {
@@ -845,6 +875,6 @@ public sealed partial class TaskBoard
     private static bool IsHttpUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
+    [GeneratedRegex(@"^#[0-9a-fA-F]{6}\z")]
     private static partial Regex HexColor();
 }

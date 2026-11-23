@@ -55,6 +55,8 @@ internal static partial class OpenApiSetup
         ["GET api/items/{id}/rich"] = ("getRichHtml", "A task's rich HTML version"),
         ["PUT api/items/{id}/rich"] = ("setRichHtml", "Save a rich HTML version of a top-level task"),
         ["POST api/pomodoro/{action}"] = ("controlFocusTimer", "Start, pause, resume, skip or stop the focus timer, or start the next session (next)"),
+        ["GET api/pomodoro/settings"] = ("getFocusLengths", "How long the focus timer's sessions and breaks last, in minutes"),
+        ["PUT api/pomodoro/settings"] = ("setFocusLengths", "Change the focus timer's lengths (focus 1-180 min, break 1-60, long break 1-120, 1-12 sessions before it)"),
         ["GET api/tree"] = ("getBoard", "Top-level tasks with their board column (inbox, next, doing), progress, time spent and subtasks"),
         ["POST api/items/{id}/stage"] = ("moveCard", "Move a top-level task to a board column (inbox, next, doing)"),
         ["POST api/items/{id}/archive"] = ("archiveTask", "Put a finished top-level task away (out of every list)"),

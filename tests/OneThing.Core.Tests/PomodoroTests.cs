@@ -168,4 +168,36 @@ public class PomodoroTests
         var board = new TaskBoard();
         Assert.Throws<TaskNotFoundException>(() => board.StartFocus(Guid.NewGuid(), Actor.User, T0));
     }
+
+    [Fact]
+    public void The_focus_timers_lengths_change_within_limits_and_the_timeline_says_who_changed_them()
+    {
+        var board = new TaskBoard();
+        board.SetPomodoroSettings(new PomodoroSettings(50, 10, 30, 3), Actor.Agent("Claude"), T0);
+
+        Assert.Equal(50, board.Pomodoro.Settings.FocusMinutes);
+        Assert.Equal(3, board.Pomodoro.Settings.FocusesBeforeLongBreak);
+        Assert.Equal(TimeSpan.FromMinutes(50), board.Pomodoro.Remaining(T0));
+        var entry = board.Timeline()[0];
+        Assert.Equal("Claude", entry.Actor.Name);
+        Assert.Contains("50 min", entry.Summary, StringComparison.Ordinal);
+
+        // The same limits as the Mac, iPhone and Android: focus 1–180 minutes, a break 1–60, a long break 1–120, 1–12 sessions.
+        Assert.Throws<ArgumentOutOfRangeException>(() => board.SetPomodoroSettings(new PomodoroSettings(181, 5, 15, 4), Actor.User, T0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => board.SetPomodoroSettings(new PomodoroSettings(25, 61, 15, 4), Actor.User, T0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => board.SetPomodoroSettings(new PomodoroSettings(25, 5, 121, 4), Actor.User, T0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => board.SetPomodoroSettings(new PomodoroSettings(25, 5, 15, 13), Actor.User, T0));
+        Assert.Equal(50, board.Pomodoro.Settings.FocusMinutes);
+    }
+
+    [Fact]
+    public void New_focus_lengths_survive_a_save()
+    {
+        var board = new TaskBoard();
+        board.SetPomodoroSettings(new PomodoroSettings(45, 8, 20, 5), Actor.User, T0);
+
+        var again = BoardSerializer.Deserialize(BoardSerializer.Serialize(board));
+
+        Assert.Equal(new PomodoroSettings(45, 8, 20, 5), again.Pomodoro.Settings);
+    }
 }
