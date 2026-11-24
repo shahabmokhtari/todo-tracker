@@ -239,6 +239,16 @@ object Outline {
         return if (shown == title && parentShownTitle != parentTitle) trim(title, parentShownTitle) else shown
     }
 
+    /**
+     * The tags a row shows: the task's tags its parent doesn't also have (any case, compared as titles are), in the
+     * task's order; all of them for a top-level task ([parentTags] null). Only what the row shows: the task keeps every
+     * tag, and its details show them all.
+     */
+    fun shownTags(tags: List<String>, parentTags: List<String>?): List<String> {
+        if (parentTags.isNullOrEmpty()) return tags
+        return tags.filter { tag -> parentTags.none { it.length == tag.length && startsIgnoringCase(tag, it) } }
+    }
+
     private fun trim(title: String, parentTitle: String?): String {
         if (parentTitle.isNullOrEmpty() || !startsIgnoringCase(title, parentTitle)) return title
         val after = title.substring(parentTitle.length)

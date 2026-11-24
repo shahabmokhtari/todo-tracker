@@ -7,6 +7,7 @@
     "snoozedUntil": "when snoozed tasks come back",
     "nodes": "what /api/tree says about each task at `now` (state, doneCount, totalCount): for a port that reads the tree from the server (the web app) instead of working it out",
     "titles": "{ title, parent, parentShown, shown }: shownTitle(title, parentTitle, parentShownTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty; when that leaves it as it was and the parent is shown shorter (parentShown, null: not), the same against that. In rows, a task's parentShown is its parent's row title (at the top of a zoom: the zoomed task's title in the path)",
+    "tags": "{ tags, parent, shown }: shownTags(tags, parentTags). A row shows only the tags its parent task doesn't also have (compared as titles are: any case, no normalization), in the task's order; a top-level task (parent null) shows all of them. In rows, a task's parent is its parent task (at the top of a zoom: the zoomed task); only how the row is drawn, the task keeps every tag",
     "cases[].options": "{ group: name|null (null: all groups), zoom: key|null (a key that isn't a task: a task that's gone), show: todo|now|waiting|all, query: search text|null, expanded: [keys] (open tasks), closedGroups: [names] }",
     "cases[].keep": "with a query: the tasks the search keeps (matches, their parents and their subtasks; what /api/tree?q= returns), in the order of `tasks`",
     "cases[].zoom": "resolveZoom: the zoom drawn (key) or null (the top): the remembered one, or while a search leaves it out its nearest parent the search keeps (for now). The Show choice never moves it (it only narrows what's under it)",
@@ -466,6 +467,204 @@
       "parent": "Launch",
       "parentShown": null,
       "shown": "copy"
+    }
+  ],
+  "tags": [
+    {
+      "tags": [
+        "publisher-accounts",
+        "ios"
+      ],
+      "parent": [
+        "publisher-accounts"
+      ],
+      "shown": [
+        "ios"
+      ]
+    },
+    {
+      "tags": [
+        "publisher-accounts"
+      ],
+      "parent": [
+        "publisher-accounts",
+        "launch"
+      ],
+      "shown": []
+    },
+    {
+      "tags": [
+        "publisher-accounts",
+        "ios"
+      ],
+      "parent": null,
+      "shown": [
+        "publisher-accounts",
+        "ios"
+      ]
+    },
+    {
+      "tags": [
+        "ios",
+        "android"
+      ],
+      "parent": [],
+      "shown": [
+        "ios",
+        "android"
+      ]
+    },
+    {
+      "tags": [],
+      "parent": [
+        "publisher-accounts"
+      ],
+      "shown": []
+    },
+    {
+      "tags": [
+        "a",
+        "b",
+        "c"
+      ],
+      "parent": [
+        "b"
+      ],
+      "shown": [
+        "a",
+        "c"
+      ]
+    },
+    {
+      "tags": [
+        "c",
+        "a",
+        "b"
+      ],
+      "parent": [
+        "a",
+        "x"
+      ],
+      "shown": [
+        "c",
+        "b"
+      ]
+    },
+    {
+      "tags": [
+        "Urgent",
+        "home"
+      ],
+      "parent": [
+        "urgent"
+      ],
+      "shown": [
+        "home"
+      ]
+    },
+    {
+      "tags": [
+        "urgent"
+      ],
+      "parent": [
+        "URGENT"
+      ],
+      "shown": []
+    },
+    {
+      "tags": [
+        "urg"
+      ],
+      "parent": [
+        "urgent"
+      ],
+      "shown": [
+        "urg"
+      ]
+    },
+    {
+      "tags": [
+        "urgent"
+      ],
+      "parent": [
+        "urg"
+      ],
+      "shown": [
+        "urgent"
+      ]
+    },
+    {
+      "tags": [
+        "İstanbul"
+      ],
+      "parent": [
+        "istanbul"
+      ],
+      "shown": [
+        "İstanbul"
+      ]
+    },
+    {
+      "tags": [
+        "ıstanbul"
+      ],
+      "parent": [
+        "ISTANBUL"
+      ],
+      "shown": [
+        "ıstanbul"
+      ]
+    },
+    {
+      "tags": [
+        "straße"
+      ],
+      "parent": [
+        "STRASSE"
+      ],
+      "shown": [
+        "straße"
+      ]
+    },
+    {
+      "tags": [
+        "Kelvin"
+      ],
+      "parent": [
+        "kelvin"
+      ],
+      "shown": [
+        "Kelvin"
+      ]
+    },
+    {
+      "tags": [
+        "écrire"
+      ],
+      "parent": [
+        "écrire"
+      ],
+      "shown": [
+        "écrire"
+      ]
+    },
+    {
+      "tags": [
+        "écrire"
+      ],
+      "parent": [
+        "ÉCRIRE"
+      ],
+      "shown": []
+    },
+    {
+      "tags": [
+        "\uD801\uDC28"
+      ],
+      "parent": [
+        "\uD801\uDC00"
+      ],
+      "shown": []
     }
   ],
   "cases": [

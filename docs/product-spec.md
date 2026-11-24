@@ -272,6 +272,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
     as shown) followed by `:`, ` -`, ` –` or ` —` shows only the rest; the full title is the tooltip and what renaming
     shows and saves. A click on a title selects the row, a click on the selected row's title (or Enter, F2) renames it.
     Thin guide lines mark each level.
+  * **Tags** on a row are only the ones its parent task doesn't also have (any case; `Outline.ShownTags`); a top-level
+    task shows all of them, and the task's details always do.
   * Keys: one Tab stop for the tree; arrows, Home/End, Enter/F2 rename, Ctrl+Enter details, Space done, Tab/Shift+Tab
     nest, Alt+↑/↓ move, Alt+Enter zoom in, Insert/Alt+N add, Esc up one level of the zoom, then out of the tree. On a phone the title gets the row; a tapped
     row shows its buttons (timer, add a subtask, details, *Move…*) on a line under it.

@@ -215,11 +215,11 @@ fun SmallTag(text: String, color: Color) {
 /** Labels (in their colors) and the first tags. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun TaskTags(item: WorkItem, vm: BoardViewModel, maxTags: Int = 3) {
-    if (item.labels.isEmpty() && item.tags.isEmpty()) return
+fun TaskTags(item: WorkItem, vm: BoardViewModel, maxTags: Int = 3, tags: List<String> = item.tags) {
+    if (item.labels.isEmpty() && tags.isEmpty()) return
     androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item.labels.forEach { SmallTag(it, ViewColors.hex(vm.labelColor(it), MaterialTheme.colorScheme.onSurfaceVariant)) }
-        item.tags.take(maxTags).forEach { SmallTag("#$it", MaterialTheme.colorScheme.onSurfaceVariant) }
+        tags.take(maxTags).forEach { SmallTag("#$it", MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 

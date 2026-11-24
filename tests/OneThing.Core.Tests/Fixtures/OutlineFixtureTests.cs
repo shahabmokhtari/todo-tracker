@@ -82,6 +82,30 @@ public sealed class OutlineFixtureTests
         ("Launch:\u00a0\u3000copy", "Launch", null),
     ];
 
+    /// <summary>A row's tags and its parent's (null: a top-level task), for <see cref="Outline.ShownTags"/>.</summary>
+    private static readonly (string[] Tags, string[]? Parent)[] Tags =
+    [
+        (["publisher-accounts", "ios"], ["publisher-accounts"]),
+        (["publisher-accounts"], ["publisher-accounts", "launch"]),
+        (["publisher-accounts", "ios"], null),
+        (["ios", "android"], []),
+        ([], ["publisher-accounts"]),
+        (["a", "b", "c"], ["b"]),
+        (["c", "a", "b"], ["a", "x"]),
+        (["Urgent", "home"], ["urgent"]),
+        (["urgent"], ["URGENT"]),
+        (["urg"], ["urgent"]),
+        (["urgent"], ["urg"]),
+        // As titles are compared (C#'s OrdinalIgnoreCase): no normalization, no locale.
+        (["İstanbul"], ["istanbul"]),
+        (["ıstanbul"], ["ISTANBUL"]),
+        (["straße"], ["STRASSE"]),
+        (["\u212Aelvin"], ["kelvin"]),
+        (["\u00e9crire"], ["e\u0301crire"]),
+        (["\u00e9crire"], ["\u00c9CRIRE"]),
+        (["\U00010428"], ["\U00010400"]),
+    ];
+
     private sealed record Case(string Name, string? Group = null, string? Zoom = null, string Show = "todo", string? Query = null, string[]? Expanded = null, string[]? ClosedGroups = null, bool OpenTo = false);
 
     private static IEnumerable<Case> Cases()
@@ -232,6 +256,7 @@ public sealed class OutlineFixtureTests
                 ["snoozedUntil"] = "when snoozed tasks come back",
                 ["nodes"] = "what /api/tree says about each task at `now` (state, doneCount, totalCount): for a port that reads the tree from the server (the web app) instead of working it out",
                 ["titles"] = "{ title, parent, parentShown, shown }: shownTitle(title, parentTitle, parentShownTitle). When the title starts with the parent's title (any case) followed by ':', ' -', ' –' or ' —', the rest with leading spaces dropped, unless that's empty; when that leaves it as it was and the parent is shown shorter (parentShown, null: not), the same against that. In rows, a task's parentShown is its parent's row title (at the top of a zoom: the zoomed task's title in the path)",
+                ["tags"] = "{ tags, parent, shown }: shownTags(tags, parentTags). A row shows only the tags its parent task doesn't also have (compared as titles are: any case, no normalization), in the task's order; a top-level task (parent null) shows all of them. In rows, a task's parent is its parent task (at the top of a zoom: the zoomed task); only how the row is drawn, the task keeps every tag",
                 ["cases[].options"] = "{ group: name|null (null: all groups), zoom: key|null (a key that isn't a task: a task that's gone), show: todo|now|waiting|all, query: search text|null, expanded: [keys] (open tasks), closedGroups: [names] }",
                 ["cases[].keep"] = "with a query: the tasks the search keeps (matches, their parents and their subtasks; what /api/tree?q= returns), in the order of `tasks`",
                 ["cases[].zoom"] = "resolveZoom: the zoom drawn (key) or null (the top): the remembered one, or while a search leaves it out its nearest parent the search keeps (for now). The Show choice never moves it (it only narrows what's under it)",
@@ -263,6 +288,12 @@ public sealed class OutlineFixtureTests
             })]),
             ["nodes"] = nodes,
             ["titles"] = new JsonArray([.. Titles.Select(t => (JsonNode)new JsonObject { ["title"] = t.Title, ["parent"] = t.Parent, ["parentShown"] = t.ParentShown, ["shown"] = Outline.ShownTitle(t.Title, t.Parent, t.ParentShown) })]),
+            ["tags"] = new JsonArray([.. Tags.Select(t => (JsonNode)new JsonObject
+            {
+                ["tags"] = new JsonArray([.. t.Tags.Select(x => (JsonNode)x)]),
+                ["parent"] = t.Parent is null ? null : new JsonArray([.. t.Parent.Select(x => (JsonNode)x)]),
+                ["shown"] = new JsonArray([.. Outline.ShownTags(t.Tags, t.Parent).Select(x => (JsonNode)x)]),
+            })]),
             ["cases"] = cases,
             ["tree"] = TreeOf(board, keys),
             ["moves"] = Moves(),

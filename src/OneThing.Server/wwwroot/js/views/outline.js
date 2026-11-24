@@ -7,7 +7,7 @@
 
 import {
   index, indentRequests, outdentRequests, stepRequests, dropZone, dropRequests, groupDropRequests,
-  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, besidesOf, shownTitle, initialShow, SHOW_CHOICES,
+  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, besidesOf, shownTitle, shownTags, initialShow, SHOW_CHOICES,
 } from '../outlinemodel.js';
 import { duration } from '../timefmt.js';
 import { latest, serial, sameAs, send, treeUrl, keepToolbarFocus, DRAG_TYPE } from './common.js';
@@ -400,7 +400,7 @@ export function createOutlineView(ctx) {
     iconBadge(node.icon),
     text,
     repeatMark(node.repeat),
-    h('span', { class: 'ochips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...node.tags.slice(0, 2).map((t) => h('span', { class: 'chip tag' }, `#${t}`))),
+    h('span', { class: 'ochips' }, ...node.labels.map((l) => ctx.labelChip(l)), ...shownTags(node.tags, r.parent?.tags).slice(0, 2).map((t) => h('span', { class: 'chip tag' }, `#${t}`))),
     h('span', { class: 'ofacts' }, ...facts),
     r.total ? progress(r.done, r.total) : null,
     (node.children ?? []).length

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
-  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, shownTitle, initialShow, groupDropRequests, index,
+  outlineRows, outlinePath, resolveZoom, rememberedZoom, zoomUp, openTo, newTaskPlace, shownTitle, shownTags, initialShow, groupDropRequests, index,
   besidesOf, indentRequests, outdentRequests, stepRequests, dropRequests,
 } from '../../src/OneThing.Server/wwwroot/js/outlinemodel.js';
 
@@ -40,6 +40,11 @@ const optionsOf = (o, sets = {}) => ({
 const plain = (rows) => rows.map(({ kind, id, depth, title, fullTitle, hasChildren, expanded, done, total, left, state, outdent }) =>
   ({ kind, id, depth, title, fullTitle, hasChildren, expanded, done, total, left, state, outdent }));
 const sorted = (set, order) => order.filter((x) => set.has(x));
+
+test('a row shows only the tags its parent doesn\'t also have, the way the fixture says', () => {
+  assert.ok(fixture.tags.length >= 10);
+  for (const t of fixture.tags) assert.deepEqual(shownTags(t.tags, t.parent), t.shown, JSON.stringify(t));
+});
 
 test('titles leave out the parent\'s name the way the fixture says', () => {
   for (const t of fixture.titles) assert.equal(shownTitle(t.title, t.parent, t.parentShown), t.shown, JSON.stringify(t));
