@@ -219,3 +219,8 @@ key, once these repository secrets exist: `ANDROID_UPLOAD_KEYSTORE_BASE64` (the 
 skips the bundle and says so. To build one on your own computer, set the same four values as
 `ONETHING_UPLOAD_STORE_FILE` (a path), `ONETHING_UPLOAD_STORE_PASSWORD`, `ONETHING_UPLOAD_KEY_ALIAS` and
 `ONETHING_UPLOAD_KEY_PASSWORD`, then `cd android && gradle bundleRelease`.
+
+The Android app's version comes from the tag: `versionName` is the tag without its `v`, and `versionCode` (what
+Google Play orders updates by) is major × 10000 + minor × 100 + patch (`v2.1.3` is 20103; a pre-release suffix like
+`-beta.1` stays in the name and is left out of the code), so minor and patch stay under 100. On your own computer,
+pass it as `-PonethingVersionName=2.1.3` or `ONETHING_VERSION_NAME=2.1.3`; without it a build is 2.0.0, code 1.

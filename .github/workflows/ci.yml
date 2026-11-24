@@ -7,6 +7,12 @@ on:
   workflow_dispatch:
   # The release workflow (release.yml) runs all of this on a version tag, then publishes what it built.
   workflow_call:
+    inputs:
+      version:
+        description: The version being released (the tag, like v2.1.0); the Android app's version name and code come from it
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -117,6 +123,9 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest
       - name: Build the app
         working-directory: android
+        env:
+          # On a release, the tag (versionName, and versionCode = major * 10000 + minor * 100 + patch); else 2.0.0, code 1.
+          ONETHING_VERSION_NAME: ${{ inputs.version }}
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

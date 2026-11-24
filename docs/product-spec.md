@@ -739,7 +739,8 @@ focus, attention, and states. The C#, Swift and Kotlin test suites all run them.
 
 Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Release with the apps it built
 (`.github/workflows/release.yml`). With the Android upload key in the repository secrets, it also builds the signed
-App Bundle for Google Play.
+App Bundle for Google Play. The Android version name and code come from the tag (`ONETHING_VERSION_NAME`; code =
+major × 10000 + minor × 100 + patch).
 
 ## 10. Roadmap
 

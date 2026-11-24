@@ -17,6 +17,8 @@ jobs:
   build:
     name: Build and test (CI)
     uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ github.ref_name }}
 
   # The Android App Bundle for Google Play, signed with the upload key (Play App Signing re-signs it for the store).
   # It is a workflow artifact (android-bundle) to upload in the Play Console, not part of the GitHub Release.
@@ -56,6 +58,8 @@ jobs:
           ONETHING_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           ONETHING_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ONETHING_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          # The tag: versionName, and versionCode = major * 10000 + minor * 100 + patch (v2.1.0: 20100).
+          ONETHING_VERSION_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           export ONETHING_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
