@@ -380,7 +380,7 @@ struct TasksOutlineView: View {
                 // A narrow screen: the title gets the row, what it says about the task goes below it.
                 VStack(alignment: .leading, spacing: 3) {
                     title(row, item)
-                    if !item.labels.isEmpty || !item.tags.isEmpty || item.repeatRule != nil || item.deadline != nil || row.total > 0 || !item.notes.isEmpty {
+                    if !item.labels.isEmpty || !Self.rowTags(item).isEmpty || item.repeatRule != nil || item.deadline != nil || row.total > 0 || !item.notes.isEmpty {
                         HStack(spacing: 6) {
                             chips(item)
                             facts(item, timing: timing)
@@ -508,7 +508,12 @@ struct TasksOutlineView: View {
     @ViewBuilder private func chips(_ item: WorkItem) -> some View {
         if item.repeatRule != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(.secondary) }
         ForEach(item.labels.prefix(3), id: \.self) { LabelChip(name: $0, color: model.labelColor($0)) }
-        ForEach(item.tags.prefix(2), id: \.self) { TagChip(tag: $0) }
+        ForEach(Self.rowTags(item).prefix(2), id: \.self) { TagChip(tag: $0) }
+    }
+
+    /// The tags a row shows: not the ones its parent task also has (they'd repeat on every subtask).
+    static func rowTags(_ item: WorkItem) -> [String] {
+        Outline.shownTags(item.tags, parentTags: item.parent?.tags)
     }
 
     @ViewBuilder private func facts(_ item: WorkItem, timing: Bool) -> some View {

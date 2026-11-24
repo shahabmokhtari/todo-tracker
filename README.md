@@ -219,3 +219,19 @@ key, once these repository secrets exist: `ANDROID_UPLOAD_KEYSTORE_BASE64` (the 
 skips the bundle and says so. To build one on your own computer, set the same four values as
 `ONETHING_UPLOAD_STORE_FILE` (a path), `ONETHING_UPLOAD_STORE_PASSWORD`, `ONETHING_UPLOAD_KEY_ALIAS` and
 `ONETHING_UPLOAD_KEY_PASSWORD`, then `cd android && gradle bundleRelease`.
+
+The Mac app ships as a notarized DMG (Developer ID; not the Mac App Store) once these six repository secrets exist:
+`MACOS_CERTIFICATE_P12` (the "Developer ID Application" certificate with its key, a `.p12`, base64-encoded),
+`MACOS_CERTIFICATE_PASSWORD`, `APPLE_TEAM_ID`, `ASC_KEY_P8` (an App Store Connect API key, the `.p8`, base64-encoded),
+`ASC_KEY_ID` and `ASC_ISSUER_ID`. The `mac-notarized` job imports the certificate into a keychain of its own (deleted
+afterwards), and [`build/mac-notarize.sh`](build/mac-notarize.sh) signs the app CI built again, inside out with the
+hardened runtime (the server and `onething` with the entitlements a .NET program needs), puts it in a DMG with a link
+to Applications, has Apple notarize it, staples the ticket and checks it with `spctl`. Without the secrets the release
+carries the ad hoc `OneThing-macOS.zip` as before. The notarized path has not been run with real credentials yet; on
+your own Mac, `build/mac-notarize.sh <OneThing.app> - <out.dmg>` does a dry run (signed ad hoc the same way, the DMG
+built and checked, nothing sent to Apple).
+
+The Android app's version comes from the tag: `versionName` is the tag without its `v`, and `versionCode` (what
+Google Play orders updates by) is major × 10000 + minor × 100 + patch (`v2.1.3` is 20103; a pre-release suffix like
+`-beta.1` stays in the name and is left out of the code), so minor and patch stay under 100. On your own computer,
+pass it as `-PonethingVersionName=2.1.3` or `ONETHING_VERSION_NAME=2.1.3`; without it a build is 2.0.0, code 1.

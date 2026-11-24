@@ -54,6 +54,20 @@ export function startsIgnoringCase(text, prefix) {
   return true;
 }
 
+/** Whether two texts are the same, case aside (C#'s Equals with OrdinalIgnoreCase). */
+function sameIgnoringCase(a, b) {
+  return a.length === b.length && startsIgnoringCase(a, b);
+}
+
+/**
+ * The tags a row shows: the task's tags its parent doesn't also have (any case), in the task's order; all of them for
+ * a top-level task (`parentTags` null). Only what the row shows: the task keeps every tag, its details show them all.
+ */
+export function shownTags(tags, parentTags) {
+  if (!parentTags?.length) return tags ?? [];
+  return (tags ?? []).filter((t) => !parentTags.some((p) => sameIgnoringCase(t, p)));
+}
+
 /** The Show choices, in the order the menu lists them. */
 export const SHOW_CHOICES = [['todo', 'To do'], ['now', 'Can do now'], ['waiting', 'Waiting'], ['all', 'Everything']];
 

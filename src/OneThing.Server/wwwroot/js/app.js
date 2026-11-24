@@ -1010,10 +1010,10 @@ async function closeDrawer() {
   state.drawerNote = null;
   $('#drawer').hidden = true;
   $('#scrim').hidden = true;
-  // The keyboard goes back to what opened the panel (when it's still there).
-  const opener = state.drawerOpener;
+  // The keyboard goes back to what opened the panel (when it's still there, or drawn again since: the same row).
+  const opener = openerNow(state.drawerOpener);
   state.drawerOpener = null;
-  if (opener?.isConnected) opener.focus({ preventScroll: true });
+  opener?.focus({ preventScroll: true });
   // Back to the view from a task's own address (#/task/<id>), without reloading the view.
   if (location.hash.startsWith('#/task/')) history.replaceState(null, '', `#/${shell.current() ?? 'today'}`);
   refresh({ background: true });
@@ -1028,6 +1028,17 @@ function rememberOpener() {
   if (!drawer.hidden) return;
   const active = document.activeElement;
   state.drawerOpener = active && active !== document.body && !drawer.contains(active) ? active : null;
+}
+
+/**
+ * What opened the panel, as it is now: the element itself while it's on the page; when its view was drawn again
+ * meanwhile (a Tasks row has a `data-key`), the element drawn in its place; else nothing.
+ */
+function openerNow(opener) {
+  if (!opener || opener.isConnected) return opener;
+  const key = opener.dataset?.key;
+  const kind = opener.classList?.[0];
+  return key && kind ? document.querySelector(`.${CSS.escape(kind)}[data-key="${CSS.escape(key)}"]`) : null;
 }
 
 /** What Tab can reach in `root`: shown, enabled, and not taken out of the Tab order. */

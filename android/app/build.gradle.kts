@@ -4,6 +4,24 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// The version: the Gradle property onethingVersionName or the environment variable ONETHING_VERSION_NAME (release.yml
+// passes the tag; a leading "v" is dropped), else 2.0.0 with version code 1 (a local or pull-request build).
+// The version code Google Play orders updates by comes from it: major * 10000 + minor * 100 + patch, so 2.0.0 is
+// 20000 and 2.1.3 is 20103; a pre-release suffix (2.1.0-beta.1) stays in the name and is left out of the code.
+val versionFromRelease = (project.findProperty("onethingVersionName") ?: System.getenv("ONETHING_VERSION_NAME"))
+    ?.toString()?.trim()?.removePrefix("v")?.removePrefix("V")?.takeIf { it.isNotEmpty() }
+
+/** The version code of a version name: major * 10000 + minor * 100 + patch (minor and patch under 100). */
+fun versionCodeOf(name: String): Int {
+    val match = Regex("""^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$""").matchEntire(name)
+        ?: throw GradleException("The version \"$name\" isn't major.minor.patch (like 2.1.0 or 2.1.0-beta.1).")
+    val (major, minor, patch) = match.destructured.toList().map { it.toInt() }
+    if (minor > 99 || patch > 99) throw GradleException("The version \"$name\" has a minor or patch number over 99, which the version code can't hold.")
+    val code = major * 10000 + minor * 100 + patch
+    if (code < 1) throw GradleException("The version \"$name\" gives version code 0; Google Play needs 1 or more.")
+    return code
+}
+
 android {
     namespace = "dev.onething"
     compileSdk = 36
@@ -14,8 +32,8 @@ android {
         // Google Play: since 31 August 2026 new apps and updates must target Android 16 (API 36) or higher
         // (developer.android.com/google/play/requirements/target-sdk).
         targetSdk = 36
-        versionCode = 1
-        versionName = "2.0.0"
+        versionCode = versionFromRelease?.let(::versionCodeOf) ?: 1
+        versionName = versionFromRelease ?: "2.0.0"
         // Send feedback: a debug build only logs a note; `gradle assembleDebug -PonethingFeedbackSend=true` sends it
         // for real (to the issues relay). Release builds always send.
         buildConfigField("boolean", "FEEDBACK_SEND", (project.findProperty("onethingFeedbackSend")?.toString() == "true").toString())

@@ -85,7 +85,8 @@ The web app (and the app window on Windows) has six views; switch with the side 
   subtasks under it). Click a title to pick the row and again (or `Enter`, `F2`) to rename it; `Enter` in the box adds
   the next task, `Tab`/`Shift+Tab` nest and un-nest, `Alt+↑/↓` move, `Space` finishes, `Alt+Enter` zooms in, `Esc`
   goes back up; or drag a row before, after or into another. A subtask that starts with its parent's name ("Publisher
-  accounts: Pick a phone number") shows only the rest.
+  accounts: Pick a phone number") shows only the rest, and a subtask doesn't repeat its parent's tags (its details
+  show them all).
   - **Show**: *To do*, *Can do now* (with their parents), *Waiting* (snoozed, or after an unfinished step), or
     *Everything* (finished tasks too).
   - **Open to** *Groups*, *Tasks*, *Subtasks* or *All*: one press opens the whole tree that deep.
@@ -199,7 +200,7 @@ matches.
   open or close it. A task with subtasks shows how many of them are done (`2/17`) with a thin bar. Tap ▸ to show
   subtasks, the circle to finish one, a title to pick it and again to rename it (Done on the keyboard saves it and
   starts the next task below). Long titles take two lines, and a subtask doesn't repeat its parent's name ("Publisher
-  accounts: Pay the fee" under *Publisher accounts* reads "Pay the fee"; renaming shows the whole title). Tap ⤢ to
+  accounts: Pay the fee" under *Publisher accounts* reads "Pay the fee"; renaming shows the whole title), nor its parent's tags. Tap ⤢ to
   **zoom** into a task: you see only what's under it, with the path above (tap a part to go there, the last one opens
   the task); Back goes up one level, then out to the whole tree. **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can do now*, *Waiting* or *Everything* (finished tasks
   too), and **Open to** opens the tree to *Groups*, *Tasks*, *Subtasks* or *All*. ⋯ moves a task up or down, into the
@@ -356,7 +357,7 @@ circle in front of a task to mark it done (a task with open subtasks asks first)
   left, its progress, and **+** to add a task to it) that stays at the top while you scroll its tasks; click or tap it
   to open or close it, and drop a task on it to put it first in that group. A task with subtasks shows how many of
   them are done (`2/17`) with a thin bar. Long titles take two lines, and a subtask doesn't repeat its parent's name
-  (renaming shows the whole title). ⤢ **zooms** into a task: you see only what's under it, with the path above (a part
+  (renaming shows the whole title) or its parent's tags. ⤢ **zooms** into a task: you see only what's under it, with the path above (a part
   goes there, the last one opens the task); Escape, or Back on an iPhone, goes up one level, then out (Option-Return
   zooms into the selected task). **Show** narrows a zoom without leaving it. **Show** picks *To do*, *Can
   do now*, *Waiting* or *Everything* (finished tasks too), and **Open to** opens the tree to *Groups*, *Tasks*,

@@ -7,6 +7,12 @@ on:
   workflow_dispatch:
   # The release workflow (release.yml) runs all of this on a version tag, then publishes what it built.
   workflow_call:
+    inputs:
+      version:
+        description: The version being released (the tag, like v2.1.0); the Android app's version name and code come from it
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -117,6 +123,9 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest
       - name: Build the app
         working-directory: android
+        env:
+          # On a release, the tag (versionName, and versionCode = major * 10000 + minor * 100 + patch); else 2.0.0, code 1.
+          ONETHING_VERSION_NAME: ${{ inputs.version }}
         run: gradle --no-daemon assembleDebug
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -322,7 +331,7 @@ jobs:
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
       - name: The macOS app carries its widgets
         run: test -d apple/DerivedData/Build/Products/Release/OneThing.app/Contents/PlugIns/OneThingWidgets.appex
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
       - name: Put the sync server and the command line in the Mac app (the tasks folder, synced with the other computers)
@@ -376,7 +385,7 @@ jobs:
       - name: Package macOS app
         working-directory: apple
         run: ditto -c -k --keepParent DerivedData/Build/Products/Release/OneThing.app OneThing-macOS.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-app
           path: apple/OneThing-macOS.zip
@@ -420,7 +429,7 @@ jobs:
           xcodebuild -project "$project" -scheme "One Thing Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
           codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/One Thing Extension.app"
           ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/One Thing Extension.app" OneThing-Safari-Extension.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: safari-extension
           path: OneThing-Safari-Extension.zip

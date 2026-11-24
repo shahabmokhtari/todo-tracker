@@ -67,6 +67,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.onething.core.Outline
 import dev.onething.core.OutlineLevel
 import dev.onething.core.OutlineMoves
 import dev.onething.core.OutlinePartKind
@@ -590,7 +591,9 @@ private fun Facts(vm: BoardViewModel, row: OutlineRow, item: WorkItem, timing: B
     val spent = item.timeSpent(vm.now)
     if (spent >= Duration.ofMinutes(1) || timing) parts.add("⏱ ${durationWords(spent)}")
     if (item.notes.isNotEmpty()) parts.add("📝 ${item.notes.size}")
-    if (item.labels.isNotEmpty() || item.tags.isNotEmpty()) TaskTags(item, vm, maxTags = 2)
+    // Not the tags its parent task also has: they'd repeat on every subtask.
+    val tags = Outline.shownTags(item.tags, item.parent?.tags)
+    if (item.labels.isNotEmpty() || tags.isNotEmpty()) TaskTags(item, vm, maxTags = 2, tags = tags)
     if (row.total > 0 || parts.isNotEmpty()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (row.total > 0) Progress(row.done, row.total)

@@ -174,6 +174,32 @@ test('Tasks: write an outline with the keyboard (add, nest, rename, finish) and 
   expect(errors).toEqual([]);
 });
 
+test('Tasks: closing a task\'s details gives the keyboard back to its row, even after the tree was drawn again', async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await add(request, 'Details round trip');
+  await open(page, request, '#/tasks');
+  const outline = page.locator('#view-tasks .outline');
+  const rowOf = (title) => outline.locator(`.orow[data-id][aria-label="${title}"]`);
+  const row = rowOf('Details round trip');
+  await row.focus();
+  await page.keyboard.press('Control+Enter');
+  const drawer = page.locator('#drawer');
+  await expect(drawer).toBeVisible();
+  const before = await row.elementHandle();
+
+  // Something else changes the board while the details are open, and the tree is drawn again (coming back to the
+  // window does it now; otherwise the next refresh, 15 seconds later).
+  await request.post('/api/items', { headers: { ...auth, 'X-OneThing-Actor': 'e2e-agent' }, data: { title: 'Added meanwhile', groupId: group.id } });
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await expect(rowOf('Added meanwhile')).toHaveCount(1);
+  expect(await before.evaluate((el) => el.isConnected)).toBe(false);
+
+  await drawer.getByRole('button', { name: 'Close' }).first().click();
+  await expect(drawer).toBeHidden();
+  await expect(rowOf('Details round trip')).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test('Tasks: groups at the top, progress, Open to, Show, zoom with a path and Back, short titles, and drops on a group', async ({ page, request }) => {
   const errors = watchErrors(page);
   const other = await (await request.post('/api/groups', { headers: auth, data: { name: `Tree other ${Date.now() % 100000}` } })).json();

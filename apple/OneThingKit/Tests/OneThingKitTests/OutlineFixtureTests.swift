@@ -72,6 +72,25 @@ final class OutlineFixtureTests: XCTestCase {
 
     private struct Titles: Decodable { let titles: [Title] }
 
+    private struct Tags: Decodable {
+        struct Case: Decodable {
+            let tags: [String]
+            let parent: [String]?
+            let shown: [String]
+        }
+
+        let tags: [Case]
+    }
+
+    func testARowShowsOnlyTheTagsItsParentDoesNotAlsoHave() throws {
+        let cases = try JSONDecoder().decode(Tags.self, from: Data(contentsOf: Fixtures.root.appendingPathComponent("outline.json"))).tags
+        XCTAssertGreaterThanOrEqual(cases.count, 10)
+        for t in cases {
+            // Compared as UTF-16: Swift's == would call é and e + an accent the same.
+            XCTAssertEqual(Outline.shownTags(t.tags, parentTags: t.parent).map { Array($0.utf16) }, t.shown.map { Array($0.utf16) }, "\(t)")
+        }
+    }
+
     func testTitlesLeaveOutTheParentsNameTheWayTheFixtureSays() throws {
         // JSONDecoder, not JSONSerialization: that one drops a U+FEFF at the start of a string (one case starts with it).
         let titles = try JSONDecoder().decode(Titles.self, from: Data(contentsOf: Fixtures.root.appendingPathComponent("outline.json"))).titles

@@ -267,6 +267,18 @@ public enum Outline {
         return shown == title && parentShownTitle != parentTitle ? trim(title, parentShownTitle) : shown
     }
 
+    /// The tags a row shows: the task's tags its parent doesn't also have (any case, compared as titles are), in the
+    /// task's order; all of them for a top-level task (`parentTags` nil). Only what the row shows: the task keeps every
+    /// tag, and its details show them all.
+    public static func shownTags(_ tags: [String], parentTags: [String]?) -> [String] {
+        guard let parentTags, !parentTags.isEmpty else { return tags }
+        let parents = parentTags.map { Array($0.utf16) }
+        return tags.filter { tag in
+            let units = Array(tag.utf16)
+            return !parents.contains { $0.count == units.count && startsIgnoringCase(units, $0) }
+        }
+    }
+
     // Compared as UTF-16, the way C# does (OrdinalIgnoreCase): no normalization (é written as e and an accent isn't é),
     // no locale. Swift's own String comparison would treat those as equal.
     private static func trim(_ title: String, _ parentTitle: String?) -> String {

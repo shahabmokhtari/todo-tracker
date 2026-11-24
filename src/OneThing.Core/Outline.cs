@@ -305,6 +305,17 @@ public static class Outline
     }
 
     /// <summary>
+    /// The tags a row shows: the task's tags its parent doesn't also have (any case, compared as titles are), in the
+    /// task's order; all of them for a top-level task (<paramref name="parentTags"/> null). Only what the row shows:
+    /// the task keeps every tag, and its details show them all.
+    /// </summary>
+    public static IReadOnlyList<string> ShownTags(IReadOnlyList<string> tags, IReadOnlyList<string>? parentTags)
+    {
+        ArgumentNullException.ThrowIfNull(tags);
+        return parentTags is not { Count: > 0 } ? tags : [.. tags.Where(t => !parentTags.Contains(t, StringComparer.OrdinalIgnoreCase))];
+    }
+
+    /// <summary>
     /// A subtask's title without its parent's name in front: when it starts with the parent's title (any case)
     /// followed by <c>:</c>, <c> -</c>, <c> –</c> or <c> —</c>, the rest (leading spaces dropped), unless that's empty.
     /// When the parent's own title is shown shorter (<paramref name="parentShownTitle"/>), that name counts too.

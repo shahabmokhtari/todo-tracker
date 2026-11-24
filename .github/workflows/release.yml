@@ -17,6 +17,8 @@ jobs:
   build:
     name: Build and test (CI)
     uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ github.ref_name }}
 
   # The Android App Bundle for Google Play, signed with the upload key (Play App Signing re-signs it for the store).
   # It is a workflow artifact (android-bundle) to upload in the Play Console, not part of the GitHub Release.
@@ -56,6 +58,8 @@ jobs:
           ONETHING_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           ONETHING_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ONETHING_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          # The tag: versionName, and versionCode = major * 10000 + minor * 100 + patch (v2.1.0: 20100).
+          ONETHING_VERSION_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           export ONETHING_UPLOAD_STORE_FILE="$RUNNER_TEMP/upload.jks"
@@ -71,9 +75,87 @@ jobs:
           name: android-bundle
           path: android/OneThing-${{ github.ref_name }}.aab
 
+  # The Mac app as a download macOS opens without a warning: the app CI built, signed again with a Developer ID
+  # (hardened runtime), in a DMG that Apple notarizes and that gets the ticket stapled (build/mac-notarize.sh). The
+  # release then carries OneThing-macOS.dmg instead of the ad hoc zip. Needs these repository secrets; without them
+  # this job only says so, and the release carries the ad hoc OneThing-macOS.zip as before:
+  #   MACOS_CERTIFICATE_P12       the "Developer ID Application" certificate and its key (.p12), base64-encoded
+  #   MACOS_CERTIFICATE_PASSWORD  the .p12's password
+  #   APPLE_TEAM_ID               the team it belongs to (10 characters)
+  #   ASC_KEY_P8                  an App Store Connect API key (.p8, role Developer), base64-encoded
+  #   ASC_KEY_ID                  its key id
+  #   ASC_ISSUER_ID               its issuer id
+  mac-notarized:
+    name: Mac app, signed and notarized (DMG)
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      HAS_MAC_SIGNING: ${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' && secrets.ASC_KEY_P8 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' }}
+    steps:
+      - name: No Developer ID yet
+        if: env.HAS_MAC_SIGNING != 'true'
+        run: echo "::notice::No Mac signing secrets (MACOS_CERTIFICATE_*, APPLE_TEAM_ID, ASC_KEY_*), so the Mac app ships as the ad hoc zip this time."
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        if: env.HAS_MAC_SIGNING == 'true'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: env.HAS_MAC_SIGNING == 'true'
+        with:
+          name: macos-app
+          path: built
+      - name: Put the certificate in a keychain of its own
+        if: env.HAS_MAC_SIGNING == 'true'
+        env:
+          CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -base64 24)
+          echo "::add-mask::$password"
+          printf '%s' "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -f pkcs12 -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          # codesign looks in this keychain too (and the login one, as before).
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ {print $2; exit}')
+          [ -n "$identity" ] || { echo 'No "Developer ID Application" identity in MACOS_CERTIFICATE_P12'; exit 1; }
+          echo "SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Sign, package, notarize and staple
+        if: env.HAS_MAC_SIGNING == 'true'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$ASC_KEY_PATH"
+          ditto -x -k built/OneThing-macOS.zip "$RUNNER_TEMP/mac"
+          mkdir -p dmg
+          build/mac-notarize.sh "$RUNNER_TEMP/mac/OneThing.app" "$SIGNING_IDENTITY" dmg/OneThing-macOS.dmg
+      - name: Remove the keychain and the API key
+        if: always() && env.HAS_MAC_SIGNING == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/certificate.p12"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: env.HAS_MAC_SIGNING == 'true'
+        with:
+          name: macos-dmg
+          path: dmg/OneThing-macOS.dmg
+
   publish:
     name: Publish the release
-    needs: build
+    needs: [build, mac-notarized]
+    # A failed notarization doesn't hold back the other platforms: the release then carries the ad hoc Mac zip, with a
+    # warning on the run. Run the release again once it's fixed.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -87,6 +169,8 @@ jobs:
         with:
           path: built
       - name: Gather what the release carries
+        env:
+          NOTARIZED: ${{ needs.mac-notarized.result }}
         run: |
           set -euo pipefail
           mkdir release
@@ -95,8 +179,12 @@ jobs:
           cp built/browser-extension/*.zip release/
           cp built/ai-connectors/*.mcpb built/ai-connectors/onething-cli-*.zip built/ai-connectors/nuget/*.nupkg release/
           (cd built/windows-sidebar/windows && zip -qr ../../../release/OneThing-Windows-x64.zip .)
-          # The Mac app and the Safari extension, whatever their packages are called.
-          for dir in built/macos-app built/safari-extension; do
+          # The Mac app (the notarized DMG when mac-notarized made one, else the ad hoc zip CI built) and the Safari
+          # extension, whatever their packages are called.
+          mac=built/macos-app
+          if [ "$NOTARIZED" = failure ]; then echo "::warning::The Mac app wasn't notarized (see the mac-notarized job): this release carries the ad hoc zip."; fi
+          if compgen -G 'built/macos-dmg/*.dmg' > /dev/null; then mac=built/macos-dmg; fi
+          for dir in "$mac" built/safari-extension; do
             find "$dir" -maxdepth 1 -type f \( -name '*.zip' -o -name '*.dmg' -o -name '*.pkg' \) -exec cp {} release/ \;
           done
           ls -l release

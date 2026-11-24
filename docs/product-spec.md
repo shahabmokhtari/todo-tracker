@@ -272,6 +272,8 @@ and any snooze rule written as one word after `@` (`@fri`, `@weekend`, `@2w`, `@
     as shown) followed by `:`, ` -`, ` –` or ` —` shows only the rest; the full title is the tooltip and what renaming
     shows and saves. A click on a title selects the row, a click on the selected row's title (or Enter, F2) renames it.
     Thin guide lines mark each level.
+  * **Tags** on a row are only the ones its parent task doesn't also have (any case; `Outline.ShownTags`); a top-level
+    task shows all of them, and the task's details always do.
   * Keys: one Tab stop for the tree; arrows, Home/End, Enter/F2 rename, Ctrl+Enter details, Space done, Tab/Shift+Tab
     nest, Alt+↑/↓ move, Alt+Enter zoom in, Insert/Alt+N add, Esc up one level of the zoom, then out of the tree. On a phone the title gets the row; a tapped
     row shows its buttons (timer, add a subtask, details, *Move…*) on a line under it.
@@ -737,7 +739,9 @@ focus, attention, and states. The C#, Swift and Kotlin test suites all run them.
 
 Pushing a `v*` tag runs the whole CI workflow on it and publishes a GitHub Release with the apps it built
 (`.github/workflows/release.yml`). With the Android upload key in the repository secrets, it also builds the signed
-App Bundle for Google Play.
+App Bundle for Google Play; with the Developer ID and App Store Connect key, the Mac app as a notarized DMG
+(`build/mac-notarize.sh`; not yet run with real credentials). The Android version name and code come from the tag (`ONETHING_VERSION_NAME`; code =
+major × 10000 + minor × 100 + patch).
 
 ## 10. Roadmap
 
@@ -745,7 +749,7 @@ App Bundle for Google Play.
   * Rotate the API token, and compact the activity log.
   * Phones: **Keep mine** / **Keep theirs** for lines changed on both, and OneDrive (they sync on their own today:
     Android through a gist, iPhone and iPad through iCloud Drive or a gist).
-  * Signed and notarized installers (MSIX, TestFlight, notarized DMG).
+  * Signed installers (MSIX, TestFlight); the notarized DMG is wired up and waits for the Developer ID secrets.
   * Keyboard navigation of cards.
 * **Later:**
   * A Teams bot with actionable buttons (Done and Snooze from Teams), which needs an Entra app registration.

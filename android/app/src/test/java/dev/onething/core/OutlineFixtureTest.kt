@@ -62,6 +62,16 @@ class OutlineFixtureTest {
     }
 
     @Test
+    fun aRowShowsOnlyTheTagsItsParentDoesNotAlsoHave() {
+        val cases = fixture["tags"]!!.jsonArray.map { it.jsonObject }
+        assertTrue(cases.size >= 10)
+        for (t in cases) {
+            val parent = (t["parent"] as? JsonArray)?.map { it.jsonPrimitive.content }
+            assertEquals(t.toString(), t["shown"]!!.jsonArray.map { it.jsonPrimitive.content }, Outline.shownTags(t["tags"]!!.jsonArray.map { it.jsonPrimitive.content }, parent))
+        }
+    }
+
+    @Test
     fun titlesLeaveOutTheParentsNameTheWayTheFixtureSays() {
         for (t in fixture["titles"]!!.jsonArray.map { it.jsonObject }) {
             assertEquals(t.toString(), t.text("shown"), Outline.shownTitle(t.text("title")!!, t.text("parent"), t.text("parentShown")))

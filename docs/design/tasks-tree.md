@@ -123,6 +123,10 @@ mode: opening and closing single rows afterwards works as always and is remember
   empty; leading spaces are dropped. Only the tree does this, only against the direct parent, and only when that
   parent is the row's parent on screen or the zoomed task. Renaming shows and saves the whole title. Nothing is
   changed in the task.
+- **The parent's tags aren't repeated either.** A row shows only the tags its parent task doesn't also have (the same
+  comparison as titles), so ten subtasks of a `#publisher-accounts` task don't each say `#publisher-accounts`. A
+  top-level task shows all its tags; at the top of a zoom the zoomed task is the parent. Only the row: the task keeps
+  every tag, its details show them all, and `ot tree` / `get_tree` don't print tags (agents read them with the task).
 - Thin guide lines mark each level of indent.
 
 ## The rules, shared (`tests/fixtures/outline.json`)
@@ -152,7 +156,8 @@ empty group with and without a filter, one group picked, each *Show* choice (a p
 sequential parent's later steps under *Waiting*), search with rows opened on the way to a match, leaf counts at
 three depths, open-to each level, zoom (rows, path, new-task place), zoom fallbacks (for now and for good), the
 zoom one level up, and title trimming (each separator, case, an empty rest, a grandparent's name left alone, and one
-comparison everywhere: C#'s OrdinalIgnoreCase, without normalization or locale). A `moves` section pins indent,
+comparison everywhere: C#'s OrdinalIgnoreCase, without normalization or locale), and which tags a row shows (`tags`:
+the parent's left out, compared the same way). A `moves` section pins indent,
 outdent, up/down, drops and New task (options and a move in, the tree afterwards or "refused" out): the C# side
 writes the server changes each comes to, and the web, Swift and Kotlin plan the move with their own code.
 
