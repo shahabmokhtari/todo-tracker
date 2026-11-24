@@ -160,6 +160,8 @@ download (Developer ID, not the Mac App Store): with the six secrets `MACOS_CERT
 `ASC_ISSUER_ID`, the `mac-notarized` job signs CI's app again with `build/mac-notarize.sh` (inside out, hardened
 runtime, `apple/Support/Server-macOS.entitlements` for the .NET programs), makes a DMG, notarizes and staples it, and
 the release carries `OneThing-macOS.dmg`; without them it carries the ad hoc zip as before. That notarized path hasn't
-run with real credentials yet; `build/mac-notarize.sh <app> - <out.dmg>` is its dry run (ad hoc, no notarization).
+run with real credentials yet; `build/mac-notarize.sh <app> - <out.dmg>` is its dry run (ad hoc, no notarization; it
+signs a copy, so the app you give it stays as it was). If notarizing fails, the release still goes out with the ad hoc
+zip and a warning on the run.
 The Android version name and code come from the tag (`ONETHING_VERSION_NAME`). Actions in the workflows are pinned to
 commit SHAs (the version in a comment); `npx` tools to a version.

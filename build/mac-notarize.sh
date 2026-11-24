@@ -42,6 +42,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Sign a copy, so the app you pass stays as it was (it may be the one you're running).
+ditto "$app" "$work/$(basename "$app")"
+app="$work/$(basename "$app")"
+
 # A real signature gets a secure timestamp (notarization requires it); an ad hoc one can't have one.
 if $dry; then stamp=--timestamp=none; else stamp=--timestamp; fi
 sign() { codesign --force --options runtime "$stamp" --sign "$identity" "$@"; }
@@ -73,8 +77,12 @@ while IFS= read -r -d '' f; do
     sign "$f"
   fi
 done < <(find "$app/Contents/Resources" "$app/Contents/Frameworks" -type f -print0 2>/dev/null)
+# Only the .NET programs get the JIT entitlements; any other program is signed plainly.
 for f in ${programs[@]+"${programs[@]}"}; do
-  sign --entitlements "$support/Server-macOS.entitlements" "$f"
+  case "$f" in
+    "$app/Contents/Resources/Server/"*) sign --entitlements "$support/Server-macOS.entitlements" "$f" ;;
+    *) sign "$f" ;;
+  esac
 done
 if [ -d "$app/Contents/Frameworks" ]; then
   find "$app/Contents/Frameworks" -maxdepth 1 -name '*.framework' -print0 | while IFS= read -r -d '' framework; do
@@ -122,10 +130,11 @@ fi
 # 5. Notarize (waits for Apple's answer), staple the ticket to the DMG, and check it as Gatekeeper will.
 result="$work/notary.json"
 xcrun notarytool submit "$dmg" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" \
-  --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$result"
+  --team-id "$APPLE_TEAM_ID" --wait --output-format json > "$result" || true
 status=$(/usr/bin/plutil -extract status raw -o - "$result" 2>/dev/null || true)
 if [ "$status" != Accepted ]; then
-  echo "Notarization didn't accept it (status: ${status:-unknown}). Apple's log:" >&2
+  echo "Notarization didn't accept it (status: ${status:-unknown}). Apple's answer and log:" >&2
+  cat "$result" >&2 || true
   id=$(/usr/bin/plutil -extract id raw -o - "$result" 2>/dev/null || true)
   if [ -n "$id" ]; then
     xcrun notarytool log "$id" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --team-id "$APPLE_TEAM_ID" >&2 || true
