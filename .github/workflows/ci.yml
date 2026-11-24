@@ -322,7 +322,7 @@ jobs:
           -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
       - name: The macOS app carries its widgets
         run: test -d apple/DerivedData/Build/Products/Release/OneThing.app/Contents/PlugIns/OneThingWidgets.appex
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           global-json-file: global.json
       - name: Put the sync server and the command line in the Mac app (the tasks folder, synced with the other computers)
@@ -376,7 +376,7 @@ jobs:
       - name: Package macOS app
         working-directory: apple
         run: ditto -c -k --keepParent DerivedData/Build/Products/Release/OneThing.app OneThing-macOS.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos-app
           path: apple/OneThing-macOS.zip
@@ -420,7 +420,7 @@ jobs:
           xcodebuild -project "$project" -scheme "One Thing Extension" -configuration Release -derivedDataPath safari-build/dd CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
           codesign --verify --deep --verbose=2 "safari-build/dd/Build/Products/Release/One Thing Extension.app"
           ditto -c -k --keepParent "safari-build/dd/Build/Products/Release/One Thing Extension.app" OneThing-Safari-Extension.zip
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: safari-extension
           path: OneThing-Safari-Extension.zip
